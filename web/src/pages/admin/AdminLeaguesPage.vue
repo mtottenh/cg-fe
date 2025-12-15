@@ -1,0 +1,379 @@
+<template>
+  <div>
+    <div class="d-flex justify-space-between align-center mb-6">
+      <h1 class="text-h4">Leagues</h1>
+      <v-btn
+        color="primary"
+        prepend-icon="mdi-plus"
+        @click="createModalOpen = true"
+      >
+        Create League
+      </v-btn>
+    </div>
+
+    <v-card class="mb-4">
+      <v-card-title class="d-flex align-center">
+        <v-text-field
+          v-model="search"
+          prepend-inner-icon="mdi-magnify"
+          label="Search leagues..."
+          single-line
+          hide-details
+          density="compact"
+          variant="outlined"
+          class="mr-4"
+          style="max-width: 300px"
+        />
+        <v-spacer />
+        <v-btn
+          color="primary"
+          variant="tonal"
+          prepend-icon="mdi-refresh"
+          :loading="loading"
+          @click="fetchData"
+        >
+          Refresh
+        </v-btn>
+      </v-card-title>
+    </v-card>
+
+    <!-- Loading State -->
+    <v-card v-if="loading" class="pa-8 text-center">
+      <v-progress-circular indeterminate color="primary" size="48" />
+      <p class="text-grey mt-4">Loading leagues...</p>
+    </v-card>
+
+    <!-- Empty State -->
+    <v-card v-else-if="adminLeagues.length === 0" class="pa-8 text-center">
+      <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-trophy-outline</v-icon>
+      <h3 class="text-h6 mb-2">No Leagues Found</h3>
+      <p class="text-grey mb-4">
+        You don't have admin access to any leagues yet.
+        Create your first league to get started.
+      </p>
+      <v-btn color="primary" prepend-icon="mdi-plus" @click="createModalOpen = true">
+        Create League
+      </v-btn>
+    </v-card>
+
+    <!-- Grouped by Game -->
+    <template v-else>
+      <v-expansion-panels v-model="expandedPanels" multiple>
+        <v-expansion-panel
+          v-for="group in filteredGroups"
+          :key="group.gameId"
+          :value="group.gameId"
+        >
+          <v-expansion-panel-title>
+            <div class="d-flex align-center">
+              <v-avatar size="32" rounded="sm" class="mr-3">
+                <v-img v-if="group.game?.icon_url" :src="group.game.icon_url" />
+                <v-icon v-else>mdi-gamepad-variant</v-icon>
+              </v-avatar>
+              <span class="text-subtitle-1 font-weight-medium">
+                {{ group.game?.display_name || 'Unknown Game' }}
+              </span>
+              <v-chip size="small" class="ml-3" color="primary" variant="tonal">
+                {{ group.leagues.length }} {{ group.leagues.length === 1 ? 'league' : 'leagues' }}
+              </v-chip>
+            </div>
+          </v-expansion-panel-title>
+
+          <v-expansion-panel-text>
+            <v-data-table
+              :headers="headers"
+              :items="group.leagues"
+              :items-per-page="10"
+              class="elevation-0"
+              density="comfortable"
+            >
+              <template v-slot:item.league_logo_url="{ item }">
+                <v-avatar size="32" rounded="sm">
+                  <v-img v-if="item.league_logo_url" :src="item.league_logo_url" />
+                  <v-icon v-else>mdi-trophy</v-icon>
+                </v-avatar>
+              </template>
+
+              <template v-slot:item.league_name="{ item }">
+                <div>
+                  <div class="font-weight-medium">{{ item.league_name }}</div>
+                  <div class="text-caption text-grey">{{ item.league_slug }}</div>
+                </div>
+              </template>
+
+              <template v-slot:item.membership_type="{ item }">
+                <v-chip
+                  :color="getRoleColor(item.membership_type)"
+                  size="small"
+                  variant="flat"
+                >
+                  {{ formatRole(item.membership_type) }}
+                </v-chip>
+              </template>
+
+              <template v-slot:item.joined_at="{ item }">
+                {{ formatDate(item.joined_at) }}
+              </template>
+
+              <template v-slot:item.actions="{ item }">
+                <v-btn
+                  icon
+                  size="small"
+                  variant="text"
+                  @click="openEditModal(item)"
+                  title="Edit Settings"
+                >
+                  <v-icon>mdi-pencil</v-icon>
+                </v-btn>
+                <v-btn
+                  icon
+                  size="small"
+                  variant="text"
+                  @click="openMembersModal(item)"
+                  title="Manage Members"
+                >
+                  <v-icon>mdi-account-group</v-icon>
+                </v-btn>
+                <v-btn
+                  icon
+                  size="small"
+                  variant="text"
+                  @click="openDetailModal(item)"
+                  title="Manage Seasons & Teams"
+                >
+                  <v-icon>mdi-clipboard-list</v-icon>
+                </v-btn>
+              </template>
+
+              <template v-slot:no-data>
+                <div class="text-center pa-4">
+                  <p class="text-grey">No leagues in this game</p>
+                </div>
+              </template>
+            </v-data-table>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+      </v-expansion-panels>
+    </template>
+
+    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="error = null">
+      {{ error }}
+    </v-alert>
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
+      {{ snackbarText }}
+    </v-snackbar>
+
+    <!-- Modals -->
+    <LeagueCreateModal
+      v-model="createModalOpen"
+      :games="gamesStore.games"
+      @created="onLeagueCreated"
+    />
+
+    <LeagueEditModal
+      v-model="editModalOpen"
+      :league="selectedLeague"
+      @saved="onLeagueSaved"
+    />
+
+    <LeagueMembersModal
+      v-model="membersModalOpen"
+      :league="selectedLeagueForMembers"
+      @updated="onMembersUpdated"
+    />
+
+    <LeagueDetailModal
+      v-model="detailModalOpen"
+      :league="selectedLeagueForDetail"
+      @updated="onDetailUpdated"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { useGamesStore, type GameSummary } from '@/stores/games'
+import { useLeaguesStore, type UserLeagueMembership } from '@/stores/leagues'
+import LeagueCreateModal from '@/components/admin/LeagueCreateModal.vue'
+import LeagueEditModal from '@/components/admin/LeagueEditModal.vue'
+import LeagueMembersModal from '@/components/admin/LeagueMembersModal.vue'
+import LeagueDetailModal from '@/components/admin/LeagueDetailModal.vue'
+
+// Stores
+const gamesStore = useGamesStore()
+const leaguesStore = useLeaguesStore()
+
+// Types
+interface LeagueGroup {
+  gameId: string
+  game: GameSummary | null
+  leagues: UserLeagueMembership[]
+}
+
+// Local state (not from stores)
+const search = ref('')
+const expandedPanels = ref<string[]>([])
+
+// Modal state
+const createModalOpen = ref(false)
+const editModalOpen = ref(false)
+const membersModalOpen = ref(false)
+const detailModalOpen = ref(false)
+const selectedLeague = ref<UserLeagueMembership | null>(null)
+const selectedLeagueForMembers = ref<UserLeagueMembership | null>(null)
+const selectedLeagueForDetail = ref<UserLeagueMembership | null>(null)
+
+// Snackbar
+const snackbar = ref(false)
+const snackbarText = ref('')
+const snackbarColor = ref('success')
+
+// Computed: loading from either store
+const loading = computed(() => gamesStore.loading || leaguesStore.loading)
+const error = computed(() => gamesStore.error || leaguesStore.error)
+
+// Table headers
+const headers = [
+  { title: '', key: 'league_logo_url', width: '50px', sortable: false },
+  { title: 'Name', key: 'league_name' },
+  { title: 'Your Role', key: 'membership_type', width: '120px' },
+  { title: 'Joined', key: 'joined_at', width: '140px' },
+  { title: 'Actions', key: 'actions', width: '120px', sortable: false, align: 'center' as const },
+]
+
+// Admin roles - users with these roles can manage the league
+const ADMIN_ROLES = ['owner', 'admin', 'moderator']
+
+// Computed: Filter to only leagues where user has admin permissions
+const adminLeagues = computed(() => {
+  return leaguesStore.myLeagues.filter(l => ADMIN_ROLES.includes(l.membership_type))
+})
+
+// Computed: Group leagues by game
+const leaguesByGame = computed(() => {
+  const groups = new Map<string, UserLeagueMembership[]>()
+
+  for (const league of adminLeagues.value) {
+    const gameId = league.game_id
+    if (!groups.has(gameId)) {
+      groups.set(gameId, [])
+    }
+    groups.get(gameId)!.push(league)
+  }
+
+  // Convert to array with game info
+  const result: LeagueGroup[] = []
+  for (const [gameId, leagueList] of groups) {
+    const game = gamesStore.games.find(g => g.id === gameId) || null
+    result.push({
+      gameId,
+      game,
+      leagues: leagueList.sort((a, b) => a.league_name.localeCompare(b.league_name)),
+    })
+  }
+
+  // Sort by game name
+  return result.sort((a, b) => {
+    const nameA = a.game?.display_name || 'Unknown'
+    const nameB = b.game?.display_name || 'Unknown'
+    return nameA.localeCompare(nameB)
+  })
+})
+
+// Computed: Apply search filter
+const filteredGroups = computed(() => {
+  if (!search.value) return leaguesByGame.value
+
+  const q = search.value.toLowerCase()
+  return leaguesByGame.value
+    .map(group => ({
+      ...group,
+      leagues: group.leagues.filter(l =>
+        l.league_name.toLowerCase().includes(q) ||
+        l.league_slug.toLowerCase().includes(q)
+      ),
+    }))
+    .filter(group => group.leagues.length > 0)
+})
+
+// Helpers
+function formatRole(role: string): string {
+  return role.charAt(0).toUpperCase() + role.slice(1)
+}
+
+function getRoleColor(role: string): string {
+  switch (role) {
+    case 'owner': return 'purple'
+    case 'admin': return 'primary'
+    case 'moderator': return 'info'
+    default: return 'grey'
+  }
+}
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString()
+}
+
+// API calls - now using stores
+async function fetchData() {
+  try {
+    // Fetch both leagues and games in parallel using stores
+    await Promise.all([
+      leaguesStore.fetchMyLeagues(),
+      gamesStore.fetchGames(),
+    ])
+
+    // Expand all panels by default
+    expandedPanels.value = leaguesByGame.value.map(g => g.gameId)
+  } catch {
+    // Errors are captured in the stores
+  }
+}
+
+// Modal handlers
+function openEditModal(league: UserLeagueMembership) {
+  selectedLeague.value = league
+  editModalOpen.value = true
+}
+
+function openMembersModal(league: UserLeagueMembership) {
+  selectedLeagueForMembers.value = league
+  membersModalOpen.value = true
+}
+
+function openDetailModal(league: UserLeagueMembership) {
+  selectedLeagueForDetail.value = league
+  detailModalOpen.value = true
+}
+
+function onLeagueCreated() {
+  showSnackbar('League created successfully', 'success')
+  fetchData()
+}
+
+function onLeagueSaved() {
+  showSnackbar('League updated successfully', 'success')
+  fetchData()
+}
+
+function onMembersUpdated() {
+  // Refresh in case membership counts changed
+  fetchData()
+}
+
+function onDetailUpdated() {
+  // Refresh in case seasons/teams changed
+  fetchData()
+}
+
+function showSnackbar(text: string, color: string) {
+  snackbarText.value = text
+  snackbarColor.value = color
+  snackbar.value = true
+}
+
+onMounted(() => {
+  fetchData()
+})
+</script>

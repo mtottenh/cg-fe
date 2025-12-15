@@ -1,0 +1,25 @@
+// Global styles
+html {
+  overflow-y: auto;
+}
+
+// Gaming portal custom styles
+.v-card {
+  transition: transform 0.2s, box-shadow 0.2s;
+
+  &:hover {
+    transform: translateY(-2px);
+  }
+}
+
+// Team tag styling
+.team-tag {
+  font-family: monospace;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+// Player avatar placeholder
+.player-avatar-placeholder {
+  background: linear-gradient(135deg, #FF6F00 0%, #FFB300 100%);
+}

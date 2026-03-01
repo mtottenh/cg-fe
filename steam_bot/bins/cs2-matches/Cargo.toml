@@ -1,0 +1,13 @@
+[package]
+name = "cs2-matches"
+version = "0.1.0"
+edition = "2021"
+description = "CLI tool for fetching CS2 match history via the Game Coordinator"
+
+[dependencies]
+cs2-gc = { path = "../../crates/cs2-gc" }
+steam-vent.workspace = true
+tokio.workspace = true
+clap.workspace = true
+rpassword.workspace = true
+tracing-subscriber.workspace = true

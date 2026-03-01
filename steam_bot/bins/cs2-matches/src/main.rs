@@ -103,7 +103,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     println!("[+] Logged in.");
 
     // ── Connect to CS2 GC ──
-    let mut cs2 = Cs2GcClient::new(connection);
+    let mut cs2 = Cs2GcClient::connect(connection).await?;
 
     println!("[*] Connecting to CS2 Game Coordinator...");
     let profile = cs2.hello().await?;

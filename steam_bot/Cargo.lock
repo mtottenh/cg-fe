@@ -436,11 +436,9 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "steam-vent",
- "steam-vent-proto",
  "steam-vent-proto-csgo",
  "thiserror 2.0.18",
  "tokio",
- "tokio-stream",
  "tracing",
 ]
 

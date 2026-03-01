@@ -6,25 +6,6 @@
 //! a thin, typed wrapper over a `steam_vent::Connection` that handles
 //! protocol details internally.
 //!
-//! ## Architecture
-//!
-//! ```text
-//! ┌─────────────────┐         ┌─────────────────┐
-//! │  Your code      │         │  steam-vent      │
-//! │                 │         │                  │
-//! │  Cs2GcClient    │────────►│  Connection      │
-//! │   .hello()      │         │   .service_method│
-//! │   .recent_matches()       │   .on_notification
-//! │   .match_info() │         │   (+ raw EMsg?)  │
-//! └─────────────────┘         └─────────────────┘
-//!         │
-//!    ┌────┴────┐
-//!    │transport │  ← bridges Connection to GC protocol
-//!    │  .send() │    (wraps payloads in CMsgGCClient,
-//!    │  .recv() │     sends via EMsg::ClientToGC)
-//!    └─────────┘
-//! ```
-//!
 //! ## Usage
 //!
 //! ```no_run
@@ -32,9 +13,9 @@
 //! use steam_vent::Connection;
 //!
 //! # async fn example(connection: Connection) -> Result<(), Box<dyn std::error::Error>> {
-//! let mut cs2 = Cs2GcClient::new(connection);
+//! let mut cs2 = Cs2GcClient::connect(connection).await?;
 //!
-//! // Handshake — also returns your own rank
+//! // CS2-specific handshake — also returns your own rank
 //! let profile = cs2.hello().await?;
 //! println!("My rank: {:?}", profile.rankings);
 //!
@@ -46,27 +27,15 @@
 //! # Ok(())
 //! # }
 //! ```
-//!
-//! ## What You'll Need to Adapt
-//!
-//! The [`transport`] module contains the low-level GC send/receive logic.
-//! Since steam-vent's API for raw EMsg / GC messages isn't fully documented,
-//! you'll need to adapt `transport::GcTransport` to match what `Connection`
-//! actually exposes. The rest of the library should work as-is once transport
-//! compiles.
 
-pub mod messages;
 pub(crate) mod transport;
 pub mod types;
 
 use std::time::Duration;
 
-use steam_vent::Connection;
+use steam_vent::ConnectionTrait;
 use tracing::{debug, info};
 
-// Protobuf types from the csgo proto crate.
-// These are the raw GC message types — we serialize/deserialize them in
-// the transport layer, then convert to our own types in `types.rs`.
 use steam_vent_proto_csgo::cstrike15_gcmessages as pb;
 
 use crate::transport::{GcTransport, GcTransportError};
@@ -75,18 +44,11 @@ use crate::types::{MatchInfo, OwnProfile};
 /// How long to wait for a GC response before giving up.
 const DEFAULT_GC_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Delay after telling Steam we're "playing" CS2, before sending ClientHello.
-/// The GC needs a moment to notice us.
-const POST_PLAY_DELAY: Duration = Duration::from_secs(2);
-
 /// Errors from the CS2 GC client.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
     Transport(#[from] GcTransportError),
-
-    #[error("Protobuf decode error: {0}")]
-    Decode(String),
 
     #[error("Not connected to GC — call hello() first")]
     NotConnected,
@@ -96,13 +58,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// High-level CS2 Game Coordinator client.
 ///
-/// Modeled after `ChatClient` from `steam-vent-chat`: takes ownership of
-/// a `Connection`, provides typed async methods for GC operations.
-///
 /// ## Lifecycle
 ///
-/// 1. Create with `Cs2GcClient::new(connection)`
-/// 2. Call `.hello()` to initiate the GC session
+/// 1. Create with `Cs2GcClient::connect(connection).await?`
+/// 2. Call `.hello()` to get your profile / rank
 /// 3. Use `.recent_matches()`, `.match_info()`, etc.
 ///
 /// The bot account must have CS2 in its library (free) and ideally Prime
@@ -113,53 +72,43 @@ pub struct Cs2GcClient {
 }
 
 impl Cs2GcClient {
-    /// Create a new CS2 GC client from an authenticated `Connection`.
+    /// Connect to the CS2 Game Coordinator.
     ///
-    /// The connection should already be logged in. Call [`hello()`](Self::hello)
-    /// to start the GC session.
-    pub fn new(connection: Connection) -> Self {
-        Self {
-            transport: GcTransport::new(connection),
+    /// Performs the generic GC handshake (set playing CS2, CMsgClientHello →
+    /// CMsgClientWelcome). Call [`hello()`](Self::hello) next for the
+    /// CS2-specific handshake that returns your profile.
+    pub async fn connect(connection: steam_vent::Connection) -> Result<Self> {
+        Ok(Self {
+            transport: GcTransport::connect(connection).await?,
             connected: false,
-        }
+        })
     }
 
-    /// Perform the GC handshake.
+    /// Perform the CS2-specific handshake.
     ///
-    /// 1. Tells Steam we're "playing" CS2 (app 730)
-    /// 2. Sends `ClientHello` to the GC
-    /// 3. Waits for `GC2ClientHello` containing our profile + rank
+    /// Sends `CMsgGCCStrike15_v2_MatchmakingClient2GCHello` and waits for
+    /// `CMsgGCCStrike15_v2_MatchmakingGC2ClientHello` containing profile + rank.
     ///
     /// Must be called before any other GC methods.
     pub async fn hello(&mut self) -> Result<OwnProfile> {
-        info!("Starting GC handshake...");
+        info!("Sending CS2 hello...");
 
-        // Step 1: Tell Steam we're playing CS2
-        self.transport.set_playing_cs2().await?;
-        tokio::time::sleep(POST_PLAY_DELAY).await;
-
-        // Step 2: Send ClientHello (empty message — no fields to set)
-        //
-        // Protobuf v2: CMsgGCCStrike15_v2_MatchmakingClient2GCHello::new()
-        //              .write_to_bytes()?
-        // Prost:       pb::CMsg...Client2GcHello::default()
-        //              .encode_to_vec()
         let hello = pb::CMsgGCCStrike15_v2_MatchmakingClient2GCHello::new();
-        let payload = hello.write_to_bytes()
-            .map_err(|e| Error::Decode(e.to_string()))?;
-
         self.transport
-            .send(messages::CLIENT_HELLO, &payload)
-            .await?;
+            .gc()
+            .send(hello)
+            .await
+            .map_err(GcTransportError::from)?;
 
-        // Step 3: Wait for GC2ClientHello
-        let response = self
-            .transport
-            .recv(messages::GC2CLIENT_HELLO, DEFAULT_GC_TIMEOUT)
-            .await?;
-
-        let gc_hello = pb::CMsgGCCStrike15_v2_MatchmakingGC2ClientHello::parse_from_bytes(&response)
-            .map_err(|e| Error::Decode(e.to_string()))?;
+        let gc_hello = tokio::time::timeout(
+            DEFAULT_GC_TIMEOUT,
+            self.transport
+                .gc()
+                .one::<pb::CMsgGCCStrike15_v2_MatchmakingGC2ClientHello>(),
+        )
+        .await
+        .map_err(|_| GcTransportError::from(steam_vent::NetworkError::Timeout))?
+        .map_err(GcTransportError::from)?;
 
         self.connected = true;
         let profile = OwnProfile::from_proto(&gc_hello);
@@ -185,33 +134,35 @@ impl Cs2GcClient {
 
         debug!(account_id, "Requesting recent matches");
 
-        // Build request
         let mut req = pb::CMsgGCCStrike15_v2_MatchListRequestRecentUserGames::new();
         req.set_accountid(account_id);
-        // Prost: let req = pb::CMsg...RecentUserGames { accountid: Some(account_id), ..Default::default() };
-
-        let payload = req.write_to_bytes()
-            .map_err(|e| Error::Decode(e.to_string()))?;
 
         self.transport
-            .send(messages::MATCH_LIST_REQUEST_RECENT_USER_GAMES, &payload)
-            .await?;
+            .gc()
+            .send(req)
+            .await
+            .map_err(GcTransportError::from)?;
 
-        // Wait for MatchList response
-        let response = self
-            .transport
-            .recv(messages::MATCH_LIST, DEFAULT_GC_TIMEOUT)
-            .await?;
-
-        let match_list = pb::CMsgGCCStrike15_v2_MatchList::parse_from_bytes(&response)
-            .map_err(|e| Error::Decode(e.to_string()))?;
+        let match_list = tokio::time::timeout(
+            DEFAULT_GC_TIMEOUT,
+            self.transport
+                .gc()
+                .one::<pb::CMsgGCCStrike15_v2_MatchList>(),
+        )
+        .await
+        .map_err(|_| GcTransportError::from(steam_vent::NetworkError::Timeout))?
+        .map_err(GcTransportError::from)?;
 
         info!(
             count = match_list.matches.len(),
             "Received match list"
         );
 
-        Ok(match_list.matches.iter().map(MatchInfo::from_proto).collect())
+        Ok(match_list
+            .matches
+            .iter()
+            .map(MatchInfo::from_proto)
+            .collect())
     }
 
     /// Get full match info from share code components.
@@ -233,27 +184,27 @@ impl Cs2GcClient {
         req.set_outcomeid(outcome_id);
         req.set_token(token);
 
-        let payload = req.write_to_bytes()
-            .map_err(|e| Error::Decode(e.to_string()))?;
-
         self.transport
-            .send(messages::MATCH_LIST_REQUEST_FULL_GAME_INFO, &payload)
-            .await?;
+            .gc()
+            .send(req)
+            .await
+            .map_err(GcTransportError::from)?;
 
-        let response = self
-            .transport
-            .recv(messages::MATCH_LIST, DEFAULT_GC_TIMEOUT)
-            .await?;
+        let match_list = tokio::time::timeout(
+            DEFAULT_GC_TIMEOUT,
+            self.transport
+                .gc()
+                .one::<pb::CMsgGCCStrike15_v2_MatchList>(),
+        )
+        .await
+        .map_err(|_| GcTransportError::from(steam_vent::NetworkError::Timeout))?
+        .map_err(GcTransportError::from)?;
 
-        let match_list = pb::CMsgGCCStrike15_v2_MatchList::parse_from_bytes(&response)
-            .map_err(|e| Error::Decode(e.to_string()))?;
-
-        Ok(match_list.matches.iter().map(MatchInfo::from_proto).collect())
-    }
-
-    /// Access the underlying `Connection`.
-    pub fn connection(&self) -> &Connection {
-        self.transport.connection()
+        Ok(match_list
+            .matches
+            .iter()
+            .map(MatchInfo::from_proto)
+            .collect())
     }
 
     /// Whether the GC handshake has completed.
@@ -269,7 +220,3 @@ impl Cs2GcClient {
         }
     }
 }
-
-// Protobuf Message trait — re-exported through steam-vent-proto so we
-// don't need protobuf as a direct dependency.
-use steam_vent_proto::protobuf::Message;

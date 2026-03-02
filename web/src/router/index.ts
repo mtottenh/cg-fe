@@ -190,8 +190,14 @@ const router = createRouter({
 })
 
 // Navigation guard for authentication and authorization
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore()
+
+  // Wait for auth initialization on first navigation
+  if (!authStore.initialized) {
+    await authStore.initialize()
+  }
+
   const isAuthenticated = authStore.isAuthenticated || authStore.isDevMode
 
   // Redirect authenticated users away from guest-only pages (login, register)

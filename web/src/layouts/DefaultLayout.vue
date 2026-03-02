@@ -9,7 +9,7 @@
 
       <template v-slot:append>
         <v-btn variant="text" to="/tournaments">Tournaments</v-btn>
-        <v-btn variant="text" to="/teams">Teams</v-btn>
+        <v-btn variant="text" to="/leagues">Leagues</v-btn>
         <v-btn variant="text" to="/players">Players</v-btn>
         <v-divider vertical class="mx-2" />
         <template v-if="!isLoggedIn">
@@ -25,8 +25,8 @@
           </v-btn>
           <v-btn variant="text" to="/invitations" class="mr-1">
             <v-badge
-              v-if="invitationsStore.hasPendingInvitations"
-              :content="invitationsStore.pendingCount"
+              v-if="pendingInvitationCount > 0"
+              :content="pendingInvitationCount"
               color="error"
               offset-x="-2"
               offset-y="-2"
@@ -59,29 +59,27 @@
 import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useInvitationsStore } from '@/stores/invitations'
+import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 
 const authStore = useAuthStore()
-const invitationsStore = useInvitationsStore()
+const leagueTeamsStore = useLeagueTeamsStore()
 const router = useRouter()
 
 // User is considered logged in if authenticated OR in dev mode
 const isLoggedIn = computed(() => authStore.isAuthenticated || authStore.isDevMode)
+const pendingInvitationCount = computed(() => leagueTeamsStore.myInvitations.length)
 
 // Fetch invitation count when logged in
 watch(isLoggedIn, (loggedIn) => {
   if (loggedIn) {
-    invitationsStore.fetchPendingCount().catch(() => {
+    leagueTeamsStore.fetchMyInvitations().catch(() => {
       // Silently fail - not critical for initial load
     })
-  } else {
-    invitationsStore.clearInvitations()
   }
 }, { immediate: true })
 
 function handleLogout() {
   authStore.logout()
-  invitationsStore.clearInvitations()
   router.push('/login')
 }
 </script>

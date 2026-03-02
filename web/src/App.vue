@@ -1,7 +1,14 @@
 <template>
-  <component :is="layoutComponent">
-    <router-view />
-  </component>
+  <template v-if="ready">
+    <component :is="layoutComponent">
+      <router-view />
+    </component>
+  </template>
+  <v-app v-else>
+    <v-main class="d-flex align-center justify-center" style="min-height: 100vh">
+      <v-progress-circular indeterminate color="primary" size="48" />
+    </v-main>
+  </v-app>
 </template>
 
 <script setup lang="ts">
@@ -23,6 +30,7 @@ const PassThrough = defineComponent({
 const route = useRoute()
 const authStore = useAuthStore()
 
+const ready = computed(() => authStore.initialized)
 const isAuthenticated = computed(() => authStore.isAuthenticated || authStore.isDevMode)
 
 const layoutComponent = computed(() => {

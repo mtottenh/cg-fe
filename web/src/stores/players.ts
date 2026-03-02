@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api, ApiError } from '@/api'
+import { api } from '@/api'
 import type { components } from '@/api/types'
+import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
 
 // Use generated types
 type Player = components['schemas']['PlayerResponse']
@@ -9,7 +10,6 @@ type PlayerSearchResult = components['schemas']['PlayerSearchResponse']
 type SocialLinks = components['schemas']['SocialLinksResponse']
 type UpdateProfileRequest = components['schemas']['UpdatePlayerProfileRequest']
 type PaginationMeta = components['schemas']['PaginationMeta']
-type ApiErrorResponse = components['schemas']['ApiError']
 
 /**
  * @deprecated The old PlayerTeamMembershipResponse type has been replaced with league team memberships.
@@ -32,59 +32,30 @@ export const usePlayersStore = defineStore('players', () => {
   const error = ref<string | null>(null)
   const pagination = ref<PaginationMeta>({ page: 1, per_page: 20, total_items: 0, total_pages: 0 })
 
+  const fetchPlayersState = createActionState()
+  const fetchPlayerState = createActionState()
+  const fetchMyProfileState = createActionState()
+  const updateMyProfileState = createActionState()
+
   async function fetchPlayers(page = 1, perPage = 20, search?: string) {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/players', {
+    return withActionState(fetchPlayersState, async () => {
+      const result = await unwrapApi(api.GET('/v1/players', {
         params: { query: { page, per_page: perPage, search } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      players.value = data!.data
-      pagination.value = data!.pagination
+      }))
+      players.value = result.data
+      pagination.value = result.pagination
       return players.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch players'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch players')
   }
 
   async function fetchPlayer(id: string) {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/players/{player_id}', {
+    return withActionState(fetchPlayerState, async () => {
+      const result = await unwrapApi(api.GET('/v1/players/{player_id}', {
         params: { path: { player_id: id } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentPlayer.value = data!.data
+      }))
+      currentPlayer.value = result.data
       return currentPlayer.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch player'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch player')
   }
 
   /**
@@ -98,55 +69,21 @@ export const usePlayersStore = defineStore('players', () => {
   }
 
   async function fetchMyProfile() {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/players/me')
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentPlayer.value = data!.data
+    return withActionState(fetchMyProfileState, async () => {
+      const result = await unwrapApi(api.GET('/v1/players/me'))
+      currentPlayer.value = result.data
       return currentPlayer.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch profile'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch profile')
   }
 
   async function updateMyProfile(profileData: UpdateProfileRequest) {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.PATCH('/v1/players/me', {
+    return withActionState(updateMyProfileState, async () => {
+      const result = await unwrapApi(api.PATCH('/v1/players/me', {
         body: profileData,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentPlayer.value = data!.data
+      }))
+      currentPlayer.value = result.data
       return currentPlayer.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to update profile'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to update profile')
   }
 
   return {
@@ -156,6 +93,10 @@ export const usePlayersStore = defineStore('players', () => {
     loading,
     error,
     pagination,
+    fetchPlayersState,
+    fetchPlayerState,
+    fetchMyProfileState,
+    updateMyProfileState,
     fetchPlayers,
     fetchPlayer,
     fetchPlayerTeams,

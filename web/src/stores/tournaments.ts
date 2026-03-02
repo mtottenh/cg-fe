@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { api, ApiError } from '@/api'
+import { api } from '@/api'
 import type { components } from '@/api/types'
+import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
 
 // Use generated types
 type TournamentResponse = components['schemas']['TournamentResponse']
@@ -15,7 +16,6 @@ type UpdateTournamentRequest = components['schemas']['UpdateTournamentRequest']
 type RegisterTeamRequest = components['schemas']['RegisterTeamRequest']
 type RegisterPlayerRequest = components['schemas']['RegisterPlayerRequest']
 type PaginationMeta = components['schemas']['PaginationMeta']
-type ApiErrorResponse = components['schemas']['ApiError']
 
 // Tournament status enum for type safety
 export const TOURNAMENT_STATUSES = [
@@ -102,6 +102,29 @@ export const useTournamentsStore = defineStore('tournaments', () => {
 
   const liveTournaments = computed(() => tournaments.value.filter((t) => t.status === 'in_progress'))
 
+  // Per-action states
+  const fetchTournamentsState = createActionState()
+  const fetchTournamentState = createActionState()
+  const fetchTournamentBySlugState = createActionState()
+  const createTournamentState = createActionState()
+  const updateTournamentState = createActionState()
+  const publishState = createActionState()
+  const openRegistrationState = createActionState()
+  const closeRegistrationState = createActionState()
+  const startTournamentState = createActionState()
+  const fetchRegistrationsState = createActionState()
+  const registerTeamState = createActionState()
+  const registerPlayerState = createActionState()
+  const withdrawState = createActionState()
+  const checkInState = createActionState()
+  const approveRegistrationState = createActionState()
+  const rejectRegistrationState = createActionState()
+  const disqualifyRegistrationState = createActionState()
+  const fetchMatchesState = createActionState()
+  const fetchMatchState = createActionState()
+  const fetchBracketsState = createActionState()
+  const fetchStagesState = createActionState()
+
   // ==================== Tournament CRUD ====================
 
   async function fetchTournaments(filters?: {
@@ -113,130 +136,54 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     page?: number
     per_page?: number
   }): Promise<TournamentSummaryResponse[]> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/tournaments', {
+    return withActionState(fetchTournamentsState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments', {
         params: { query: filters },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      tournaments.value = data!.data
-      pagination.value = data!.pagination
+      }))
+      tournaments.value = result.data
+      pagination.value = result.pagination
       return tournaments.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch tournaments'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch tournaments')
   }
 
   async function fetchTournament(id: string): Promise<TournamentResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/tournaments/{tournament_id}', {
+    return withActionState(fetchTournamentState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}', {
         params: { path: { tournament_id: id } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentTournament.value = data!.data
+      }))
+      currentTournament.value = result.data
       return currentTournament.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch tournament'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch tournament')
   }
 
   async function fetchTournamentBySlug(slug: string): Promise<TournamentResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/tournaments/by-slug/{slug}', {
+    return withActionState(fetchTournamentBySlugState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/by-slug/{slug}', {
         params: { path: { slug } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentTournament.value = data!.data
+      }))
+      currentTournament.value = result.data
       return currentTournament.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch tournament'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch tournament')
   }
 
   async function createTournament(req: CreateTournamentRequest): Promise<TournamentResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments', {
+    return withActionState(createTournamentState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments', {
         body: req,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const newTournament = data!.data
+      }))
+      const newTournament = result.data
       currentTournament.value = newTournament
       return newTournament
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to create tournament'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to create tournament')
   }
 
   async function updateTournament(id: string, req: UpdateTournamentRequest): Promise<TournamentResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.PATCH('/v1/tournaments/{tournament_id}', {
+    return withActionState(updateTournamentState, async () => {
+      const result = await unwrapApi(api.PATCH('/v1/tournaments/{tournament_id}', {
         params: { path: { tournament_id: id } },
         body: req,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentTournament.value = data!.data
+      }))
+      currentTournament.value = result.data
       // Update in list if present
       const index = tournaments.value.findIndex((t) => t.id === id)
       if (index !== -1) {
@@ -249,146 +196,69 @@ export const useTournamentsStore = defineStore('tournaments', () => {
         }
       }
       return currentTournament.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to update tournament'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to update tournament')
   }
 
   // ==================== Tournament State Transitions ====================
 
   async function publishTournament(id: string): Promise<TournamentResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/publish', {
+    return withActionState(publishState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/publish', {
         params: { path: { tournament_id: id } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentTournament.value = data!.data
+      }))
+      currentTournament.value = result.data
       // Update in list
       const index = tournaments.value.findIndex((t) => t.id === id)
       if (index !== -1) {
         tournaments.value[index] = { ...tournaments.value[index], status: 'published' }
       }
       return currentTournament.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to publish tournament'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to publish tournament')
   }
 
   async function openRegistration(id: string): Promise<TournamentResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/open-registration', {
+    return withActionState(openRegistrationState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/open-registration', {
         params: { path: { tournament_id: id } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentTournament.value = data!.data
+      }))
+      currentTournament.value = result.data
       // Update in list
       const index = tournaments.value.findIndex((t) => t.id === id)
       if (index !== -1) {
         tournaments.value[index] = { ...tournaments.value[index], status: 'registration_open', is_registration_open: true }
       }
       return currentTournament.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to open registration'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to open registration')
   }
 
   async function closeRegistration(id: string): Promise<TournamentResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/close-registration', {
+    return withActionState(closeRegistrationState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/close-registration', {
         params: { path: { tournament_id: id } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentTournament.value = data!.data
+      }))
+      currentTournament.value = result.data
       // Update in list
       const index = tournaments.value.findIndex((t) => t.id === id)
       if (index !== -1) {
         tournaments.value[index] = { ...tournaments.value[index], status: 'registration_closed', is_registration_open: false }
       }
       return currentTournament.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to close registration'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to close registration')
   }
 
   async function startTournament(id: string): Promise<TournamentResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/start', {
+    return withActionState(startTournamentState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/start', {
         params: { path: { tournament_id: id } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentTournament.value = data!.data
+      }))
+      currentTournament.value = result.data
       // Update in list
       const index = tournaments.value.findIndex((t) => t.id === id)
       if (index !== -1) {
         tournaments.value[index] = { ...tournaments.value[index], status: 'in_progress' }
       }
       return currentTournament.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to start tournament'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to start tournament')
   }
 
   // ==================== Registrations ====================
@@ -397,188 +267,86 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     tournamentId: string,
     filters?: { status?: string; page?: number; per_page?: number }
   ): Promise<TournamentRegistrationResponse[]> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/tournaments/{tournament_id}/registrations', {
+    return withActionState(fetchRegistrationsState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/registrations', {
         params: { path: { tournament_id: tournamentId }, query: filters },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      registrations.value = data!.data
-      pagination.value = data!.pagination
+      }))
+      registrations.value = result.data
+      pagination.value = result.pagination
       return registrations.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch registrations'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch registrations')
   }
 
   async function registerTeam(
     tournamentId: string,
     request: RegisterTeamRequest
   ): Promise<TournamentRegistrationResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/registrations/team', {
+    return withActionState(registerTeamState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/registrations/team', {
         params: { path: { tournament_id: tournamentId } },
         body: request,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const registration = data!.data
+      }))
+      const registration = result.data
       registrations.value.push(registration)
       return registration
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to register team for tournament'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to register team for tournament')
   }
 
   async function registerPlayer(
     tournamentId: string,
     request: RegisterPlayerRequest
   ): Promise<TournamentRegistrationResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/registrations/player', {
+    return withActionState(registerPlayerState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/registrations/player', {
         params: { path: { tournament_id: tournamentId } },
         body: request,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const registration = data!.data
+      }))
+      const registration = result.data
       registrations.value.push(registration)
       return registration
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to register for tournament'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to register for tournament')
   }
 
   async function withdrawFromTournament(tournamentId: string, registrationId: string): Promise<TournamentRegistrationResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/withdraw', {
+    return withActionState(withdrawState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/withdraw', {
         params: { path: { tournament_id: tournamentId, registration_id: registrationId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const registration = data!.data
+      }))
+      const registration = result.data
       const index = registrations.value.findIndex((r) => r.id === registrationId)
       if (index !== -1) {
         registrations.value[index] = registration
       }
       return registration
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to withdraw from tournament'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to withdraw from tournament')
   }
 
   async function checkIn(tournamentId: string, registrationId: string): Promise<TournamentRegistrationResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/check-in', {
+    return withActionState(checkInState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/check-in', {
         params: { path: { tournament_id: tournamentId, registration_id: registrationId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const registration = data!.data
+      }))
+      const registration = result.data
       const index = registrations.value.findIndex((r) => r.id === registrationId)
       if (index !== -1) {
         registrations.value[index] = registration
       }
       return registration
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to check in'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to check in')
   }
 
   async function approveRegistration(tournamentId: string, registrationId: string): Promise<TournamentRegistrationResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/approve', {
+    return withActionState(approveRegistrationState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/approve', {
         params: { path: { tournament_id: tournamentId, registration_id: registrationId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const registration = data!.data
+      }))
+      const registration = result.data
       const index = registrations.value.findIndex((r) => r.id === registrationId)
       if (index !== -1) {
         registrations.value[index] = registration
       }
       return registration
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to approve registration'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to approve registration')
   }
 
   async function rejectRegistration(
@@ -586,35 +354,18 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     registrationId: string,
     reason?: string
   ): Promise<TournamentRegistrationResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/reject', {
+    return withActionState(rejectRegistrationState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/reject', {
         params: { path: { tournament_id: tournamentId, registration_id: registrationId } },
         body: { reason: reason ?? null },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const registration = data!.data
+      }))
+      const registration = result.data
       const index = registrations.value.findIndex((r) => r.id === registrationId)
       if (index !== -1) {
         registrations.value[index] = registration
       }
       return registration
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to reject registration'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to reject registration')
   }
 
   async function disqualifyRegistration(
@@ -622,144 +373,59 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     registrationId: string,
     reason: string
   ): Promise<TournamentRegistrationResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/disqualify', {
+    return withActionState(disqualifyRegistrationState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/disqualify', {
         params: { path: { tournament_id: tournamentId, registration_id: registrationId } },
         body: { reason },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const registration = data!.data
+      }))
+      const registration = result.data
       const index = registrations.value.findIndex((r) => r.id === registrationId)
       if (index !== -1) {
         registrations.value[index] = registration
       }
       return registration
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to disqualify registration'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to disqualify registration')
   }
 
   // ==================== Matches & Brackets ====================
 
   async function fetchMatches(tournamentId: string): Promise<TournamentMatchResponse[]> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/tournaments/{tournament_id}/matches', {
+    return withActionState(fetchMatchesState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/matches', {
         params: { path: { tournament_id: tournamentId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      matches.value = data!.data
+      }))
+      matches.value = result.data
       return matches.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch matches'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch matches')
   }
 
   async function fetchMatch(tournamentId: string, matchId: string): Promise<TournamentMatchResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}', {
+    return withActionState(fetchMatchState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      return data!.data
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch match'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+      }))
+      return result.data
+    }, 'Failed to fetch match')
   }
 
   async function fetchBrackets(tournamentId: string): Promise<TournamentBracketResponse[]> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/tournaments/{tournament_id}/brackets', {
+    return withActionState(fetchBracketsState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/brackets', {
         params: { path: { tournament_id: tournamentId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      brackets.value = data!.data
+      }))
+      brackets.value = result.data
       return brackets.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch brackets'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch brackets')
   }
 
   async function fetchStages(tournamentId: string): Promise<TournamentStageResponse[]> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/tournaments/{tournament_id}/stages', {
+    return withActionState(fetchStagesState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/stages', {
         params: { path: { tournament_id: tournamentId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      stages.value = data!.data
+      }))
+      stages.value = result.data
       return stages.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch stages'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch stages')
   }
 
   // ==================== Utility ====================
@@ -804,6 +470,29 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     activeTournaments,
     upcomingTournaments,
     liveTournaments,
+
+    // Per-action states
+    fetchTournamentsState,
+    fetchTournamentState,
+    fetchTournamentBySlugState,
+    createTournamentState,
+    updateTournamentState,
+    publishState,
+    openRegistrationState,
+    closeRegistrationState,
+    startTournamentState,
+    fetchRegistrationsState,
+    registerTeamState,
+    registerPlayerState,
+    withdrawState,
+    checkInState,
+    approveRegistrationState,
+    rejectRegistrationState,
+    disqualifyRegistrationState,
+    fetchMatchesState,
+    fetchMatchState,
+    fetchBracketsState,
+    fetchStagesState,
 
     // Tournament CRUD
     fetchTournaments,

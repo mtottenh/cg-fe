@@ -1,6 +1,11 @@
 import { ref, type Ref } from 'vue'
+import { ApiError } from '@/api'
 
-export function useAsyncAction() {
+interface AsyncActionOptions {
+  fallbackMessage?: string
+}
+
+export function useAsyncAction(options: AsyncActionOptions = {}) {
   const loading = ref(false)
   const error: Ref<string | null> = ref(null)
 
@@ -10,7 +15,13 @@ export function useAsyncAction() {
     try {
       return await action()
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Unknown error'
+      if (e instanceof ApiError) {
+        error.value = e.detail
+      } else {
+        error.value = e instanceof Error
+          ? e.message
+          : (options.fallbackMessage ?? 'An unexpected error occurred')
+      }
       return null
     } finally {
       loading.value = false

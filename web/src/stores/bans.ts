@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api, ApiError } from '@/api'
+import { api } from '@/api'
 import type { components } from '@/api/types'
+import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
 
 // Export types from generated API
 export type BanResponse = components['schemas']['BanResponse']
@@ -35,12 +36,15 @@ export const useBansStore = defineStore('bans', () => {
   const error = ref<string | null>(null)
   const currentBan = ref<BanResponse | null>(null)
 
-  async function fetchBans(filters: BanFilters = {}) {
-    loading.value = true
-    error.value = null
+  const fetchBansState = createActionState()
+  const getBanState = createActionState()
+  const createBanState = createActionState()
+  const liftBanState = createActionState()
+  const getUserBanHistoryState = createActionState()
 
-    try {
-      const { data, error: apiError } = await api.GET('/v1/admin/bans', {
+  async function fetchBans(filters: BanFilters = {}) {
+    return withActionState(fetchBansState, async () => {
+      const result = await unwrapApi(api.GET('/v1/admin/bans', {
         params: {
           query: {
             user_id: filters.user_id,
@@ -52,98 +56,54 @@ export const useBansStore = defineStore('bans', () => {
             per_page: filters.per_page,
           },
         },
-      })
-
-      if (apiError) {
-        throw new ApiError(apiError.status || 500, apiError.detail || 'Failed to fetch bans')
-      }
-
-      if (data) {
-        bans.value = data.data.items
-        pagination.value = data.data.pagination
-      }
-    } catch (e) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to load bans'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+      }))
+      bans.value = result.data.items
+      pagination.value = result.data.pagination
+    }, 'Failed to load bans')
   }
 
   async function getBan(banId: string): Promise<BanResponse> {
-    const { data, error: apiError } = await api.GET('/v1/admin/bans/{id}', {
-      params: {
-        path: { id: banId },
-      },
-    })
-
-    if (apiError) {
-      throw new ApiError(apiError.status || 500, apiError.detail || 'Failed to get ban')
-    }
-
-    if (!data) {
-      throw new ApiError(404, 'Ban not found')
-    }
-
-    currentBan.value = data.data
-    return data.data
+    return withActionState(getBanState, async () => {
+      const result = await unwrapApi(api.GET('/v1/admin/bans/{id}', {
+        params: {
+          path: { id: banId },
+        },
+      }))
+      currentBan.value = result.data
+      return result.data
+    }, 'Failed to get ban')
   }
 
   async function createBan(request: CreateBanRequest): Promise<BanResponse> {
-    const { data, error: apiError } = await api.POST('/v1/admin/bans', {
-      body: request,
-    })
-
-    if (apiError) {
-      throw new ApiError(apiError.status || 500, apiError.detail || 'Failed to create ban')
-    }
-
-    if (!data) {
-      throw new ApiError(500, 'No data returned')
-    }
-
-    return data.data
+    return withActionState(createBanState, async () => {
+      const result = await unwrapApi(api.POST('/v1/admin/bans', {
+        body: request,
+      }))
+      return result.data
+    }, 'Failed to create ban')
   }
 
   async function liftBan(banId: string, reason?: string): Promise<BanResponse> {
-    const { data, error: apiError } = await api.POST('/v1/admin/bans/{id}/lift', {
-      params: {
-        path: { id: banId },
-      },
-      body: { reason: reason ?? null },
-    })
-
-    if (apiError) {
-      throw new ApiError(apiError.status || 500, apiError.detail || 'Failed to lift ban')
-    }
-
-    if (!data) {
-      throw new ApiError(500, 'No data returned')
-    }
-
-    return data.data
+    return withActionState(liftBanState, async () => {
+      const result = await unwrapApi(api.POST('/v1/admin/bans/{id}/lift', {
+        params: {
+          path: { id: banId },
+        },
+        body: { reason: reason ?? null },
+      }))
+      return result.data
+    }, 'Failed to lift ban')
   }
 
   async function getUserBanHistory(userId: string): Promise<BanResponse[]> {
-    const { data, error: apiError } = await api.GET('/v1/admin/users/{user_id}/bans', {
-      params: {
-        path: { user_id: userId },
-      },
-    })
-
-    if (apiError) {
-      throw new ApiError(apiError.status || 500, apiError.detail || 'Failed to get user ban history')
-    }
-
-    if (!data) {
-      throw new ApiError(500, 'No data returned')
-    }
-
-    return data.data
+    return withActionState(getUserBanHistoryState, async () => {
+      const result = await unwrapApi(api.GET('/v1/admin/users/{user_id}/bans', {
+        params: {
+          path: { user_id: userId },
+        },
+      }))
+      return result.data
+    }, 'Failed to get user ban history')
   }
 
   function clearError() {
@@ -156,6 +116,11 @@ export const useBansStore = defineStore('bans', () => {
     loading,
     error,
     currentBan,
+    fetchBansState,
+    getBanState,
+    createBanState,
+    liftBanState,
+    getUserBanHistoryState,
     fetchBans,
     getBan,
     createBan,

@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { api, setAuthToken, ApiError } from '@/api'
+import { api, setAuthToken } from '@/api'
 import type { components } from '@/api/types'
+import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
 
 /** JWT claims structure matching backend */
 interface JwtClaims {
@@ -34,7 +35,6 @@ type LoginRequest = components['schemas']['LoginRequest']
 type LoginResponse = components['schemas']['LoginResponse']
 type RegisterRequest = components['schemas']['RegisterRequest']
 type RegisterResponse = components['schemas']['RegisterResponse']
-type ApiErrorResponse = components['schemas']['ApiError']
 
 export const useAuthStore = defineStore('auth', () => {
   // Get token and player_id from localStorage, null if not present
@@ -50,126 +50,115 @@ export const useAuthStore = defineStore('auth', () => {
     setAuthToken(token.value)
   }
 
-  // User is authenticated if they have a valid token
+  // Initialization gate — true once initialize() has run
+  const initialized = ref(false)
+
+  // User is authenticated if they have a valid, non-expired token
   const isAuthenticated = computed(() => {
     const t = token.value
-    return !!t && t.length > 0
+    if (!t || t.length === 0) return false
+
+    const claims = decodeJwtPayload(t)
+    if (!claims) return false
+
+    // Token expired if exp is in the past (with 30-second buffer)
+    const now = Math.floor(Date.now() / 1000)
+    if (claims.exp && claims.exp < now - 30) {
+      return false
+    }
+
+    return true
   })
 
   // Check if user has admin privileges by decoding JWT claims
   const isAdmin = computed(() => {
-    // No token means not admin
     if (!token.value) return false
-
-    // Decode JWT and check is_admin claim
     const claims = decodeJwtPayload(token.value)
     return claims?.is_admin ?? false
   })
 
+  // Per-action states
+  const loginState = createActionState()
+  const registerState = createActionState()
+  const fetchCurrentUserState = createActionState()
+
   async function login(credentials: LoginRequest): Promise<LoginResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/auth/login', {
+    return withActionState(loginState, async () => {
+      const result = await unwrapApi(api.POST('/v1/auth/login', {
         body: credentials,
-      })
+      }))
 
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const result = data!.data
+      const data = result.data
 
       // Store the token and player_id
-      token.value = result.access_token
-      localStorage.setItem('token', result.access_token)
-      setAuthToken(result.access_token)
+      token.value = data.access_token
+      localStorage.setItem('token', data.access_token)
+      setAuthToken(data.access_token)
 
-      if (result.player_id) {
-        playerId.value = result.player_id
-        localStorage.setItem('player_id', result.player_id)
+      if (data.player_id) {
+        playerId.value = data.player_id
+        localStorage.setItem('player_id', data.player_id)
       }
 
-      return result
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Login failed'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+      return data
+    }, 'Login failed')
   }
 
   async function register(credentials: RegisterRequest): Promise<RegisterResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/auth/register', {
+    return withActionState(registerState, async () => {
+      const result = await unwrapApi(api.POST('/v1/auth/register', {
         body: credentials,
-      })
+      }))
 
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const result = data!.data
+      const data = result.data
 
       // Store the token from registration
-      token.value = result.access_token
-      localStorage.setItem('token', result.access_token)
-      setAuthToken(result.access_token)
+      token.value = data.access_token
+      localStorage.setItem('token', data.access_token)
+      setAuthToken(data.access_token)
 
       // Store user and player
-      user.value = result.user
-      player.value = result.player
-      playerId.value = result.player.id
-      localStorage.setItem('player_id', result.player.id)
+      user.value = data.user
+      player.value = data.player
+      playerId.value = data.player.id
+      localStorage.setItem('player_id', data.player.id)
 
-      return result
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Registration failed'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+      return data
+    }, 'Registration failed')
   }
 
   async function fetchCurrentUser(): Promise<User> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/users/me')
+    return withActionState(fetchCurrentUserState, async () => {
+      const result = await unwrapApi(api.GET('/v1/users/me'))
+      user.value = result.data
+      return user.value
+    }, 'Failed to fetch user')
+  }
 
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        // If unauthorized, clear the token
-        if (err.status === 401) {
+  /**
+   * Initialize auth state on app boot.
+   * Validates stored token and fetches user profile if valid.
+   * Must be called before router guards check auth state.
+   */
+  async function initialize(): Promise<void> {
+    if (initialized.value) return
+
+    if (token.value) {
+      if (!isAuthenticated.value) {
+        // Token exists but is expired or invalid
+        logout()
+      } else {
+        // Token looks valid, verify with server
+        try {
+          await fetchCurrentUser()
+        } catch {
+          // Token rejected by server (revoked, etc.)
           logout()
         }
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
       }
-
-      user.value = data!.data
-      return user.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch user'
-      }
-      throw e
-    } finally {
-      loading.value = false
     }
+
+    initialized.value = true
   }
 
   function setToken(newToken: string) {
@@ -195,13 +184,19 @@ export const useAuthStore = defineStore('auth', () => {
     player,
     loading,
     error,
+    initialized,
     isAuthenticated,
     isAdmin,
+    initialize,
     login,
     register,
     fetchCurrentUser,
     setToken,
     logout,
+    // Per-action states
+    loginState,
+    registerState,
+    fetchCurrentUserState,
   }
 })
 

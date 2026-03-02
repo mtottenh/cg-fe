@@ -1,5 +1,6 @@
 import createClient, { type Middleware } from 'openapi-fetch'
 import type { paths } from './types'
+import { errorMiddleware } from './middleware'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -22,6 +23,7 @@ const authMiddleware: Middleware = {
 }
 
 api.use(authMiddleware)
+api.use(errorMiddleware)
 
 // Auth token management
 export function setAuthToken(token: string | null) {

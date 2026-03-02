@@ -1,12 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api, ApiError } from '@/api'
+import { api } from '@/api'
 import type { components } from '@/api/types'
+import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
 
 // Use generated types
 type GameSummary = components['schemas']['GameSummaryResponse']
 type GameDetail = components['schemas']['GameDetailResponse']
-type ApiErrorResponse = components['schemas']['ApiError']
 
 export const useGamesStore = defineStore('games', () => {
   const games = ref<GameSummary[]>([])
@@ -14,120 +14,57 @@ export const useGamesStore = defineStore('games', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
+  const fetchGamesState = createActionState()
+  const fetchGameState = createActionState()
+  const enableGameState = createActionState()
+  const disableGameState = createActionState()
+
   async function fetchGames(): Promise<GameSummary[]> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/games')
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      games.value = data!.data
+    return withActionState(fetchGamesState, async () => {
+      const result = await unwrapApi(api.GET('/v1/games'))
+      games.value = result.data
       return games.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch games'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch games')
   }
 
   async function fetchGame(gameId: string): Promise<GameDetail> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/games/{game_id}', {
+    return withActionState(fetchGameState, async () => {
+      const result = await unwrapApi(api.GET('/v1/games/{game_id}', {
         params: { path: { game_id: gameId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentGame.value = data!.data
+      }))
+      currentGame.value = result.data
       return currentGame.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch game'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch game')
   }
 
   async function enableGame(gameId: string): Promise<GameSummary> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/games/{game_id}/enable', {
+    return withActionState(enableGameState, async () => {
+      const result = await unwrapApi(api.POST('/v1/games/{game_id}/enable', {
         params: { path: { game_id: gameId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const result = data!.data
+      }))
+      const item = result.data
       // Update in list if present
       const index = games.value.findIndex(g => g.id === gameId)
       if (index !== -1) {
-        games.value[index] = result
+        games.value[index] = item
       }
-      return result
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to enable game'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+      return item
+    }, 'Failed to enable game')
   }
 
   async function disableGame(gameId: string): Promise<GameSummary> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/games/{game_id}/disable', {
+    return withActionState(disableGameState, async () => {
+      const result = await unwrapApi(api.POST('/v1/games/{game_id}/disable', {
         params: { path: { game_id: gameId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const result = data!.data
+      }))
+      const item = result.data
       // Update in list if present
       const index = games.value.findIndex(g => g.id === gameId)
       if (index !== -1) {
-        games.value[index] = result
+        games.value[index] = item
       }
-      return result
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to disable game'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+      return item
+    }, 'Failed to disable game')
   }
 
   function clearCurrent() {
@@ -139,6 +76,10 @@ export const useGamesStore = defineStore('games', () => {
     currentGame,
     loading,
     error,
+    fetchGamesState,
+    fetchGameState,
+    enableGameState,
+    disableGameState,
     fetchGames,
     fetchGame,
     enableGame,

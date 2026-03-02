@@ -53,21 +53,20 @@
               Teams
             </v-card-title>
             <v-divider />
-            <v-list v-if="playerTeams.length > 0">
+            <v-list v-if="playerLeagueTeams.length > 0">
               <v-list-item
-                v-for="team in playerTeams"
-                :key="team.team_id"
-                :to="`/teams/${team.team_id}`"
+                v-for="membership in playerLeagueTeams"
+                :key="membership.team_season_id"
               >
                 <template v-slot:prepend>
                   <v-avatar color="primary" size="36">
-                    <span>{{ team.team_tag.substring(0, 2) }}</span>
+                    <span>{{ (membership.team_tag || '??').substring(0, 2) }}</span>
                   </v-avatar>
                 </template>
-                <v-list-item-title>{{ team.team_name }}</v-list-item-title>
+                <v-list-item-title>{{ membership.team_name }}</v-list-item-title>
                 <v-list-item-subtitle>
-                  <v-chip size="x-small" :color="getRoleColor(team.role)">
-                    {{ team.role }}
+                  <v-chip size="x-small" :color="getRoleColor(membership.role)">
+                    {{ membership.role }}
                   </v-chip>
                 </v-list-item-subtitle>
               </v-list-item>
@@ -95,10 +94,10 @@
           </v-alert>
 
           <v-select
-            v-model="selectedTeamId"
+            v-model="selectedTeamSeasonId"
             :items="myTeamsAsCaptain"
             item-title="team_name"
-            item-value="team_id"
+            item-value="team_season_id"
             label="Select Team"
             :disabled="inviting"
             :loading="loadingMyTeams"
@@ -146,7 +145,7 @@
             variant="elevated"
             @click="sendInvite"
             :loading="inviting"
-            :disabled="!selectedTeamId"
+            :disabled="!selectedTeamSeasonId"
           >
             Send Invite
           </v-btn>
@@ -164,37 +163,35 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { usePlayersStore, type PlayerTeam } from '@/stores/players'
+import { usePlayersStore } from '@/stores/players'
 import { useAuthStore } from '@/stores/auth'
-import { useInvitationsStore } from '@/stores/invitations'
+import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 
 const route = useRoute()
 const playersStore = usePlayersStore()
 const authStore = useAuthStore()
-const invitationsStore = useInvitationsStore()
+const leagueTeamsStore = useLeagueTeamsStore()
 
 const loading = ref(true)
 const error = ref<string | null>(null)
 
 const player = computed(() => playersStore.currentPlayer)
-const playerTeams = computed(() => playersStore.playerTeams || [])
+const playerLeagueTeams = computed(() => leagueTeamsStore.myTeams)
 const playerId = computed(() => route.params.id as string)
 
 const isLoggedIn = computed(() => authStore.isAuthenticated || authStore.isDevMode)
 const isOwnProfile = computed(() => {
-  // In a real app, we'd compare with the current user's player ID
-  return false
+  return authStore.playerId === playerId.value
 })
 
 // Invite dialog state
 const inviteDialogOpen = ref(false)
-const selectedTeamId = ref<string | null>(null)
+const selectedTeamSeasonId = ref<string | null>(null)
 const selectedRole = ref('player')
 const inviteMessage = ref('')
 const inviting = ref(false)
 const inviteError = ref<string | null>(null)
 const loadingMyTeams = ref(false)
-const myTeams = ref<PlayerTeam[]>([])
 const showSuccess = ref(false)
 const successMessage = ref('')
 
@@ -207,15 +204,12 @@ const roleOptions = [
 
 // Filter to only teams where the user is a captain
 const myTeamsAsCaptain = computed(() => {
-  return myTeams.value.filter((t) => t.role === 'captain')
+  return leagueTeamsStore.myTeams.filter((t) => t.role === 'captain')
 })
 
 onMounted(async () => {
   try {
-    await Promise.all([
-      playersStore.fetchPlayer(playerId.value),
-      playersStore.fetchPlayerTeams(playerId.value),
-    ])
+    await playersStore.fetchPlayer(playerId.value)
   } catch (e) {
     error.value = playersStore.error || 'Failed to load player'
   } finally {
@@ -226,23 +220,14 @@ onMounted(async () => {
 async function openInviteDialog() {
   inviteDialogOpen.value = true
   inviteError.value = null
-  selectedTeamId.value = null
+  selectedTeamSeasonId.value = null
   selectedRole.value = 'player'
   inviteMessage.value = ''
 
   // Fetch the current user's teams
   loadingMyTeams.value = true
   try {
-    // Get current player ID from auth store
-    const currentPlayerId = authStore.playerId
-    if (currentPlayerId) {
-      await playersStore.fetchPlayerTeams(currentPlayerId)
-      myTeams.value = [...playersStore.playerTeams]
-      // Restore the viewed player's teams
-      await playersStore.fetchPlayerTeams(playerId.value)
-    } else {
-      inviteError.value = 'Please log in to invite players'
-    }
+    await leagueTeamsStore.fetchMyTeams()
   } catch (e) {
     inviteError.value = 'Failed to load your teams'
   } finally {
@@ -255,24 +240,23 @@ function closeInviteDialog() {
 }
 
 async function sendInvite() {
-  if (!selectedTeamId.value || !playerId.value) return
+  if (!selectedTeamSeasonId.value || !playerId.value) return
 
   inviting.value = true
   inviteError.value = null
 
   try {
-    await invitationsStore.invitePlayer(
-      selectedTeamId.value,
-      playerId.value,
-      selectedRole.value,
-      inviteMessage.value || undefined
-    )
+    await leagueTeamsStore.invitePlayer(selectedTeamSeasonId.value, {
+      player_id: playerId.value,
+      role: selectedRole.value,
+      message: inviteMessage.value || undefined,
+    })
 
     successMessage.value = `Invitation sent to ${player.value?.display_name}!`
     showSuccess.value = true
     closeInviteDialog()
   } catch (e) {
-    inviteError.value = invitationsStore.error || 'Failed to send invitation'
+    inviteError.value = 'Failed to send invitation'
   } finally {
     inviting.value = false
   }

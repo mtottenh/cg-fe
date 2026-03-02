@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { api, ApiError } from '@/api'
+import { api } from '@/api'
 import type { components } from '@/api/types'
+import { unwrapApi, createActionState, withActionState } from '@/stores/helpers/apiAction'
 
 // Use generated types
 type AvailabilityWindow = components['schemas']['AvailabilityWindowResponse']
@@ -11,7 +12,6 @@ type TimeSlot = components['schemas']['TimeSlotResponse']
 type CreateWindowRequest = components['schemas']['CreateAvailabilityWindowRequest']
 type UpdateWindowRequest = components['schemas']['UpdateAvailabilityWindowRequest']
 type CreateOverrideRequest = components['schemas']['CreateAvailabilityOverrideRequest']
-type ApiErrorResponse = components['schemas']['ApiError']
 
 // Day names for display
 export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const
@@ -53,263 +53,113 @@ export const useAvailabilityStore = defineStore('availability', () => {
   const availableOverrides = computed(() => overrides.value.filter((o) => o.override_type === 'available'))
 
   // Actions - Windows
+  const fetchWindowsState = createActionState()
   async function fetchWindows() {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/players/me/availability/windows')
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      windows.value = data!.data
+    return withActionState(fetchWindowsState, async () => {
+      const result = await unwrapApi(api.GET('/v1/players/me/availability/windows'))
+      windows.value = result.data
       return windows.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch availability windows'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch availability windows')
   }
 
+  const createWindowState = createActionState()
   async function createWindow(windowData: CreateWindowRequest) {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/players/me/availability/windows', {
+    return withActionState(createWindowState, async () => {
+      const result = await unwrapApi(api.POST('/v1/players/me/availability/windows', {
         body: windowData,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const newWindow = data!.data
+      }))
+      const newWindow = result.data
       windows.value.push(newWindow)
       return newWindow
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to create availability window'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to create availability window')
   }
 
+  const updateWindowState = createActionState()
   async function updateWindow(windowId: string, windowData: UpdateWindowRequest) {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.PATCH('/v1/players/me/availability/windows/{window_id}', {
+    return withActionState(updateWindowState, async () => {
+      const result = await unwrapApi(api.PATCH('/v1/players/me/availability/windows/{window_id}', {
         params: { path: { window_id: windowId } },
         body: windowData,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const updatedWindow = data!.data
+      }))
+      const updatedWindow = result.data
       const index = windows.value.findIndex((w) => w.id === windowId)
       if (index !== -1) {
         windows.value[index] = updatedWindow
       }
       return updatedWindow
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to update availability window'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to update availability window')
   }
 
+  const deleteWindowState = createActionState()
   async function deleteWindow(windowId: string) {
-    loading.value = true
-    error.value = null
-    try {
-      const { error: apiError } = await api.DELETE('/v1/players/me/availability/windows/{window_id}', {
+    return withActionState(deleteWindowState, async () => {
+      await unwrapApi(api.DELETE('/v1/players/me/availability/windows/{window_id}', {
         params: { path: { window_id: windowId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
+      }))
       windows.value = windows.value.filter((w) => w.id !== windowId)
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to delete availability window'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to delete availability window')
   }
 
   // Actions - Overrides
+  const fetchOverridesState = createActionState()
   async function fetchOverrides() {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/players/me/availability/overrides')
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      overrides.value = data!.data
+    return withActionState(fetchOverridesState, async () => {
+      const result = await unwrapApi(api.GET('/v1/players/me/availability/overrides'))
+      overrides.value = result.data
       return overrides.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch availability overrides'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch availability overrides')
   }
 
+  const createOverrideState = createActionState()
   async function createOverride(overrideData: CreateOverrideRequest) {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/players/me/availability/overrides', {
+    return withActionState(createOverrideState, async () => {
+      const result = await unwrapApi(api.POST('/v1/players/me/availability/overrides', {
         body: overrideData,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const newOverride = data!.data
+      }))
+      const newOverride = result.data
       overrides.value.push(newOverride)
       return newOverride
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to create availability override'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to create availability override')
   }
 
+  const deleteOverrideState = createActionState()
   async function deleteOverride(overrideId: string) {
-    loading.value = true
-    error.value = null
-    try {
-      const { error: apiError } = await api.DELETE('/v1/players/me/availability/overrides/{override_id}', {
+    return withActionState(deleteOverrideState, async () => {
+      await unwrapApi(api.DELETE('/v1/players/me/availability/overrides/{override_id}', {
         params: { path: { override_id: overrideId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
+      }))
       overrides.value = overrides.value.filter((o) => o.id !== overrideId)
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to delete availability override'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to delete availability override')
   }
 
   // Actions - Date Availability
+  const fetchDateAvailabilityState = createActionState()
   async function fetchDateAvailability(date: string) {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/players/me/availability/date', {
+    return withActionState(fetchDateAvailabilityState, async () => {
+      const result = await unwrapApi(api.GET('/v1/players/me/availability/date', {
         params: { query: { date } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      dateAvailability.value = data!.data
+      }))
+      dateAvailability.value = result.data
       return dateAvailability.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch date availability'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch date availability')
   }
 
+  const fetchPlayerDateAvailabilityState = createActionState()
   async function fetchPlayerDateAvailability(playerId: string, date: string) {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/players/{player_id}/availability/date', {
+    return withActionState(fetchPlayerDateAvailabilityState, async () => {
+      const result = await unwrapApi(api.GET('/v1/players/{player_id}/availability/date', {
         params: { path: { player_id: playerId }, query: { date } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      return data!.data
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch player date availability'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+      }))
+      return result.data
+    }, 'Failed to fetch player date availability')
   }
 
   // Load all availability data
+  const fetchAllState = createActionState()
   async function fetchAll() {
-    loading.value = true
-    error.value = null
-    try {
+    return withActionState(fetchAllState, async () => {
       await Promise.all([fetchWindows(), fetchOverrides()])
-    } catch (e: unknown) {
-      // Error already set by individual methods
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch all availability data')
   }
 
   // Clear all state
@@ -350,6 +200,17 @@ export const useAvailabilityStore = defineStore('availability', () => {
     // Utilities
     fetchAll,
     $reset,
+    // Per-action states
+    fetchWindowsState,
+    createWindowState,
+    updateWindowState,
+    deleteWindowState,
+    fetchOverridesState,
+    createOverrideState,
+    deleteOverrideState,
+    fetchDateAvailabilityState,
+    fetchPlayerDateAvailabilityState,
+    fetchAllState,
   }
 })
 

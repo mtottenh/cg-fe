@@ -249,16 +249,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import { useTournamentsStore, type TournamentMatchResponse } from '@/stores/tournaments'
-import { useMatchSchedulingStore, getProposalStatusColor, getProposalStatusLabel } from '@/stores/matchScheduling'
-import {
-  useMatchResultsStore,
-  getTimeUntilAutoConfirm,
-  type ResultClaimResponse,
-} from '@/stores/matchResults'
+import { getProposalStatusColor, getProposalStatusLabel } from '@/stores/matchScheduling'
+import type { ResultClaimResponse } from '@/stores/matchResults'
+import { useMatchDetail } from '@/composables/useMatchDetail'
 import MatchStatusTimeline from '@/components/match/MatchStatusTimeline.vue'
 import MatchSchedulingPanel from '@/components/match/MatchSchedulingPanel.vue'
 import ResultSubmissionPanel from '@/components/match/results/ResultSubmissionPanel.vue'
@@ -266,29 +261,22 @@ import ResultConfirmationPanel from '@/components/match/results/ResultConfirmati
 import ResultHistoryTimeline from '@/components/match/results/ResultHistoryTimeline.vue'
 
 const route = useRoute()
-const authStore = useAuthStore()
-const tournamentsStore = useTournamentsStore()
-const schedulingStore = useMatchSchedulingStore()
-const resultsStore = useMatchResultsStore()
 
-// State
-const match = ref<TournamentMatchResponse | null>(null)
+const {
+  match, tournament, activeProposal, proposalHistory,
+  currentResult, resultHistory, matchFormat,
+  loading, schedulingLoading, error: combinedError, clearError,
+  showSchedulingPanel, isProposer, canPropose,
+  showResultPanel, showConfirmationPanel, canSubmitResult,
+  showWaitingForOpponent, autoConfirmCountdown,
+  fetchAll, fetchResultData,
+  schedulingStore,
+} = useMatchDetail()
+
+// UI state (stays in the page)
 const snackbar = ref(false)
 const snackbarText = ref('')
 const snackbarColor = ref('success')
-
-// Computed
-const loading = computed(() => tournamentsStore.loading)
-const schedulingLoading = computed(() => schedulingStore.loading)
-const resultsLoading = computed(() => resultsStore.loading)
-const combinedError = computed(
-  () => tournamentsStore.error || schedulingStore.error || resultsStore.error
-)
-const tournament = computed(() => tournamentsStore.currentTournament)
-const activeProposal = computed(() => schedulingStore.activeProposal)
-const proposalHistory = computed(() => schedulingStore.proposalHistory)
-const currentResult = computed(() => resultsStore.currentResult)
-const resultHistory = computed(() => resultsStore.resultHistory)
 
 const breadcrumbs = computed(() => [
   { title: 'Tournaments', to: { name: 'tournaments' } },
@@ -299,162 +287,35 @@ const breadcrumbs = computed(() => [
   { title: `Match #${match.value?.match_number || ''}`, disabled: true },
 ])
 
-// Match format as typed value
-const matchFormat = computed((): 'bo1' | 'bo3' | 'bo5' | 'bo7' => {
-  const format = match.value?.match_format
-  if (format === 'bo1' || format === 'bo3' || format === 'bo5' || format === 'bo7') {
-    return format
-  }
-  return 'bo1'
-})
-
-// Scheduling panel visibility
-const showSchedulingPanel = computed(() => {
-  if (!tournament.value || !match.value) return false
-  return (
-    tournament.value.scheduling_mode === 'self_scheduled' &&
-    ['pending', 'scheduling', 'scheduled'].includes(match.value.status)
-  )
-})
-
-const isProposer = computed(() => {
-  if (!activeProposal.value || !authStore.currentUser) return false
-  return activeProposal.value.proposed_by_user_id === authStore.currentUser.id
-})
-
-const canPropose = computed(() => {
-  if (!match.value) return false
-  return ['pending', 'scheduling'].includes(match.value.status) && !activeProposal.value
-})
-
-// Result panel visibility
-const showResultPanel = computed(() => {
-  if (!match.value) return false
-  // Show result panel when match is in progress, awaiting result, or has a disputed status
-  return ['in_progress', 'awaiting_result'].includes(match.value.status) || match.value.disputed
-})
-
-// Check if user is a participant in the match
-const userRegistrationId = computed(() => {
-  // In a real app, we'd look up the user's registration ID for this tournament
-  // For now, we'll simulate this - the actual implementation would need to check
-  // if the current user is part of participant1 or participant2's team
-  // This is a placeholder that will need to be implemented based on your auth system
-  return null as string | null
-})
-
-const isParticipant1 = computed(() => {
-  if (!userRegistrationId.value || !match.value) return false
-  return match.value.participant1_registration_id === userRegistrationId.value
-})
-
-const isParticipant2 = computed(() => {
-  if (!userRegistrationId.value || !match.value) return false
-  return match.value.participant2_registration_id === userRegistrationId.value
-})
-
-const isParticipant = computed(() => isParticipant1.value || isParticipant2.value)
-
-// Show confirmation panel if opponent submitted (pending claim not from current user)
-const showConfirmationPanel = computed(() => {
-  if (!currentResult.value || !userRegistrationId.value) return false
-  // Show if there's a pending result that wasn't submitted by the current user
-  return (
-    currentResult.value.status === 'pending' &&
-    currentResult.value.submitted_by_registration_id !== userRegistrationId.value
-  )
-})
-
-// Can submit result if participant and no pending result
-const canSubmitResult = computed(() => {
-  if (!isParticipant.value) return false
-  if (!match.value) return false
-  // Can submit if no pending result
-  return !currentResult.value || currentResult.value.status !== 'pending'
-})
-
-// Show waiting message if user submitted and waiting for opponent
-const showWaitingForOpponent = computed(() => {
-  if (!currentResult.value || !userRegistrationId.value) return false
-  return (
-    currentResult.value.status === 'pending' &&
-    currentResult.value.submitted_by_registration_id === userRegistrationId.value
-  )
-})
-
-const autoConfirmCountdown = computed(() => {
-  return getTimeUntilAutoConfirm(currentResult.value?.auto_confirm_at)
-})
-
-// Helpers
+// Template helpers
 function isWinner(registrationId: string | null | undefined): boolean {
   if (!registrationId || !match.value?.winner_registration_id) return false
   return match.value.winner_registration_id === registrationId
 }
 
 function getStatusColor(status: string): string {
-  switch (status) {
-    case 'pending':
-      return 'grey'
-    case 'scheduling':
-      return 'info'
-    case 'scheduled':
-      return 'primary'
-    case 'checking_in':
-      return 'warning'
-    case 'pick_ban':
-      return 'info'
-    case 'in_progress':
-      return 'primary'
-    case 'awaiting_result':
-      return 'warning'
-    case 'completed':
-      return 'success'
-    case 'cancelled':
-      return 'error'
-    default:
-      return 'grey'
+  const colors: Record<string, string> = {
+    pending: 'grey', scheduling: 'info', scheduled: 'primary',
+    checking_in: 'warning', pick_ban: 'info', in_progress: 'primary',
+    awaiting_result: 'warning', completed: 'success', cancelled: 'error',
   }
+  return colors[status] || 'grey'
 }
 
 function getStatusLabel(status: string): string {
-  switch (status) {
-    case 'pending':
-      return 'Pending'
-    case 'scheduling':
-      return 'Scheduling'
-    case 'scheduled':
-      return 'Scheduled'
-    case 'checking_in':
-      return 'Check-in'
-    case 'pick_ban':
-      return 'Pick/Ban'
-    case 'in_progress':
-      return 'In Progress'
-    case 'awaiting_result':
-      return 'Awaiting Result'
-    case 'completed':
-      return 'Completed'
-    case 'cancelled':
-      return 'Cancelled'
-    default:
-      return status
+  const labels: Record<string, string> = {
+    pending: 'Pending', scheduling: 'Scheduling', scheduled: 'Scheduled',
+    checking_in: 'Check-in', pick_ban: 'Pick/Ban', in_progress: 'In Progress',
+    awaiting_result: 'Awaiting Result', completed: 'Completed', cancelled: 'Cancelled',
   }
+  return labels[status] || status
 }
 
 function formatMatchFormat(format: string): string {
-  switch (format) {
-    case 'bo1':
-      return 'Best of 1'
-    case 'bo3':
-      return 'Best of 3'
-    case 'bo5':
-      return 'Best of 5'
-    case 'bo7':
-      return 'Best of 7'
-    default:
-      return format
+  const formats: Record<string, string> = {
+    bo1: 'Best of 1', bo3: 'Best of 3', bo5: 'Best of 5', bo7: 'Best of 7',
   }
+  return formats[format] || format
 }
 
 function formatDateTime(dateStr: string): string {
@@ -462,87 +323,10 @@ function formatDateTime(dateStr: string): string {
 }
 
 function getSubmitterName(claim: ResultClaimResponse): string {
-  // In a real app, we'd look up the player/team name from the registration ID
-  // For now, return a generic label
   if (claim.submitted_by_registration_id === match.value?.participant1_registration_id) {
     return match.value?.participant1_name || 'Opponent'
   }
   return match.value?.participant2_name || 'Opponent'
-}
-
-function clearError() {
-  tournamentsStore.error = null
-  schedulingStore.error = null
-  resultsStore.error = null
-}
-
-// Scheduling handlers
-async function handlePropose(times: string[], notes?: string) {
-  if (!tournament.value || !match.value) return
-
-  try {
-    await schedulingStore.proposeSchedule(tournament.value.id, match.value.id, times, notes)
-    showSnackbar('Schedule proposal sent!', 'success')
-    await fetchData()
-  } catch {
-    showSnackbar(schedulingStore.error || 'Failed to send proposal', 'error')
-  }
-}
-
-async function handleAccept(selectedTime: string) {
-  if (!tournament.value || !match.value) return
-
-  try {
-    await schedulingStore.acceptProposal(tournament.value.id, match.value.id, {
-      selected_time: selectedTime,
-    })
-    showSnackbar('Schedule accepted!', 'success')
-    await fetchData()
-  } catch {
-    showSnackbar(schedulingStore.error || 'Failed to accept proposal', 'error')
-  }
-}
-
-async function handleReject(reason?: string) {
-  if (!tournament.value || !match.value) return
-
-  try {
-    await schedulingStore.rejectProposal(tournament.value.id, match.value.id, {
-      reason: reason ?? null,
-    })
-    showSnackbar('Proposal rejected', 'info')
-    await fetchData()
-  } catch {
-    showSnackbar(schedulingStore.error || 'Failed to reject proposal', 'error')
-  }
-}
-
-async function handleCounter(times: string[], notes?: string) {
-  if (!tournament.value || !match.value) return
-
-  try {
-    await schedulingStore.counterPropose(tournament.value.id, match.value.id, times, notes)
-    showSnackbar('Counter-proposal sent!', 'success')
-    await fetchData()
-  } catch {
-    showSnackbar(schedulingStore.error || 'Failed to send counter-proposal', 'error')
-  }
-}
-
-// Result handlers
-async function handleResultSubmitted() {
-  showSnackbar('Result submitted! Waiting for opponent confirmation.', 'success')
-  await fetchResultData()
-}
-
-async function handleResultConfirmed() {
-  showSnackbar('Result confirmed! Match completed.', 'success')
-  await fetchData() // Refresh everything as match status changes
-}
-
-async function handleResultDisputed() {
-  showSnackbar('Result disputed. An admin will review.', 'warning')
-  await fetchResultData()
 }
 
 function showSnackbar(text: string, color: string) {
@@ -551,66 +335,75 @@ function showSnackbar(text: string, color: string) {
   snackbar.value = true
 }
 
-async function fetchResultData() {
-  if (!match.value) return
-
+// Thin event handlers
+async function handlePropose(times: string[], notes?: string) {
+  if (!tournament.value || !match.value) return
   try {
-    await Promise.all([
-      resultsStore.fetchCurrentResult(match.value.id).catch(() => null),
-      resultsStore.fetchResultHistory(match.value.id).catch(() => []),
-    ])
+    await schedulingStore.proposeSchedule(tournament.value.id, match.value.id, times, notes)
+    showSnackbar('Schedule proposal sent!', 'success')
+    await fetchAll()
   } catch {
-    // Errors captured in store
+    showSnackbar(combinedError.value || 'Failed to send proposal', 'error')
   }
 }
 
-async function fetchData() {
-  const tournamentSlug = route.params.tournamentSlug as string
-  const matchId = route.params.matchId as string
-
+async function handleAccept(selectedTime: string) {
+  if (!tournament.value || !match.value) return
   try {
-    // First fetch tournament by slug
-    await tournamentsStore.fetchTournamentBySlug(tournamentSlug)
-
-    if (tournamentsStore.currentTournament) {
-      const tournamentId = tournamentsStore.currentTournament.id
-
-      // Fetch match details
-      match.value = await tournamentsStore.fetchMatch(tournamentId, matchId)
-
-      // Fetch scheduling data if self-scheduled
-      if (tournamentsStore.currentTournament.scheduling_mode === 'self_scheduled') {
-        await Promise.all([
-          schedulingStore.fetchActiveProposal(tournamentId, matchId).catch(() => null),
-          schedulingStore.fetchProposalHistory(tournamentId, matchId).catch(() => []),
-        ])
-      }
-
-      // Fetch result data if match is in appropriate state
-      if (match.value && ['in_progress', 'awaiting_result', 'completed'].includes(match.value.status)) {
-        await fetchResultData()
-      }
-    }
+    await schedulingStore.acceptProposal(tournament.value.id, match.value.id, {
+      selected_time: selectedTime,
+    })
+    showSnackbar('Schedule accepted!', 'success')
+    await fetchAll()
   } catch {
-    // Errors captured in stores
+    showSnackbar(combinedError.value || 'Failed to accept proposal', 'error')
   }
 }
 
-// Watch for route changes
+async function handleReject(reason?: string) {
+  if (!tournament.value || !match.value) return
+  try {
+    await schedulingStore.rejectProposal(tournament.value.id, match.value.id, {
+      reason: reason ?? null,
+    })
+    showSnackbar('Proposal rejected', 'info')
+    await fetchAll()
+  } catch {
+    showSnackbar(combinedError.value || 'Failed to reject proposal', 'error')
+  }
+}
+
+async function handleCounter(times: string[], notes?: string) {
+  if (!tournament.value || !match.value) return
+  try {
+    await schedulingStore.counterPropose(tournament.value.id, match.value.id, times, notes)
+    showSnackbar('Counter-proposal sent!', 'success')
+    await fetchAll()
+  } catch {
+    showSnackbar(combinedError.value || 'Failed to send counter-proposal', 'error')
+  }
+}
+
+async function handleResultSubmitted() {
+  showSnackbar('Result submitted! Waiting for opponent confirmation.', 'success')
+  await fetchResultData()
+}
+
+async function handleResultConfirmed() {
+  showSnackbar('Result confirmed! Match completed.', 'success')
+  await fetchAll()
+}
+
+async function handleResultDisputed() {
+  showSnackbar('Result disputed. An admin will review.', 'warning')
+  await fetchResultData()
+}
+
+// Lifecycle
 watch(
   () => [route.params.tournamentSlug, route.params.matchId],
-  () => {
-    fetchData()
-  }
+  () => { fetchAll() }
 )
 
-onMounted(() => {
-  fetchData()
-})
-
-onUnmounted(() => {
-  // Clean up stores
-  schedulingStore.clear()
-  resultsStore.clear()
-})
+onMounted(() => { fetchAll() })
 </script>

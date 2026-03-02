@@ -4,7 +4,7 @@
     <v-progress-linear v-if="loading" indeterminate class="mb-4" />
 
     <!-- Error State -->
-    <v-alert v-if="error" type="error" class="mb-4" closable @click:close="error = null">
+    <v-alert v-if="error" type="error" class="mb-4" closable @click:close="clearError">
       {{ error }}
     </v-alert>
 
@@ -64,7 +64,7 @@
         </v-col>
         <v-col cols="12" sm="6" md="8" class="d-flex align-center justify-end">
           <v-btn
-            v-if="authStore.isAuthenticated && selectedSeasonId && !hasTeamInSeason"
+            v-if="isAuthenticated && selectedSeasonId && !hasTeamInSeason"
             color="primary"
             prepend-icon="mdi-plus"
             @click="showCreateTeamModal = true"
@@ -125,7 +125,7 @@
             Be the first to create a team for this season!
           </p>
           <v-btn
-            v-if="authStore.isAuthenticated"
+            v-if="isAuthenticated"
             color="primary"
             prepend-icon="mdi-plus"
             @click="showCreateTeamModal = true"
@@ -187,7 +187,7 @@
             color="primary"
             :loading="creatingTeam"
             :disabled="!createTeamValid"
-            @click="createTeam"
+            @click="handleCreateTeam"
           >
             Create Team
           </v-btn>
@@ -256,33 +256,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import { useLeaguesStore } from '@/stores/leagues'
-import { useLeagueSeasonsStore } from '@/stores/leagueSeasons'
-import { useLeagueTeamsStore, type LeagueTeamSummaryResponse, type LeagueTeamMemberWithPlayer } from '@/stores/leagueTeams'
-import { useGamesStore } from '@/stores/games'
+import { ref, onMounted } from 'vue'
+import { useLeagueDetail } from '@/composables/useLeagueDetail'
+import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
 
-const route = useRoute()
-const authStore = useAuthStore()
-const leaguesStore = useLeaguesStore()
-const seasonsStore = useLeagueSeasonsStore()
-const teamsStore = useLeagueTeamsStore()
-const gamesStore = useGamesStore()
+const {
+  league, seasons, teams, gameName, hasTeamInSeason,
+  selectedSeasonId, selectedTeam, teamMembers,
+  loading, loadingSeasons, loadingTeams, loadingMembers, creatingTeam,
+  error, clearError, isAuthenticated,
+  fetchAll, fetchTeamMembers, createTeam,
+} = useLeagueDetail()
 
-const loading = ref(false)
-const loadingSeasons = ref(false)
-const loadingTeams = ref(false)
-const loadingMembers = ref(false)
-const creatingTeam = ref(false)
-const error = ref<string | null>(null)
-
-const selectedSeasonId = ref<string | null>(null)
+// UI state (stays in the page)
 const showCreateTeamModal = ref(false)
 const showTeamDetailModal = ref(false)
-const selectedTeam = ref<LeagueTeamSummaryResponse | null>(null)
-const teamMembers = ref<LeagueTeamMemberWithPlayer[]>([])
 const createTeamValid = ref(false)
 
 const newTeam = ref({
@@ -297,77 +285,9 @@ const rules = {
   maxLength: (max: number) => (v: string) => (!v || v.length <= max) || `Must be at most ${max} characters`,
 }
 
-const league = computed(() => leaguesStore.currentLeague)
-const seasons = computed(() => seasonsStore.seasons)
-const teams = computed(() => teamsStore.teams)
-
-const gameName = computed(() => {
-  if (!league.value) return ''
-  const game = gamesStore.games.find(g => g.id === league.value!.game_id)
-  return game?.display_name || game?.slug || 'Unknown Game'
-})
-
-const hasTeamInSeason = computed(() => {
-  if (!selectedSeasonId.value || !authStore.isAuthenticated) return false
-  return teamsStore.myTeams.some(t => t.season_id === selectedSeasonId.value)
-})
-
-onMounted(async () => {
-  const leagueId = route.params.id as string
-
-  loading.value = true
-  try {
-    // Load games for display
-    await gamesStore.fetchGames()
-
-    // Load league details
-    await leaguesStore.fetchLeague(leagueId)
-
-    if (league.value) {
-      // Load seasons
-      loadingSeasons.value = true
-      await seasonsStore.fetchSeasons(leagueId)
-      loadingSeasons.value = false
-
-      // Auto-select active season or first available
-      const activeSeason = seasons.value.find(s => s.status === 'active')
-      if (activeSeason) {
-        selectedSeasonId.value = activeSeason.id
-      } else if (seasons.value.length > 0) {
-        const firstSeason = seasons.value[0]
-        if (firstSeason) {
-          selectedSeasonId.value = firstSeason.id
-        }
-      }
-
-      // Load user's teams if authenticated
-      if (authStore.isAuthenticated) {
-        await teamsStore.fetchMyTeams()
-      }
-    }
-  } catch (e) {
-    error.value = 'Failed to load league details'
-    console.error(e)
-  } finally {
-    loading.value = false
-  }
-})
-
-watch(selectedSeasonId, async (newSeasonId) => {
-  if (newSeasonId) {
-    loadingTeams.value = true
-    try {
-      await teamsStore.fetchTeamsInSeason(newSeasonId)
-    } catch (e) {
-      console.error('Failed to load teams:', e)
-    } finally {
-      loadingTeams.value = false
-    }
-  }
-})
-
+// Template helpers
 function onSeasonChange() {
-  // Teams will be loaded by the watcher
+  // Teams will be loaded by the composable watcher
 }
 
 function getSeasonStatusColor(status: string): string {
@@ -380,48 +300,26 @@ function getSeasonStatusColor(status: string): string {
 }
 
 async function viewTeam(team: LeagueTeamSummaryResponse) {
-  selectedTeam.value = team
   showTeamDetailModal.value = true
-  teamMembers.value = []
-
-  // Load team members if we have a team_season_id
-  if (team.team_season_id) {
-    loadingMembers.value = true
-    try {
-      teamMembers.value = await teamsStore.fetchMembers(team.team_season_id)
-    } catch (e) {
-      console.error('Failed to load team members:', e)
-    } finally {
-      loadingMembers.value = false
-    }
-  }
+  await fetchTeamMembers(team)
 }
 
-async function createTeam() {
+async function handleCreateTeam() {
   if (!selectedSeasonId.value || !createTeamValid.value) return
 
-  creatingTeam.value = true
   try {
-    await teamsStore.createTeam(selectedSeasonId.value, {
+    await createTeam(selectedSeasonId.value, {
       name: newTeam.value.name,
       tag: newTeam.value.tag,
       description: newTeam.value.description || undefined,
     })
 
-    // Refresh teams list and user's teams
-    await Promise.all([
-      teamsStore.fetchTeamsInSeason(selectedSeasonId.value),
-      teamsStore.fetchMyTeams(),
-    ])
-
-    // Reset form and close modal
     newTeam.value = { name: '', tag: '', description: '' }
     showCreateTeamModal.value = false
-  } catch (e) {
-    console.error('Failed to create team:', e)
-    error.value = teamsStore.error || 'Failed to create team'
-  } finally {
-    creatingTeam.value = false
+  } catch {
+    // Error already set in composable
   }
 }
+
+onMounted(() => { fetchAll() })
 </script>

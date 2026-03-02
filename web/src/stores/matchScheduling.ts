@@ -2,12 +2,12 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api, ApiError } from '@/api'
 import type { components } from '@/api/types'
+import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
 
 // Use generated types
 type ScheduleProposalResponse = components['schemas']['ScheduleProposalResponse']
 type AcceptScheduleProposalRequest = components['schemas']['AcceptScheduleProposalRequest']
 type RejectScheduleProposalRequest = components['schemas']['RejectScheduleProposalRequest']
-type ApiErrorResponse = components['schemas']['ApiError']
 
 // Proposal status enum
 export const PROPOSAL_STATUSES = ['pending', 'accepted', 'rejected', 'expired', 'counter_proposed'] as const
@@ -20,65 +20,42 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
+  // Per-action states
+  const fetchActiveProposalState = createActionState()
+  const fetchProposalHistoryState = createActionState()
+  const proposeScheduleState = createActionState()
+  const acceptProposalState = createActionState()
+  const rejectProposalState = createActionState()
+  const counterProposeState = createActionState()
+
   // ==================== Proposal CRUD ====================
 
   async function fetchActiveProposal(tournamentId: string, matchId: string): Promise<ScheduleProposalResponse | null> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/active', {
-        params: { path: { tournament_id: tournamentId, match_id: matchId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      activeProposal.value = data!.data
-      return activeProposal.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        // 404 means no active proposal, which is valid
-        if (e.status === 404) {
+    return withActionState(fetchActiveProposalState, async () => {
+      try {
+        const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/active', {
+          params: { path: { tournament_id: tournamentId, match_id: matchId } },
+        }))
+        activeProposal.value = result.data
+        return activeProposal.value
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) {
           activeProposal.value = null
           return null
         }
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch active proposal'
+        throw e
       }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch active proposal')
   }
 
   async function fetchProposalHistory(tournamentId: string, matchId: string): Promise<ScheduleProposalResponse[]> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/history', {
+    return withActionState(fetchProposalHistoryState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/history', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      proposalHistory.value = data!.data
+      }))
+      proposalHistory.value = result.data
       return proposalHistory.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch proposal history'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch proposal history')
   }
 
   async function proposeSchedule(
@@ -87,34 +64,17 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
     proposedTimes: string[],
     notes?: string
   ): Promise<ScheduleProposalResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/propose', {
+    return withActionState(proposeScheduleState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/propose', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
         body: {
           proposed_times: proposedTimes,
           notes: notes ?? null,
         },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      activeProposal.value = data!.data
+      }))
+      activeProposal.value = result.data
       return activeProposal.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to propose schedule'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to propose schedule')
   }
 
   async function acceptProposal(
@@ -122,31 +82,14 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
     matchId: string,
     request: AcceptScheduleProposalRequest
   ): Promise<ScheduleProposalResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/accept', {
+    return withActionState(acceptProposalState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/accept', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
         body: request,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      activeProposal.value = data!.data
+      }))
+      activeProposal.value = result.data
       return activeProposal.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to accept proposal'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to accept proposal')
   }
 
   async function rejectProposal(
@@ -154,32 +97,15 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
     matchId: string,
     request: RejectScheduleProposalRequest
   ): Promise<ScheduleProposalResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/reject', {
+    return withActionState(rejectProposalState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/reject', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
         body: request,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
+      }))
       // Clear active proposal after rejection
       activeProposal.value = null
-      return data!.data
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to reject proposal'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+      return result.data
+    }, 'Failed to reject proposal')
   }
 
   async function counterPropose(
@@ -188,34 +114,17 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
     proposedTimes: string[],
     notes?: string
   ): Promise<ScheduleProposalResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/counter', {
+    return withActionState(counterProposeState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/counter', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
         body: {
           proposed_times: proposedTimes,
           notes: notes ?? null,
         },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      activeProposal.value = data!.data
+      }))
+      activeProposal.value = result.data
       return activeProposal.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to counter propose'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to counter propose')
   }
 
   // ==================== Utility ====================
@@ -237,6 +146,14 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
     proposalHistory,
     loading,
     error,
+
+    // Per-action states
+    fetchActiveProposalState,
+    fetchProposalHistoryState,
+    proposeScheduleState,
+    acceptProposalState,
+    rejectProposalState,
+    counterProposeState,
 
     // Actions
     fetchActiveProposal,

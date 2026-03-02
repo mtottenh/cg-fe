@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api, ApiError } from '@/api'
 import type { components } from '@/api/types'
+import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
 
 // Use generated types
 type ResultClaimResponse = components['schemas']['ResultClaimResponse']
@@ -11,7 +12,6 @@ type ResultClaimSubmissionResponse = components['schemas']['ResultClaimSubmissio
 type ResultConfirmationResponse = components['schemas']['ResultConfirmationResponse']
 type ResultDisputeResponse = components['schemas']['ResultDisputeResponse']
 type GameResultInput = components['schemas']['GameResultInput']
-type ApiErrorResponse = components['schemas']['ApiError']
 
 // Result claim status enum
 export const RESULT_CLAIM_STATUSES = ['pending', 'confirmed', 'disputed', 'expired', 'superseded'] as const
@@ -24,6 +24,13 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
+  // Per-action states
+  const fetchCurrentResultState = createActionState()
+  const fetchResultHistoryState = createActionState()
+  const submitResultState = createActionState()
+  const confirmResultState = createActionState()
+  const disputeResultState = createActionState()
+
   // ==================== Result CRUD ====================
 
   /**
@@ -31,65 +38,34 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
    * Returns null if no pending claim exists (which is a valid state).
    */
   async function fetchCurrentResult(matchId: string): Promise<ResultClaimResponse | null> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/matches/{match_id}/result', {
-        params: { path: { match_id: matchId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentResult.value = data!.data
-      return currentResult.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        // 404 means no pending result, which is valid state
-        if (e.status === 404) {
+    return withActionState(fetchCurrentResultState, async () => {
+      try {
+        const result = await unwrapApi(api.GET('/v1/matches/{match_id}/result', {
+          params: { path: { match_id: matchId } },
+        }))
+        currentResult.value = result.data
+        return currentResult.value
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) {
           currentResult.value = null
           return null
         }
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch current result'
+        throw e
       }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch current result')
   }
 
   /**
    * Fetch the result claim history for a match.
    */
   async function fetchResultHistory(matchId: string): Promise<ResultClaimResponse[]> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/matches/{match_id}/result/history', {
+    return withActionState(fetchResultHistoryState, async () => {
+      const result = await unwrapApi(api.GET('/v1/matches/{match_id}/result/history', {
         params: { path: { match_id: matchId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      resultHistory.value = data!.data
+      }))
+      resultHistory.value = result.data
       return resultHistory.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch result history'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch result history')
   }
 
   /**
@@ -114,9 +90,7 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
     demoLinkIds: string[] = [],
     notes?: string
   ): Promise<ResultClaimSubmissionResponse> {
-    loading.value = true
-    error.value = null
-    try {
+    return withActionState(submitResultState, async () => {
       const body: SubmitResultClaimRequest = {
         claimed_winner_registration_id: claimedWinnerRegistrationId,
         participant1_score: participant1Score,
@@ -127,28 +101,14 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
         notes: notes ?? null,
       }
 
-      const { data, error: apiError } = await api.POST('/v1/matches/{match_id}/result', {
+      const result = await unwrapApi(api.POST('/v1/matches/{match_id}/result', {
         params: { path: { match_id: matchId } },
         body,
-      })
+      }))
 
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentResult.value = data!.data.claim
-      return data!.data
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to submit result'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+      currentResult.value = result.data.claim
+      return result.data
+    }, 'Failed to submit result')
   }
 
   /**
@@ -158,30 +118,14 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
     matchId: string,
     claimId: string
   ): Promise<ResultConfirmationResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/matches/{match_id}/result/{claim_id}/confirm', {
+    return withActionState(confirmResultState, async () => {
+      const result = await unwrapApi(api.POST('/v1/matches/{match_id}/result/{claim_id}/confirm', {
         params: { path: { match_id: matchId, claim_id: claimId } },
-      })
+      }))
 
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentResult.value = data!.data.claim
-      return data!.data
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to confirm result'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+      currentResult.value = result.data.claim
+      return result.data
+    }, 'Failed to confirm result')
   }
 
   /**
@@ -198,36 +142,20 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
     reason: string,
     evidenceIds: string[] = []
   ): Promise<ResultDisputeResponse> {
-    loading.value = true
-    error.value = null
-    try {
+    return withActionState(disputeResultState, async () => {
       const body: DisputeResultClaimRequest = {
         reason,
         evidence_ids: evidenceIds,
       }
 
-      const { data, error: apiError } = await api.POST('/v1/matches/{match_id}/result/{claim_id}/dispute', {
+      const result = await unwrapApi(api.POST('/v1/matches/{match_id}/result/{claim_id}/dispute', {
         params: { path: { match_id: matchId, claim_id: claimId } },
         body,
-      })
+      }))
 
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentResult.value = data!.data.claim
-      return data!.data
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to dispute result'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+      currentResult.value = result.data.claim
+      return result.data
+    }, 'Failed to dispute result')
   }
 
   // ==================== Utility ====================
@@ -249,6 +177,13 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
     resultHistory,
     loading,
     error,
+
+    // Per-action states
+    fetchCurrentResultState,
+    fetchResultHistoryState,
+    submitResultState,
+    confirmResultState,
+    disputeResultState,
 
     // Actions
     fetchCurrentResult,

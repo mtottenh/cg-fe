@@ -64,18 +64,18 @@ Following the `steam-vent-chat` pattern of wrapping `Connection`:
 ├───────────────────────────────────────────┤
 │  transport.rs                             │
 │    GcTransport                            │
-│      .set_playing_cs2()                   │
-│      .send(msg_type, payload)             │  ← ADAPT THIS
-│      .recv(msg_type, timeout) → payload   │  ← ADAPT THIS
+│      wraps GameCoordinator (typed GC I/O) │
 ├───────────────────────────────────────────┤
-│  steam-vent  (Connection)                 │
-│    .service_method()  .on_notification()  │
-│    + raw EMsg send/receive (TBD)          │
+│  steam-vent  (Connection + GameCoordinator)│
+│    GameCoordinator: .send(), .one()       │
+│    Uses csgo feature + GCHandshake from   │
+│    steam-vent-proto-csgo                  │
 └───────────────────────────────────────────┘
 ```
 
-The **only part that needs adaptation** to match your steam-vent version
-is `transport.rs`. Everything above it is pure Rust types and business logic.
+The transport layer wraps steam-vent's `GameCoordinator`, which handles GC
+protocol details (set playing, CMsgClientHello/Welcome, message wrapping).
+All GC I/O uses typed protobuf messages via `gc.send()` and `gc.one()`.
 
 ## GC Message Flow
 
@@ -135,33 +135,6 @@ MatchList (9149) ◄────────────────────
 | 9150 | MatchListRequestCurrentLiveGames | Client→GC | Live games |
 | 9151 | MatchListRequestLiveGameForUser | Client→GC | User's live game |
 
-## Adaptation Checklist
-
-When you first `cargo check`, you'll hit `todo!()` panics in `transport.rs`.
-Here's how to resolve them:
-
-1. **Check what `Connection` exposes for GC:**
-   ```bash
-   # Look at the docs
-   cargo doc --open -p steam-vent
-   # Search for GC-related methods
-   grep -r "gc\|GameCoordinator\|ClientToGC" \
-     ~/.cargo/registry/src/*/steam-vent-*/src/
-   ```
-
-2. **If steam-vent has high-level GC methods** (e.g. `send_gc_message`):
-   Use Option A in transport.rs
-
-3. **If not**, wrap manually:
-   - Build `CMsgGCClient { appid: 730, msgtype: id | 0x80000000, payload }`
-   - Send via whatever raw EMsg method exists
-   - Listen for `EMsg::ClientFromGC`, unwrap, filter by app + msg type
-
-4. **Check protobuf style:**
-   - If `steam_vent_proto_csgo` uses protobuf v2: `.field()` accessors, `.write_to_bytes()`
-   - If prost: `.field.unwrap_or()`, `.encode_to_vec()`
-   - Fix the conversions in `types.rs` accordingly
-
 ## Project Structure
 
 ```
@@ -174,8 +147,7 @@ steam_bot/
 │       ├── Cargo.toml
 │       └── src/
 │           ├── lib.rs                  Cs2GcClient (public API)
-│           ├── transport.rs            GcTransport (pub(crate) — adapt this)
-│           ├── messages.rs             GC message type IDs
+│           ├── transport.rs            GcTransport (wraps GameCoordinator)
 │           └── types.rs               Friendly Rust types + proto conversion
 │
 └── bins/

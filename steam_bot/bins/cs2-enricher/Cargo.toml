@@ -1,0 +1,20 @@
+[package]
+name = "cs2-enricher"
+version = "0.1.0"
+edition = "2021"
+description = "CS2 match enricher bot — fetches full match data from the Game Coordinator"
+
+[dependencies]
+cs2-gc = { path = "../../crates/cs2-gc" }
+cs2-sharecode = { path = "../../crates/cs2-sharecode" }
+cs2-demo-rank = { path = "../../crates/cs2-demo-rank" }
+steam-vent.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+clap.workspace = true
+rpassword.workspace = true
+parallel_bzip2_decoder.workspace = true
+rayon.workspace = true

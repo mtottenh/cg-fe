@@ -5,6 +5,28 @@ import type { components } from '@/api/types'
 type ApiErrorResponse = components['schemas']['ApiError']
 
 /**
+ * Like unwrapApi, but returns null instead of throwing on 404.
+ * Useful for endpoints where "not found" is a valid state (e.g. no active proposal).
+ */
+export async function unwrapApiOptional<T>(
+  apiCall: Promise<{ data?: T; error?: unknown }>
+): Promise<T | null> {
+  const { data, error: apiError } = await apiCall
+
+  if (apiError) {
+    const err = apiError as ApiErrorResponse
+    if (err.status === 404) return null
+    throw new ApiError(
+      err.status || 500,
+      err.detail || 'An unknown error occurred',
+      err.errors ?? undefined
+    )
+  }
+
+  return (data as T) ?? null
+}
+
+/**
  * Unwraps an openapi-fetch response, returning the data on success
  * or throwing an ApiError on failure.
  *

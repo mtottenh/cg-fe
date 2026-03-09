@@ -57,6 +57,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useFormRules } from '@/composables/useFormRules'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -70,9 +71,7 @@ const showPassword = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-}
+const rules = useFormRules()
 
 async function handleSubmit() {
   loading.value = true

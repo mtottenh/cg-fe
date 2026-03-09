@@ -305,9 +305,6 @@
         {{ error }}
       </v-alert>
 
-      <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-        {{ snackbarText }}
-      </v-snackbar>
     </v-card>
 
     <!-- Invite Player Modal -->
@@ -324,6 +321,9 @@ import { ref, watch } from 'vue'
 import { ApiError } from '@/api'
 import type { components } from '@/api/types'
 import LeagueTeamInviteModal from './LeagueTeamInviteModal.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useFormRules } from '@/composables/useFormRules'
+import { formatDate } from '@/utils/formatters'
 
 type LeagueTeamSummary = components['schemas']['LeagueTeamSummaryResponse']
 
@@ -390,9 +390,7 @@ const settingsForm = ref({
 })
 
 // Snackbar
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+const snackbar = useSnackbar()
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -415,11 +413,7 @@ const invitationHeaders = [
   { title: 'Actions', key: 'actions', width: '100px', sortable: false },
 ]
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => !v || v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
-}
+const rules = useFormRules()
 
 // Watch for dialog opening
 watch(() => props.modelValue, async (isOpen) => {
@@ -509,14 +503,14 @@ async function promoteToCaptain(member: TeamMember) {
       throw new ApiError(response.status, errorData.detail || 'Failed to promote member')
     }
 
-    showSnackbar(`${member.display_name} promoted to captain`, 'success')
+    snackbar.show(`${member.display_name} promoted to captain`, 'success')
     await fetchMembers()
     emit('updated')
   } catch (e) {
     if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
+      snackbar.show(e.detail, 'error')
     } else {
-      showSnackbar('Failed to promote member', 'error')
+      snackbar.show('Failed to promote member', 'error')
     }
   }
 }
@@ -537,14 +531,14 @@ async function demoteFromCaptain(member: TeamMember) {
       throw new ApiError(response.status, errorData.detail || 'Failed to demote member')
     }
 
-    showSnackbar(`${member.display_name} demoted from captain`, 'success')
+    snackbar.show(`${member.display_name} demoted from captain`, 'success')
     await fetchMembers()
     emit('updated')
   } catch (e) {
     if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
+      snackbar.show(e.detail, 'error')
     } else {
-      showSnackbar('Failed to demote member', 'error')
+      snackbar.show('Failed to demote member', 'error')
     }
   }
 }
@@ -565,14 +559,14 @@ async function removeMember(member: TeamMember) {
       throw new ApiError(response.status, errorData.detail || 'Failed to remove member')
     }
 
-    showSnackbar(`${member.display_name} removed from team`, 'success')
+    snackbar.show(`${member.display_name} removed from team`, 'success')
     await fetchMembers()
     emit('updated')
   } catch (e) {
     if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
+      snackbar.show(e.detail, 'error')
     } else {
-      showSnackbar('Failed to remove member', 'error')
+      snackbar.show('Failed to remove member', 'error')
     }
   }
 }
@@ -591,14 +585,14 @@ async function acceptInvitation(invitation: TeamInvitation) {
       throw new ApiError(response.status, errorData.detail || 'Failed to accept invitation')
     }
 
-    showSnackbar('Application accepted', 'success')
+    snackbar.show('Application accepted', 'success')
     await Promise.all([fetchMembers(), fetchInvitations()])
     emit('updated')
   } catch (e) {
     if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
+      snackbar.show(e.detail, 'error')
     } else {
-      showSnackbar('Failed to accept invitation', 'error')
+      snackbar.show('Failed to accept invitation', 'error')
     }
   }
 }
@@ -617,13 +611,13 @@ async function cancelInvitation(invitation: TeamInvitation) {
       throw new ApiError(response.status, errorData.detail || 'Failed to cancel invitation')
     }
 
-    showSnackbar('Invitation cancelled', 'success')
+    snackbar.show('Invitation cancelled', 'success')
     await fetchInvitations()
   } catch (e) {
     if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
+      snackbar.show(e.detail, 'error')
     } else {
-      showSnackbar('Failed to cancel invitation', 'error')
+      snackbar.show('Failed to cancel invitation', 'error')
     }
   }
 }
@@ -646,7 +640,7 @@ async function saveSettings() {
     }
 
     if (Object.keys(body).length === 0) {
-      showSnackbar('No changes to save', 'info')
+      snackbar.show('No changes to save', 'info')
       return
     }
 
@@ -664,13 +658,13 @@ async function saveSettings() {
       throw new ApiError(response.status, errorData.detail || 'Failed to update team')
     }
 
-    showSnackbar('Team settings saved', 'success')
+    snackbar.show('Team settings saved', 'success')
     emit('updated')
   } catch (e) {
     if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
+      snackbar.show(e.detail, 'error')
     } else {
-      showSnackbar('Failed to save settings', 'error')
+      snackbar.show('Failed to save settings', 'error')
     }
   } finally {
     savingSettings.value = false
@@ -678,7 +672,7 @@ async function saveSettings() {
 }
 
 function onPlayerInvited() {
-  showSnackbar('Invitation sent', 'success')
+  snackbar.show('Invitation sent', 'success')
   fetchInvitations()
 }
 
@@ -705,16 +699,6 @@ function getInvitationStatusColor(status: string): string {
     case 'expired': return 'grey'
     default: return 'grey'
   }
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString()
-}
-
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
 }
 
 function close() {

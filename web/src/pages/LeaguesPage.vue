@@ -62,6 +62,12 @@
             <v-chip size="small" :color="league.status === 'active' ? 'success' : 'grey'" variant="tonal">
               {{ league.status }}
             </v-chip>
+            <v-chip size="small" :color="getAccessTypeColor(league.access_type)" variant="tonal" class="ml-1">
+              {{ getAccessTypeLabel(league.access_type) }}
+            </v-chip>
+            <v-chip v-if="isMyLeague(league.id)" size="small" color="primary" variant="flat" class="ml-1">
+              Member
+            </v-chip>
             <v-spacer />
             <v-icon size="small">mdi-chevron-right</v-icon>
           </v-card-actions>
@@ -98,11 +104,13 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useLeaguesStore } from '@/stores/leagues'
 import { useGamesStore } from '@/stores/games'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const leaguesStore = useLeaguesStore()
 const gamesStore = useGamesStore()
+const authStore = useAuthStore()
 
 const search = ref('')
 const selectedGameId = ref<string | null>(null)
@@ -120,8 +128,15 @@ onMounted(async () => {
   if (route.query.game) {
     selectedGameId.value = route.query.game as string
   }
+  if (route.query.search) {
+    search.value = route.query.search as string
+  }
   if (route.query.page) {
     currentPage.value = parseInt(route.query.page as string) || 1
+  }
+
+  if (authStore.isAuthenticated) {
+    leaguesStore.fetchMyLeagues().catch(() => {})
   }
 
   await loadLeagues()
@@ -137,7 +152,11 @@ watch(() => route.query.game, (newGame) => {
 })
 
 async function loadLeagues() {
-  await leaguesStore.fetchLeagues(currentPage.value, 20, selectedGameId.value || undefined)
+  try {
+    await leaguesStore.fetchLeagues(currentPage.value, 20, selectedGameId.value || undefined, search.value || undefined)
+  } catch {
+    // Error already captured in leaguesStore.error via fetchLeaguesState
+  }
 }
 
 function onGameFilterChange() {
@@ -158,6 +177,7 @@ function debouncedSearch() {
   }
   searchTimeout = window.setTimeout(async () => {
     currentPage.value = 1
+    updateUrlParams()
     await loadLeagues()
   }, 300)
 }
@@ -166,6 +186,9 @@ function updateUrlParams() {
   const query: Record<string, string> = {}
   if (selectedGameId.value) {
     query.game = selectedGameId.value
+  }
+  if (search.value) {
+    query.search = search.value
   }
   if (currentPage.value > 1) {
     query.page = currentPage.value.toString()
@@ -176,5 +199,27 @@ function updateUrlParams() {
 function getGameName(gameId: string): string {
   const game = gamesStore.games.find(g => g.id === gameId)
   return game?.display_name || game?.slug || 'Unknown'
+}
+
+function getAccessTypeLabel(type: string): string {
+  switch (type) {
+    case 'open': return 'Open'
+    case 'application': return 'Apply'
+    case 'invite_only': return 'Invite Only'
+    default: return type
+  }
+}
+
+function getAccessTypeColor(type: string): string {
+  switch (type) {
+    case 'open': return 'success'
+    case 'application': return 'warning'
+    case 'invite_only': return 'grey'
+    default: return 'grey'
+  }
+}
+
+function isMyLeague(leagueId: string): boolean {
+  return leaguesStore.myLeagues.some(m => m.league_id === leagueId)
 }
 </script>

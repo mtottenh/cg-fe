@@ -66,7 +66,7 @@ function formatDate(dateStr: string): string {
   return formatResultDate(dateStr)
 }
 
-function getSubmitterLabel(entry: ResultClaimResponse): string {
+function getSubmitterLabel(_entry: ResultClaimResponse): string {
   // In a real app, we'd look up the player name
   // For now, we'll use a generic label
   return 'Result submitted'

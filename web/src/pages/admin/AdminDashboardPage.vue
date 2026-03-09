@@ -185,29 +185,17 @@
       @created="onBanCreated"
     />
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { ApiError } from '@/api'
+import { api, ApiError } from '@/api'
+import type { components } from '@/api/types'
 import BanCreateModal from '@/components/admin/BanCreateModal.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
 
-// Platform stats type - matches backend PlatformStatsResponse
-// TODO: Replace with generated type once API types are regenerated
-interface PlatformStats {
-  total_users: number
-  total_players: number
-  total_teams: number
-  active_games: number
-  active_bans: number
-  users_last_24h: number
-  users_last_7d: number
-  teams_last_7d: number
-}
+type PlatformStats = components['schemas']['PlatformStatsResponse']
 
 const stats = ref<PlatformStats | null>(null)
 const loading = ref(true)
@@ -215,16 +203,10 @@ const error = ref<string | null>(null)
 
 // Ban modal state
 const openBanModal = ref(false)
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const snackbar = useSnackbar()
 
 function onBanCreated() {
-  snackbarText.value = 'Ban created successfully'
-  snackbarColor.value = 'success'
-  snackbar.value = true
+  snackbar.show('Ban created successfully', 'success')
   // Refresh stats to update active_bans count
   fetchStats()
 }
@@ -233,26 +215,11 @@ async function fetchStats() {
   loading.value = true
   error.value = null
   try {
-    // Use fetch directly since the endpoint isn't in generated types yet
-    const response = await fetch(`${API_URL}/v1/admin/stats`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to fetch stats')
-    }
-
-    const result = await response.json()
-    stats.value = result.data
+    const { data, error: apiError } = await api.GET('/v1/admin/stats')
+    if (apiError) throw new ApiError((apiError as any).status || 500, (apiError as any).detail || 'Failed to fetch stats')
+    stats.value = data!.data
   } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to load dashboard stats'
-    }
+    error.value = e instanceof ApiError ? e.detail : 'Failed to load dashboard stats'
   } finally {
     loading.value = false
   }

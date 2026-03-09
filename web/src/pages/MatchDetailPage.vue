@@ -95,9 +95,9 @@
       </v-card>
 
       <!-- Match Status Timeline -->
-      <MatchStatusTimeline :match="match" class="mb-6" />
+      <MatchStatusTimeline :match="match" :scheduling-mode="tournament.scheduling_mode as 'live' | 'self_scheduled' | 'hybrid'" class="mb-6" />
 
-      <!-- Scheduling Panel (for self-scheduled matches) -->
+      <!-- Scheduling Panel (for self-scheduled matches, includes calendar overlay) -->
       <MatchSchedulingPanel
         v-if="showSchedulingPanel"
         :tournament="tournament"
@@ -106,6 +106,10 @@
         :is-proposer="isProposer"
         :can-propose="canPropose"
         :loading="schedulingLoading"
+        :suggested-times="suggestedTimes"
+        :opponent-player-id="opponentPlayerId"
+        :tournament-id="tournament.id"
+        :match-id="match.id"
         class="mb-6"
         @propose="handlePropose"
         @accept="handleAccept"
@@ -113,17 +117,106 @@
         @counter="handleCounter"
       />
 
-      <!-- Check-in Panel (when check-in is open) -->
-      <v-card v-if="match.status === 'checking_in'" class="mb-6">
+      <!-- Check-in Panel (when scheduled or check-in is open) -->
+      <v-card v-if="showCheckInPanel" class="mb-6">
         <v-card-title>
           <v-icon start>mdi-checkbox-marked-circle-outline</v-icon>
           Match Check-in
         </v-card-title>
         <v-card-text>
-          <p class="mb-4">Both participants need to check in before the match can begin.</p>
-          <v-btn color="primary" size="large">
+          <p class="mb-4">
+            Both participants need to check in before the match can begin.
+          </p>
+          <!-- Per-participant check-in status -->
+          <div class="d-flex align-center mb-2">
+            <v-icon
+              :color="match.participant1_checked_in_at ? 'success' : 'grey'"
+              class="mr-2"
+            >
+              {{ match.participant1_checked_in_at ? 'mdi-check-circle' : 'mdi-circle-outline' }}
+            </v-icon>
+            <span>{{ match.participant1_name || 'TBD' }}</span>
+            <span v-if="match.participant1_checked_in_at" class="text-caption ml-2 text-success">
+              Checked in
+            </span>
+          </div>
+          <div class="d-flex align-center mb-4">
+            <v-icon
+              :color="match.participant2_checked_in_at ? 'success' : 'grey'"
+              class="mr-2"
+            >
+              {{ match.participant2_checked_in_at ? 'mdi-check-circle' : 'mdi-circle-outline' }}
+            </v-icon>
+            <span>{{ match.participant2_name || 'TBD' }}</span>
+            <span v-if="match.participant2_checked_in_at" class="text-caption ml-2 text-success">
+              Checked in
+            </span>
+          </div>
+
+          <v-btn
+            v-if="!userAlreadyCheckedIn"
+            color="primary"
+            size="large"
+            :disabled="!userRegistrationId"
+            :loading="tournamentsStore.matchCheckInState.loading"
+            @click="handleMatchCheckIn"
+          >
             <v-icon start>mdi-check</v-icon>
             Check In
+          </v-btn>
+          <v-alert v-else type="info" variant="tonal" density="compact">
+            You've checked in. Waiting for opponent...
+          </v-alert>
+        </v-card-text>
+      </v-card>
+
+      <!-- Lobby Presence Bar (shown during live lobby states) -->
+      <LobbyPresenceBar
+        v-if="showVetoPanel && lobbyParticipants.length > 0"
+        :participants="lobbyParticipants"
+        :spectator-count="lobbySpectatorCount"
+        :connected="lobbyConnected"
+      />
+
+      <!-- Veto Panel (map pick/ban before match starts) -->
+      <VetoPanel
+        v-if="showVetoPanel"
+        ref="vetoPanelRef"
+        :match-id="match.id"
+        :match-format="match.match_format"
+        :user-registration-id="userRegistrationId"
+        :participant1-registration-id="match.participant1_registration_id"
+        :participant2-registration-id="match.participant2_registration_id"
+        :participant1-name="match.participant1_name || 'Team 1'"
+        :participant2-name="match.participant2_name || 'Team 2'"
+      />
+
+      <!-- Lobby Chat Panel (shown during live lobby states) -->
+      <LobbyChatPanel
+        v-if="showVetoPanel && lobbyConnected"
+        :messages="lobbyChatMessages"
+        :connected="lobbyConnected"
+        @send="handleChatSend"
+      />
+
+      <!-- Forfeit Button -->
+      <v-card v-if="canForfeit" class="mb-6" variant="outlined" color="error">
+        <v-card-text class="d-flex align-center justify-space-between">
+          <div>
+            <div class="text-body-2 font-weight-medium">Forfeit Match</div>
+            <div class="text-caption text-medium-emphasis">
+              Forfeit this match. Your opponent will be declared the winner.
+            </div>
+          </div>
+          <v-btn
+            color="error"
+            variant="outlined"
+            size="small"
+            :loading="tournamentsStore.forfeitMatchState.loading.value"
+            @click="handleForfeit"
+          >
+            <v-icon start size="small">mdi-flag</v-icon>
+            Forfeit
           </v-btn>
         </v-card-text>
       </v-card>
@@ -140,6 +233,8 @@
           :team-a-registration-id="match.participant1_registration_id || ''"
           :team-b-registration-id="match.participant2_registration_id || ''"
           :submitter-name="getSubmitterName(currentResult)"
+          :tournament-id="tournament.id"
+          :registration-id="userRegistrationId ?? undefined"
           class="mb-6"
           @confirmed="handleResultConfirmed"
           @disputed="handleResultDisputed"
@@ -187,6 +282,35 @@
           </v-card-text>
         </v-card>
       </template>
+
+      <!-- Result Review Alert (admin-flagged review) -->
+      <ResultReviewAlert
+        v-if="match.status === 'completed'"
+        :match-id="match.id"
+        :user-registration-id="userRegistrationId"
+      />
+
+      <!-- Dispute Thread (when match is disputed and we have a dispute from result history) -->
+      <DisputeThreadPanel
+        v-if="match.disputed && activeDisputeId"
+        :dispute-id="activeDisputeId"
+        :can-reply="!!userRegistrationId"
+      />
+
+      <!-- Match Evidence -->
+      <v-card v-if="evidenceStore.linkedDemos.length > 0 || evidenceStore.evidence.length > 0" class="mb-6">
+        <v-card-title>
+          <v-icon start>mdi-file-document-outline</v-icon>
+          Match Evidence
+        </v-card-title>
+        <v-card-text>
+          <EvidenceDisplay
+            :linked-demos="evidenceStore.linkedDemos"
+            :evidence="evidenceStore.evidence"
+            :match-id="match.id"
+          />
+        </v-card-text>
+      </v-card>
 
       <!-- Result History -->
       <ResultHistoryTimeline
@@ -242,23 +366,49 @@
       {{ combinedError }}
     </v-alert>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
+    <!-- Confirm Dialog -->
+    <ConfirmDialog
+      :open="confirmDialog.open.value"
+      :title="confirmDialog.title.value"
+      :message="confirmDialog.message.value"
+      :action-label="confirmDialog.actionLabel.value"
+      :color="confirmDialog.color.value"
+      :loading="confirmDialog.loading.value"
+      :error="confirmDialog.dialogError.value"
+      @clear-error="confirmDialog.dialogError.value = null"
+      @confirm="confirmDialog.execute"
+      @cancel="confirmDialog.cancel"
+    />
+
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProposalStatusColor, getProposalStatusLabel } from '@/stores/matchScheduling'
 import type { ResultClaimResponse } from '@/stores/matchResults'
+import { useTournamentsStore } from '@/stores/tournaments'
 import { useMatchDetail } from '@/composables/useMatchDetail'
 import MatchStatusTimeline from '@/components/match/MatchStatusTimeline.vue'
 import MatchSchedulingPanel from '@/components/match/MatchSchedulingPanel.vue'
 import ResultSubmissionPanel from '@/components/match/results/ResultSubmissionPanel.vue'
 import ResultConfirmationPanel from '@/components/match/results/ResultConfirmationPanel.vue'
 import ResultHistoryTimeline from '@/components/match/results/ResultHistoryTimeline.vue'
+import EvidenceDisplay from '@/components/match/evidence/EvidenceDisplay.vue'
+import VetoPanel from '@/components/match/veto/VetoPanel.vue'
+import LobbyChatPanel from '@/components/match/LobbyChatPanel.vue'
+import LobbyPresenceBar from '@/components/match/LobbyPresenceBar.vue'
+import DisputeThreadPanel from '@/components/match/DisputeThreadPanel.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { useDisputesStore } from '@/stores/disputes'
+import ResultReviewAlert from '@/components/match/results/ResultReviewAlert.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { formatDateTime } from '@/utils/formatters'
+import {
+  getMatchStatusColor, getMatchStatusLabel, formatMatchFormat,
+} from '@/utils/matchStatus'
 
 const route = useRoute()
 
@@ -266,17 +416,47 @@ const {
   match, tournament, activeProposal, proposalHistory,
   currentResult, resultHistory, matchFormat,
   loading, schedulingLoading, error: combinedError, clearError,
-  showSchedulingPanel, isProposer, canPropose,
+  showSchedulingPanel, showCheckInPanel, isProposer, canPropose,
   showResultPanel, showConfirmationPanel, canSubmitResult,
   showWaitingForOpponent, autoConfirmCountdown,
+  opponentPlayerId, suggestedTimes, userRegistrationId,
   fetchAll, fetchResultData,
   schedulingStore,
+  evidenceStore,
 } = useMatchDetail()
 
+const tournamentsStore = useTournamentsStore()
+const disputesStore = useDisputesStore()
+
 // UI state (stays in the page)
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+const snackbar = useSnackbar()
+const confirmDialog = useConfirmDialog()
+
+// Lobby state from VetoPanel
+const vetoPanelRef = ref<InstanceType<typeof VetoPanel> | null>(null)
+const lobbyParticipants = computed(() => vetoPanelRef.value?.participants ?? [])
+const lobbySpectatorCount = computed(() => vetoPanelRef.value?.spectatorCount ?? 0)
+const lobbyConnected = computed(() => vetoPanelRef.value?.connected ?? false)
+const lobbyChatMessages = computed(() => vetoPanelRef.value?.chatMessages ?? [])
+
+function handleChatSend(chatType: 'team' | 'all', content: string) {
+  vetoPanelRef.value?.sendChat(chatType, content)
+}
+
+// Veto panel visibility: show when match has veto_required and is in veto-relevant states
+// The match state machine is: ... → checking_in → pick_ban → in_progress → ...
+// Show the panel during pick_ban (active veto) and checking_in (upcoming veto preview)
+const showVetoPanel = computed(() => {
+  if (!match.value || !tournament.value) return false
+  if (!match.value.veto_required) return false
+  return ['checking_in', 'pick_ban'].includes(match.value.status)
+})
+
+// Forfeit: available when user is a participant and match is active
+const canForfeit = computed(() => {
+  if (!match.value || !userRegistrationId.value || !tournament.value) return false
+  return ['scheduled', 'checking_in', 'ready', 'pick_ban', 'in_progress', 'awaiting_result'].includes(match.value.status)
+})
 
 const breadcrumbs = computed(() => [
   { title: 'Tournaments', to: { name: 'tournaments' } },
@@ -287,40 +467,28 @@ const breadcrumbs = computed(() => [
   { title: `Match #${match.value?.match_number || ''}`, disabled: true },
 ])
 
+// Active dispute for this match (fetched via GET /tournaments/{id}/matches/{id}/dispute)
+const activeDisputeId = computed(() => disputesStore.matchDispute?.id ?? null)
+
+const userAlreadyCheckedIn = computed(() => {
+  if (!match.value || !userRegistrationId.value) return false
+  if (userRegistrationId.value === match.value.participant1_registration_id)
+    return !!match.value.participant1_checked_in_at
+  if (userRegistrationId.value === match.value.participant2_registration_id)
+    return !!match.value.participant2_checked_in_at
+  return false
+})
+
 // Template helpers
 function isWinner(registrationId: string | null | undefined): boolean {
   if (!registrationId || !match.value?.winner_registration_id) return false
   return match.value.winner_registration_id === registrationId
 }
 
-function getStatusColor(status: string): string {
-  const colors: Record<string, string> = {
-    pending: 'grey', scheduling: 'info', scheduled: 'primary',
-    checking_in: 'warning', pick_ban: 'info', in_progress: 'primary',
-    awaiting_result: 'warning', completed: 'success', cancelled: 'error',
-  }
-  return colors[status] || 'grey'
-}
-
-function getStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    pending: 'Pending', scheduling: 'Scheduling', scheduled: 'Scheduled',
-    checking_in: 'Check-in', pick_ban: 'Pick/Ban', in_progress: 'In Progress',
-    awaiting_result: 'Awaiting Result', completed: 'Completed', cancelled: 'Cancelled',
-  }
-  return labels[status] || status
-}
-
-function formatMatchFormat(format: string): string {
-  const formats: Record<string, string> = {
-    bo1: 'Best of 1', bo3: 'Best of 3', bo5: 'Best of 5', bo7: 'Best of 7',
-  }
-  return formats[format] || format
-}
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString()
-}
+// Match status/format helpers imported from @/utils/matchStatus
+// Alias to match template usage
+const getStatusColor = getMatchStatusColor
+const getStatusLabel = getMatchStatusLabel
 
 function getSubmitterName(claim: ResultClaimResponse): string {
   if (claim.submitted_by_registration_id === match.value?.participant1_registration_id) {
@@ -329,73 +497,96 @@ function getSubmitterName(claim: ResultClaimResponse): string {
   return match.value?.participant2_name || 'Opponent'
 }
 
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
+// Match check-in
+async function handleMatchCheckIn() {
+  if (!tournament.value || !match.value || !userRegistrationId.value) return
+  try {
+    await tournamentsStore.matchCheckIn(tournament.value.id, match.value.id, userRegistrationId.value)
+    snackbar.show('Checked in successfully!', 'success')
+    await fetchAll()
+  } catch {
+    snackbar.show(combinedError.value || 'Failed to check in', 'error')
+  }
+}
+
+// Forfeit handler
+function handleForfeit() {
+  if (!tournament.value || !match.value) return
+  confirmDialog.confirm({
+    title: 'Forfeit Match',
+    message: 'Are you sure you want to forfeit this match? This cannot be undone. Your opponent will be declared the winner.',
+    action: 'Forfeit',
+    color: 'error',
+    handler: async () => {
+      await tournamentsStore.forfeitMatch(tournament.value!.id, match.value!.id)
+      snackbar.show('Match forfeited.', 'warning')
+      await fetchAll()
+    },
+  })
 }
 
 // Thin event handlers
-async function handlePropose(times: string[], notes?: string) {
+async function handlePropose(times: string[]) {
   if (!tournament.value || !match.value) return
   try {
-    await schedulingStore.proposeSchedule(tournament.value.id, match.value.id, times, notes)
-    showSnackbar('Schedule proposal sent!', 'success')
+    await schedulingStore.proposeSchedule(tournament.value.id, match.value.id, times)
+    snackbar.show('Schedule proposal sent!', 'success')
     await fetchAll()
   } catch {
-    showSnackbar(combinedError.value || 'Failed to send proposal', 'error')
+    snackbar.show(combinedError.value || 'Failed to send proposal', 'error')
   }
 }
 
 async function handleAccept(selectedTime: string) {
-  if (!tournament.value || !match.value) return
+  if (!tournament.value || !match.value || !activeProposal.value) return
   try {
     await schedulingStore.acceptProposal(tournament.value.id, match.value.id, {
+      proposal_id: activeProposal.value.id,
       selected_time: selectedTime,
     })
-    showSnackbar('Schedule accepted!', 'success')
+    snackbar.show('Schedule accepted!', 'success')
     await fetchAll()
   } catch {
-    showSnackbar(combinedError.value || 'Failed to accept proposal', 'error')
+    snackbar.show(combinedError.value || 'Failed to accept proposal', 'error')
   }
 }
 
-async function handleReject(reason?: string) {
-  if (!tournament.value || !match.value) return
+async function handleReject(_reason?: string) {
+  if (!tournament.value || !match.value || !activeProposal.value) return
   try {
     await schedulingStore.rejectProposal(tournament.value.id, match.value.id, {
-      reason: reason ?? null,
+      proposal_id: activeProposal.value.id,
     })
-    showSnackbar('Proposal rejected', 'info')
+    snackbar.show('Proposal rejected', 'info')
     await fetchAll()
   } catch {
-    showSnackbar(combinedError.value || 'Failed to reject proposal', 'error')
+    snackbar.show(combinedError.value || 'Failed to reject proposal', 'error')
   }
 }
 
-async function handleCounter(times: string[], notes?: string) {
-  if (!tournament.value || !match.value) return
+async function handleCounter(times: string[]) {
+  if (!tournament.value || !match.value || !activeProposal.value) return
   try {
-    await schedulingStore.counterPropose(tournament.value.id, match.value.id, times, notes)
-    showSnackbar('Counter-proposal sent!', 'success')
+    await schedulingStore.counterPropose(tournament.value.id, match.value.id, activeProposal.value.id, times)
+    snackbar.show('Counter-proposal sent!', 'success')
     await fetchAll()
   } catch {
-    showSnackbar(combinedError.value || 'Failed to send counter-proposal', 'error')
+    snackbar.show(combinedError.value || 'Failed to send counter-proposal', 'error')
   }
 }
 
 async function handleResultSubmitted() {
-  showSnackbar('Result submitted! Waiting for opponent confirmation.', 'success')
+  snackbar.show('Result submitted! Waiting for opponent confirmation.', 'success')
   await fetchResultData()
 }
 
 async function handleResultConfirmed() {
-  showSnackbar('Result confirmed! Match completed.', 'success')
+  snackbar.show('Result confirmed! Match completed.', 'success')
   await fetchAll()
 }
 
 async function handleResultDisputed() {
-  showSnackbar('Result disputed. An admin will review.', 'warning')
+  snackbar.show('Result disputed. An admin will review.', 'warning')
   await fetchResultData()
 }
 

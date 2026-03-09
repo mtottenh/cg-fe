@@ -108,19 +108,10 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { ApiError } from '@/api'
-
-// Game summary type
-interface GameSummary {
-  id: string
-  display_name: string
-  short_name: string | null
-  description: string | null
-  icon_url: string | null
-  team_size_default: number
-  status: string
-  is_featured: boolean
-}
+import { api, ApiError } from '@/api'
+import { unwrapApi } from '@/stores/helpers/apiAction'
+import type { GameSummary } from '@/stores/games'
+import { useFormRules } from '@/composables/useFormRules'
 
 const props = defineProps<{
   modelValue: boolean
@@ -146,21 +137,7 @@ const form = ref({
   sort_order: 0,
 })
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
-
-const rules = {
-  required: (v: string) => !!v || 'Required',
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Max ${max} characters`,
-  url: (v: string) => {
-    if (!v) return true
-    try {
-      new URL(v)
-      return true
-    } catch {
-      return 'Must be a valid URL'
-    }
-  },
-}
+const rules = useFormRules()
 
 // Watch for game changes to populate form
 watch(() => props.game, (newGame) => {
@@ -216,32 +193,23 @@ async function save() {
       return
     }
 
-    const response = await fetch(`${API_URL}/v1/games/${props.game.id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify(body),
-    })
+    const result = await unwrapApi(api.PATCH('/v1/games/{game_id}', {
+      params: { path: { game_id: props.game.id } },
+      body,
+    }))
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to update game')
-    }
-
-    const result = await response.json()
-
+    const detail = result.data
     // Convert GameDetailResponse to GameSummary format
     const updatedGame: GameSummary = {
-      id: result.data.id,
-      display_name: result.data.display_name,
-      short_name: result.data.short_name,
-      description: result.data.description,
-      icon_url: result.data.icon_url,
-      team_size_default: result.data.team_size?.default || props.game.team_size_default,
-      status: result.data.status,
-      is_featured: result.data.is_featured,
+      id: detail.id,
+      display_name: detail.display_name,
+      short_name: detail.short_name,
+      slug: detail.slug || props.game!.slug,
+      description: detail.description,
+      icon_url: detail.icon_url,
+      team_size_default: detail.team_size?.default || props.game!.team_size_default,
+      status: detail.status,
+      is_featured: detail.is_featured,
     }
 
     emit('saved', updatedGame)

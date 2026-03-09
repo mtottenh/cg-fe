@@ -87,6 +87,14 @@
             </div>
           </template>
 
+          <!-- Registration Open but no eligible teams -->
+          <template v-else-if="tournament.is_registration_open && isTeamTournament && hasEligibleTeams === false">
+            <v-chip color="info">
+              <v-icon start>mdi-information</v-icon>
+              No Eligible Teams
+            </v-chip>
+          </template>
+
           <!-- Registration Coming Soon -->
           <template v-else-if="isRegistrationComingSoon">
             <v-chip color="info">
@@ -117,11 +125,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { TournamentResponse, TournamentRegistrationResponse } from '@/stores/tournaments'
+import { formatDateTime } from '@/utils/formatters'
 
 const props = defineProps<{
   tournament: TournamentResponse
   myRegistration: TournamentRegistrationResponse | null | undefined
   loading?: boolean
+  hasEligibleTeams?: boolean
 }>()
 
 defineEmits<{
@@ -131,7 +141,10 @@ defineEmits<{
 }>()
 
 const canRegister = computed(() => {
-  return props.tournament.is_registration_open && !props.myRegistration
+  if (!props.tournament.is_registration_open) return false
+  if (props.myRegistration) return false
+  if (isTeamTournament.value && props.hasEligibleTeams === false) return false
+  return true
 })
 
 const isTeamTournament = computed(() => {
@@ -150,8 +163,7 @@ const canCheckIn = computed(() => {
 const canWithdraw = computed(() => {
   if (!props.myRegistration) return false
   const status = props.tournament.status
-  // Note: backend uses 'registration' not 'registration_open'
-  return ['registration'].includes(status)
+  return ['registration', 'scheduled'].includes(status)
 })
 
 const cardColor = computed(() => {
@@ -209,7 +221,4 @@ const subtitle = computed(() => {
   return 'Registration for this tournament has closed'
 })
 
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString()
-}
 </script>

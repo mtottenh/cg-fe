@@ -228,6 +228,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useBansStore, type BanResponse } from '@/stores/bans'
+import { formatDateTime } from '@/utils/formatters'
 
 const props = defineProps<{
   modelValue: boolean
@@ -348,10 +349,6 @@ function getBanTypeColor(type: string): string {
     tournament: 'orange',
   }
   return colors[type] || 'grey'
-}
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString()
 }
 
 function formatRelativeTime(dateStr: string): string {

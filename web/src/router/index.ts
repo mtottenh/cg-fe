@@ -180,6 +180,26 @@ const router = createRouter({
           component: () => import('@/pages/admin/AdminTournamentDetailPage.vue'),
         },
         {
+          path: 'demos',
+          name: 'admin-demos',
+          component: () => import('@/pages/admin/AdminDemosPage.vue'),
+        },
+        {
+          path: 'demos/:id',
+          name: 'admin-demo-detail',
+          component: () => import('@/pages/admin/AdminDemoDetailPage.vue'),
+        },
+        {
+          path: 'disputes',
+          name: 'admin-disputes',
+          component: () => import('@/pages/admin/AdminDisputesPage.vue'),
+        },
+        {
+          path: 'result-reviews',
+          name: 'admin-result-reviews',
+          component: () => import('@/pages/admin/AdminResultReviewsPage.vue'),
+        },
+        {
           path: 'settings',
           name: 'admin-settings',
           component: () => import('@/pages/admin/AdminSettingsPage.vue'),

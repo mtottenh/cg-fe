@@ -37,9 +37,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { TournamentMatchResponse } from '@/stores/tournaments'
+import { formatDateTime } from '@/utils/formatters'
 
 const props = defineProps<{
   match: TournamentMatchResponse
+  schedulingMode?: 'live' | 'self_scheduled' | 'hybrid'
 }>()
 
 interface Step {
@@ -48,30 +50,45 @@ interface Step {
   icon: string
 }
 
-const steps = computed<Step[]>(() => {
-  const baseSteps: Step[] = [
-    { status: 'pending', label: 'Awaiting Participants', icon: 'mdi-account-clock' },
-    { status: 'scheduling', label: 'Scheduling', icon: 'mdi-calendar-clock' },
-    { status: 'scheduled', label: 'Scheduled', icon: 'mdi-calendar-check' },
-    { status: 'checking_in', label: 'Check-in', icon: 'mdi-checkbox-marked-circle-outline' },
-    { status: 'pick_ban', label: 'Pick/Ban', icon: 'mdi-sword-cross' },
-    { status: 'in_progress', label: 'In Progress', icon: 'mdi-play-circle' },
-    { status: 'awaiting_result', label: 'Awaiting Result', icon: 'mdi-clock-check' },
-    { status: 'completed', label: 'Completed', icon: 'mdi-trophy' },
-  ]
+const allSteps: Step[] = [
+  { status: 'pending', label: 'Awaiting Participants', icon: 'mdi-account-clock' },
+  { status: 'ready', label: 'Ready', icon: 'mdi-account-check' },
+  { status: 'scheduled', label: 'Scheduled', icon: 'mdi-calendar-check' },
+  { status: 'checking_in', label: 'Check-in', icon: 'mdi-checkbox-marked-circle-outline' },
+  { status: 'pick_ban', label: 'Pick/Ban', icon: 'mdi-sword-cross' },
+  { status: 'in_progress', label: 'In Progress', icon: 'mdi-play-circle' },
+  { status: 'awaiting_result', label: 'Awaiting Result', icon: 'mdi-clock-check' },
+  { status: 'completed', label: 'Completed', icon: 'mdi-trophy' },
+]
 
-  // Filter steps based on match flow
-  // If match is cancelled, show just that
+const liveSteps = new Set(['pending', 'ready', 'pick_ban', 'in_progress', 'awaiting_result', 'completed'])
+const selfScheduledSteps = new Set(['pending', 'ready', 'scheduled', 'checking_in', 'pick_ban', 'in_progress', 'awaiting_result', 'completed'])
+
+const steps = computed<Step[]>(() => {
   if (props.match.status === 'cancelled') {
     return [{ status: 'cancelled', label: 'Cancelled', icon: 'mdi-close-circle' }]
   }
 
-  return baseSteps
+  let filtered: Step[]
+  if (props.schedulingMode === 'live') {
+    filtered = allSteps.filter(s => liveSteps.has(s.status))
+  } else if (props.schedulingMode === 'self_scheduled') {
+    filtered = allSteps.filter(s => selfScheduledSteps.has(s.status))
+  } else {
+    filtered = [...allSteps]
+  }
+
+  // Only show pick_ban step if this match requires veto
+  if (!props.match.veto_required) {
+    filtered = filtered.filter(s => s.status !== 'pick_ban')
+  }
+
+  return filtered
 })
 
 const statusOrder = [
   'pending',
-  'scheduling',
+  'ready',
   'scheduled',
   'checking_in',
   'pick_ban',
@@ -94,7 +111,7 @@ function isStepCurrent(step: Step): boolean {
   return step.status === props.match.status
 }
 
-function getStepClass(step: Step, index: number): string {
+function getStepClass(step: Step, _index: number): string {
   if (isStepComplete(step)) return 'complete'
   if (isStepCurrent(step)) return 'current'
   return 'pending'
@@ -107,6 +124,8 @@ function getStepColor(step: Step): string {
     case 'checking_in':
     case 'awaiting_result':
       return 'warning'
+    case 'ready':
+      return 'info'
     case 'completed':
       return 'success'
     case 'cancelled':
@@ -132,9 +151,6 @@ function getStepTimestamp(step: Step): string | null {
   return null
 }
 
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString()
-}
 </script>
 
 <style scoped>

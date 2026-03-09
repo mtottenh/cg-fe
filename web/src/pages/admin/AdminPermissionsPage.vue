@@ -89,7 +89,7 @@
             </template>
 
             <template v-slot:item.description="{ item }">
-              <div class="text-truncate" style="max-width: 300px" :title="item.description">
+              <div class="text-truncate" style="max-width: 300px" :title="item.description ?? undefined">
                 {{ item.description || '-' }}
               </div>
             </template>
@@ -216,33 +216,17 @@
       {{ error }}
     </v-alert>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
-
     <!-- Delete Confirmation Dialog -->
-    <v-dialog v-model="deleteDialogOpen" max-width="400">
-      <v-card>
-        <v-card-title>Delete Role</v-card-title>
-        <v-card-text>
-          Are you sure you want to delete the role
-          <strong>{{ roleToDelete?.display_name }}</strong>?
-          This action cannot be undone.
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="deleteDialogOpen = false">Cancel</v-btn>
-          <v-btn
-            color="error"
-            variant="flat"
-            :loading="deleting"
-            @click="executeDeleteRole"
-          >
-            Delete
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <ConfirmDialog
+      :open="confirmDialog.open.value"
+      :title="confirmDialog.title.value"
+      :message="confirmDialog.message.value"
+      :action-label="confirmDialog.actionLabel.value"
+      :color="confirmDialog.color.value"
+      :loading="confirmDialog.loading.value"
+      @confirm="confirmDialog.execute"
+      @cancel="confirmDialog.cancel"
+    />
 
     <!-- Modals -->
     <RoleCreateEditModal
@@ -264,14 +248,14 @@ import { ref, computed, onMounted } from 'vue'
 import { useRbacStore, type RoleResponse, type PermissionResponse } from '@/stores/rbac'
 import RoleCreateEditModal from '@/components/admin/RoleCreateEditModal.vue'
 import RolePermissionsModal from '@/components/admin/RolePermissionsModal.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const rbacStore = useRbacStore()
 
 // State
 const activeTab = ref('roles')
-const deleteDialogOpen = ref(false)
-const roleToDelete = ref<RoleResponse | null>(null)
-const deleting = ref(false)
 
 // Modal state
 const roleModalOpen = ref(false)
@@ -280,9 +264,8 @@ const rolePermissionsModalOpen = ref(false)
 const selectedRoleForPermissions = ref<RoleResponse | null>(null)
 
 // Snackbar
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+const snackbar = useSnackbar()
+const confirmDialog = useConfirmDialog()
 
 // Computed
 const roles = computed(() => rbacStore.roles)
@@ -296,7 +279,7 @@ const permissionsByCategory = computed(() => {
     if (!grouped[perm.category]) {
       grouped[perm.category] = []
     }
-    grouped[perm.category].push(perm)
+    grouped[perm.category]!.push(perm)
   }
   return grouped
 })
@@ -330,7 +313,7 @@ function getCategoryColor(category: string): string {
     tournament: 'orange',
     admin: 'error',
   }
-  return colors[category] || 'grey'
+  return colors[category] ?? 'grey'
 }
 
 function openCreateRoleModal() {
@@ -349,38 +332,26 @@ function openRolePermissionsModal(role: RoleResponse) {
 }
 
 function confirmDeleteRole(role: RoleResponse) {
-  roleToDelete.value = role
-  deleteDialogOpen.value = true
-}
-
-async function executeDeleteRole() {
-  if (!roleToDelete.value) return
-
-  deleting.value = true
-  try {
-    await rbacStore.deleteRole(roleToDelete.value.id)
-    showSnackbar('Role deleted successfully', 'success')
-    deleteDialogOpen.value = false
-  } catch {
-    showSnackbar('Failed to delete role', 'error')
-  } finally {
-    deleting.value = false
-  }
+  confirmDialog.confirm({
+    title: 'Delete Role',
+    message: `Are you sure you want to delete the role ${role.display_name}? This action cannot be undone.`,
+    action: 'Delete',
+    color: 'error',
+    handler: async () => {
+      await rbacStore.deleteRole(role.id)
+      snackbar.show('Role deleted successfully', 'success')
+    },
+  })
 }
 
 function onRoleSaved() {
-  showSnackbar('Role saved successfully', 'success')
+  snackbar.show('Role saved successfully', 'success')
 }
 
 function onRolePermissionsUpdated() {
-  showSnackbar('Role permissions updated', 'success')
+  snackbar.show('Role permissions updated', 'success')
 }
 
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
-}
 
 onMounted(() => {
   loadData()

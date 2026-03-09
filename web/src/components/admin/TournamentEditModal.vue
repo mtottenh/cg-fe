@@ -123,7 +123,54 @@
                 density="comfortable"
               />
             </v-col>
+
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="form.default_map_veto_format"
+                :items="vetoFormatOptions"
+                item-title="title"
+                item-value="value"
+                label="Map Veto Format"
+                variant="outlined"
+                density="comfortable"
+                clearable
+                :loading="loadingGameDetail"
+                :hint="selectedVetoDescription || 'No veto format selected'"
+                persistent-hint
+                no-data-text="No veto formats available for this game"
+              >
+                <template v-slot:item="{ item, props: itemProps }">
+                  <v-list-item v-bind="itemProps">
+                    <v-list-item-subtitle>{{ item.raw.description }}</v-list-item-subtitle>
+                  </v-list-item>
+                </template>
+              </v-select>
+            </v-col>
+
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="form.side_selection_mode"
+                :items="sideSelectionModeOptions"
+                item-title="title"
+                item-value="value"
+                label="Side Selection Mode"
+                variant="outlined"
+                density="comfortable"
+                hint="How starting sides are determined for picked maps"
+                persistent-hint
+              />
+            </v-col>
           </v-row>
+
+          <!-- Map Pool Picker -->
+          <template v-if="gameDetail && gameDetail.maps && gameDetail.maps.length > 0">
+            <v-divider class="my-4" />
+            <MapPoolPicker
+              v-model="selectedMapIds"
+              :maps="gameDetail.maps"
+              :default-pool-ids="gameDefaultPoolIds"
+            />
+          </template>
 
           <v-divider class="my-4" />
 
@@ -266,8 +313,12 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useTournamentsStore, MATCH_FORMATS, WITHDRAWAL_POLICIES, getStatusColor, getStatusLabel, type TournamentResponse } from '@/stores/tournaments'
+import { useGamesStore, type GameDetail } from '@/stores/games'
+import { useFormRules } from '@/composables/useFormRules'
+import MapPoolPicker from '@/components/MapPoolPicker.vue'
 
 const tournamentsStore = useTournamentsStore()
+const gamesStore = useGamesStore()
 
 const props = defineProps<{
   modelValue: boolean
@@ -288,6 +339,41 @@ const error = ref<string | null>(null)
 const matchFormatOptions = MATCH_FORMATS
 const withdrawalPolicyOptions = WITHDRAWAL_POLICIES
 
+// Game detail for veto formats
+const gameDetail = ref<GameDetail | null>(null)
+const loadingGameDetail = ref(false)
+
+const vetoFormatOptions = computed(() => {
+  if (!gameDetail.value) return []
+  return gameDetail.value.map_pick_ban_formats.map(f => ({
+    title: f.display_name,
+    value: f.id,
+    description: f.description,
+  }))
+})
+
+const sideSelectionModeOptions = [
+  { title: 'Picker Chooses Side', value: 'picker_choice' },
+  { title: 'Coin Flip for Sides', value: 'coin_flip' },
+  { title: 'Knife Round (In-Game)', value: 'knife' },
+]
+
+const selectedVetoDescription = computed(() => {
+  if (!form.value.default_map_veto_format || !gameDetail.value) return null
+  const fmt = gameDetail.value.map_pick_ban_formats.find(f => f.id === form.value.default_map_veto_format)
+  return fmt?.description ?? null
+})
+
+// Map pool state
+const selectedMapIds = ref<string[]>([])
+const gameDefaultPoolIds = ref<string[]>([])
+const originalMapPoolIds = ref<string[]>([])
+
+const mapPoolIsCustom = computed(() => {
+  const sorted = (ids: string[]) => JSON.stringify([...ids].sort())
+  return sorted(selectedMapIds.value) !== sorted(gameDefaultPoolIds.value)
+})
+
 const form = ref({
   name: '',
   slug: '',
@@ -296,6 +382,8 @@ const form = ref({
   max_participants: 16,
   withdrawal_policy: 'forfeit',
   default_match_format: 'bo3',
+  default_map_veto_format: null as string | null,
+  side_selection_mode: 'picker_choice',
   registration_start: '',
   registration_end: '',
   starts_at: '',
@@ -335,32 +423,13 @@ const statusLabel = computed(() => props.tournament ? getStatusLabel(props.tourn
 
 const hasChanges = computed(() => {
   if (!originalForm.value) return false
-  return JSON.stringify(form.value) !== JSON.stringify(originalForm.value)
+  const formChanged = JSON.stringify(form.value) !== JSON.stringify(originalForm.value)
+  const sorted = (ids: string[]) => JSON.stringify([...ids].sort())
+  const poolChanged = sorted(selectedMapIds.value) !== sorted(originalMapPoolIds.value)
+  return formChanged || poolChanged
 })
 
-const rules = {
-  required: (v: string | number) => (v !== '' && v !== null && v !== undefined) || 'Required',
-  minLength: (min: number) => (v: string) => !v || v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
-  minValue: (min: number) => (v: number) => v >= min || `Minimum value is ${min}`,
-  maxValue: (max: number) => (v: number) => v <= max || `Maximum value is ${max}`,
-  slug: (v: string) => {
-    if (!v) return true
-    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(v)) {
-      return 'Must be lowercase letters, numbers, and hyphens. Must start and end with letter or number.'
-    }
-    return true
-  },
-  url: (v: string) => {
-    if (!v) return true
-    try {
-      new URL(v)
-      return true
-    } catch {
-      return 'Must be a valid URL'
-    }
-  },
-}
+const rules = useFormRules()
 
 // Format datetime for API (ISO 8601)
 function formatDateTimeForApi(datetime: string): string | null {
@@ -377,7 +446,7 @@ function formatDateTimeForInput(datetime: string | null | undefined): string {
 }
 
 // Populate form when tournament changes
-watch(() => props.tournament, (t) => {
+watch(() => props.tournament, async (t) => {
   if (t) {
     form.value = {
       name: t.name,
@@ -387,6 +456,8 @@ watch(() => props.tournament, (t) => {
       max_participants: t.max_participants,
       withdrawal_policy: t.withdrawal_policy,
       default_match_format: t.default_match_format,
+      default_map_veto_format: t.default_map_veto_format ?? null,
+      side_selection_mode: (t as any).settings?.side_selection_mode ?? (t as any).side_selection_mode ?? 'picker_choice',
       registration_start: formatDateTimeForInput(t.registration_start),
       registration_end: formatDateTimeForInput(t.registration_end),
       starts_at: formatDateTimeForInput(t.starts_at),
@@ -398,6 +469,34 @@ watch(() => props.tournament, (t) => {
     }
     originalForm.value = { ...form.value }
     error.value = null
+
+    // Fetch game detail and tournament map pool
+    gameDetail.value = null
+    selectedMapIds.value = []
+    gameDefaultPoolIds.value = []
+    originalMapPoolIds.value = []
+    loadingGameDetail.value = true
+    try {
+      const [gd, poolResult] = await Promise.all([
+        gamesStore.fetchGame(t.game_id),
+        tournamentsStore.getTournamentMapPool(t.id).catch(() => null),
+      ])
+      gameDetail.value = gd
+      // Set game default pool
+      gameDefaultPoolIds.value = (gd as any)?.map_pool || []
+      // Set selected from tournament pool (or game default)
+      if (poolResult && poolResult.source === 'tournament') {
+        selectedMapIds.value = [...poolResult.maps]
+        originalMapPoolIds.value = [...poolResult.maps]
+      } else {
+        selectedMapIds.value = [...gameDefaultPoolIds.value]
+        originalMapPoolIds.value = [...gameDefaultPoolIds.value]
+      }
+    } catch {
+      // Non-critical
+    } finally {
+      loadingGameDetail.value = false
+    }
   }
 }, { immediate: true })
 
@@ -421,6 +520,7 @@ async function save() {
       max_participants: form.value.max_participants !== props.tournament.max_participants ? form.value.max_participants : undefined,
       withdrawal_policy: form.value.withdrawal_policy !== props.tournament.withdrawal_policy ? form.value.withdrawal_policy : undefined,
       default_match_format: form.value.default_match_format !== props.tournament.default_match_format ? form.value.default_match_format : undefined,
+      default_map_veto_format: form.value.default_map_veto_format !== (props.tournament.default_map_veto_format ?? null) ? (form.value.default_map_veto_format || null) : undefined,
       registration_start: formatDateTimeForApi(form.value.registration_start),
       registration_end: formatDateTimeForApi(form.value.registration_end),
       starts_at: formatDateTimeForApi(form.value.starts_at),
@@ -429,7 +529,21 @@ async function save() {
       check_in_start: form.value.check_in_required ? formatDateTimeForApi(form.value.check_in_start) : undefined,
       check_in_end: form.value.check_in_required ? formatDateTimeForApi(form.value.check_in_end) : undefined,
       rules_url: form.value.rules_url || undefined,
+      settings: {
+        side_selection_mode: form.value.side_selection_mode,
+      },
     })
+
+    // Save map pool changes
+    const sorted = (ids: string[]) => JSON.stringify([...ids].sort())
+    if (sorted(selectedMapIds.value) !== sorted(originalMapPoolIds.value)) {
+      if (!mapPoolIsCustom.value) {
+        // Revert to game default — delete tournament override
+        await tournamentsStore.deleteTournamentMapPool(props.tournament.id).catch(() => {})
+      } else if (selectedMapIds.value.length > 0) {
+        await tournamentsStore.setTournamentMapPool(props.tournament.id, selectedMapIds.value)
+      }
+    }
 
     emit('saved')
     close()

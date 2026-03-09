@@ -42,12 +42,12 @@
             />
           </v-col>
 
-          <!-- Game Filter (UI placeholder - requires backend) -->
+          <!-- Game Filter -->
           <v-col cols="12" md="3">
             <v-select
               v-model="gameFilter"
               :items="games"
-              item-title="name"
+              item-title="display_name"
               item-value="id"
               label="Game"
               prepend-inner-icon="mdi-gamepad-variant"
@@ -56,20 +56,10 @@
               clearable
               hide-details
               :loading="loadingGames"
-              disabled
-            >
-              <template v-slot:prepend-item>
-                <v-list-item density="compact">
-                  <v-list-item-subtitle class="text-caption text-warning">
-                    Filter requires backend support
-                  </v-list-item-subtitle>
-                </v-list-item>
-                <v-divider />
-              </template>
-            </v-select>
+            />
           </v-col>
 
-          <!-- Team Status Filter (UI placeholder - requires backend) -->
+          <!-- Team Status Filter -->
           <v-col cols="12" md="3">
             <v-select
               v-model="teamStatusFilter"
@@ -80,17 +70,7 @@
               variant="outlined"
               clearable
               hide-details
-              disabled
-            >
-              <template v-slot:prepend-item>
-                <v-list-item density="compact">
-                  <v-list-item-subtitle class="text-caption text-warning">
-                    Filter requires backend support
-                  </v-list-item-subtitle>
-                </v-list-item>
-                <v-divider />
-              </template>
-            </v-select>
+            />
           </v-col>
         </v-row>
 
@@ -112,6 +92,22 @@
             @click:close="countryFilter = ''"
           >
             Country: {{ countryFilter }}
+          </v-chip>
+          <v-chip
+            v-if="gameFilter"
+            size="small"
+            closable
+            @click:close="gameFilter = null"
+          >
+            Game: {{ games.find(g => g.id === gameFilter)?.display_name || gameFilter }}
+          </v-chip>
+          <v-chip
+            v-if="teamStatusFilter"
+            size="small"
+            closable
+            @click:close="teamStatusFilter = null"
+          >
+            Team: {{ teamStatusOptions.find(o => o.value === teamStatusFilter)?.title || teamStatusFilter }}
           </v-chip>
           <v-btn
             v-if="hasActiveFilters"
@@ -146,7 +142,7 @@
 
       <v-data-table
         :headers="headers"
-        :items="filteredPlayers"
+        :items="players"
         :items-per-page="pagination.per_page"
         class="elevation-0"
       >
@@ -220,7 +216,7 @@
             />
           </div>
           <div class="text-center text-caption text-grey pb-2">
-            Showing {{ filteredPlayers.length }} of {{ pagination.total_items }} players
+            Showing {{ players.length }} of {{ pagination.total_items }} players
           </div>
         </template>
       </v-data-table>
@@ -341,6 +337,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { watchDebounced } from '@vueuse/core'
 import { api, ApiError } from '@/api'
 import { useGamesStore } from '@/stores/games'
+import { formatDate } from '@/utils/formatters'
 import type { components } from '@/api/types'
 
 type PlayerSummary = components['schemas']['PlayerSearchResponse']
@@ -380,13 +377,6 @@ const hasActiveFilters = computed(() => {
   return !!search.value || !!countryFilter.value || !!gameFilter.value || !!teamStatusFilter.value
 })
 
-// Client-side country filtering (until backend supports it)
-const filteredPlayers = computed(() => {
-  if (!countryFilter.value) return players.value
-  const filter = countryFilter.value.toUpperCase()
-  return players.value.filter(p => p.country_code?.toUpperCase() === filter)
-})
-
 // Detail modal
 const detailModalOpen = ref(false)
 const selectedPlayer = ref<PlayerSummary | null>(null)
@@ -404,10 +394,6 @@ const headers = [
 ]
 
 // Helpers
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString()
-}
-
 function getRoleColor(role: string): string {
   switch (role) {
     case 'captain':
@@ -436,7 +422,16 @@ async function fetchPlayers(page = 1, searchQuery = '') {
 
   try {
     const { data, error: apiError } = await api.GET('/v1/players', {
-      params: { query: { page, per_page: 20, q: searchQuery || undefined } },
+      params: {
+        query: {
+          page,
+          per_page: 20,
+          q: searchQuery || undefined,
+          game_id: gameFilter.value || undefined,
+          team_status: teamStatusFilter.value || undefined,
+          country_code: countryFilter.value?.toUpperCase() || undefined,
+        },
+      },
     })
 
     if (apiError) {
@@ -520,10 +515,10 @@ watchDebounced(
   { debounce: 300 }
 )
 
-// Watch for page changes (without debounce)
-watch(currentPage, (_newPage) => {
-  // Only fetch if not triggered by search (search already fetches)
-  // This is handled by goToPage, so this watcher is informational
+// Watch filter changes — reset to page 1 and re-fetch
+watch([gameFilter, teamStatusFilter, countryFilter], () => {
+  currentPage.value = 1
+  fetchPlayers(1, search.value)
 })
 
 onMounted(async () => {

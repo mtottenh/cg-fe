@@ -190,7 +190,7 @@ export const useRbacStore = defineStore('rbac', () => {
       if (!grouped[role.category]) {
         grouped[role.category] = []
       }
-      grouped[role.category].push(role)
+      grouped[role.category]!.push(role)
     }
     return grouped
   }
@@ -201,7 +201,7 @@ export const useRbacStore = defineStore('rbac', () => {
       if (!grouped[permission.category]) {
         grouped[permission.category] = []
       }
-      grouped[permission.category].push(permission)
+      grouped[permission.category]!.push(permission)
     }
     return grouped
   }

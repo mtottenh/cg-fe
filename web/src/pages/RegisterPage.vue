@@ -69,6 +69,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useFormRules } from '@/composables/useFormRules'
 
 const authStore = useAuthStore()
 
@@ -84,11 +85,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const success = ref(false)
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => v.length >= min || `Minimum ${min} characters`,
-  email: (v: string) => /.+@.+\..+/.test(v) || 'Must be a valid email',
-}
+const rules = useFormRules()
 
 async function handleSubmit() {
   loading.value = true

@@ -4,9 +4,31 @@
  * Uses real admin authentication instead of dev-token.
  */
 
+import { writeFileSync, mkdirSync } from 'fs'
+import { join } from 'path'
 import { testUsers } from './fixtures/test-data'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
+
+/** Shared seeded state persisted for test specs */
+export interface SeededState {
+  adminToken: string
+  player2Token: string | null
+  player2Id: string | null
+  tournamentId: string | null
+  matchIds: string[]
+  leagueId: string | null
+  seasonId: string | null
+  teamId: string | null
+}
+
+const SEEDED_STATE_PATH = join(__dirname, '.seeded-state.json')
+
+function persistSeededState(state: SeededState): void {
+  mkdirSync(join(__dirname), { recursive: true })
+  writeFileSync(SEEDED_STATE_PATH, JSON.stringify(state, null, 2))
+  console.log(`Seeded state persisted to ${SEEDED_STATE_PATH}`)
+}
 
 interface Tournament {
   id: string
@@ -506,6 +528,128 @@ async function ensureTeamRegistered(token: string, tournamentId: string, teamId:
   }
 }
 
+/**
+ * Register (or login) the second test player for multi-player E2E flows.
+ * Returns { token, playerId } or nulls if it fails.
+ */
+async function seedPlayer2(): Promise<{ token: string; playerId: string } | null> {
+  console.log('Seeding second test player (e2e_player2)...')
+
+  // Try to login first — player may already exist from a previous run
+  const loginResponse = await fetch(`${API_URL}/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(testUsers.player2Login),
+  })
+
+  if (loginResponse.ok) {
+    const loginData = await loginResponse.json()
+    console.log('Player 2 already exists, logged in')
+    return {
+      token: loginData.data.access_token,
+      playerId: loginData.data.player_id,
+    }
+  }
+
+  // Register new player
+  const registerResponse = await fetch(`${API_URL}/v1/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(testUsers.player2),
+  })
+
+  if (!registerResponse.ok) {
+    const error = await registerResponse.text()
+    console.error(`Failed to register player 2 (${registerResponse.status}): ${error}`)
+    return null
+  }
+
+  const registerData = await registerResponse.json()
+  console.log('Player 2 registered successfully')
+  return {
+    token: registerData.data.access_token,
+    playerId: registerData.data.player?.id || registerData.data.player_id,
+  }
+}
+
+/**
+ * Register a player for an individual tournament.
+ */
+async function registerPlayerForTournament(
+  token: string,
+  tournamentId: string,
+  label: string
+): Promise<string | null> {
+  const response = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/registrations/player`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (response.ok) {
+    const data = await response.json()
+    const regId = data.data?.id || data.id
+    console.log(`${label} registered for tournament (registration: ${regId})`)
+    return regId
+  } else if (response.status === 409) {
+    console.log(`${label} already registered for tournament`)
+    return 'already-registered'
+  } else {
+    const error = await response.text()
+    console.error(`Failed to register ${label} for tournament (${response.status}): ${error}`)
+    return null
+  }
+}
+
+/**
+ * Close registration and start the tournament to generate bracket matches.
+ * Returns array of match IDs.
+ */
+async function startTournamentAndGetMatches(
+  token: string,
+  tournamentId: string
+): Promise<string[]> {
+  // Close registration
+  const closeResponse = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/close-registration`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (closeResponse.ok) {
+    console.log('Tournament registration closed')
+  } else {
+    console.log('Could not close registration (may already be closed)')
+  }
+
+  // Start tournament to generate bracket
+  const startResponse = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/start`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (startResponse.ok) {
+    console.log('Tournament started — bracket generated')
+  } else {
+    console.log('Could not start tournament (may already be started)')
+  }
+
+  // Fetch generated matches
+  const matchesResponse = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/matches`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  if (!matchesResponse.ok) {
+    console.log('Could not fetch matches')
+    return []
+  }
+
+  const matchesData = await matchesResponse.json()
+  const matches = matchesData.data || []
+  const matchIds = matches.map((m: { id: string }) => m.id)
+  console.log(`Found ${matchIds.length} matches: ${matchIds.join(', ')}`)
+  return matchIds
+}
+
 async function globalSetup(): Promise<void> {
   console.log('\n========================================')
   console.log('E2E Global Setup - Seeding Test Data')
@@ -524,8 +668,32 @@ async function globalSetup(): Promise<void> {
     const adminToken = await getAdminToken()
     console.log('Admin authentication successful')
 
+    // Seed second test player
+    const player2 = await seedPlayer2()
+
     // Seed tournaments with real auth
     await seedTournaments(adminToken)
+
+    // Get tournament ID for match seeding
+    let tournamentId: string | null = null
+    let matchIds: string[] = []
+    const tournamentResponse = await fetch(`${API_URL}/v1/tournaments/slug/e2e-test-tournament`)
+    if (tournamentResponse.ok) {
+      const tournamentData = await tournamentResponse.json()
+      tournamentId = tournamentData.data?.id || tournamentData.id
+    }
+
+    // Register both players for individual tournament and generate matches
+    if (tournamentId && player2) {
+      // Register admin (player 1)
+      await registerPlayerForTournament(adminToken, tournamentId, 'Admin (Player 1)')
+
+      // Register player 2
+      await registerPlayerForTournament(player2.token, tournamentId, 'Player 2')
+
+      // Close registration and start tournament to generate bracket
+      matchIds = await startTournamentAndGetMatches(adminToken, tournamentId)
+    }
 
     // Seed league and season for team management tests
     const { leagueId, seasonId } = await seedLeagueAndSeason(adminToken)
@@ -540,6 +708,18 @@ async function globalSetup(): Promise<void> {
     if (leagueId && teamId) {
       await seedTeamTournament(adminToken, leagueId, teamId)
     }
+
+    // Persist seeded state for test specs
+    persistSeededState({
+      adminToken,
+      player2Token: player2?.token ?? null,
+      player2Id: player2?.playerId ?? null,
+      tournamentId,
+      matchIds,
+      leagueId,
+      seasonId,
+      teamId,
+    })
 
     console.log('\n========================================')
     console.log('Global Setup Complete')

@@ -47,6 +47,13 @@
         </template>
       </v-row>
 
+      <!-- Action Items Widget -->
+      <v-row class="mb-2">
+        <v-col cols="12">
+          <CaptainActionsWidget />
+        </v-col>
+      </v-row>
+
       <!-- My Hub Section -->
       <v-row>
         <!-- My Teams Widget -->
@@ -126,6 +133,75 @@
               <div v-else class="text-center py-4">
                 <v-icon size="32" color="grey">mdi-email-outline</v-icon>
                 <p class="text-caption text-medium-emphasis mt-2">No pending invitations</p>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+
+      <!-- Upcoming Matches Widget -->
+      <v-row class="mt-2">
+        <v-col cols="12">
+          <v-card>
+            <v-card-title class="d-flex align-center">
+              <v-icon start>mdi-sword-cross</v-icon>
+              Upcoming Matches
+              <v-badge
+                v-if="upcomingMatches.length > 0"
+                :content="upcomingMatches.length"
+                color="primary"
+                inline
+                class="ml-2"
+              />
+              <v-spacer />
+              <v-btn
+                variant="text"
+                size="small"
+                :to="{ name: 'tournaments', query: { status: 'in_progress' } }"
+              >
+                View All
+              </v-btn>
+            </v-card-title>
+            <v-card-text>
+              <v-progress-linear v-if="loadingMatches" indeterminate class="mb-2" />
+              <template v-else-if="upcomingMatches.length > 0">
+                <v-list density="compact">
+                  <v-list-item
+                    v-for="um in upcomingMatches.slice(0, 3)"
+                    :key="um.match.id"
+                    :to="{
+                      name: 'match-detail',
+                      params: { tournamentSlug: um.tournamentSlug, matchId: um.match.id },
+                    }"
+                  >
+                    <template v-slot:prepend>
+                      <v-avatar size="32" color="primary" rounded="lg">
+                        <v-icon size="16">mdi-sword-cross</v-icon>
+                      </v-avatar>
+                    </template>
+                    <v-list-item-title>
+                      {{ um.match.participant1_name || 'TBD' }} vs {{ um.match.participant2_name || 'TBD' }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ um.tournamentName }}
+                      <template v-if="um.match.scheduled_at">
+                        &middot; {{ formatMatchTime(um.match.scheduled_at) }}
+                      </template>
+                    </v-list-item-subtitle>
+                    <template v-slot:append>
+                      <v-chip :color="matchStatusColor(um.match.status)" size="x-small" variant="tonal">
+                        {{ matchStatusLabel(um.match.status) }}
+                      </v-chip>
+                    </template>
+                  </v-list-item>
+                </v-list>
+              </template>
+              <div v-else class="text-center py-4">
+                <v-icon size="32" color="grey">mdi-sword-cross</v-icon>
+                <p class="text-caption text-medium-emphasis mt-2">No upcoming matches</p>
+                <v-btn variant="tonal" size="small" :to="{ name: 'tournaments' }" class="mt-2">
+                  Browse Tournaments
+                </v-btn>
               </div>
             </v-card-text>
           </v-card>
@@ -231,6 +307,19 @@ import { useAuthStore } from '@/stores/auth'
 import { useGamesStore } from '@/stores/games'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { useLeaguesStore } from '@/stores/leagues'
+import { api } from '@/api'
+import { unwrapApi } from '@/stores/helpers'
+import type { components } from '@/api/types'
+import CaptainActionsWidget from '@/components/CaptainActionsWidget.vue'
+
+type TournamentMatchResponse = components['schemas']['TournamentMatchResponse']
+type TournamentRegistrationResponse = components['schemas']['TournamentRegistrationResponse']
+
+interface UpcomingMatch {
+  match: TournamentMatchResponse
+  tournamentName: string
+  tournamentSlug: string
+}
 
 const authStore = useAuthStore()
 const gamesStore = useGamesStore()
@@ -239,7 +328,19 @@ const leaguesStore = useLeaguesStore()
 
 const loadingTeams = ref(false)
 const loadingInvitations = ref(false)
+const loadingMatches = ref(false)
 const showLoginPrompt = ref(false)
+const upcomingMatches = ref<UpcomingMatch[]>([])
+
+const ACTIVE_MATCH_STATUSES = ['pending', 'scheduling', 'scheduled', 'checking_in', 'in_progress']
+
+const matchStatusMap: Record<string, { color: string; label: string }> = {
+  pending: { color: 'grey', label: 'Pending' },
+  scheduling: { color: 'info', label: 'Scheduling' },
+  scheduled: { color: 'warning', label: 'Scheduled' },
+  checking_in: { color: 'orange', label: 'Check-in' },
+  in_progress: { color: 'primary', label: 'Live' },
+}
 
 const activeGames = computed(() => gamesStore.games.filter(g => g.status === 'active'))
 const myTeams = computed(() => leagueTeamsStore.myTeams)
@@ -266,8 +367,96 @@ onMounted(async () => {
       loadingTeams.value = false
       loadingInvitations.value = false
     }
+
+    // Fetch upcoming matches (non-blocking, uses API directly to avoid overwriting store state)
+    fetchUpcomingMatches()
   }
 })
+
+async function fetchUpcomingMatches() {
+  if (!authStore.playerId) return
+
+  loadingMatches.value = true
+  try {
+    // Get live tournaments
+    const tournamentsResult = await unwrapApi(api.GET('/v1/tournaments', {
+      params: { query: { status: 'in_progress', per_page: 5 } },
+    }))
+    const liveTournaments = tournamentsResult.data
+
+    if (liveTournaments.length === 0) return
+
+    // For each tournament, fetch registrations and matches in parallel
+    const results = await Promise.all(
+      liveTournaments.map(async (tournament) => {
+        try {
+          const [regsResult, matchesResult] = await Promise.all([
+            unwrapApi(api.GET('/v1/tournaments/{tournament_id}/registrations', {
+              params: {
+                path: { tournament_id: tournament.id },
+                query: { per_page: 100 },
+              },
+            })),
+            unwrapApi(api.GET('/v1/tournaments/{tournament_id}/matches', {
+              params: { path: { tournament_id: tournament.id } },
+            })),
+          ])
+
+          const regs: TournamentRegistrationResponse[] = regsResult.data
+          const matches: TournamentMatchResponse[] = matchesResult.data
+
+          // Find the player's registration in this tournament
+          const myReg = regs.find(r => r.player_id === authStore.playerId)
+          if (!myReg) return []
+
+          // Filter matches where the player is a participant with an active status
+          return matches
+            .filter(
+              m =>
+                ACTIVE_MATCH_STATUSES.includes(m.status) &&
+                (m.participant1_registration_id === myReg.id ||
+                  m.participant2_registration_id === myReg.id)
+            )
+            .map(m => ({
+              match: m,
+              tournamentName: tournament.name,
+              tournamentSlug: tournament.slug,
+            }))
+        } catch (e) {
+          console.error('Failed to fetch matches for tournament:', e)
+          return []
+        }
+      })
+    )
+
+    upcomingMatches.value = results.flat()
+  } catch (e) {
+    console.error('Failed to fetch upcoming matches:', e)
+  } finally {
+    loadingMatches.value = false
+  }
+}
+
+function matchStatusColor(status: string): string {
+  return matchStatusMap[status]?.color ?? 'grey'
+}
+
+function matchStatusLabel(status: string): string {
+  return matchStatusMap[status]?.label ?? status
+}
+
+function formatMatchTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = date.getTime() - now.getTime()
+  const diffHours = diffMs / (1000 * 60 * 60)
+
+  if (diffHours < 0) return 'Started'
+  if (diffHours < 1) return `in ${Math.round(diffMs / 60000)}m`
+  if (diffHours < 24) return `in ${Math.round(diffHours)}h`
+
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
 
 function getLeagueCountForGame(gameId: string): number {
   return leaguesStore.leagues.filter(l => l.game_id === gameId).length

@@ -96,6 +96,7 @@ function handleDrop(e: DragEvent) {
     }
   } else {
     const file = files[0]
+    if (!file) return
     if (validateFile(file)) {
       emit('file-selected', file)
     }
@@ -114,6 +115,7 @@ function handleFileChange(e: Event) {
     }
   } else {
     const file = files[0]
+    if (!file) return
     if (validateFile(file)) {
       emit('file-selected', file)
     }

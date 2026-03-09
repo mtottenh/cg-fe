@@ -253,7 +253,56 @@
                 </template>
               </v-select>
             </v-col>
+
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="form.default_map_veto_format"
+                :items="vetoFormatOptions"
+                item-title="title"
+                item-value="value"
+                label="Map Veto Format"
+                variant="outlined"
+                density="comfortable"
+                clearable
+                :disabled="!form.game_id || loadingGameDetail"
+                :loading="loadingGameDetail"
+                :hint="selectedVetoDescription || 'Select a game first to see available formats'"
+                persistent-hint
+                no-data-text="No veto formats available for this game"
+              >
+                <template v-slot:item="{ item, props: itemProps }">
+                  <v-list-item v-bind="itemProps">
+                    <v-list-item-subtitle>{{ item.raw.description }}</v-list-item-subtitle>
+                  </v-list-item>
+                </template>
+              </v-select>
+            </v-col>
+
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="form.side_selection_mode"
+                :items="sideSelectionModeOptions"
+                item-title="title"
+                item-value="value"
+                label="Side Selection Mode"
+                variant="outlined"
+                density="comfortable"
+                :disabled="!form.game_id"
+                hint="How starting sides are determined for picked maps"
+                persistent-hint
+              />
+            </v-col>
           </v-row>
+
+          <!-- Map Pool Picker -->
+          <template v-if="gameDetail && gameDetail.maps && gameDetail.maps.length > 0">
+            <v-divider class="my-4" />
+            <MapPoolPicker
+              v-model="selectedMapIds"
+              :maps="gameDetail.maps"
+              :default-pool-ids="gameDefaultPoolIds"
+            />
+          </template>
 
           <v-divider class="my-4" />
 
@@ -379,7 +428,9 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useTournamentsStore, TOURNAMENT_FORMATS, PARTICIPANT_TYPES, REGISTRATION_TYPES, SCHEDULING_MODES, MATCH_FORMATS, WITHDRAWAL_POLICIES } from '@/stores/tournaments'
-import type { GameSummary } from '@/stores/games'
+import { useGamesStore, type GameSummary, type GameDetail } from '@/stores/games'
+import { useFormRules } from '@/composables/useFormRules'
+import MapPoolPicker from '@/components/MapPoolPicker.vue'
 
 // League and season types for selection
 interface LeagueSummary {
@@ -397,6 +448,7 @@ interface SeasonSummary {
 }
 
 const tournamentsStore = useTournamentsStore()
+const gamesStore = useGamesStore()
 
 const props = defineProps<{
   modelValue: boolean
@@ -428,6 +480,40 @@ const activeGames = computed(() => {
   return props.games.filter(g => g.status === 'active')
 })
 
+// Game detail for veto formats
+const gameDetail = ref<GameDetail | null>(null)
+const loadingGameDetail = ref(false)
+
+const vetoFormatOptions = computed(() => {
+  if (!gameDetail.value) return []
+  return gameDetail.value.map_pick_ban_formats.map(f => ({
+    title: f.display_name,
+    value: f.id,
+    description: f.description,
+  }))
+})
+
+const sideSelectionModeOptions = [
+  { title: 'Picker Chooses Side', value: 'picker_choice' },
+  { title: 'Coin Flip for Sides', value: 'coin_flip' },
+  { title: 'Knife Round (In-Game)', value: 'knife' },
+]
+
+const selectedVetoDescription = computed(() => {
+  if (!form.value.default_map_veto_format || !gameDetail.value) return null
+  const fmt = gameDetail.value.map_pick_ban_formats.find(f => f.id === form.value.default_map_veto_format)
+  return fmt?.description ?? null
+})
+
+// Map pool state
+const selectedMapIds = ref<string[]>([])
+const gameDefaultPoolIds = ref<string[]>([])
+
+const mapPoolIsCustom = computed(() => {
+  const sorted = (ids: string[]) => JSON.stringify([...ids].sort())
+  return sorted(selectedMapIds.value) !== sorted(gameDefaultPoolIds.value)
+})
+
 const form = ref({
   game_id: '',
   league_id: '' as string | null,
@@ -443,6 +529,8 @@ const form = ref({
   registration_type: 'open',
   withdrawal_policy: 'forfeit',
   default_match_format: 'bo3',
+  default_map_veto_format: null as string | null,
+  side_selection_mode: 'picker_choice',
   scheduling_mode: 'live',
   registration_start: '',
   registration_end: '',
@@ -465,10 +553,28 @@ const availableSeasons = computed(() => {
   return props.seasons.filter(s => s.league_id === form.value.league_id && s.status === 'active')
 })
 
-// Reset league/season when game changes
-watch(() => form.value.game_id, () => {
+// Reset league/season and fetch game detail when game changes
+watch(() => form.value.game_id, async (gameId) => {
   form.value.league_id = null
   form.value.season_id = null
+  form.value.default_map_veto_format = null
+  gameDetail.value = null
+  selectedMapIds.value = []
+  gameDefaultPoolIds.value = []
+  if (gameId) {
+    loadingGameDetail.value = true
+    try {
+      gameDetail.value = await gamesStore.fetchGame(gameId)
+      // Initialize map pool from game default
+      const pool = (gameDetail.value as any)?.map_pool || []
+      selectedMapIds.value = [...pool]
+      gameDefaultPoolIds.value = [...pool]
+    } catch {
+      // Non-critical — veto format select will just be empty
+    } finally {
+      loadingGameDetail.value = false
+    }
+  }
 })
 
 // Reset season when league changes
@@ -476,29 +582,7 @@ watch(() => form.value.league_id, () => {
   form.value.season_id = null
 })
 
-const rules = {
-  required: (v: string | number) => (v !== '' && v !== null && v !== undefined) || 'Required',
-  minLength: (min: number) => (v: string) => !v || v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
-  minValue: (min: number) => (v: number) => v >= min || `Minimum value is ${min}`,
-  maxValue: (max: number) => (v: number) => v <= max || `Maximum value is ${max}`,
-  slug: (v: string) => {
-    if (!v) return true
-    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(v)) {
-      return 'Must be lowercase letters, numbers, and hyphens. Must start and end with letter or number.'
-    }
-    return true
-  },
-  url: (v: string) => {
-    if (!v) return true
-    try {
-      new URL(v)
-      return true
-    } catch {
-      return 'Must be a valid URL'
-    }
-  },
-}
+const rules = useFormRules()
 
 // Auto-generate slug from name
 function generateSlug() {
@@ -536,6 +620,7 @@ watch(() => props.modelValue, (isOpen) => {
       registration_type: 'open',
       withdrawal_policy: 'forfeit',
       default_match_format: 'bo3',
+      default_map_veto_format: null,
       scheduling_mode: 'live',
       registration_start: '',
       registration_end: '',
@@ -545,6 +630,9 @@ watch(() => props.modelValue, (isOpen) => {
       check_in_end: '',
       rules_url: '',
     }
+    gameDetail.value = null
+    selectedMapIds.value = []
+    gameDefaultPoolIds.value = []
     error.value = null
   }
 })
@@ -561,7 +649,7 @@ async function save() {
   error.value = null
 
   try {
-    await tournamentsStore.createTournament({
+    const created = await tournamentsStore.createTournament({
       game_id: form.value.game_id,
       league_id: form.value.league_id || undefined,
       season_id: form.value.season_id || undefined,
@@ -576,6 +664,7 @@ async function save() {
       registration_type: form.value.registration_type,
       withdrawal_policy: form.value.withdrawal_policy,
       default_match_format: form.value.default_match_format,
+      default_map_veto_format: form.value.default_map_veto_format || null,
       scheduling_mode: form.value.scheduling_mode,
       registration_start: formatDateTimeForApi(form.value.registration_start),
       registration_end: formatDateTimeForApi(form.value.registration_end),
@@ -584,7 +673,19 @@ async function save() {
       check_in_start: form.value.check_in_required ? formatDateTimeForApi(form.value.check_in_start) : null,
       check_in_end: form.value.check_in_required ? formatDateTimeForApi(form.value.check_in_end) : null,
       rules_url: form.value.rules_url || null,
+      settings: {
+        side_selection_mode: form.value.side_selection_mode,
+      },
     })
+
+    // Save custom map pool if different from game default
+    if (created && mapPoolIsCustom.value && selectedMapIds.value.length > 0) {
+      try {
+        await tournamentsStore.setTournamentMapPool(created.id, selectedMapIds.value)
+      } catch {
+        // Non-critical — tournament was created, pool can be set later
+      }
+    }
 
     emit('created')
     close()

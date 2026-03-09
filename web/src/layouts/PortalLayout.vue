@@ -13,6 +13,7 @@
         <v-chip v-if="authStore.isDevMode" color="warning" size="small" class="mr-2">
           DEV
         </v-chip>
+        <CaptainActionsBell />
         <v-btn v-if="authStore.isAdmin" variant="text" to="/admin" icon>
           <v-icon>mdi-shield-crown</v-icon>
           <v-tooltip activator="parent" location="bottom">Admin Panel</v-tooltip>
@@ -47,6 +48,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import PortalSidebar from '@/components/PortalSidebar.vue'
+import CaptainActionsBell from '@/components/CaptainActionsBell.vue'
 
 const authStore = useAuthStore()
 const router = useRouter()

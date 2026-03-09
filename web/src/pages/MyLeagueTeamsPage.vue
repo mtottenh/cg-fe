@@ -19,8 +19,54 @@
 
     <v-progress-linear v-if="leagueTeamsStore.loading" indeterminate class="mb-4" />
 
+    <!-- League memberships without teams -->
+    <template v-if="leaguesWithoutTeams.length > 0">
+      <h2 class="text-h5 mb-4">
+        <v-icon start>mdi-trophy</v-icon>
+        My Leagues
+      </h2>
+      <v-row class="mb-8">
+        <v-col v-for="membership in leaguesWithoutTeams" :key="membership.league_id" cols="12" sm="6" md="4">
+          <v-card class="h-100">
+            <v-card-item>
+              <template v-slot:prepend>
+                <v-avatar color="warning" size="48" rounded="lg">
+                  <v-img v-if="membership.league_logo_url" :src="membership.league_logo_url" />
+                  <v-icon v-else>mdi-trophy</v-icon>
+                </v-avatar>
+              </template>
+              <v-card-title>{{ membership.league_name }}</v-card-title>
+              <v-card-subtitle>
+                <v-chip size="x-small" :color="getRoleColor(membership.membership_type)" variant="flat" class="mr-1">
+                  {{ formatRole(membership.membership_type) }}
+                </v-chip>
+              </v-card-subtitle>
+            </v-card-item>
+            <v-card-text>
+              <div class="text-caption text-medium-emphasis">
+                <v-icon size="small" class="mr-1">mdi-calendar</v-icon>
+                Joined {{ formatJoinDate(membership.joined_at) }}
+              </div>
+              <v-alert type="info" variant="tonal" density="compact" class="mt-2">
+                You haven't joined a team yet. Visit the league to create or join one.
+              </v-alert>
+            </v-card-text>
+            <v-card-actions>
+              <v-btn color="primary" variant="tonal" :to="`/leagues/${membership.league_id}`">
+                View League
+              </v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-col>
+      </v-row>
+    </template>
+
     <!-- Team memberships grouped by league -->
     <template v-if="teamsByLeague.length > 0">
+      <h2 v-if="leaguesWithoutTeams.length > 0" class="text-h5 mb-4">
+        <v-icon start>mdi-shield-account</v-icon>
+        My Teams
+      </h2>
       <div v-for="group in teamsByLeague" :key="group.leagueId" class="mb-6">
         <div class="d-flex align-center mb-3">
           <v-icon size="20" class="mr-2">mdi-trophy</v-icon>
@@ -125,47 +171,36 @@
     </v-banner>
 
     <!-- Leave team confirmation dialog -->
-    <v-dialog v-model="leaveDialog" max-width="400">
-      <v-card>
-        <v-card-title>Leave Team?</v-card-title>
-        <v-card-text>
-          Are you sure you want to leave <strong>{{ selectedMembership?.team_name }}</strong>?
-          You'll need to be re-invited to rejoin.
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="leaveDialog = false">Cancel</v-btn>
-          <v-btn
-            color="error"
-            variant="flat"
-            :loading="leaving"
-            @click="leaveTeam"
-          >
-            Leave Team
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <ConfirmDialog
+      :open="confirmDialog.open.value"
+      :title="confirmDialog.title.value"
+      :message="confirmDialog.message.value"
+      :action-label="confirmDialog.actionLabel.value"
+      :color="confirmDialog.color.value"
+      :loading="confirmDialog.loading.value"
+      :error="confirmDialog.dialogError.value"
+      @clear-error="confirmDialog.dialogError.value = null"
+      @confirm="confirmDialog.execute"
+      @cancel="confirmDialog.cancel"
+    />
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useLeagueTeamsStore, type PlayerLeagueTeamMembershipResponse } from '@/stores/leagueTeams'
+import { useLeaguesStore } from '@/stores/leagues'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const leagueTeamsStore = useLeagueTeamsStore()
+const leaguesStore = useLeaguesStore()
 
 // State
-const leaveDialog = ref(false)
-const selectedMembership = ref<PlayerLeagueTeamMembershipResponse | null>(null)
-const leaving = ref(false)
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+const snackbar = useSnackbar()
+const confirmDialog = useConfirmDialog()
 
 // Group teams by league
 interface LeagueGroup {
@@ -193,6 +228,16 @@ const teamsByLeague = computed((): LeagueGroup[] => {
     a.leagueName.localeCompare(b.leagueName)
   )
 })
+
+// Leagues where user is a member but has no team
+const leaguesWithoutTeams = computed(() => {
+  const leagueIdsWithTeams = new Set(leagueTeamsStore.myTeams.map(t => t.league_id))
+  return leaguesStore.myLeagues.filter(m => !leagueIdsWithTeams.has(m.league_id))
+})
+
+function formatJoinDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+}
 
 // Helpers
 function formatRole(role: string): string {
@@ -230,38 +275,25 @@ function getStatusColor(status: string): string {
   }
 }
 
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
-}
-
 // Actions
 function confirmLeaveTeam(membership: PlayerLeagueTeamMembershipResponse) {
-  selectedMembership.value = membership
-  leaveDialog.value = true
-}
-
-async function leaveTeam() {
-  if (!selectedMembership.value) return
-
-  leaving.value = true
-  try {
-    await leagueTeamsStore.leaveTeam(selectedMembership.value.team_season_id)
-    showSnackbar(`Left ${selectedMembership.value.team_name}`, 'success')
-    leaveDialog.value = false
-  } catch {
-    showSnackbar(leagueTeamsStore.error || 'Failed to leave team', 'error')
-  } finally {
-    leaving.value = false
-  }
+  confirmDialog.confirm({
+    title: 'Leave Team?',
+    message: `Are you sure you want to leave ${membership.team_name}? You'll need to be re-invited to rejoin.`,
+    action: 'Leave Team',
+    color: 'error',
+    handler: async () => {
+      await leagueTeamsStore.leaveTeam(membership.team_season_id)
+      snackbar.show(`Left ${membership.team_name}`, 'success')
+    },
+  })
 }
 
 onMounted(async () => {
-  // Fetch both teams and invitations
   await Promise.all([
     leagueTeamsStore.fetchMyTeams(),
     leagueTeamsStore.fetchMyInvitations(),
+    leaguesStore.fetchMyLeagues(),
   ])
 })
 </script>

@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api, ApiError } from '@/api'
+import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, unwrapApiOptional, createActionState, withActionState } from '@/stores/helpers'
+import { proposalStatusMap, getStatusColor as getMapColor, getStatusLabel as getMapLabel } from '@/utils/statusMaps'
 
 // Use generated types
 type ScheduleProposalResponse = components['schemas']['ScheduleProposalResponse']
@@ -32,19 +33,11 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
 
   async function fetchActiveProposal(tournamentId: string, matchId: string): Promise<ScheduleProposalResponse | null> {
     return withActionState(fetchActiveProposalState, async () => {
-      try {
-        const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/active', {
-          params: { path: { tournament_id: tournamentId, match_id: matchId } },
-        }))
-        activeProposal.value = result.data
-        return activeProposal.value
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 404) {
-          activeProposal.value = null
-          return null
-        }
-        throw e
-      }
+      const result = await unwrapApiOptional(api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/active', {
+        params: { path: { tournament_id: tournamentId, match_id: matchId } },
+      }))
+      activeProposal.value = result?.data ?? null
+      return activeProposal.value
     }, 'Failed to fetch active proposal')
   }
 
@@ -62,14 +55,12 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
     tournamentId: string,
     matchId: string,
     proposedTimes: string[],
-    notes?: string
   ): Promise<ScheduleProposalResponse> {
     return withActionState(proposeScheduleState, async () => {
       const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/propose', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
         body: {
           proposed_times: proposedTimes,
-          notes: notes ?? null,
         },
       }))
       activeProposal.value = result.data
@@ -81,14 +72,14 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
     tournamentId: string,
     matchId: string,
     request: AcceptScheduleProposalRequest
-  ): Promise<ScheduleProposalResponse> {
+  ): Promise<void> {
     return withActionState(acceptProposalState, async () => {
-      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/accept', {
+      await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/accept', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
         body: request,
       }))
-      activeProposal.value = result.data
-      return activeProposal.value
+      // Accept returns a match response, not a proposal — clear the active proposal
+      activeProposal.value = null
     }, 'Failed to accept proposal')
   }
 
@@ -111,15 +102,15 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
   async function counterPropose(
     tournamentId: string,
     matchId: string,
+    originalProposalId: string,
     proposedTimes: string[],
-    notes?: string
   ): Promise<ScheduleProposalResponse> {
     return withActionState(counterProposeState, async () => {
       const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/counter', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
         body: {
+          original_proposal_id: originalProposalId,
           proposed_times: proposedTimes,
-          notes: notes ?? null,
         },
       }))
       activeProposal.value = result.data
@@ -174,37 +165,11 @@ export type { ScheduleProposalResponse, AcceptScheduleProposalRequest, RejectSch
 
 // Helper functions
 export function getProposalStatusColor(status: string): string {
-  switch (status) {
-    case 'pending':
-      return 'warning'
-    case 'accepted':
-      return 'success'
-    case 'rejected':
-      return 'error'
-    case 'expired':
-      return 'grey'
-    case 'counter_proposed':
-      return 'info'
-    default:
-      return 'grey'
-  }
+  return getMapColor(proposalStatusMap, status)
 }
 
 export function getProposalStatusLabel(status: string): string {
-  switch (status) {
-    case 'pending':
-      return 'Awaiting Response'
-    case 'accepted':
-      return 'Accepted'
-    case 'rejected':
-      return 'Rejected'
-    case 'expired':
-      return 'Expired'
-    case 'counter_proposed':
-      return 'Counter Proposed'
-    default:
-      return status
-  }
+  return getMapLabel(proposalStatusMap, status)
 }
 
 export function formatProposedTime(time: string): string {

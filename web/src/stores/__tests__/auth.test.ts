@@ -161,6 +161,7 @@ describe('Auth Store', () => {
         updated_at: '',
         social_links: {},
         steam_linked: false,
+        looking_for_team: false,
       }
       store.logout()
       expect(store.player).toBeNull()

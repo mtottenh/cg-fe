@@ -12,38 +12,62 @@
     </v-alert>
 
     <template v-if="player">
-      <v-row>
-        <v-col cols="12" md="8">
-          <v-card class="mb-4">
-            <v-card-item>
-              <template v-slot:prepend>
-                <v-avatar color="secondary" size="80">
-                  <v-img v-if="player.avatar_url" :src="player.avatar_url" />
-                  <span v-else class="text-h4">{{ player.display_name.substring(0, 2).toUpperCase() }}</span>
-                </v-avatar>
-              </template>
-              <v-card-title class="text-h4">{{ player.display_name }}</v-card-title>
-              <v-card-subtitle v-if="player.country_code" class="text-h6">
+      <!-- Banner + Avatar header -->
+      <v-card class="mb-6 overflow-hidden" rounded="lg" elevation="2">
+        <div class="profile-banner" :style="bannerStyle">
+          <div class="profile-banner-overlay" />
+        </div>
+
+        <div class="profile-header-content px-6 pb-4">
+          <v-avatar size="96" class="profile-avatar elevation-4">
+            <v-img
+              v-if="player.avatar_url"
+              :src="player.avatar_url"
+              :alt="player.display_name"
+            />
+            <v-icon v-else size="48" color="grey-lighten-1">mdi-account</v-icon>
+          </v-avatar>
+
+          <div class="ml-4 pt-2 flex-grow-1">
+            <div class="d-flex align-center flex-wrap">
+              <h1 class="text-h4 font-weight-bold">{{ player.display_name }}</h1>
+              <v-chip
+                v-if="player.looking_for_team"
+                color="success"
+                size="small"
+                class="ml-2"
+              >
+                <v-icon start size="small">mdi-account-search</v-icon>
+                Looking for Team
+              </v-chip>
+            </div>
+            <div class="d-flex align-center gap-2 mt-1">
+              <span v-if="player.country_code" class="text-body-2 text-medium-emphasis">
                 {{ player.country_code }}
-              </v-card-subtitle>
-              <template v-slot:append v-if="isLoggedIn && !isOwnProfile">
-                <v-btn
-                  color="primary"
-                  variant="elevated"
-                  @click="openInviteDialog"
-                >
-                  <v-icon start>mdi-account-plus</v-icon>
-                  Invite to Team
-                </v-btn>
-              </template>
-            </v-card-item>
-            <v-divider />
-            <v-card-text>
-              <div class="text-caption text-medium-emphasis">
+              </span>
+              <span class="text-body-2 text-medium-emphasis">
                 Member since {{ formatDate(player.created_at) }}
-              </div>
-            </v-card-text>
-          </v-card>
+              </span>
+            </div>
+          </div>
+
+          <v-btn
+            v-if="isLoggedIn && !isOwnProfile"
+            color="primary"
+            variant="elevated"
+            @click="openInviteDialog"
+            class="mt-2"
+          >
+            <v-icon start>mdi-account-plus</v-icon>
+            Invite to Team
+          </v-btn>
+        </div>
+      </v-card>
+
+      <v-row class="mt-2">
+        <v-col cols="12" md="8">
+          <PublicMmStatsCard :player-id="playerId" class="mb-4" />
+          <PlayerGameStatsCard :player-id="playerId" />
         </v-col>
 
         <v-col cols="12" md="4">
@@ -60,15 +84,21 @@
               >
                 <template v-slot:prepend>
                   <v-avatar color="primary" size="36">
-                    <span>{{ (membership.team_tag || '??').substring(0, 2) }}</span>
+                    <v-img v-if="membership.team_logo_url" :src="membership.team_logo_url" />
+                    <span v-else>{{ (membership.team_tag || '??').substring(0, 2) }}</span>
                   </v-avatar>
                 </template>
-                <v-list-item-title>{{ membership.team_name }}</v-list-item-title>
+                <v-list-item-title>
+                  [{{ membership.team_tag }}] {{ membership.team_name }}
+                </v-list-item-title>
                 <v-list-item-subtitle>
+                  {{ membership.league_name }} &middot; {{ membership.season_name }}
+                </v-list-item-subtitle>
+                <template v-slot:append>
                   <v-chip size="x-small" :color="getRoleColor(membership.role)">
                     {{ membership.role }}
                   </v-chip>
-                </v-list-item-subtitle>
+                </template>
               </v-list-item>
             </v-list>
             <v-card-text v-else class="text-center text-medium-emphasis">
@@ -166,6 +196,8 @@ import { useRoute } from 'vue-router'
 import { usePlayersStore } from '@/stores/players'
 import { useAuthStore } from '@/stores/auth'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
+import PlayerGameStatsCard from '@/components/player/PlayerGameStatsCard.vue'
+import PublicMmStatsCard from '@/components/player/PublicMmStatsCard.vue'
 
 const route = useRoute()
 const playersStore = usePlayersStore()
@@ -176,12 +208,25 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 
 const player = computed(() => playersStore.currentPlayer)
-const playerLeagueTeams = computed(() => leagueTeamsStore.myTeams)
+const playerLeagueTeams = computed(() => leagueTeamsStore.viewedPlayerTeams)
 const playerId = computed(() => route.params.id as string)
 
 const isLoggedIn = computed(() => authStore.isAuthenticated || authStore.isDevMode)
 const isOwnProfile = computed(() => {
   return authStore.playerId === playerId.value
+})
+
+const bannerStyle = computed(() => {
+  if (player.value?.banner_url) {
+    return {
+      backgroundImage: `url(${player.value.banner_url})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+    }
+  }
+  return {
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  }
 })
 
 // Invite dialog state
@@ -202,14 +247,17 @@ const roleOptions = [
   { label: 'Manager', value: 'manager' },
 ]
 
-// Filter to only teams where the user is a captain
+// Filter to only teams where the user is a captain (for invite dialog)
 const myTeamsAsCaptain = computed(() => {
   return leagueTeamsStore.myTeams.filter((t) => t.role === 'captain')
 })
 
 onMounted(async () => {
   try {
-    await playersStore.fetchPlayer(playerId.value)
+    await Promise.all([
+      playersStore.fetchPlayer(playerId.value),
+      leagueTeamsStore.fetchPlayerLeagueTeams(playerId.value),
+    ])
   } catch (e) {
     error.value = playersStore.error || 'Failed to load player'
   } finally {
@@ -282,3 +330,30 @@ function getRoleColor(role: string): string {
   return colors[role] || 'grey'
 }
 </script>
+
+<style scoped>
+.profile-banner {
+  height: 180px;
+  position: relative;
+}
+
+.profile-banner-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 40%, rgba(var(--v-theme-surface), 0.9) 100%);
+}
+
+.profile-header-content {
+  display: flex;
+  align-items: flex-end;
+  margin-top: -48px;
+  position: relative;
+  z-index: 1;
+}
+
+.profile-avatar {
+  border: 3px solid rgb(var(--v-theme-surface));
+  background: rgb(var(--v-theme-surface));
+  flex-shrink: 0;
+}
+</style>

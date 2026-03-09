@@ -265,9 +265,6 @@
         {{ error }}
       </v-alert>
 
-      <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-        {{ snackbarText }}
-      </v-snackbar>
     </v-card>
 
     <!-- Invite User Modal -->
@@ -280,34 +277,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { ApiError } from '@/api'
-import { type UserLeagueMembership } from '@/stores/leagues'
+import { ref, computed, watch } from 'vue'
+import { useLeaguesStore, type UserLeagueMembership, type LeagueMemberResponse, type LeagueInvitationResponse } from '@/stores/leagues'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { formatDate } from '@/utils/formatters'
 import InviteUserModal from './InviteUserModal.vue'
-
-interface LeagueMember {
-  id: string
-  league_id: string
-  user_id: string
-  username: string
-  email: string
-  membership_type: string
-  joined_at: string
-}
-
-interface LeagueInvitation {
-  id: string
-  league_id: string
-  user_id: string
-  invitation_type: string
-  status: string
-  message: string | null
-  invited_by: string | null
-  responded_by: string | null
-  responded_at: string | null
-  expires_at: string | null
-  created_at: string
-}
 
 const props = defineProps<{
   modelValue: boolean
@@ -319,33 +293,25 @@ const emit = defineEmits<{
   updated: []
 }>()
 
+const leaguesStore = useLeaguesStore()
+const snackbar = useSnackbar()
+
 // State
 const activeTab = ref('members')
 const error = ref<string | null>(null)
-
-// Members
-const members = ref<LeagueMember[]>([])
-const loadingMembers = ref(false)
 const removingMemberId = ref<string | null>(null)
-
-// Invitations
-const invitations = ref<LeagueInvitation[]>([])
-const loadingInvitations = ref(false)
 const cancellingInvitationId = ref<string | null>(null)
 const inviteModalOpen = ref(false)
-
-// Applications
-const applications = ref<LeagueInvitation[]>([])
-const loadingApplications = ref(false)
 const processingApplicationId = ref<string | null>(null)
 const approving = ref(false)
 
-// Snackbar
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+// Computed from store
+const members = computed(() => leaguesStore.members)
+const invitations = computed(() => leaguesStore.leagueInvitations)
+const applications = computed(() => leaguesStore.applications)
+const loadingMembers = computed(() => leaguesStore.fetchMembersState.loading.value)
+const loadingInvitations = computed(() => leaguesStore.fetchLeagueInvitationsState.loading.value)
+const loadingApplications = computed(() => leaguesStore.fetchApplicationsState.loading.value)
 
 // Table headers
 const memberHeaders = [
@@ -377,7 +343,6 @@ const availableRoles = [
   { value: 'member', label: 'Member' },
 ]
 
-// Helpers
 function formatRole(role: string): string {
   return role.charAt(0).toUpperCase() + role.slice(1)
 }
@@ -391,272 +356,95 @@ function getRoleColor(role: string): string {
   }
 }
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString()
-}
-
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
-}
-
 // Watch for dialog opening
 watch(() => props.modelValue, async (isOpen) => {
   if (isOpen && props.league) {
     activeTab.value = 'members'
+    const leagueId = props.league.league_id
     await Promise.all([
-      fetchMembers(),
-      fetchInvitations(),
-      fetchApplications(),
+      leaguesStore.fetchMembers(leagueId).catch(() => {}),
+      leaguesStore.fetchLeagueInvitationsAdmin(leagueId).catch(() => {}),
+      leaguesStore.fetchApplications(leagueId).catch(() => {}),
     ])
   }
 })
 
-// API calls
-async function fetchMembers() {
+async function updateMemberRole(member: LeagueMemberResponse, newRole: string) {
   if (!props.league) return
-
-  loadingMembers.value = true
   try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/members`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to fetch members')
-    }
-
-    members.value = await response.json()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to load members'
-    }
-  } finally {
-    loadingMembers.value = false
-  }
-}
-
-async function fetchInvitations() {
-  if (!props.league) return
-
-  loadingInvitations.value = true
-  try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/invitations`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to fetch invitations')
-    }
-
-    invitations.value = await response.json()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to load invitations'
-    }
-  } finally {
-    loadingInvitations.value = false
-  }
-}
-
-async function fetchApplications() {
-  if (!props.league) return
-
-  loadingApplications.value = true
-  try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/applications`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to fetch applications')
-    }
-
-    applications.value = await response.json()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to load applications'
-    }
-  } finally {
-    loadingApplications.value = false
-  }
-}
-
-async function updateMemberRole(member: LeagueMember, newRole: string) {
-  if (!props.league) return
-
-  try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/members/${member.user_id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify({ membership_type: newRole }),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to update role')
-    }
-
-    showSnackbar(`Changed ${member.username}'s role to ${formatRole(newRole)}`, 'success')
-    await fetchMembers()
+    await leaguesStore.updateMemberRole(props.league.league_id, member.user_id, newRole)
+    snackbar.show(`Changed ${member.username}'s role to ${formatRole(newRole)}`, 'success')
+    await leaguesStore.fetchMembers(props.league.league_id)
     emit('updated')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
-    } else {
-      showSnackbar('Failed to update role', 'error')
-    }
+  } catch {
+    snackbar.show(leaguesStore.updateMemberRoleState.error.value || 'Failed to update role', 'error')
   }
 }
 
-async function removeMember(member: LeagueMember) {
+async function removeMember(member: LeagueMemberResponse) {
   if (!props.league) return
-
   removingMemberId.value = member.user_id
   try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/members/${member.user_id}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to remove member')
-    }
-
-    showSnackbar(`Removed ${member.username} from the league`, 'success')
-    await fetchMembers()
+    await leaguesStore.removeMember(props.league.league_id, member.user_id)
+    snackbar.show(`Removed ${member.username} from the league`, 'success')
     emit('updated')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
-    } else {
-      showSnackbar('Failed to remove member', 'error')
-    }
+  } catch {
+    snackbar.show(leaguesStore.removeMemberState.error.value || 'Failed to remove member', 'error')
   } finally {
     removingMemberId.value = null
   }
 }
 
-async function cancelInvitation(invitation: LeagueInvitation) {
+async function cancelInvitation(invitation: LeagueInvitationResponse) {
   if (!props.league) return
-
   cancellingInvitationId.value = invitation.id
   try {
-    // Use the reject endpoint to cancel an invitation
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/applications/${invitation.id}/reject`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to cancel invitation')
-    }
-
-    showSnackbar('Invitation cancelled', 'success')
-    await fetchInvitations()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
-    } else {
-      showSnackbar('Failed to cancel invitation', 'error')
-    }
+    await leaguesStore.rejectApplication(props.league.league_id, invitation.id)
+    snackbar.show('Invitation cancelled', 'success')
+    await leaguesStore.fetchLeagueInvitationsAdmin(props.league.league_id)
+  } catch {
+    snackbar.show('Failed to cancel invitation', 'error')
   } finally {
     cancellingInvitationId.value = null
   }
 }
 
-async function approveApplication(application: LeagueInvitation) {
+async function approveApplication(application: LeagueInvitationResponse) {
   if (!props.league) return
-
   processingApplicationId.value = application.id
   approving.value = true
   try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/applications/${application.id}/approve`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to approve application')
-    }
-
-    showSnackbar('Application approved', 'success')
-    await Promise.all([fetchApplications(), fetchMembers()])
+    await leaguesStore.approveApplication(props.league.league_id, application.id)
+    snackbar.show('Application approved', 'success')
+    await leaguesStore.fetchMembers(props.league.league_id)
     emit('updated')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
-    } else {
-      showSnackbar('Failed to approve application', 'error')
-    }
+  } catch {
+    snackbar.show(leaguesStore.approveApplicationState.error.value || 'Failed to approve application', 'error')
   } finally {
     processingApplicationId.value = null
     approving.value = false
   }
 }
 
-async function rejectApplication(application: LeagueInvitation) {
+async function rejectApplication(application: LeagueInvitationResponse) {
   if (!props.league) return
-
   processingApplicationId.value = application.id
   approving.value = false
   try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/applications/${application.id}/reject`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to reject application')
-    }
-
-    showSnackbar('Application rejected', 'success')
-    await fetchApplications()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
-    } else {
-      showSnackbar('Failed to reject application', 'error')
-    }
+    await leaguesStore.rejectApplication(props.league.league_id, application.id)
+    snackbar.show('Application rejected', 'success')
+  } catch {
+    snackbar.show(leaguesStore.rejectApplicationState.error.value || 'Failed to reject application', 'error')
   } finally {
     processingApplicationId.value = null
   }
 }
 
 function onUserInvited() {
-  showSnackbar('Invitation sent', 'success')
-  fetchInvitations()
+  snackbar.show('Invitation sent', 'success')
+  if (props.league) {
+    leaguesStore.fetchLeagueInvitationsAdmin(props.league.league_id)
+  }
 }
 
 function close() {

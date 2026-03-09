@@ -135,7 +135,7 @@
       </template>
 
       <!-- Accepted Time Display -->
-      <template v-if="proposal.status === 'accepted' && proposal.accepted_time">
+      <template v-if="proposal.status === 'accepted' && proposal.selected_time">
         <v-divider class="mb-4" />
         <v-alert type="success" variant="tonal">
           <template v-slot:prepend>
@@ -143,58 +143,32 @@
           </template>
           <div>
             <strong>Scheduled for:</strong>
-            <div class="mt-1">{{ formatProposedTime(proposal.accepted_time) }}</div>
-          </div>
-        </v-alert>
-      </template>
-
-      <!-- Rejected Reason Display -->
-      <template v-if="proposal.status === 'rejected' && proposal.rejection_reason">
-        <v-divider class="mb-4" />
-        <v-alert type="error" variant="tonal">
-          <template v-slot:prepend>
-            <v-icon>mdi-close-circle</v-icon>
-          </template>
-          <div>
-            <strong>Rejection reason:</strong>
-            <div class="mt-1">{{ proposal.rejection_reason }}</div>
+            <div class="mt-1">{{ formatProposedTime(proposal.selected_time) }}</div>
           </div>
         </v-alert>
       </template>
     </v-card-text>
 
     <!-- Reject Dialog -->
-    <v-dialog v-model="rejectDialogOpen" max-width="400" persistent>
-      <v-card>
-        <v-card-title>Reject Proposal</v-card-title>
-        <v-divider />
-        <v-card-text>
-          <p class="mb-4">Are you sure you want to reject this proposal?</p>
-          <v-textarea
-            v-model="rejectReason"
-            label="Reason (optional)"
-            rows="2"
-            variant="outlined"
-            density="comfortable"
-            hint="Let them know why these times don't work"
-          />
-        </v-card-text>
-        <v-divider />
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="rejectDialogOpen = false">Cancel</v-btn>
-          <v-btn color="error" :loading="loading" @click="handleReject">
-            Reject
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <ConfirmDialog
+      :open="confirmDialog.open.value"
+      :title="confirmDialog.title.value"
+      :message="confirmDialog.message.value"
+      :action-label="confirmDialog.actionLabel.value"
+      :color="confirmDialog.color.value"
+      :loading="confirmDialog.loading.value"
+      @confirm="confirmDialog.execute"
+      @cancel="confirmDialog.cancel"
+    />
   </v-card>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { ScheduleProposalResponse } from '@/stores/matchScheduling'
+import { formatDateTime } from '@/utils/formatters'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import {
   getProposalStatusColor,
   getProposalStatusLabel,
@@ -216,8 +190,7 @@ const emit = defineEmits<{
 }>()
 
 const selectedTime = ref<string | null>(null)
-const rejectDialogOpen = ref(false)
-const rejectReason = ref('')
+const confirmDialog = useConfirmDialog()
 
 const isExpired = computed(() => isProposalExpired(props.proposal))
 const timeUntilExpiration = computed(() => getTimeUntilExpiration(props.proposal))
@@ -231,10 +204,6 @@ const cardColor = computed(() => {
   return 'warning'
 })
 
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString()
-}
-
 function handleAccept() {
   if (selectedTime.value) {
     emit('accept', selectedTime.value)
@@ -242,12 +211,14 @@ function handleAccept() {
 }
 
 function openRejectDialog() {
-  rejectReason.value = ''
-  rejectDialogOpen.value = true
-}
-
-function handleReject() {
-  emit('reject', rejectReason.value || undefined)
-  rejectDialogOpen.value = false
+  confirmDialog.confirm({
+    title: 'Reject Proposal',
+    message: 'Are you sure you want to reject this proposal?',
+    action: 'Reject',
+    color: 'error',
+    handler: async () => {
+      emit('reject')
+    },
+  })
 }
 </script>

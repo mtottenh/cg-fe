@@ -112,6 +112,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { ApiError } from '@/api'
+import { useFormRules } from '@/composables/useFormRules'
 
 interface PlayerSearchResult {
   id: string
@@ -158,10 +159,7 @@ const roleOptions = [
   { value: 'captain', label: 'Captain' },
 ]
 
-const rules = {
-  required: (v: unknown) => !!v || 'Required',
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
-}
+const rules = useFormRules()
 
 async function searchPlayers(search: string) {
   if (!search || search.length < 2) {

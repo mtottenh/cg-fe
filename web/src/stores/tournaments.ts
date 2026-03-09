@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { updateById, replaceById } from '@/utils/collections'
+import { tournamentStatusMap, getStatusColor as getMapColor, getStatusLabel as getMapLabel } from '@/utils/statusMaps'
 
 // Use generated types
 type TournamentResponse = components['schemas']['TournamentResponse']
@@ -16,17 +18,18 @@ type UpdateTournamentRequest = components['schemas']['UpdateTournamentRequest']
 type RegisterTeamRequest = components['schemas']['RegisterTeamRequest']
 type RegisterPlayerRequest = components['schemas']['RegisterPlayerRequest']
 type PaginationMeta = components['schemas']['PaginationMeta']
+type SeededParticipantResponse = components['schemas']['SeededParticipantResponse']
+type CheckInStatusResponse = components['schemas']['CheckInStatusResponse']
 
 // Tournament status enum for type safety
 export const TOURNAMENT_STATUSES = [
   'draft',
   'published',
-  'registration_open',
-  'registration_closed',
-  'check_in_open',
-  'ready',
+  'registration',
+  'scheduled',
   'in_progress',
   'completed',
+  'finalized',
   'cancelled',
 ] as const
 
@@ -87,6 +90,8 @@ export const useTournamentsStore = defineStore('tournaments', () => {
   const matches = ref<TournamentMatchResponse[]>([])
   const brackets = ref<TournamentBracketResponse[]>([])
   const stages = ref<TournamentStageResponse[]>([])
+  const seeding = ref<SeededParticipantResponse[]>([])
+  const checkInStatus = ref<CheckInStatusResponse | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
   const pagination = ref<PaginationMeta>({ page: 1, per_page: 20, total_items: 0, total_pages: 0 })
@@ -97,7 +102,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
   )
 
   const upcomingTournaments = computed(() =>
-    tournaments.value.filter((t) => ['draft', 'published', 'registration_open'].includes(t.status))
+    tournaments.value.filter((t) => ['draft', 'published', 'registration'].includes(t.status))
   )
 
   const liveTournaments = computed(() => tournaments.value.filter((t) => t.status === 'in_progress'))
@@ -111,7 +116,12 @@ export const useTournamentsStore = defineStore('tournaments', () => {
   const publishState = createActionState()
   const openRegistrationState = createActionState()
   const closeRegistrationState = createActionState()
+  const reopenRegistrationState = createActionState()
   const startTournamentState = createActionState()
+  const cancelTournamentState = createActionState()
+  const completeTournamentState = createActionState()
+  const finalizeTournamentState = createActionState()
+  const generateNextRoundState = createActionState()
   const fetchRegistrationsState = createActionState()
   const registerTeamState = createActionState()
   const registerPlayerState = createActionState()
@@ -124,6 +134,27 @@ export const useTournamentsStore = defineStore('tournaments', () => {
   const fetchMatchState = createActionState()
   const fetchBracketsState = createActionState()
   const fetchStagesState = createActionState()
+  const adminMatchTransitionState = createActionState()
+  const adminForfeitState = createActionState()
+  const adminDoubleForfeitState = createActionState()
+  const adminScheduleState = createActionState()
+  const processProgressionState = createActionState()
+  const reapplyProgressionState = createActionState()
+  const revertProgressionState = createActionState()
+  const matchCheckInState = createActionState()
+  const forfeitMatchState = createActionState()
+  const fetchSeedingState = createActionState()
+  const autoSeedState = createActionState()
+  const manualSeedState = createActionState()
+  const clearSeedingState = createActionState()
+  const createStageState = createActionState()
+  const fetchCheckInStatusState = createActionState()
+  const processNoShowsState = createActionState()
+  const adminCheckInState = createActionState()
+  const fetchBracketStandingsState = createActionState()
+  const getMapPoolState = createActionState()
+  const setMapPoolState = createActionState()
+  const deleteMapPoolState = createActionState()
 
   // ==================== Tournament CRUD ====================
 
@@ -185,16 +216,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
       }))
       currentTournament.value = result.data
       // Update in list if present
-      const index = tournaments.value.findIndex((t) => t.id === id)
-      if (index !== -1) {
-        tournaments.value[index] = {
-          ...tournaments.value[index],
-          name: currentTournament.value.name,
-          slug: currentTournament.value.slug,
-          status: currentTournament.value.status,
-          starts_at: currentTournament.value.starts_at,
-        }
-      }
+      updateById(tournaments.value, id, { name: currentTournament.value.name, slug: currentTournament.value.slug, status: currentTournament.value.status, starts_at: currentTournament.value.starts_at })
       return currentTournament.value
     }, 'Failed to update tournament')
   }
@@ -208,10 +230,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
       }))
       currentTournament.value = result.data
       // Update in list
-      const index = tournaments.value.findIndex((t) => t.id === id)
-      if (index !== -1) {
-        tournaments.value[index] = { ...tournaments.value[index], status: 'published' }
-      }
+      updateById(tournaments.value, id, { status: 'published' })
       return currentTournament.value
     }, 'Failed to publish tournament')
   }
@@ -223,10 +242,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
       }))
       currentTournament.value = result.data
       // Update in list
-      const index = tournaments.value.findIndex((t) => t.id === id)
-      if (index !== -1) {
-        tournaments.value[index] = { ...tournaments.value[index], status: 'registration_open', is_registration_open: true }
-      }
+      updateById(tournaments.value, id, { status: 'registration', is_registration_open: true })
       return currentTournament.value
     }, 'Failed to open registration')
   }
@@ -238,12 +254,20 @@ export const useTournamentsStore = defineStore('tournaments', () => {
       }))
       currentTournament.value = result.data
       // Update in list
-      const index = tournaments.value.findIndex((t) => t.id === id)
-      if (index !== -1) {
-        tournaments.value[index] = { ...tournaments.value[index], status: 'registration_closed', is_registration_open: false }
-      }
+      updateById(tournaments.value, id, { status: 'scheduled', is_registration_open: false })
       return currentTournament.value
     }, 'Failed to close registration')
+  }
+
+  async function reopenRegistration(id: string): Promise<TournamentResponse> {
+    return withActionState(reopenRegistrationState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/reopen-registration', {
+        params: { path: { tournament_id: id } },
+      }))
+      currentTournament.value = result.data
+      updateById(tournaments.value, id, { status: 'registration', is_registration_open: true })
+      return currentTournament.value
+    }, 'Failed to reopen registration')
   }
 
   async function startTournament(id: string): Promise<TournamentResponse> {
@@ -253,12 +277,52 @@ export const useTournamentsStore = defineStore('tournaments', () => {
       }))
       currentTournament.value = result.data
       // Update in list
-      const index = tournaments.value.findIndex((t) => t.id === id)
-      if (index !== -1) {
-        tournaments.value[index] = { ...tournaments.value[index], status: 'in_progress' }
-      }
+      updateById(tournaments.value, id, { status: 'in_progress' })
       return currentTournament.value
     }, 'Failed to start tournament')
+  }
+
+  async function cancelTournament(id: string): Promise<TournamentResponse> {
+    return withActionState(cancelTournamentState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/cancel', {
+        params: { path: { tournament_id: id } },
+      }))
+      currentTournament.value = result.data
+      updateById(tournaments.value, id, { status: 'cancelled' })
+      return currentTournament.value
+    }, 'Failed to cancel tournament')
+  }
+
+  async function completeTournament(id: string): Promise<TournamentResponse> {
+    return withActionState(completeTournamentState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/complete', {
+        params: { path: { tournament_id: id } },
+      }))
+      currentTournament.value = result.data
+      updateById(tournaments.value, id, { status: 'completed' })
+      return currentTournament.value
+    }, 'Failed to complete tournament')
+  }
+
+  async function finalizeTournament(id: string): Promise<TournamentResponse> {
+    return withActionState(finalizeTournamentState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/finalize', {
+        params: { path: { tournament_id: id } },
+      }))
+      currentTournament.value = result.data
+      updateById(tournaments.value, id, { status: 'finalized' })
+      return currentTournament.value
+    }, 'Failed to finalize tournament')
+  }
+
+  async function generateNextRound(tournamentId: string): Promise<TournamentMatchResponse[]> {
+    return withActionState(generateNextRoundState, async () => {
+      const result = await unwrapApi(api.POST('/v1/admin/tournaments/{tournament_id}/generate-next-round', {
+        params: { path: { tournament_id: tournamentId } },
+      }))
+      await Promise.all([fetchBrackets(tournamentId), fetchMatches(tournamentId)])
+      return result.data
+    }, 'Failed to generate next round')
   }
 
   // ==================== Registrations ====================
@@ -307,17 +371,19 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     }, 'Failed to register for tournament')
   }
 
-  async function withdrawFromTournament(tournamentId: string, registrationId: string): Promise<TournamentRegistrationResponse> {
+  async function withdrawFromTournament(tournamentId: string, registrationId: string): Promise<void> {
     return withActionState(withdrawState, async () => {
-      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/withdraw', {
+      await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/withdraw', {
         params: { path: { tournament_id: tournamentId, registration_id: registrationId } },
+        body: {},
       }))
-      const registration = result.data
-      const index = registrations.value.findIndex((r) => r.id === registrationId)
-      if (index !== -1) {
-        registrations.value[index] = registration
+      // Withdraw returns a WithdrawalResponse (forfeits, matches_forfeited), not a registration.
+      // Update the local registration status instead.
+      const reg = registrations.value.find(r => r.id === registrationId)
+      if (reg) {
+        reg.status = 'withdrawn'
+        reg.withdrawn_at = new Date().toISOString()
       }
-      return registration
     }, 'Failed to withdraw from tournament')
   }
 
@@ -327,10 +393,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
         params: { path: { tournament_id: tournamentId, registration_id: registrationId } },
       }))
       const registration = result.data
-      const index = registrations.value.findIndex((r) => r.id === registrationId)
-      if (index !== -1) {
-        registrations.value[index] = registration
-      }
+      replaceById(registrations.value, registration)
       return registration
     }, 'Failed to check in')
   }
@@ -341,10 +404,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
         params: { path: { tournament_id: tournamentId, registration_id: registrationId } },
       }))
       const registration = result.data
-      const index = registrations.value.findIndex((r) => r.id === registrationId)
-      if (index !== -1) {
-        registrations.value[index] = registration
-      }
+      replaceById(registrations.value, registration)
       return registration
     }, 'Failed to approve registration')
   }
@@ -360,10 +420,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
         body: { reason: reason ?? null },
       }))
       const registration = result.data
-      const index = registrations.value.findIndex((r) => r.id === registrationId)
-      if (index !== -1) {
-        registrations.value[index] = registration
-      }
+      replaceById(registrations.value, registration)
       return registration
     }, 'Failed to reject registration')
   }
@@ -379,10 +436,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
         body: { reason },
       }))
       const registration = result.data
-      const index = registrations.value.findIndex((r) => r.id === registrationId)
-      if (index !== -1) {
-        registrations.value[index] = registration
-      }
+      replaceById(registrations.value, registration)
       return registration
     }, 'Failed to disqualify registration')
   }
@@ -401,10 +455,13 @@ export const useTournamentsStore = defineStore('tournaments', () => {
 
   async function fetchMatch(tournamentId: string, matchId: string): Promise<TournamentMatchResponse> {
     return withActionState(fetchMatchState, async () => {
-      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}', {
-        params: { path: { tournament_id: tournamentId, match_id: matchId } },
-      }))
-      return result.data
+      // Backend endpoint doesn't exist yet — use list + filter as workaround
+      if (matches.value.length === 0) {
+        await fetchMatches(tournamentId)
+      }
+      const match = matches.value.find(m => m.id === matchId)
+      if (!match) throw new Error('Match not found')
+      return match
     }, 'Failed to fetch match')
   }
 
@@ -428,7 +485,277 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     }, 'Failed to fetch stages')
   }
 
+  // ==================== Admin Match Actions ====================
+
+  async function adminMatchTransition(
+    tournamentId: string,
+    matchId: string,
+    toStatus: string,
+    overrideReason: string
+  ): Promise<TournamentMatchResponse> {
+    return withActionState(adminMatchTransitionState, async () => {
+      const result = await unwrapApi(api.POST('/v1/admin/tournaments/{tournament_id}/matches/{match_id}/transition', {
+        params: { path: { tournament_id: tournamentId, match_id: matchId } },
+        body: { to_status: toStatus, override_reason: overrideReason },
+      }))
+      const updated = result.data
+      replaceById(matches.value, updated)
+      return updated
+    }, 'Failed to transition match')
+  }
+
+  async function adminForfeitMatch(
+    tournamentId: string,
+    matchId: string,
+    forfeitingRegistrationId: string,
+    forfeitType: string,
+    reason: string
+  ): Promise<void> {
+    return withActionState(adminForfeitState, async () => {
+      await unwrapApi(api.POST('/v1/admin/tournaments/{tournament_id}/matches/{match_id}/forfeit', {
+        params: { path: { tournament_id: tournamentId, match_id: matchId } },
+        body: { forfeiting_registration_id: forfeitingRegistrationId, forfeit_type: forfeitType, reason },
+      }))
+      // Forfeit returns a ForfeitResponse, not a match — re-fetch matches to get updated state
+      await fetchMatches(tournamentId)
+    }, 'Failed to forfeit match')
+  }
+
+  async function adminDoubleForfeit(
+    tournamentId: string,
+    matchId: string,
+    reason: string
+  ): Promise<void> {
+    return withActionState(adminDoubleForfeitState, async () => {
+      await unwrapApi(api.POST('/v1/admin/tournaments/{tournament_id}/matches/{match_id}/double-forfeit', {
+        params: { path: { tournament_id: tournamentId, match_id: matchId } },
+        body: { reason },
+      }))
+      // Double forfeit returns a ForfeitResponse, not a match — re-fetch matches to get updated state
+      await fetchMatches(tournamentId)
+    }, 'Failed to process double forfeit')
+  }
+
+  async function adminScheduleMatch(
+    tournamentId: string,
+    matchId: string,
+    scheduledAt: string,
+    notes?: string
+  ): Promise<TournamentMatchResponse> {
+    return withActionState(adminScheduleState, async () => {
+      const result = await unwrapApi(api.POST('/v1/admin/tournaments/{tournament_id}/matches/{match_id}/schedule', {
+        params: { path: { tournament_id: tournamentId, match_id: matchId } },
+        body: { scheduled_at: scheduledAt, notes: notes ?? null },
+      }))
+      const updated = result.data
+      replaceById(matches.value, updated)
+      return updated
+    }, 'Failed to schedule match')
+  }
+
+  async function processProgression(
+    matchId: string,
+    winnerRegistrationId: string,
+    loserRegistrationId: string
+  ) {
+    return withActionState(processProgressionState, async () => {
+      const result = await unwrapApi(api.POST('/v1/admin/matches/{match_id}/progression/process', {
+        params: { path: { match_id: matchId } },
+        body: { winner_registration_id: winnerRegistrationId, loser_registration_id: loserRegistrationId },
+      }))
+      return result.data
+    }, 'Failed to process progression')
+  }
+
+  async function reapplyProgression(
+    matchId: string,
+    newWinnerRegistrationId: string
+  ) {
+    return withActionState(reapplyProgressionState, async () => {
+      const result = await unwrapApi(api.POST('/v1/admin/matches/{match_id}/progression/reapply', {
+        params: { path: { match_id: matchId } },
+        body: { new_winner_registration_id: newWinnerRegistrationId },
+      }))
+      return result.data
+    }, 'Failed to reapply progression')
+  }
+
+  async function revertProgression(matchId: string) {
+    return withActionState(revertProgressionState, async () => {
+      await unwrapApi(api.POST('/v1/admin/matches/{match_id}/progression/revert', {
+        params: { path: { match_id: matchId } },
+      }))
+    }, 'Failed to revert progression')
+  }
+
+  async function matchCheckIn(
+    tournamentId: string,
+    matchId: string,
+    registrationId: string
+  ): Promise<TournamentMatchResponse> {
+    return withActionState(matchCheckInState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/check-in', {
+        params: { path: { tournament_id: tournamentId, match_id: matchId } },
+        body: { registration_id: registrationId },
+      }))
+      const updated = result.data
+      replaceById(matches.value, updated)
+      return updated
+    }, 'Failed to check in for match')
+  }
+
+  // ==================== Player Match Actions ====================
+
+  async function forfeitMatch(
+    tournamentId: string,
+    matchId: string
+  ): Promise<void> {
+    return withActionState(forfeitMatchState, async () => {
+      await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/forfeit', {
+        params: { path: { tournament_id: tournamentId, match_id: matchId } },
+      }))
+      await fetchMatches(tournamentId)
+    }, 'Failed to forfeit match')
+  }
+
+  // ==================== Seeding ====================
+
+  async function fetchSeeding(tournamentId: string): Promise<SeededParticipantResponse[]> {
+    return withActionState(fetchSeedingState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/seeding', {
+        params: { path: { tournament_id: tournamentId } },
+      }))
+      seeding.value = result.data
+      return seeding.value
+    }, 'Failed to fetch seeding')
+  }
+
+  async function autoSeed(tournamentId: string): Promise<SeededParticipantResponse[]> {
+    return withActionState(autoSeedState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/seeding/auto', {
+        params: { path: { tournament_id: tournamentId } },
+      }))
+      seeding.value = result.data
+      return seeding.value
+    }, 'Failed to auto-seed tournament')
+  }
+
+  async function manualSeed(
+    tournamentId: string,
+    seeds: Array<{ registration_id: string; seed: number }>
+  ): Promise<SeededParticipantResponse[]> {
+    return withActionState(manualSeedState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/seeding/manual', {
+        params: { path: { tournament_id: tournamentId } },
+        body: { seeds },
+      }))
+      seeding.value = result.data
+      return seeding.value
+    }, 'Failed to save manual seeding')
+  }
+
+  async function clearSeeding(tournamentId: string): Promise<void> {
+    return withActionState(clearSeedingState, async () => {
+      await unwrapApi(api.DELETE('/v1/tournaments/{tournament_id}/seeding', {
+        params: { path: { tournament_id: tournamentId } },
+      }))
+      seeding.value = []
+    }, 'Failed to clear seeding')
+  }
+
+  // ==================== Stages ====================
+
+  async function createStage(
+    tournamentId: string,
+    request: components['schemas']['CreateStageRequest']
+  ): Promise<TournamentStageResponse> {
+    return withActionState(createStageState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/stages', {
+        params: { path: { tournament_id: tournamentId } },
+        body: request,
+      }))
+      const stage = result.data
+      stages.value.push(stage)
+      return stage
+    }, 'Failed to create stage')
+  }
+
+  // ==================== Check-in & No-Shows ====================
+
+  async function fetchCheckInStatus(tournamentId: string): Promise<CheckInStatusResponse> {
+    return withActionState(fetchCheckInStatusState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/check-in-status', {
+        params: { path: { tournament_id: tournamentId } },
+      }))
+      checkInStatus.value = result.data
+      return checkInStatus.value
+    }, 'Failed to fetch check-in status')
+  }
+
+  async function processNoShows(tournamentId: string): Promise<void> {
+    return withActionState(processNoShowsState, async () => {
+      await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/process-no-shows', {
+        params: { path: { tournament_id: tournamentId } },
+      }))
+      await fetchRegistrations(tournamentId)
+    }, 'Failed to process no-shows')
+  }
+
+  async function adminCheckIn(
+    tournamentId: string,
+    registrationId: string
+  ): Promise<TournamentRegistrationResponse> {
+    return withActionState(adminCheckInState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/admin-check-in', {
+        params: { path: { tournament_id: tournamentId, registration_id: registrationId } },
+      }))
+      const registration = result.data
+      replaceById(registrations.value, registration)
+      return registration
+    }, 'Failed to admin check-in')
+  }
+
+  // ==================== Bracket Standings ====================
+
+  async function fetchBracketStandings(tournamentId: string, bracketId: string) {
+    return withActionState(fetchBracketStandingsState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/brackets/{bracket_id}/standings', {
+        params: { path: { tournament_id: tournamentId, bracket_id: bracketId } },
+      }))
+      return result.data
+    }, 'Failed to fetch bracket standings')
+  }
+
   // ==================== Utility ====================
+
+  // ==================== Tournament Map Pool ====================
+
+  async function getTournamentMapPool(tournamentId: string) {
+    return withActionState(getMapPoolState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/map-pool', {
+        params: { path: { tournament_id: tournamentId } },
+      }))
+      return result.data
+    }, 'Failed to fetch tournament map pool')
+  }
+
+  async function setTournamentMapPool(tournamentId: string, mapIds: string[]) {
+    return withActionState(setMapPoolState, async () => {
+      const result = await unwrapApi(api.PUT('/v1/tournaments/{tournament_id}/map-pool', {
+        params: { path: { tournament_id: tournamentId } },
+        body: { map_ids: mapIds },
+      }))
+      return result.data
+    }, 'Failed to set tournament map pool')
+  }
+
+  async function deleteTournamentMapPool(tournamentId: string) {
+    return withActionState(deleteMapPoolState, async () => {
+      await unwrapApi(api.DELETE('/v1/tournaments/{tournament_id}/map-pool', {
+        params: { path: { tournament_id: tournamentId } },
+      }))
+    }, 'Failed to delete tournament map pool')
+  }
 
   function clearCurrent() {
     currentTournament.value = null
@@ -436,6 +763,8 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     matches.value = []
     brackets.value = []
     stages.value = []
+    seeding.value = []
+    checkInStatus.value = null
   }
 
   function clearTournaments() {
@@ -449,6 +778,8 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     matches.value = []
     brackets.value = []
     stages.value = []
+    seeding.value = []
+    checkInStatus.value = null
     loading.value = false
     error.value = null
     pagination.value = { page: 1, per_page: 20, total_items: 0, total_pages: 0 }
@@ -462,6 +793,8 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     matches,
     brackets,
     stages,
+    seeding,
+    checkInStatus,
     loading,
     error,
     pagination,
@@ -480,7 +813,12 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     publishState,
     openRegistrationState,
     closeRegistrationState,
+    reopenRegistrationState,
     startTournamentState,
+    cancelTournamentState,
+    completeTournamentState,
+    finalizeTournamentState,
+    generateNextRoundState,
     fetchRegistrationsState,
     registerTeamState,
     registerPlayerState,
@@ -493,6 +831,27 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     fetchMatchState,
     fetchBracketsState,
     fetchStagesState,
+    adminMatchTransitionState,
+    adminForfeitState,
+    adminDoubleForfeitState,
+    adminScheduleState,
+    processProgressionState,
+    reapplyProgressionState,
+    revertProgressionState,
+    matchCheckInState,
+    forfeitMatchState,
+    fetchSeedingState,
+    autoSeedState,
+    manualSeedState,
+    clearSeedingState,
+    createStageState,
+    fetchCheckInStatusState,
+    processNoShowsState,
+    adminCheckInState,
+    fetchBracketStandingsState,
+    getMapPoolState,
+    setMapPoolState,
+    deleteMapPoolState,
 
     // Tournament CRUD
     fetchTournaments,
@@ -505,7 +864,12 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     publishTournament,
     openRegistration,
     closeRegistration,
+    reopenRegistration,
     startTournament,
+    cancelTournament,
+    completeTournament,
+    finalizeTournament,
+    generateNextRound,
 
     // Registrations
     fetchRegistrations,
@@ -522,6 +886,41 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     fetchMatch,
     fetchBrackets,
     fetchStages,
+
+    // Admin Match Actions
+    adminMatchTransition,
+    adminForfeitMatch,
+    adminDoubleForfeit,
+    adminScheduleMatch,
+    processProgression,
+    reapplyProgression,
+    revertProgression,
+    matchCheckIn,
+
+    // Player Match Actions
+    forfeitMatch,
+
+    // Seeding
+    fetchSeeding,
+    autoSeed,
+    manualSeed,
+    clearSeeding,
+
+    // Stages
+    createStage,
+
+    // Check-in & No-Shows
+    fetchCheckInStatus,
+    processNoShows,
+    adminCheckIn,
+
+    // Bracket Standings
+    fetchBracketStandings,
+
+    // Tournament Map Pool
+    getTournamentMapPool,
+    setTournamentMapPool,
+    deleteTournamentMapPool,
 
     // Utility
     clearCurrent,
@@ -542,57 +941,17 @@ export type {
   UpdateTournamentRequest,
   RegisterTeamRequest,
   RegisterPlayerRequest,
+  SeededParticipantResponse,
+  CheckInStatusResponse,
 }
 
 // Helper functions
 export function getStatusColor(status: string): string {
-  switch (status) {
-    case 'draft':
-      return 'grey'
-    case 'published':
-      return 'info'
-    case 'registration_open':
-      return 'success'
-    case 'registration_closed':
-      return 'warning'
-    case 'check_in_open':
-      return 'primary'
-    case 'ready':
-      return 'secondary'
-    case 'in_progress':
-      return 'primary'
-    case 'completed':
-      return 'success'
-    case 'cancelled':
-      return 'error'
-    default:
-      return 'grey'
-  }
+  return getMapColor(tournamentStatusMap, status)
 }
 
 export function getStatusLabel(status: string): string {
-  switch (status) {
-    case 'draft':
-      return 'Draft'
-    case 'published':
-      return 'Published'
-    case 'registration_open':
-      return 'Registration Open'
-    case 'registration_closed':
-      return 'Registration Closed'
-    case 'check_in_open':
-      return 'Check-in Open'
-    case 'ready':
-      return 'Ready'
-    case 'in_progress':
-      return 'In Progress'
-    case 'completed':
-      return 'Completed'
-    case 'cancelled':
-      return 'Cancelled'
-    default:
-      return status
-  }
+  return getMapLabel(tournamentStatusMap, status)
 }
 
 export function formatTournamentFormat(format: string): string {

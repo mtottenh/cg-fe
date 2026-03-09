@@ -44,6 +44,15 @@
                     <v-icon start>mdi-exit-run</v-icon>
                     Leave Team
                   </v-btn>
+                  <v-btn
+                    v-if="canApplyToTeam"
+                    color="primary"
+                    variant="outlined"
+                    @click="showApplyDialog = true"
+                  >
+                    <v-icon start>mdi-account-plus</v-icon>
+                    Apply to Join
+                  </v-btn>
                 </div>
               </template>
             </v-card-item>
@@ -189,39 +198,46 @@
       </v-row>
     </template>
 
-    <!-- Confirm Remove Member Dialog -->
-    <v-dialog v-model="removeDialogOpen" max-width="400">
+    <!-- Apply to Team Dialog -->
+    <v-dialog v-model="showApplyDialog" max-width="400">
       <v-card>
-        <v-card-title class="text-h6">Remove Member</v-card-title>
+        <v-card-title>Apply to Join {{ team?.name }}</v-card-title>
         <v-card-text>
-          Are you sure you want to remove <strong>{{ memberToRemove?.display_name }}</strong> from the team?
+          <p class="text-body-2 mb-4">Your application will be reviewed by a team captain.</p>
+          <v-textarea
+            v-model="applyMessage"
+            label="Message (optional)"
+            rows="2"
+            hint="Introduce yourself to the team"
+          />
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="removeDialogOpen = false">Cancel</v-btn>
-          <v-btn color="error" variant="elevated" @click="handleRemoveMember" :loading="removing">
-            Remove
+          <v-btn variant="text" @click="showApplyDialog = false">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            :loading="applyingToTeam"
+            @click="handleApplyToTeam"
+          >
+            Submit Application
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
-    <!-- Confirm Leave Team Dialog -->
-    <v-dialog v-model="leaveDialogOpen" max-width="400">
-      <v-card>
-        <v-card-title class="text-h6">Leave Team</v-card-title>
-        <v-card-text>
-          Are you sure you want to leave <strong>{{ team?.name }}</strong>?
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="leaveDialogOpen = false">Cancel</v-btn>
-          <v-btn color="error" variant="elevated" @click="handleLeaveTeam" :loading="leaving">
-            Leave Team
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <!-- Confirm Dialog -->
+    <ConfirmDialog
+      :open="confirmDialog.open.value"
+      :title="confirmDialog.title.value"
+      :message="confirmDialog.message.value"
+      :action-label="confirmDialog.actionLabel.value"
+      :color="confirmDialog.color.value"
+      :loading="confirmDialog.loading.value"
+      :error="confirmDialog.dialogError.value"
+      @clear-error="confirmDialog.dialogError.value = null"
+      @confirm="confirmDialog.execute"
+      @cancel="confirmDialog.cancel"
+    />
 
     <!-- Success Snackbar -->
     <v-snackbar v-model="showSuccess" color="success" :timeout="3000">
@@ -231,10 +247,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useLeagueTeamsStore, type LeagueTeamMemberWithPlayer, type LeagueTeamInvitationResponse } from '@/stores/leagueTeams'
+import { useLeagueTeamsStore, type LeagueTeamMemberWithPlayer } from '@/stores/leagueTeams'
 import { useAuthStore } from '@/stores/auth'
+import { useTeamContext } from '@/composables/useTeamContext'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { components } from '@/api/types'
 
 type LeagueTeamResponse = components['schemas']['LeagueTeamResponse']
@@ -257,35 +276,44 @@ const teamId = computed(() => route.params.id as string)
 // team_season_id can come from query param or we need to look it up
 const teamSeasonId = ref<string | null>(route.query.season as string | null)
 
-// Check if current user is a member or captain
-const currentPlayerId = computed(() => authStore.playerId)
-const currentMember = computed(() =>
-  members.value.find(m => m.player_id === currentPlayerId.value)
-)
-const isMember = computed(() => !!currentMember.value)
-const isCaptain = computed(() => currentMember.value?.role === 'captain')
+// Keep teamSeasonId reactive to URL changes
+watch(() => route.query.season, (newSeason) => {
+  if (newSeason) {
+    teamSeasonId.value = newSeason as string
+  }
+})
+
+const { isMember, isCaptain } = useTeamContext(teamSeasonId)
 
 // Dialog state
-const removeDialogOpen = ref(false)
-const leaveDialogOpen = ref(false)
-const memberToRemove = ref<LeagueTeamMemberWithPlayer | null>(null)
-const removing = ref(false)
-const leaving = ref(false)
+const confirmDialog = useConfirmDialog()
 const cancellingInvitation = ref<string | null>(null)
 const showSuccess = ref(false)
 const successMessage = ref('')
+const showApplyDialog = ref(false)
+const applyMessage = ref('')
+const applyingToTeam = ref(false)
+
+const canApplyToTeam = computed(() => {
+  if (!authStore.isAuthenticated || !teamSeasonId.value) return false
+  if (isMember.value) return false
+  return true
+})
 
 onMounted(async () => {
   try {
     // Fetch team details
     team.value = await teamsStore.fetchTeam(teamId.value)
 
-    // If we don't have a team_season_id from query, try to find it from user's teams
-    if (!teamSeasonId.value && authStore.isAuthenticated) {
+    // Fetch user's teams so useTeamContext can determine membership/role
+    if (authStore.isAuthenticated) {
       await teamsStore.fetchMyTeams()
-      const myMembership = teamsStore.myTeams.find(t => t.team_id === teamId.value)
-      if (myMembership) {
-        teamSeasonId.value = myMembership.team_season_id
+      // If we don't have a team_season_id from query, try to find it from user's teams
+      if (!teamSeasonId.value) {
+        const myMembership = teamsStore.myTeams.find(t => t.team_id === teamId.value)
+        if (myMembership) {
+          teamSeasonId.value = myMembership.team_season_id
+        }
       }
     }
 
@@ -322,7 +350,7 @@ function goToPlayer(playerId: string) {
 }
 
 function isCurrentUser(playerId: string): boolean {
-  return playerId === currentPlayerId.value
+  return playerId === authStore.playerId
 }
 
 async function handlePromoteToCaptain(playerId: string) {
@@ -340,44 +368,32 @@ async function handlePromoteToCaptain(playerId: string) {
 }
 
 function confirmRemoveMember(member: LeagueTeamMemberWithPlayer) {
-  memberToRemove.value = member
-  removeDialogOpen.value = true
-}
-
-async function handleRemoveMember() {
-  if (!memberToRemove.value || !teamSeasonId.value) return
-
-  removing.value = true
-  try {
-    await teamsStore.removeMember(teamSeasonId.value, memberToRemove.value.player_id)
-    successMessage.value = `${memberToRemove.value.display_name} has been removed from the team`
-    showSuccess.value = true
-    removeDialogOpen.value = false
-  } catch (e) {
-    error.value = teamsStore.error || 'Failed to remove member'
-  } finally {
-    removing.value = false
-    memberToRemove.value = null
-  }
+  confirmDialog.confirm({
+    title: 'Remove Member',
+    message: `Are you sure you want to remove ${member.display_name} from the team?`,
+    action: 'Remove',
+    color: 'error',
+    handler: async () => {
+      if (!teamSeasonId.value) return
+      await teamsStore.removeMember(teamSeasonId.value, member.player_id)
+      successMessage.value = `${member.display_name} has been removed from the team`
+      showSuccess.value = true
+    },
+  })
 }
 
 function confirmLeaveTeam() {
-  leaveDialogOpen.value = true
-}
-
-async function handleLeaveTeam() {
-  if (!teamSeasonId.value) return
-
-  leaving.value = true
-  try {
-    await teamsStore.leaveTeam(teamSeasonId.value)
-    router.push('/leagues')
-  } catch (e) {
-    error.value = teamsStore.error || 'Failed to leave team'
-    leaveDialogOpen.value = false
-  } finally {
-    leaving.value = false
-  }
+  confirmDialog.confirm({
+    title: 'Leave Team',
+    message: `Are you sure you want to leave ${team.value?.name}?`,
+    action: 'Leave Team',
+    color: 'error',
+    handler: async () => {
+      if (!teamSeasonId.value) return
+      await teamsStore.leaveTeam(teamSeasonId.value)
+      router.push('/leagues')
+    },
+  })
 }
 
 async function handleCancelInvitation(invitationId: string) {
@@ -390,6 +406,22 @@ async function handleCancelInvitation(invitationId: string) {
     error.value = teamsStore.error || 'Failed to cancel invitation'
   } finally {
     cancellingInvitation.value = null
+  }
+}
+
+async function handleApplyToTeam() {
+  if (!teamSeasonId.value) return
+  applyingToTeam.value = true
+  try {
+    await teamsStore.applyToTeam(teamSeasonId.value, applyMessage.value || undefined)
+    successMessage.value = 'Application submitted!'
+    showSuccess.value = true
+    showApplyDialog.value = false
+    applyMessage.value = ''
+  } catch {
+    error.value = teamsStore.error || 'Failed to apply to team'
+  } finally {
+    applyingToTeam.value = false
   }
 }
 

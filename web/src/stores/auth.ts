@@ -39,6 +39,7 @@ type RegisterResponse = components['schemas']['RegisterResponse']
 export const useAuthStore = defineStore('auth', () => {
   // Get token and player_id from localStorage, null if not present
   const token = ref<string | null>(localStorage.getItem('token'))
+  const refreshToken = ref<string | null>(localStorage.getItem('refresh_token'))
   const playerId = ref<string | null>(localStorage.getItem('player_id'))
   const user = ref<User | null>(null)
   const player = ref<Player | null>(null)
@@ -57,14 +58,12 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => {
     const t = token.value
     if (!t || t.length === 0) return false
+    if (t === 'dev-token') return false
 
     const claims = decodeJwtPayload(t)
-    if (!claims) return false
-
-    // Token expired if exp is in the past (with 30-second buffer)
-    const now = Math.floor(Date.now() / 1000)
-    if (claims.exp && claims.exp < now - 30) {
-      return false
+    if (claims?.exp) {
+      const now = Math.floor(Date.now() / 1000)
+      if (claims.exp < now - 30) return false
     }
 
     return true
@@ -76,6 +75,9 @@ export const useAuthStore = defineStore('auth', () => {
     const claims = decodeJwtPayload(token.value)
     return claims?.is_admin ?? false
   })
+
+  // Check if running in dev mode (dev-token set)
+  const isDevMode = computed(() => token.value === 'dev-token')
 
   // Per-action states
   const loginState = createActionState()
@@ -90,10 +92,16 @@ export const useAuthStore = defineStore('auth', () => {
 
       const data = result.data
 
-      // Store the token and player_id
+      // Store the access token
       token.value = data.access_token
       localStorage.setItem('token', data.access_token)
       setAuthToken(data.access_token)
+
+      // Store the refresh token
+      if (data.refresh_token) {
+        refreshToken.value = data.refresh_token
+        localStorage.setItem('refresh_token', data.refresh_token)
+      }
 
       if (data.player_id) {
         playerId.value = data.player_id
@@ -112,10 +120,16 @@ export const useAuthStore = defineStore('auth', () => {
 
       const data = result.data
 
-      // Store the token from registration
+      // Store the access token
       token.value = data.access_token
       localStorage.setItem('token', data.access_token)
       setAuthToken(data.access_token)
+
+      // Store the refresh token
+      if (data.refresh_token) {
+        refreshToken.value = data.refresh_token
+        localStorage.setItem('refresh_token', data.refresh_token)
+      }
 
       // Store user and player
       user.value = data.user
@@ -136,6 +150,41 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
+   * Attempt to refresh the access token using the stored refresh token.
+   * Returns true if successful, false if the refresh token is invalid/expired.
+   */
+  async function refreshAccessToken(): Promise<boolean> {
+    const rt = refreshToken.value
+    if (!rt) return false
+
+    try {
+      const result = await unwrapApi(api.POST('/v1/auth/refresh', {
+        body: { refresh_token: rt },
+      }))
+
+      const data = result.data
+
+      // Update access token
+      token.value = data.access_token
+      localStorage.setItem('token', data.access_token)
+      setAuthToken(data.access_token)
+
+      // Update refresh token (rotation)
+      if (data.refresh_token) {
+        refreshToken.value = data.refresh_token
+        localStorage.setItem('refresh_token', data.refresh_token)
+      }
+
+      return true
+    } catch {
+      // Refresh failed — clear refresh token
+      refreshToken.value = null
+      localStorage.removeItem('refresh_token')
+      return false
+    }
+  }
+
+  /**
    * Initialize auth state on app boot.
    * Validates stored token and fetches user profile if valid.
    * Must be called before router guards check auth state.
@@ -145,8 +194,22 @@ export const useAuthStore = defineStore('auth', () => {
 
     if (token.value) {
       if (!isAuthenticated.value) {
-        // Token exists but is expired or invalid
-        logout()
+        // Token exists but is expired — try to refresh before logging out
+        if (refreshToken.value) {
+          const refreshed = await refreshAccessToken()
+          if (!refreshed) {
+            logout()
+          } else {
+            // Refreshed successfully, fetch user profile
+            try {
+              await fetchCurrentUser()
+            } catch {
+              logout()
+            }
+          }
+        } else {
+          logout()
+        }
       } else {
         // Token looks valid, verify with server
         try {
@@ -167,18 +230,25 @@ export const useAuthStore = defineStore('auth', () => {
     setAuthToken(newToken)
   }
 
+  function enableDevMode() {
+    setToken('dev-token')
+  }
+
   function logout() {
     token.value = null
+    refreshToken.value = null
     playerId.value = null
     user.value = null
     player.value = null
     localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')
     localStorage.removeItem('player_id')
     setAuthToken(null)
   }
 
   return {
     token,
+    refreshToken,
     playerId,
     user,
     player,
@@ -187,11 +257,14 @@ export const useAuthStore = defineStore('auth', () => {
     initialized,
     isAuthenticated,
     isAdmin,
+    isDevMode,
     initialize,
     login,
     register,
     fetchCurrentUser,
+    refreshAccessToken,
     setToken,
+    enableDevMode,
     logout,
     // Per-action states
     loginState,

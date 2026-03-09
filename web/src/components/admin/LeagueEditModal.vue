@@ -99,6 +99,58 @@
                 persistent-hint
               />
             </v-col>
+
+            <!-- Entry Requirements -->
+            <v-col cols="12">
+              <v-expansion-panels variant="accordion">
+                <v-expansion-panel title="Entry Requirements">
+                  <v-expansion-panel-text>
+                    <v-row dense>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="form.min_rating"
+                          label="Minimum Rating"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          clearable
+                        />
+                      </v-col>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="form.max_rating"
+                          label="Maximum Rating"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          clearable
+                        />
+                      </v-col>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="form.max_peak_rating"
+                          label="Max Peak Rating"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          clearable
+                        />
+                      </v-col>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="form.min_matches"
+                          label="Min Matches Played"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          clearable
+                        />
+                      </v-col>
+                    </v-row>
+                  </v-expansion-panel-text>
+                </v-expansion-panel>
+              </v-expansion-panels>
+            </v-col>
           </v-row>
         </v-form>
       </v-card-text>
@@ -129,6 +181,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useLeaguesStore, type UserLeagueMembership, type LeagueResponse } from '@/stores/leagues'
+import { useFormRules } from '@/composables/useFormRules'
 
 // Store
 const leaguesStore = useLeaguesStore()
@@ -156,6 +209,10 @@ const form = ref({
   description: '',
   logo_url: '',
   access_type: 'open',
+  min_rating: null as number | null,
+  max_rating: null as number | null,
+  max_peak_rating: null as number | null,
+  min_matches: null as number | null,
 })
 
 const accessTypes = [
@@ -164,27 +221,7 @@ const accessTypes = [
   { value: 'application', label: 'Application', description: 'Users apply, admins approve/reject' },
 ]
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => !v || v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
-  slug: (v: string) => {
-    if (!v) return true
-    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(v)) {
-      return 'Must be lowercase letters, numbers, and hyphens. Must start and end with letter or number.'
-    }
-    return true
-  },
-  url: (v: string) => {
-    if (!v) return true
-    try {
-      new URL(v)
-      return true
-    } catch {
-      return 'Must be a valid URL'
-    }
-  },
-}
+const rules = useFormRules()
 
 // Fetch full league details when dialog opens
 watch(() => props.modelValue, async (isOpen) => {
@@ -204,12 +241,17 @@ async function fetchLeagueDetails() {
     leagueDetails.value = league
 
     // Populate form with league details
+    const eligibility = (league.settings as Record<string, unknown>)?.eligibility as Record<string, unknown> | undefined
     form.value = {
       name: league.name,
       slug: league.slug,
       description: league.description || '',
       logo_url: league.logo_url || '',
       access_type: league.access_type,
+      min_rating: (eligibility?.min_rating_per_player as number) ?? null,
+      max_rating: (eligibility?.max_rating_per_player as number) ?? null,
+      max_peak_rating: (eligibility?.max_peak_rating_per_player as number) ?? null,
+      min_matches: (eligibility?.min_matches_played as number) ?? null,
     }
   } catch {
     error.value = leaguesStore.error || 'Failed to load league details'
@@ -248,6 +290,19 @@ async function save() {
     }
     if (form.value.access_type !== leagueDetails.value.access_type) {
       updateData.access_type = form.value.access_type as 'open' | 'invite_only' | 'application'
+    }
+
+    // Build settings with eligibility restrictions
+    const eligibility: Record<string, unknown> = {}
+    if (form.value.min_rating) eligibility.min_rating_per_player = form.value.min_rating
+    if (form.value.max_rating) eligibility.max_rating_per_player = form.value.max_rating
+    if (form.value.max_peak_rating) eligibility.max_peak_rating_per_player = form.value.max_peak_rating
+    if (form.value.min_matches) eligibility.min_matches_played = form.value.min_matches
+    // Always send settings if any requirement fields are present (to allow clearing)
+    const newSettings = Object.keys(eligibility).length > 0 ? { eligibility } : {}
+    const currentSettings = leagueDetails.value.settings as Record<string, unknown> ?? {}
+    if (JSON.stringify(newSettings) !== JSON.stringify(currentSettings)) {
+      updateData.settings = newSettings
     }
 
     // Skip if nothing changed

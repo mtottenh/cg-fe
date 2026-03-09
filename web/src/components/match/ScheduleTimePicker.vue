@@ -1,33 +1,33 @@
 <template>
   <div class="schedule-time-picker">
-    <!-- Suggested Times (based on mutual availability) -->
-    <div v-if="suggestedTimes.length > 0" class="mb-4">
+    <!-- Recommended Times (backend suggestions or fallback quick select) -->
+    <div class="mb-4">
       <div class="text-subtitle-2 mb-2 d-flex align-center">
-        <v-icon start size="small" color="success">mdi-clock-check</v-icon>
-        Suggested Times (Mutual Availability)
+        <v-icon start size="small" :color="suggestedTimes.length > 0 ? 'success' : undefined">
+          {{ suggestedTimes.length > 0 ? 'mdi-clock-check' : 'mdi-calendar-today' }}
+        </v-icon>
+        {{ suggestedTimes.length > 0 ? 'Recommended Times' : 'Quick Select' }}
       </div>
-      <div class="d-flex flex-wrap gap-2">
+
+      <!-- Backend-scored suggestions -->
+      <div v-if="suggestedTimes.length > 0" class="d-flex flex-wrap gap-2">
         <v-chip
-          v-for="time in suggestedTimes"
+          v-for="(time, idx) in suggestedTimes"
           :key="time"
-          :color="isTimeSelected(time) ? 'primary' : 'default'"
+          :color="isTimeSelected(time) ? 'primary' : idx === 0 ? 'success' : 'default'"
           :variant="isTimeSelected(time) ? 'flat' : 'outlined'"
           class="cursor-pointer"
           @click="toggleSuggestedTime(time)"
         >
-          <v-icon start size="small">{{ isTimeSelected(time) ? 'mdi-check-circle' : 'mdi-clock-outline' }}</v-icon>
+          <v-icon start size="small">
+            {{ isTimeSelected(time) ? 'mdi-check-circle' : idx === 0 ? 'mdi-star' : 'mdi-clock-outline' }}
+          </v-icon>
           {{ formatTime(time) }}
         </v-chip>
       </div>
-    </div>
 
-    <!-- Quick Time Suggestions -->
-    <div class="mb-4">
-      <div class="text-subtitle-2 mb-2 d-flex align-center">
-        <v-icon start size="small">mdi-calendar-today</v-icon>
-        Quick Select
-      </div>
-      <v-chip-group>
+      <!-- Fallback: hardcoded quick times when no suggestions available -->
+      <v-chip-group v-else>
         <v-chip
           v-for="quick in quickTimes"
           :key="quick.label"
@@ -105,6 +105,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useFormRules } from '@/composables/useFormRules'
 
 const props = withDefaults(
   defineProps<{
@@ -173,7 +174,9 @@ const quickTimes = computed(() => {
 })
 
 // Validation rules
+const { required: _required, ...baseRules } = useFormRules()
 const rules = {
+  ...baseRules,
   required: (v: string) => !!v || 'At least one time is required',
   futureDate: (v: string) => {
     if (!v) return true

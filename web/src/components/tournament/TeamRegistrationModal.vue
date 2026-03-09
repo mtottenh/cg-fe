@@ -28,7 +28,7 @@
           </p>
           <ul class="text-body-2 pl-4 mb-0">
             <li v-if="tournament.league_id">
-              Teams must be part of <strong>{{ tournament.league_name || 'the linked league' }}</strong>
+              Teams must be part of <strong>the linked league</strong>
             </li>
             <li>You must be a <strong>captain</strong> or <strong>manager</strong> of the team</li>
             <li>The team must not already be registered</li>
@@ -106,6 +106,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useLeagueTeamsStore, type PlayerLeagueTeamMembershipResponse } from '@/stores/leagueTeams'
 import type { TournamentResponse, TournamentRegistrationResponse } from '@/stores/tournaments'
+import { useFormRules } from '@/composables/useFormRules'
 
 const props = defineProps<{
   modelValue: boolean
@@ -127,7 +128,9 @@ const selectedTeamSeasonId = ref<string | null>(null)
 const participantName = ref('')
 
 // Validation rules
+const { maxLength: _maxLength, ...baseRules } = useFormRules()
 const rules = {
+  ...baseRules,
   required: (v: string) => !!v?.trim() || 'Required',
   maxLength: (v: string) => !v || v.length <= 100 || 'Max 100 characters',
 }

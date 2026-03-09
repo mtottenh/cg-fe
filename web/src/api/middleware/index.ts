@@ -1,1 +1,1 @@
-export { errorMiddleware, setUnauthorizedHandler } from './errorMiddleware'
+export { errorMiddleware, setUnauthorizedHandler, setRefreshHandler } from './errorMiddleware'

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
@@ -47,9 +47,15 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
   const myTeams = ref<PlayerLeagueTeamMembershipResponse[]>([])
   const myInvitations = ref<LeagueTeamInvitationWithTeamResponse[]>([])
 
-  // Shared state (kept for backward compatibility)
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+  // Viewed player's teams (for public profile)
+  const viewedPlayerTeams = ref<PlayerLeagueTeamMembershipResponse[]>([])
+
+  // Computed aliases wired to fetchMyTeamsState for backward compatibility
+  const loading = computed(() => fetchMyTeamsState.loading.value)
+  const error = computed({
+    get: () => fetchMyTeamsState.error.value,
+    set: (val: string | null) => { fetchMyTeamsState.error.value = val },
+  })
   const pagination = ref<PaginationMeta>({ page: 1, per_page: 20, total_items: 0, total_pages: 0 })
 
   // Per-action states
@@ -66,6 +72,7 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
   const fetchTeamInvitationsState = createActionState()
   const invitePlayerState = createActionState()
   const cancelInvitationState = createActionState()
+  const fetchPlayerLeagueTeamsState = createActionState()
   const fetchMyTeamsState = createActionState()
   const fetchMyInvitationsState = createActionState()
   const acceptInvitationState = createActionState()
@@ -170,10 +177,9 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
         params: { path: { team_season_id: teamSeasonId, player_id: playerId } },
       }))
       // Update member role in local state
-      const member = members.value.find(m => m.player_id === playerId)
-      if (member) {
-        member.role = 'captain'
-      }
+      members.value = members.value.map(m =>
+        m.player_id === playerId ? { ...m, role: 'captain' } : m
+      )
     }, 'Failed to promote member')
   }
 
@@ -183,10 +189,9 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
         params: { path: { team_season_id: teamSeasonId, player_id: playerId } },
       }))
       // Update member role in local state
-      const member = members.value.find(m => m.player_id === playerId)
-      if (member) {
-        member.role = 'player'
-      }
+      members.value = members.value.map(m =>
+        m.player_id === playerId ? { ...m, role: 'player' } : m
+      )
     }, 'Failed to demote member')
   }
 
@@ -221,6 +226,18 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
       }))
       invitations.value = invitations.value.filter(i => i.id !== invitationId)
     }, 'Failed to cancel invitation')
+  }
+
+  // ==================== Viewed Player's Data ====================
+
+  async function fetchPlayerLeagueTeams(playerId: string): Promise<PlayerLeagueTeamMembershipResponse[]> {
+    return withActionState(fetchPlayerLeagueTeamsState, async () => {
+      const result = await unwrapApi(api.GET('/v1/players/{player_id}/league-teams', {
+        params: { path: { player_id: playerId } },
+      }))
+      viewedPlayerTeams.value = result.data
+      return viewedPlayerTeams.value
+    }, 'Failed to fetch player teams')
   }
 
   // ==================== Current Player's Data ====================
@@ -273,6 +290,19 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     }, 'Failed to leave team')
   }
 
+  // ==================== Team Applications ====================
+
+  const applyToTeamState = createActionState()
+
+  async function applyToTeam(teamSeasonId: string, message?: string): Promise<void> {
+    return withActionState(applyToTeamState, async () => {
+      await unwrapApi(api.POST('/v1/league-team-seasons/{team_season_id}/apply', {
+        params: { path: { team_season_id: teamSeasonId } },
+        body: { message: message ?? null },
+      }))
+    }, 'Failed to apply to team')
+  }
+
   // ==================== Utility ====================
 
   function clearCurrent() {
@@ -295,6 +325,7 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     invitations,
     myTeams,
     myInvitations,
+    viewedPlayerTeams,
     loading,
     error,
     pagination,
@@ -320,12 +351,19 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     invitePlayer,
     cancelInvitation,
 
+    // Viewed player
+    fetchPlayerLeagueTeams,
+
     // Current player
     fetchMyTeams,
     fetchMyInvitations,
     acceptInvitation,
     declineInvitation,
     leaveTeam,
+
+    // Team Applications
+    applyToTeam,
+    applyToTeamState,
 
     // Utility
     clearCurrent,
@@ -345,6 +383,7 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     fetchTeamInvitationsState,
     invitePlayerState,
     cancelInvitationState,
+    fetchPlayerLeagueTeamsState,
     fetchMyTeamsState,
     fetchMyInvitationsState,
     acceptInvitationState,

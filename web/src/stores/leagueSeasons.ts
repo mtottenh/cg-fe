@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { replaceById } from '@/utils/collections'
 
 // Use generated types
 type LeagueSeasonResponse = components['schemas']['LeagueSeasonResponse']
@@ -12,14 +13,19 @@ type UpdateLeagueSeasonRequest = components['schemas']['UpdateLeagueSeasonReques
 export const useLeagueSeasonsStore = defineStore('leagueSeasons', () => {
   const seasons = ref<LeagueSeasonResponse[]>([])
   const currentSeason = ref<LeagueSeasonResponse | null>(null)
-  const loading = ref(false)
-  const error = ref<string | null>(null)
 
   // Per-action states
   const fetchSeasonsState = createActionState()
   const fetchSeasonState = createActionState()
   const createSeasonState = createActionState()
   const updateSeasonState = createActionState()
+
+  // Computed aliases for backward compatibility
+  const loading = computed(() => fetchSeasonsState.loading.value)
+  const error = computed({
+    get: () => fetchSeasonsState.error.value,
+    set: (val: string | null) => { fetchSeasonsState.error.value = val },
+  })
 
   async function fetchSeasons(leagueId: string): Promise<LeagueSeasonResponse[]> {
     return withActionState(fetchSeasonsState, async () => {
@@ -60,10 +66,7 @@ export const useLeagueSeasonsStore = defineStore('leagueSeasons', () => {
         body: seasonData,
       }))
       const updatedSeason = result.data
-      const index = seasons.value.findIndex(s => s.id === seasonId)
-      if (index !== -1) {
-        seasons.value[index] = updatedSeason
-      }
+      replaceById(seasons.value, updatedSeason)
       currentSeason.value = updatedSeason
       return updatedSeason
     }, 'Failed to update season')

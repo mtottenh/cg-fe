@@ -133,6 +133,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { ApiError } from '@/api'
+import { useFormRules } from '@/composables/useFormRules'
 
 const props = defineProps<{
   modelValue: boolean
@@ -162,20 +163,7 @@ const form = ref({
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => !v || v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
-  slug: (v: string) => {
-    if (!v) return true
-    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(v)) {
-      return 'Must be lowercase letters, numbers, and hyphens'
-    }
-    return true
-  },
-  positiveNumber: (v: number | null) => {
-    if (v === null || v === undefined || v === 0) return true
-    return v > 0 || 'Must be positive'
-  },
+  ...useFormRules(),
   nonNegativeNumber: (v: number | null) => {
     if (v === null || v === undefined) return true
     return v >= 0 || 'Must be non-negative'

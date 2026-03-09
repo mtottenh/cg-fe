@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useLeaguesStore } from '@/stores/leagues'
 import { useLeagueSeasonsStore } from '@/stores/leagueSeasons'
 import { useLeagueTeamsStore, type LeagueTeamSummaryResponse, type LeagueTeamMemberWithPlayer } from '@/stores/leagueTeams'
+import { useTournamentsStore } from '@/stores/tournaments'
 import { useGamesStore } from '@/stores/games'
 
 export function useLeagueDetail() {
@@ -12,14 +13,18 @@ export function useLeagueDetail() {
   const leaguesStore = useLeaguesStore()
   const seasonsStore = useLeagueSeasonsStore()
   const teamsStore = useLeagueTeamsStore()
+  const tournamentsStore = useTournamentsStore()
   const gamesStore = useGamesStore()
 
   // Loading states
   const loading = ref(false)
   const loadingSeasons = ref(false)
   const loadingTeams = ref(false)
+  const loadingTournaments = ref(false)
   const loadingMembers = ref(false)
   const creatingTeam = ref(false)
+  const joiningLeague = ref(false)
+  const applyingToLeague = ref(false)
   const error = ref<string | null>(null)
 
   // Selection state
@@ -31,6 +36,7 @@ export function useLeagueDetail() {
   const league = computed(() => leaguesStore.currentLeague)
   const seasons = computed(() => seasonsStore.seasons)
   const teams = computed(() => teamsStore.teams)
+  const tournaments = computed(() => tournamentsStore.tournaments)
 
   const gameName = computed(() => {
     if (!league.value) return ''
@@ -38,8 +44,25 @@ export function useLeagueDetail() {
     return game?.display_name || game?.slug || 'Unknown Game'
   })
 
+  // League membership
+  const isLeagueMember = computed(() => {
+    if (!league.value || !authStore.isAuthenticated) return false
+    return leaguesStore.myLeagues.some(m => m.league_id === league.value!.id)
+  })
+
+  const membershipType = computed(() => {
+    if (!league.value) return null
+    const membership = leaguesStore.myLeagues.find(m => m.league_id === league.value!.id)
+    return membership?.membership_type ?? null
+  })
+
+  const hasPendingApplication = computed(() => {
+    if (!league.value) return false
+    return leaguesStore.hasPendingApplicationForLeague(league.value.id)
+  })
+
   const hasTeamInSeason = computed(() => {
-    if (!selectedSeasonId.value || !authStore.isAuthenticated) return false
+    if (!selectedSeasonId.value || !isLeagueMember.value) return false
     return teamsStore.myTeams.some(t => t.season_id === selectedSeasonId.value)
   })
 
@@ -69,7 +92,12 @@ export function useLeagueDetail() {
         }
 
         if (authStore.isAuthenticated) {
-          await teamsStore.fetchMyTeams()
+          // These are non-critical — don't let failures block the page
+          await Promise.all([
+            teamsStore.fetchMyTeams().catch(() => {}),
+            leaguesStore.fetchMyLeagues().catch(() => {}),
+            leaguesStore.fetchMyLeagueInvitations().catch(() => {}),
+          ])
         }
       }
     } catch (e) {
@@ -88,6 +116,23 @@ export function useLeagueDetail() {
       console.error('Failed to load teams:', e)
     } finally {
       loadingTeams.value = false
+    }
+  }
+
+  async function fetchTournamentsForSeason(seasonId: string) {
+    if (!league.value) return
+    loadingTournaments.value = true
+    try {
+      // Fetch tournaments for this league. We filter by league_id only
+      // (not season_id) because tournaments may be linked to the league
+      // without a specific season. The season_id on a tournament is optional.
+      await tournamentsStore.fetchTournaments({
+        league_id: league.value.id,
+      })
+    } catch (e) {
+      console.error('Failed to load tournaments:', e)
+    } finally {
+      loadingTournaments.value = false
     }
   }
 
@@ -125,14 +170,58 @@ export function useLeagueDetail() {
     }
   }
 
+  async function joinLeague() {
+    if (!league.value) return
+    joiningLeague.value = true
+    try {
+      await leaguesStore.joinLeague(league.value.id)
+    } catch (e) {
+      error.value = leaguesStore.joinLeagueState.error.value || 'Failed to join league'
+      throw e
+    } finally {
+      joiningLeague.value = false
+    }
+  }
+
+  async function applyToLeague(message?: string) {
+    if (!league.value) return
+    applyingToLeague.value = true
+    try {
+      await leaguesStore.applyToLeague(league.value.id, message)
+    } catch (e) {
+      error.value = leaguesStore.applyToLeagueState.error.value || 'Failed to apply to league'
+      throw e
+    } finally {
+      applyingToLeague.value = false
+    }
+  }
+
+  async function leaveLeague() {
+    if (!league.value) return
+    try {
+      await leaguesStore.leaveLeague(league.value.id)
+    } catch (e) {
+      error.value = 'Failed to leave league'
+      throw e
+    }
+  }
+
   function clearError() {
     error.value = null
   }
+
+  // Re-fetch when route param changes (component reuse between leagues)
+  watch(() => route.params.id, (newId, oldId) => {
+    if (newId && newId !== oldId) {
+      fetchAll()
+    }
+  })
 
   // Watch season changes to load teams
   watch(selectedSeasonId, (newSeasonId) => {
     if (newSeasonId) {
       fetchTeamsForSeason(newSeasonId)
+      fetchTournamentsForSeason(newSeasonId)
     }
   })
 
@@ -148,8 +237,12 @@ export function useLeagueDetail() {
     league,
     seasons,
     teams,
+    tournaments,
     gameName,
     hasTeamInSeason,
+    isLeagueMember,
+    membershipType,
+    hasPendingApplication,
     selectedSeasonId,
     selectedTeam,
     teamMembers,
@@ -158,8 +251,11 @@ export function useLeagueDetail() {
     loading,
     loadingSeasons,
     loadingTeams,
+    loadingTournaments,
     loadingMembers,
     creatingTeam,
+    joiningLeague,
+    applyingToLeague,
     error,
     clearError,
 
@@ -170,5 +266,8 @@ export function useLeagueDetail() {
     fetchAll,
     fetchTeamMembers,
     createTeam,
+    joinLeague,
+    applyToLeague,
+    leaveLeague,
   }
 }

@@ -11,12 +11,22 @@
       <!-- Header -->
       <TournamentHeader :tournament="tournament" :game="game" class="mb-6" />
 
+      <!-- Organizer Toolbar (inline management for organizers) -->
+      <OrganizerToolbar
+        v-if="isOrganizer"
+        :tournament="tournament"
+        @edit="editModalOpen = true"
+        @manage-registrations="activeTab = 'participants'"
+        @action-complete="fetchData"
+      />
+
       <!-- Registration Card (if applicable) -->
       <TournamentRegistrationCard
         v-if="showRegistrationCard"
         :tournament="tournament"
         :my-registration="myRegistration"
         :loading="registering"
+        :has-eligible-teams="hasEligibleTeams"
         class="mb-6"
         @register="handleRegister"
         @withdraw="handleWithdraw"
@@ -165,6 +175,12 @@
                   <div class="font-weight-medium">{{ item.participant_name }}</div>
                 </template>
 
+                <template v-slot:item.status="{ item }">
+                  <v-chip size="small" variant="tonal" :color="registrationStatusColor(item.status)">
+                    {{ registrationStatusLabel(item.status) }}
+                  </v-chip>
+                </template>
+
                 <template v-slot:item.seed="{ item }">
                   <v-chip v-if="item.seed" size="small" variant="tonal">
                     #{{ item.seed }}
@@ -174,6 +190,31 @@
 
                 <template v-slot:item.checked_in="{ item }">
                   <v-icon v-if="item.checked_in" color="success" size="small">mdi-check-circle</v-icon>
+                </template>
+
+                <template v-if="isOrganizer" v-slot:item.actions="{ item }">
+                  <div v-if="item.status === 'pending'" class="d-flex gap-1">
+                    <v-btn
+                      size="small"
+                      color="success"
+                      variant="tonal"
+                      :loading="regActionLoadingId === item.id"
+                      :disabled="regActionLoadingId !== null && regActionLoadingId !== item.id"
+                      @click="handleApproveRegistration(item)"
+                    >
+                      Approve
+                    </v-btn>
+                    <v-btn
+                      size="small"
+                      color="error"
+                      variant="tonal"
+                      :disabled="regActionLoadingId !== null"
+                      @click="handleRejectRegistration(item)"
+                    >
+                      Reject
+                    </v-btn>
+                  </div>
+                  <span v-else class="text-grey text-caption">-</span>
                 </template>
 
                 <template v-slot:no-data>
@@ -239,10 +280,6 @@
       {{ error }}
     </v-alert>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
-
     <!-- Registration Modals -->
     <TeamRegistrationModal
       v-if="tournament"
@@ -258,6 +295,13 @@
       :tournament="tournament"
       @register="handlePlayerRegister"
     />
+
+    <TournamentEditModal
+      v-if="tournament"
+      v-model="editModalOpen"
+      :tournament="tournament"
+      @saved="fetchData"
+    />
   </v-container>
 </template>
 
@@ -269,11 +313,17 @@ import { useAuthStore } from '@/stores/auth'
 import { useTournamentsStore, type TournamentMatchResponse } from '@/stores/tournaments'
 import TournamentHeader from '@/components/tournament/TournamentHeader.vue'
 import TournamentRegistrationCard from '@/components/tournament/TournamentRegistrationCard.vue'
+import OrganizerToolbar from '@/components/tournament/OrganizerToolbar.vue'
+import { useTournamentContext } from '@/composables/useTournamentContext'
 import TournamentBracket from '@/components/tournament/TournamentBracket.vue'
 import TournamentMatchCard from '@/components/tournament/TournamentMatchCard.vue'
 import TeamRegistrationModal from '@/components/tournament/TeamRegistrationModal.vue'
 import PlayerRegistrationModal from '@/components/tournament/PlayerRegistrationModal.vue'
+import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { formatDateTime } from '@/utils/formatters'
+import { registrationStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 const route = useRoute()
 const router = useRouter()
@@ -282,20 +332,27 @@ const authStore = useAuthStore()
 const tournamentsStore = useTournamentsStore()
 const leagueTeamsStore = useLeagueTeamsStore()
 
-// State
-const activeTab = ref('overview')
-const registering = ref(false)
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
-const showTeamRegistrationModal = ref(false)
-const showPlayerRegistrationModal = ref(false)
-
-// Computed
+// Computed (tournament must be declared before useTournamentContext)
 const loading = computed(() => tournamentsStore.loading)
 const error = computed(() => tournamentsStore.error)
 const tournament = computed(() => tournamentsStore.currentTournament)
-const registrations = computed(() => tournamentsStore.registrations)
+
+const {
+  isOrganizer, isTeamTournament, myRegistration, hasEligibleTeams,
+  loadOrganizerRoles,
+} = useTournamentContext(tournament)
+
+// State
+const activeTab = ref('overview')
+const registering = ref(false)
+const snackbar = useSnackbar()
+const showTeamRegistrationModal = ref(false)
+const showPlayerRegistrationModal = ref(false)
+const editModalOpen = ref(false)
+const allRegistrations = computed(() => tournamentsStore.registrations)
+const registrations = computed(() =>
+  allRegistrations.value.filter((r) => r.status !== 'withdrawn' && r.status !== 'disqualified'),
+)
 const matches = computed(() => tournamentsStore.matches)
 const brackets = computed(() => tournamentsStore.brackets)
 const isAuthenticated = computed(() => authStore.isAuthenticated)
@@ -311,25 +368,7 @@ const showRegistrationCard = computed(() => {
   if (!tournament.value) return false
   const status = tournament.value.status
   // Show registration card for published tournaments onward (not drafts or completed/cancelled)
-  // Note: backend uses 'registration' not 'registration_open'
-  return ['published', 'registration', 'check_in', 'ready', 'in_progress'].includes(status)
-})
-
-const isTeamTournament = computed(() => tournament.value?.participant_type === 'team')
-
-const myRegistration = computed(() => {
-  if (!authStore.playerId) return null
-
-  // For individual tournaments, check by player_id
-  if (!isTeamTournament.value) {
-    return registrations.value.find((r) => r.player_id === authStore.playerId)
-  }
-
-  // For team tournaments, check if any of user's teams is registered
-  const myTeamSeasonIds = leagueTeamsStore.myTeams.map((t) => t.team_season_id)
-  return registrations.value.find(
-    (r) => r.team_season_id && myTeamSeasonIds.includes(r.team_season_id) && r.status !== 'withdrawn'
-  )
+  return ['published', 'registration', 'scheduled', 'in_progress'].includes(status)
 })
 
 // Format helpers
@@ -394,18 +433,26 @@ const schedulingModeLabel = computed(() => {
   }
 })
 
-// Table headers
-const participantHeaders = [
-  { title: '', key: 'participant_logo_url', width: '50px', sortable: false },
-  { title: 'Participant', key: 'participant_name' },
-  { title: 'Seed', key: 'seed', width: '80px' },
-  { title: 'Checked In', key: 'checked_in', width: '100px' },
-]
+// Registration action state
+const regActionLoadingId = ref<string | null>(null)
 
-function formatDateTime(dateStr: string | null | undefined): string {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleString()
-}
+// Table headers
+const participantHeaders = computed(() => {
+  const headers = [
+    { title: '', key: 'participant_logo_url', width: '50px', sortable: false },
+    { title: 'Participant', key: 'participant_name' },
+    { title: 'Status', key: 'status', width: '120px' },
+    { title: 'Seed', key: 'seed', width: '80px' },
+    { title: 'Checked In', key: 'checked_in', width: '100px' },
+  ]
+  if (isOrganizer.value) {
+    headers.push({ title: 'Actions', key: 'actions', width: '150px', sortable: false })
+  }
+  return headers
+})
+
+const registrationStatusColor = (status: string) => getStatusColor(registrationStatusMap, status)
+const registrationStatusLabel = (status: string) => getStatusLabel(registrationStatusMap, status)
 
 function clearError() {
   tournamentsStore.error = null
@@ -448,10 +495,10 @@ async function handleTeamRegister(teamSeasonId: string, participantName: string,
       participant_name: participantName,
       participant_logo_url: participantLogoUrl ?? null,
     })
-    showSnackbar('Team registered successfully!', 'success')
+    snackbar.show('Team registered successfully!', 'success')
     await fetchData()
   } catch {
-    showSnackbar(tournamentsStore.error || 'Failed to register team', 'error')
+    snackbar.show(tournamentsStore.error || 'Failed to register team', 'error')
   } finally {
     registering.value = false
   }
@@ -466,10 +513,10 @@ async function handlePlayerRegister(participantName: string) {
     await tournamentsStore.registerPlayer(tournament.value.id, {
       participant_name: participantName,
     })
-    showSnackbar('Successfully registered!', 'success')
+    snackbar.show('Successfully registered!', 'success')
     await fetchData()
   } catch {
-    showSnackbar(tournamentsStore.error || 'Failed to register', 'error')
+    snackbar.show(tournamentsStore.error || 'Failed to register', 'error')
   } finally {
     registering.value = false
   }
@@ -481,10 +528,10 @@ async function handleWithdraw() {
   registering.value = true
   try {
     await tournamentsStore.withdrawFromTournament(tournament.value.id, myRegistration.value.id)
-    showSnackbar('Successfully withdrawn', 'success')
+    snackbar.show('Successfully withdrawn', 'success')
     await fetchData()
   } catch {
-    showSnackbar(tournamentsStore.error || 'Failed to withdraw', 'error')
+    snackbar.show(tournamentsStore.error || 'Failed to withdraw', 'error')
   } finally {
     registering.value = false
   }
@@ -496,19 +543,40 @@ async function handleCheckIn() {
   registering.value = true
   try {
     await tournamentsStore.checkIn(tournament.value.id, myRegistration.value.id)
-    showSnackbar('Successfully checked in!', 'success')
+    snackbar.show('Successfully checked in!', 'success')
     await fetchData()
   } catch {
-    showSnackbar(tournamentsStore.error || 'Failed to check in', 'error')
+    snackbar.show(tournamentsStore.error || 'Failed to check in', 'error')
   } finally {
     registering.value = false
   }
 }
 
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
+// Organizer registration actions
+async function handleApproveRegistration(registration: { id: string; participant_name: string }) {
+  if (!tournament.value) return
+  regActionLoadingId.value = registration.id
+  try {
+    await tournamentsStore.approveRegistration(tournament.value.id, registration.id)
+    snackbar.show(`${registration.participant_name} approved`, 'success')
+  } catch {
+    snackbar.show(tournamentsStore.error || 'Failed to approve registration', 'error')
+  } finally {
+    regActionLoadingId.value = null
+  }
+}
+
+async function handleRejectRegistration(registration: { id: string; participant_name: string }) {
+  if (!tournament.value) return
+  regActionLoadingId.value = registration.id
+  try {
+    await tournamentsStore.rejectRegistration(tournament.value.id, registration.id)
+    snackbar.show(`${registration.participant_name} rejected`, 'success')
+  } catch {
+    snackbar.show(tournamentsStore.error || 'Failed to reject registration', 'error')
+  } finally {
+    regActionLoadingId.value = null
+  }
 }
 
 async function fetchData() {
@@ -530,6 +598,11 @@ async function fetchData() {
         authStore.isAuthenticated
       ) {
         fetchPromises.push(leagueTeamsStore.fetchMyTeams())
+      }
+
+      // Load organizer roles for non-admin users
+      if (authStore.isAuthenticated) {
+        fetchPromises.push(loadOrganizerRoles())
       }
 
       await Promise.all(fetchPromises)

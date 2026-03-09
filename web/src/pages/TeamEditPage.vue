@@ -213,6 +213,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { useAuthStore } from '@/stores/auth'
+import { useFormRules } from '@/composables/useFormRules'
 import ImageUpload from '@/components/ImageUpload.vue'
 import ColorPicker from '@/components/ColorPicker.vue'
 
@@ -263,12 +264,7 @@ const hasChanges = computed(() => {
   )
 })
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => v.length <= max || `Maximum ${max} characters`,
-  url: (v: string) => !v || /^https?:\/\/.+/.test(v) || 'Invalid URL',
-}
+const rules = useFormRules()
 
 onMounted(async () => {
   try {

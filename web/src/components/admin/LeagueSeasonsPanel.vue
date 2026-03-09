@@ -106,6 +106,8 @@
 </template>
 
 <script setup lang="ts">
+import { formatDate } from '@/utils/formatters'
+
 interface LeagueSeason {
   id: string
   league_id: string
@@ -165,7 +167,4 @@ function getStatusColor(status: string): string {
   }
 }
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString()
-}
 </script>

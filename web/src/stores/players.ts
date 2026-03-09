@@ -28,6 +28,7 @@ export const usePlayersStore = defineStore('players', () => {
   const players = ref<PlayerSearchResult[]>([])
   const currentPlayer = ref<Player | null>(null)
   const playerTeams = ref<PlayerTeam[]>([])
+  const myMatches = ref<components['schemas']['TournamentMatchResponse'][]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
   const pagination = ref<PaginationMeta>({ page: 1, per_page: 20, total_items: 0, total_pages: 0 })
@@ -36,11 +37,28 @@ export const usePlayersStore = defineStore('players', () => {
   const fetchPlayerState = createActionState()
   const fetchMyProfileState = createActionState()
   const updateMyProfileState = createActionState()
+  const fetchMyMatchesState = createActionState()
 
-  async function fetchPlayers(page = 1, perPage = 20, search?: string) {
+  async function fetchPlayers(filters?: {
+    q?: string
+    game_id?: string
+    team_status?: string
+    country_code?: string
+    page?: number
+    per_page?: number
+  }) {
     return withActionState(fetchPlayersState, async () => {
       const result = await unwrapApi(api.GET('/v1/players', {
-        params: { query: { page, per_page: perPage, search } },
+        params: {
+          query: {
+            page: filters?.page ?? 1,
+            per_page: filters?.per_page ?? 20,
+            q: filters?.q,
+            game_id: filters?.game_id,
+            team_status: filters?.team_status,
+            country_code: filters?.country_code,
+          },
+        },
       }))
       players.value = result.data
       pagination.value = result.pagination
@@ -86,10 +104,26 @@ export const usePlayersStore = defineStore('players', () => {
     }, 'Failed to update profile')
   }
 
+  async function fetchMyMatches(filters?: {
+    status?: string
+    tournament_id?: string
+    limit?: number
+    offset?: number
+  }) {
+    return withActionState(fetchMyMatchesState, async () => {
+      const result = await unwrapApi(api.GET('/v1/users/me/matches', {
+        params: { query: filters },
+      }))
+      myMatches.value = result.data
+      return myMatches.value
+    }, 'Failed to fetch matches')
+  }
+
   return {
     players,
     currentPlayer,
     playerTeams,
+    myMatches,
     loading,
     error,
     pagination,
@@ -102,6 +136,8 @@ export const usePlayersStore = defineStore('players', () => {
     fetchPlayerTeams,
     fetchMyProfile,
     updateMyProfile,
+    fetchMyMatches,
+    fetchMyMatchesState,
   }
 })
 

@@ -37,6 +37,15 @@
         :active="route.name?.toString().startsWith('admin-tournaments')"
       />
 
+      <v-list-subheader v-if="!rail">Content</v-list-subheader>
+
+      <v-list-item
+        prepend-icon="mdi-file-video"
+        title="Demos"
+        :to="{ name: 'admin-demos' }"
+        :active="route.name?.toString().startsWith('admin-demo')"
+      />
+
       <v-list-subheader v-if="!rail">Players & Moderation</v-list-subheader>
 
       <v-list-item
@@ -51,6 +60,20 @@
         title="Bans"
         :to="{ name: 'admin-bans' }"
         :active="route.name?.toString().startsWith('admin-bans')"
+      />
+
+      <v-list-item
+        prepend-icon="mdi-alert-decagram"
+        title="Disputes"
+        :to="{ name: 'admin-disputes' }"
+        :active="route.name?.toString().startsWith('admin-disputes')"
+      />
+
+      <v-list-item
+        prepend-icon="mdi-clipboard-check"
+        title="Result Reviews"
+        :to="{ name: 'admin-result-reviews' }"
+        :active="route.name?.toString().startsWith('admin-result-reviews')"
       />
 
       <v-list-item

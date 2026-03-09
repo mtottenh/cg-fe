@@ -41,14 +41,45 @@
           <div
             v-for="game in claim.game_results"
             :key="game.game_number"
-            class="d-flex justify-space-between align-center py-1"
+            class="py-2"
           >
-            <v-chip size="small" :color="getGameWinnerColor(game)">
-              Map {{ game.game_number }}
-            </v-chip>
-            <span class="text-body-2">
-              {{ game.participant1_score }} - {{ game.participant2_score }}
-            </span>
+            <div class="d-flex justify-space-between align-center">
+              <v-chip size="small" :color="getGameWinnerColor(game)">
+                Map {{ game.game_number }}
+              </v-chip>
+              <span class="text-body-2">
+                {{ game.participant1_score }} - {{ game.participant2_score }}
+              </span>
+            </div>
+            <!-- Linked demo details -->
+            <div
+              v-if="gameDemoMap.get(game.game_number)"
+              class="d-flex align-center ga-2 mt-1 ml-8"
+            >
+              <v-icon size="x-small" color="info">mdi-file-video</v-icon>
+              <span
+                v-if="gameDemoMap.get(game.game_number)!.demo.metadata"
+                class="text-caption text-grey"
+              >
+                {{ gameDemoMap.get(game.game_number)!.demo.metadata!.map_name }} &mdash;
+                {{ gameDemoMap.get(game.game_number)!.demo.metadata!.team1_name }}
+                {{ gameDemoMap.get(game.game_number)!.demo.metadata!.team1_score }}
+                : {{ gameDemoMap.get(game.game_number)!.demo.metadata!.team2_score }}
+                {{ gameDemoMap.get(game.game_number)!.demo.metadata!.team2_name }}
+              </span>
+              <span v-else class="text-caption text-grey">
+                {{ gameDemoMap.get(game.game_number)!.demo.file_name }}
+              </span>
+              <v-chip
+                v-if="gameDemoMap.get(game.game_number)!.link.validated"
+                size="x-small"
+                color="success"
+                variant="tonal"
+              >
+                <v-icon start size="x-small">mdi-check</v-icon>
+                Validated
+              </v-chip>
+            </div>
           </div>
         </div>
       </v-card>
@@ -66,12 +97,11 @@
       </v-alert>
 
       <!-- Show attached evidence if any -->
-      <div v-if="hasEvidence" class="mb-4">
+      <div v-if="claim.evidence_ids.length > 0" class="mb-4">
         <p class="text-subtitle-2 mb-2">
           <v-icon start size="small">mdi-paperclip</v-icon>
-          Evidence attached ({{ claim.evidence_ids.length + claim.demo_link_ids.length }})
+          Additional evidence attached ({{ claim.evidence_ids.length }})
         </p>
-        <p class="text-caption text-grey">View the Evidence tab for details.</p>
       </div>
 
       <!-- Notes if any -->
@@ -104,15 +134,18 @@
       v-model="showDisputeModal"
       :match-id="matchId"
       :claim-id="claim.id"
+      :tournament-id="tournamentId"
+      :registration-id="registrationId"
       @disputed="$emit('disputed')"
     />
   </v-card>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useMatchResultsStore, getTimeUntilAutoConfirm } from '@/stores/matchResults'
 import type { ResultClaimResponse } from '@/stores/matchResults'
+import { useEvidenceStore, type DemoMatchLinkWithDemoResponse } from '@/stores/evidence'
 import ResultDisputeModal from './ResultDisputeModal.vue'
 
 const props = defineProps<{
@@ -123,6 +156,8 @@ const props = defineProps<{
   teamARegistrationId: string
   teamBRegistrationId: string
   submitterName?: string
+  tournamentId?: string
+  registrationId?: string
 }>()
 
 const emit = defineEmits<{
@@ -131,8 +166,26 @@ const emit = defineEmits<{
 }>()
 
 const store = useMatchResultsStore()
+const evidenceStore = useEvidenceStore()
 const loading = computed(() => store.loading)
 const showDisputeModal = ref(false)
+
+// Fetch linked demos so we can show demo details per game
+onMounted(async () => {
+  if (props.claim.demo_link_ids.length > 0) {
+    await evidenceStore.fetchLinkedDemos(props.matchId)
+  }
+})
+
+const gameDemoMap = computed(() => {
+  const map = new Map<number, DemoMatchLinkWithDemoResponse>()
+  for (const game of props.claim.game_results ?? []) {
+    if (!game.demo_link_id) continue
+    const linked = evidenceStore.linkedDemos.find(d => d.link.id === game.demo_link_id)
+    if (linked) map.set(game.game_number, linked)
+  }
+  return map
+})
 
 // Computed
 const team1Wins = computed(
@@ -152,11 +205,7 @@ const winnerName = computed(() => {
   return props.teamBName
 })
 
-const winnerAlertType = computed(() => 'success')
-
-const hasEvidence = computed(() => {
-  return props.claim.evidence_ids.length > 0 || props.claim.demo_link_ids.length > 0
-})
+const winnerAlertType = computed(() => 'success' as const)
 
 const autoConfirmCountdown = computed(() => {
   return getTimeUntilAutoConfirm(props.claim.auto_confirm_at)

@@ -127,6 +127,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { ApiError } from '@/api'
+import { useFormRules } from '@/composables/useFormRules'
 
 const props = defineProps<{
   modelValue: boolean
@@ -155,24 +156,13 @@ const form = ref({
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => !v || v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
+  ...useFormRules(),
   tag: (v: string) => {
     if (!v) return true
     if (!/^[A-Z0-9]{2,8}$/.test(v.toUpperCase())) {
       return 'Must be 2-8 alphanumeric characters'
     }
     return true
-  },
-  url: (v: string) => {
-    if (!v) return true
-    try {
-      new URL(v)
-      return true
-    } catch {
-      return 'Must be a valid URL'
-    }
   },
 }
 

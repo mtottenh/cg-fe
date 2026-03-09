@@ -3,6 +3,7 @@
     <component :is="layoutComponent">
       <router-view />
     </component>
+    <AppSnackbar />
   </template>
   <v-app v-else>
     <v-main class="d-flex align-center justify-center" style="min-height: 100vh">
@@ -12,9 +13,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, defineComponent } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, provide } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { createSnackbar, SnackbarKey } from '@/composables/useSnackbar'
+import AppSnackbar from '@/components/AppSnackbar.vue'
 
 const DefaultLayout = defineAsyncComponent(() => import('@/layouts/DefaultLayout.vue'))
 const PortalLayout = defineAsyncComponent(() => import('@/layouts/PortalLayout.vue'))
@@ -29,6 +32,8 @@ const PassThrough = defineComponent({
 
 const route = useRoute()
 const authStore = useAuthStore()
+const snackbar = createSnackbar()
+provide(SnackbarKey, snackbar)
 
 const ready = computed(() => authStore.initialized)
 const isAuthenticated = computed(() => authStore.isAuthenticated || authStore.isDevMode)

@@ -94,18 +94,70 @@
         </div>
       </template>
     </div>
+
+    <!-- Standings Table (for Swiss/Round Robin) -->
+    <v-card v-if="standings.length > 0" class="mt-6" variant="outlined">
+      <v-card-title class="text-subtitle-1">
+        <v-icon start size="small">mdi-podium</v-icon>
+        Standings
+      </v-card-title>
+      <v-data-table
+        :headers="standingsHeaders"
+        :items="standings"
+        :items-per-page="-1"
+        density="compact"
+        class="elevation-0"
+      >
+        <template v-slot:item.rank="{ item }">
+          <strong>#{{ item.rank }}</strong>
+        </template>
+        <template v-slot:item.record="{ item }">
+          {{ item.wins }}-{{ item.losses }}<span v-if="item.draws">-{{ item.draws }}</span>
+        </template>
+      </v-data-table>
+    </v-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { TournamentBracketResponse, TournamentMatchResponse } from '@/stores/tournaments'
+import { useTournamentsStore } from '@/stores/tournaments'
 import TournamentMatchCard from './TournamentMatchCard.vue'
+
+const tournamentsStore = useTournamentsStore()
 
 const props = defineProps<{
   brackets: TournamentBracketResponse[]
   matches: TournamentMatchResponse[]
 }>()
+
+const standings = ref<Array<{ rank: number; participant_name: string; wins: number; losses: number; draws: number; points: number }>>([])
+
+const standingsHeaders = [
+  { title: '#', key: 'rank', width: '50px' },
+  { title: 'Participant', key: 'participant_name' },
+  { title: 'Record', key: 'record', width: '100px' },
+  { title: 'Points', key: 'points', width: '80px' },
+]
+
+// Fetch standings when brackets are loaded (for Swiss/Round Robin)
+watch(() => props.brackets, async (brackets) => {
+  if (brackets.length === 0) return
+  const bracket = brackets[0]
+  if (!bracket) return
+  const type = bracket.bracket_type
+  if (type === 'swiss' || type === 'round_robin') {
+    const tournament = tournamentsStore.currentTournament
+    if (!tournament) return
+    try {
+      const data = await tournamentsStore.fetchBracketStandings(tournament.id, bracket.id)
+      standings.value = (data as any[]) || []
+    } catch {
+      standings.value = []
+    }
+  }
+}, { immediate: true })
 
 defineEmits<{
   'match-click': [match: TournamentMatchResponse]

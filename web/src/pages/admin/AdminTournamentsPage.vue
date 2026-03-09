@@ -59,7 +59,7 @@
               hide-details
               clearable
             >
-              <template v-slot:item="{ item, props: itemProps }">
+              <template v-slot:item="{ item: _item, props: itemProps }">
                 <v-list-item v-bind="itemProps">
                   <template v-slot:prepend>
                     <v-icon size="small">mdi-trophy</v-icon>
@@ -147,7 +147,7 @@
         <template v-slot:item.game_id="{ item }">
           <div class="d-flex align-center">
             <v-avatar size="20" rounded="sm" class="mr-2">
-              <v-img v-if="getGame(item.game_id)?.icon_url" :src="getGame(item.game_id)?.icon_url" />
+              <v-img v-if="getGame(item.game_id)?.icon_url" :src="getGame(item.game_id)?.icon_url ?? undefined" />
               <v-icon v-else size="14">mdi-gamepad-variant</v-icon>
             </v-avatar>
             <span>{{ getGame(item.game_id)?.display_name || 'Unknown' }}</span>
@@ -172,7 +172,7 @@
         </template>
 
         <template v-slot:item.starts_at="{ item }">
-          {{ item.starts_at ? formatDateTime(item.starts_at) : 'TBD' }}
+          {{ item.starts_at ? formatShortDateTime(item.starts_at) : 'TBD' }}
         </template>
 
         <template v-slot:item.status="{ item }">
@@ -197,10 +197,6 @@
       {{ error }}
     </v-alert>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
-
     <!-- Modals -->
     <TournamentCreateModal
       v-model="createModalOpen"
@@ -217,19 +213,18 @@
     />
 
     <!-- Confirm Dialog -->
-    <v-dialog v-model="confirmDialogOpen" max-width="400" persistent>
-      <v-card>
-        <v-card-title>{{ confirmDialogTitle }}</v-card-title>
-        <v-card-text>{{ confirmDialogMessage }}</v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="confirmDialogOpen = false">Cancel</v-btn>
-          <v-btn :color="confirmDialogColor" variant="flat" :loading="actionLoading" @click="executeConfirmedAction">
-            {{ confirmDialogAction }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <ConfirmDialog
+      :open="confirmDialog.open.value"
+      :title="confirmDialog.title.value"
+      :message="confirmDialog.message.value"
+      :action-label="confirmDialog.actionLabel.value"
+      :color="confirmDialog.color.value"
+      :loading="confirmDialog.loading.value"
+      :error="confirmDialog.dialogError.value"
+      @clear-error="confirmDialog.dialogError.value = null"
+      @confirm="confirmDialog.execute"
+      @cancel="confirmDialog.cancel"
+    />
   </div>
 </template>
 
@@ -244,6 +239,10 @@ import TournamentStatusChip from '@/components/admin/TournamentStatusChip.vue'
 import TournamentActionsMenu from '@/components/admin/TournamentActionsMenu.vue'
 import TournamentCreateModal from '@/components/admin/TournamentCreateModal.vue'
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { formatShortDateTime } from '@/utils/formatters'
 
 const router = useRouter()
 const gamesStore = useGamesStore()
@@ -260,19 +259,11 @@ const createModalOpen = ref(false)
 const editModalOpen = ref(false)
 const selectedTournament = ref<TournamentResponse | null>(null)
 
-// Confirm dialog state
-const confirmDialogOpen = ref(false)
-const confirmDialogTitle = ref('')
-const confirmDialogMessage = ref('')
-const confirmDialogAction = ref('')
-const confirmDialogColor = ref('primary')
-const pendingAction = ref<{ tournament: TournamentSummaryResponse; action: string } | null>(null)
-const actionLoading = ref(false)
-
 // Snackbar state
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+const snackbar = useSnackbar()
+
+// Confirm dialog
+const confirmDialog = useConfirmDialog()
 
 // Computed
 const loading = computed(() => gamesStore.loading || tournamentsStore.loading || leaguesStore.loading)
@@ -289,9 +280,6 @@ const availableLeagues = computed(() => {
   }
   return leagues
 })
-
-// All seasons for league dropdown
-const allSeasons = computed(() => leagueSeasonsStore.seasons)
 
 // Leagues for create modal (with game_id for filtering)
 const leaguesForModal = computed(() =>
@@ -318,12 +306,11 @@ const seasonsForModal = computed(() =>
 const statusOptions = [
   { value: 'draft', label: 'Draft' },
   { value: 'published', label: 'Published' },
-  { value: 'registration_open', label: 'Registration Open' },
-  { value: 'registration_closed', label: 'Registration Closed' },
-  { value: 'check_in_open', label: 'Check-in Open' },
-  { value: 'ready', label: 'Ready' },
+  { value: 'registration', label: 'Registration Open' },
+  { value: 'scheduled', label: 'Scheduled' },
   { value: 'in_progress', label: 'In Progress' },
   { value: 'completed', label: 'Completed' },
+  { value: 'finalized', label: 'Finalized' },
   { value: 'cancelled', label: 'Cancelled' },
 ]
 
@@ -372,11 +359,6 @@ function getGame(gameId: string): GameSummary | undefined {
   return gamesStore.games.find((g) => g.id === gameId)
 }
 
-function getLeague(leagueId: string | undefined) {
-  if (!leagueId) return undefined
-  return leaguesStore.leagues.find((l) => l.id === leagueId)
-}
-
 function formatParticipantType(type: string): string {
   switch (type) {
     case 'individual':
@@ -388,15 +370,6 @@ function formatParticipantType(type: string): string {
     default:
       return type
   }
-}
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 function clearFilters() {
@@ -417,7 +390,7 @@ async function fetchData() {
       tournamentsStore.fetchTournaments({
         game_id: filters.value.game_id,
         league_id: filters.value.league_id,
-        status: filters.value.status,
+        status: filters.value.status ?? undefined,
       }),
       gamesStore.fetchGames(),
       leaguesStore.fetchLeagues(1, 100), // Fetch all leagues for dropdown
@@ -450,16 +423,56 @@ async function handleAction(tournament: TournamentSummaryResponse, action: strin
       await openEditModal(tournament)
       break
     case 'publish':
-      confirmAction(tournament, action, 'Publish Tournament', 'Are you sure you want to publish this tournament? It will become visible to the public.', 'Publish', 'primary')
+      confirmDialog.confirm({
+        title: 'Publish Tournament',
+        message: 'Are you sure you want to publish this tournament? It will become visible to the public.',
+        action: 'Publish',
+        color: 'primary',
+        handler: async () => {
+          await tournamentsStore.publishTournament(tournament.id)
+          snackbar.show('Tournament published successfully', 'success')
+          await fetchData()
+        },
+      })
       break
     case 'open-registration':
-      confirmAction(tournament, action, 'Open Registration', 'Are you sure you want to open registration for this tournament?', 'Open', 'success')
+      confirmDialog.confirm({
+        title: 'Open Registration',
+        message: 'Are you sure you want to open registration for this tournament?',
+        action: 'Open',
+        color: 'success',
+        handler: async () => {
+          await tournamentsStore.openRegistration(tournament.id)
+          snackbar.show('Registration opened successfully', 'success')
+          await fetchData()
+        },
+      })
       break
     case 'close-registration':
-      confirmAction(tournament, action, 'Close Registration', 'Are you sure you want to close registration? No new participants will be able to register.', 'Close', 'warning')
+      confirmDialog.confirm({
+        title: 'Close Registration',
+        message: 'Are you sure you want to close registration? No new participants will be able to register.',
+        action: 'Close',
+        color: 'warning',
+        handler: async () => {
+          await tournamentsStore.closeRegistration(tournament.id)
+          snackbar.show('Registration closed successfully', 'success')
+          await fetchData()
+        },
+      })
       break
     case 'start':
-      confirmAction(tournament, action, 'Start Tournament', 'Are you sure you want to start this tournament? This will generate the bracket and begin matches.', 'Start', 'primary')
+      confirmDialog.confirm({
+        title: 'Start Tournament',
+        message: 'Are you sure you want to start this tournament? This will generate the bracket and begin matches.',
+        action: 'Start',
+        color: 'primary',
+        handler: async () => {
+          await tournamentsStore.startTournament(tournament.id)
+          snackbar.show('Tournament started successfully', 'success')
+          await fetchData()
+        },
+      })
       break
     case 'view-registrations':
       router.push({ name: 'admin-tournament-detail', params: { id: tournament.id }, query: { tab: 'registrations' } })
@@ -470,62 +483,41 @@ async function handleAction(tournament: TournamentSummaryResponse, action: strin
     case 'manage-matches':
       router.push({ name: 'admin-tournament-detail', params: { id: tournament.id }, query: { tab: 'matches' } })
       break
+    case 'cancel':
+      confirmDialog.confirm({
+        title: 'Cancel Tournament',
+        message: 'Are you sure you want to cancel this tournament? This action cannot be undone.',
+        action: 'Cancel Tournament',
+        color: 'error',
+        handler: async () => {
+          await tournamentsStore.cancelTournament(tournament.id)
+          snackbar.show('Tournament cancelled', 'success')
+          await fetchData()
+        },
+      })
+      break
+    case 'finalize':
+      confirmDialog.confirm({
+        title: 'Finalize Tournament',
+        message: 'Are you sure you want to finalize this tournament? Results will be locked.',
+        action: 'Finalize',
+        color: 'success',
+        handler: async () => {
+          await tournamentsStore.finalizeTournament(tournament.id)
+          snackbar.show('Tournament finalized', 'success')
+          await fetchData()
+        },
+      })
+      break
     case 'view-public':
       window.open(`/tournaments/${tournament.slug}`, '_blank')
       break
+    case 'view-results':
+    case 'view-details':
+      router.push({ name: 'admin-tournament-detail', params: { id: tournament.id } })
+      break
     default:
-      showSnackbar(`Action "${action}" not implemented yet`, 'info')
-  }
-}
-
-function confirmAction(
-  tournament: TournamentSummaryResponse,
-  action: string,
-  title: string,
-  message: string,
-  actionLabel: string,
-  color: string
-) {
-  pendingAction.value = { tournament, action }
-  confirmDialogTitle.value = title
-  confirmDialogMessage.value = message
-  confirmDialogAction.value = actionLabel
-  confirmDialogColor.value = color
-  confirmDialogOpen.value = true
-}
-
-async function executeConfirmedAction() {
-  if (!pendingAction.value) return
-
-  const { tournament, action } = pendingAction.value
-  actionLoading.value = true
-
-  try {
-    switch (action) {
-      case 'publish':
-        await tournamentsStore.publishTournament(tournament.id)
-        showSnackbar('Tournament published successfully', 'success')
-        break
-      case 'open-registration':
-        await tournamentsStore.openRegistration(tournament.id)
-        showSnackbar('Registration opened successfully', 'success')
-        break
-      case 'close-registration':
-        await tournamentsStore.closeRegistration(tournament.id)
-        showSnackbar('Registration closed successfully', 'success')
-        break
-      case 'start':
-        await tournamentsStore.startTournament(tournament.id)
-        showSnackbar('Tournament started successfully', 'success')
-        break
-    }
-    confirmDialogOpen.value = false
-    await fetchData()
-  } catch {
-    showSnackbar(tournamentsStore.error || 'Action failed', 'error')
-  } finally {
-    actionLoading.value = false
-    pendingAction.value = null
+      snackbar.show(`Action "${action}" not implemented yet`, 'info')
   }
 }
 
@@ -534,25 +526,19 @@ async function openEditModal(tournament: TournamentSummaryResponse) {
     selectedTournament.value = await tournamentsStore.fetchTournament(tournament.id)
     editModalOpen.value = true
   } catch {
-    showSnackbar('Failed to load tournament details', 'error')
+    snackbar.show('Failed to load tournament details', 'error')
   }
 }
 
 // Modal callbacks
 function onTournamentCreated() {
-  showSnackbar('Tournament created successfully', 'success')
+  snackbar.show('Tournament created successfully', 'success')
   fetchData()
 }
 
 function onTournamentSaved() {
-  showSnackbar('Tournament updated successfully', 'success')
+  snackbar.show('Tournament updated successfully', 'success')
   fetchData()
-}
-
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
 }
 
 onMounted(() => {

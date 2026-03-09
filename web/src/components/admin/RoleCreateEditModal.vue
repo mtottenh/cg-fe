@@ -120,6 +120,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRbacStore, type RoleResponse, type CreateRoleRequest, type UpdateRoleRequest } from '@/stores/rbac'
+import { useFormRules } from '@/composables/useFormRules'
 
 const props = defineProps<{
   modelValue: boolean
@@ -166,9 +167,7 @@ const categoryOptions = [
 ]
 
 const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => (v && v.length >= min) || `Must be at least ${min} characters`,
-  maxLength: (max: number) => (v: string) => (!v || v.length <= max) || `Must be at most ${max} characters`,
+  ...useFormRules(),
   machineName: (v: string) => /^[a-z][a-z0-9_]*$/.test(v) || 'Must start with letter, use only lowercase letters, numbers, underscores',
   hexColor: (v: string) => !v || /^#[0-9A-Fa-f]{6}$/.test(v) || 'Must be a valid hex color (e.g., #4CAF50)',
 }

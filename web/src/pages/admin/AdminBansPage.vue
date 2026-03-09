@@ -231,41 +231,17 @@
       {{ error }}
     </v-alert>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
-
     <!-- Quick Lift Dialog -->
-    <v-dialog v-model="liftDialogOpen" max-width="500">
-      <v-card>
-        <v-card-title>Lift Ban</v-card-title>
-        <v-card-text>
-          <p class="mb-4">
-            Are you sure you want to lift this ban for user
-            <strong>{{ selectedBanForLift?.user_id.substring(0, 8) }}...</strong>?
-          </p>
-          <v-textarea
-            v-model="quickLiftReason"
-            label="Reason for lifting (optional)"
-            variant="outlined"
-            density="compact"
-            rows="2"
-          />
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="liftDialogOpen = false">Cancel</v-btn>
-          <v-btn
-            color="success"
-            variant="flat"
-            :loading="lifting"
-            @click="executeLiftBan"
-          >
-            Lift Ban
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <ConfirmDialog
+      :open="confirmDialog.open.value"
+      :title="confirmDialog.title.value"
+      :message="confirmDialog.message.value"
+      :action-label="confirmDialog.actionLabel.value"
+      :color="confirmDialog.color.value"
+      :loading="confirmDialog.loading.value"
+      @confirm="confirmDialog.execute"
+      @cancel="confirmDialog.cancel"
+    />
 
     <!-- Modals -->
     <BanCreateModal
@@ -287,6 +263,10 @@ import { useBansStore, type BanResponse, type BanFilters } from '@/stores/bans'
 import UserSearchAutocomplete from '@/components/admin/UserSearchAutocomplete.vue'
 import BanCreateModal from '@/components/admin/BanCreateModal.vue'
 import BanDetailModal from '@/components/admin/BanDetailModal.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { formatDate } from '@/utils/formatters'
 import type { components } from '@/api/types'
 
 type PlayerSummary = components['schemas']['PlayerSearchResponse']
@@ -305,16 +285,11 @@ const filters = ref<BanFilters>({
 // Modal state
 const createModalOpen = ref(false)
 const detailModalOpen = ref(false)
-const liftDialogOpen = ref(false)
 const selectedBanId = ref<string | null>(null)
-const selectedBanForLift = ref<BanResponse | null>(null)
-const quickLiftReason = ref('')
-const lifting = ref(false)
 
 // Snackbar
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+const snackbar = useSnackbar()
+const confirmDialog = useConfirmDialog()
 
 // Computed
 const bans = computed(() => bansStore.bans)
@@ -414,42 +389,29 @@ function viewBanDetail(ban: BanResponse) {
 }
 
 function confirmLiftBan(ban: BanResponse) {
-  selectedBanForLift.value = ban
-  quickLiftReason.value = ''
-  liftDialogOpen.value = true
-}
-
-async function executeLiftBan() {
-  if (!selectedBanForLift.value) return
-
-  lifting.value = true
-  try {
-    await bansStore.liftBan(selectedBanForLift.value.id, quickLiftReason.value || undefined)
-    showSnackbar('Ban lifted successfully', 'success')
-    liftDialogOpen.value = false
-    fetchBans(currentPage.value)
-  } catch {
-    showSnackbar('Failed to lift ban', 'error')
-  } finally {
-    lifting.value = false
-  }
+  confirmDialog.confirm({
+    title: 'Lift Ban',
+    message: `Are you sure you want to lift this ban for user ${ban.user_id.substring(0, 8)}...?`,
+    action: 'Lift Ban',
+    color: 'success',
+    handler: async () => {
+      await bansStore.liftBan(ban.id)
+      snackbar.show('Ban lifted successfully', 'success')
+      fetchBans(currentPage.value)
+    },
+  })
 }
 
 function onBanCreated() {
-  showSnackbar('Ban created successfully', 'success')
+  snackbar.show('Ban created successfully', 'success')
   fetchBans()
 }
 
 function onBanUpdated() {
-  showSnackbar('Ban updated successfully', 'success')
+  snackbar.show('Ban updated successfully', 'success')
   fetchBans(currentPage.value)
 }
 
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
-}
 
 // Formatters
 function formatBanType(type: string): string {
@@ -496,10 +458,6 @@ function getStatusColor(ban: BanResponse): string {
   if (ban.is_active) return 'error'
   if (ban.lifted_at) return 'success'
   return 'grey' // expired
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString()
 }
 
 function formatRelativeTime(dateStr: string): string {

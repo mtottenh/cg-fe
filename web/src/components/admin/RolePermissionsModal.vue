@@ -200,7 +200,7 @@ const availablePermissionsByCategory = computed(() => {
     if (!grouped[perm.category]) {
       grouped[perm.category] = []
     }
-    grouped[perm.category].push(perm)
+    grouped[perm.category]!.push(perm)
   }
   return grouped
 })

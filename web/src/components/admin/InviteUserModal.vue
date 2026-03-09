@@ -71,7 +71,8 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { ApiError } from '@/api'
+import { useLeaguesStore } from '@/stores/leagues'
+import { useFormRules } from '@/composables/useFormRules'
 
 const props = defineProps<{
   modelValue: boolean
@@ -83,6 +84,8 @@ const emit = defineEmits<{
   invited: []
 }>()
 
+const leaguesStore = useLeaguesStore()
+
 const formRef = ref()
 const formValid = ref(false)
 const sending = ref(false)
@@ -93,26 +96,11 @@ const form = ref({
   message: '',
 })
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const rules = useFormRules()
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
-  uuid: (v: string) => {
-    if (!v) return true
-    // Basic UUID v4/v7 format check
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    return uuidRegex.test(v) || 'Must be a valid UUID'
-  },
-}
-
-// Reset form when dialog opens
 watch(() => props.modelValue, (isOpen) => {
   if (isOpen) {
-    form.value = {
-      user_id: '',
-      message: '',
-    }
+    form.value = { user_id: '', message: '' }
     error.value = null
   }
 })
@@ -129,36 +117,11 @@ async function sendInvitation() {
   error.value = null
 
   try {
-    const body: Record<string, unknown> = {
-      user_id: form.value.user_id,
-    }
-
-    if (form.value.message) {
-      body.message = form.value.message
-    }
-
-    const response = await fetch(`${API_URL}/v1/leagues/${props.leagueId}/invitations`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to send invitation')
-    }
-
+    await leaguesStore.sendInvitation(props.leagueId, form.value.user_id)
     emit('invited')
     close()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to send invitation'
-    }
+  } catch {
+    error.value = leaguesStore.sendInvitationState.error.value || 'Failed to send invitation'
   } finally {
     sending.value = false
   }

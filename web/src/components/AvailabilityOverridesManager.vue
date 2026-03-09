@@ -229,6 +229,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAvailabilityStore, formatTimeRange, type AvailabilityOverride } from '@/stores/availability'
+import { useFormRules } from '@/composables/useFormRules'
 
 const store = useAvailabilityStore()
 
@@ -269,7 +270,7 @@ const formattedDate = computed(() => {
 })
 
 const rules = {
-  required: (v: unknown) => (v !== null && v !== undefined && v !== '') || 'Required',
+  ...useFormRules(),
   endAfterStart: () => {
     if (!form.value.start_time || !form.value.end_time) return true
     return form.value.end_time > form.value.start_time || 'End time must be after start time'
@@ -286,7 +287,7 @@ const error = computed({
 const futureOverrides = computed(() => store.futureOverrides)
 
 const pastOverrides = computed(() => {
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toISOString().split('T')[0]!
   return store.overrides.filter((o) => o.override_date < today).sort((a, b) => b.override_date.localeCompare(a.override_date))
 })
 
@@ -331,7 +332,7 @@ async function saveOverride() {
   try {
     // Convert Date to YYYY-MM-DD string
     const date = new Date(form.value.override_date)
-    const dateStr = date.toISOString().split('T')[0]
+    const dateStr = date.toISOString().split('T')[0]!
 
     const payload = {
       override_date: dateStr,

@@ -41,6 +41,17 @@
       <v-list-subheader v-if="!rail">My Hub</v-list-subheader>
 
       <v-list-item
+        prepend-icon="mdi-bell-badge-outline"
+        title="Action Items"
+        :to="{ name: 'home' }"
+        :active="false"
+      >
+        <template v-slot:append v-if="actionCount > 0">
+          <v-badge :content="actionCount" :color="hasCriticalAction ? 'error' : 'warning'" inline />
+        </template>
+      </v-list-item>
+
+      <v-list-item
         prepend-icon="mdi-shield-account"
         title="My Teams"
         :to="{ name: 'my-teams' }"
@@ -83,10 +94,16 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { storeToRefs } from 'pinia'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
+import { useLeaguesStore } from '@/stores/leagues'
+import { useCaptainActionsStore } from '@/stores/captainActions'
 
 const route = useRoute()
 const leagueTeamsStore = useLeagueTeamsStore()
+const leaguesStore = useLeaguesStore()
+const captainActionsStore = useCaptainActionsStore()
+const { actionCount, hasCritical: hasCriticalAction } = storeToRefs(captainActionsStore)
 
 defineProps<{
   modelValue: boolean
@@ -98,12 +115,17 @@ defineEmits<{
   'update:rail': [value: boolean]
 }>()
 
-const pendingInvitationsCount = computed(() => leagueTeamsStore.myInvitations.length)
+const pendingInvitationsCount = computed(() =>
+  leagueTeamsStore.myInvitations.length + leaguesStore.myLeagueInvitations.length
+)
 
 onMounted(async () => {
   // Fetch invitations for the badge count
   try {
-    await leagueTeamsStore.fetchMyInvitations()
+    await Promise.all([
+      leagueTeamsStore.fetchMyInvitations(),
+      leaguesStore.fetchMyLeagueInvitations(),
+    ])
   } catch {
     // Silently fail - badge just won't show
   }

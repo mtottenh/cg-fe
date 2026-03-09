@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { api, ApiError } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { resultClaimStatusMap, getStatusColor as getMapColor, getStatusLabel as getMapLabel } from '@/utils/statusMaps'
 
 // Use generated types
 type ResultClaimResponse = components['schemas']['ResultClaimResponse']
@@ -12,6 +13,8 @@ type ResultClaimSubmissionResponse = components['schemas']['ResultClaimSubmissio
 type ResultConfirmationResponse = components['schemas']['ResultConfirmationResponse']
 type ResultDisputeResponse = components['schemas']['ResultDisputeResponse']
 type GameResultInput = components['schemas']['GameResultInput']
+type RaiseDisputeRequest = components['schemas']['RaiseDisputeRequest']
+type DisputeResponse = components['schemas']['DisputeResponse']
 
 // Result claim status enum
 export const RESULT_CLAIM_STATUSES = ['pending', 'confirmed', 'disputed', 'expired', 'superseded'] as const
@@ -30,6 +33,7 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
   const submitResultState = createActionState()
   const confirmResultState = createActionState()
   const disputeResultState = createActionState()
+  const raiseDisputeState = createActionState()
 
   // ==================== Result CRUD ====================
 
@@ -158,6 +162,36 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
     }, 'Failed to dispute result')
   }
 
+  /**
+   * Raise a tournament-scoped dispute that appears in the admin queue.
+   */
+  async function raiseDispute(
+    tournamentId: string,
+    matchId: string,
+    registrationId: string,
+    reason: string,
+    description: string,
+    evidenceIds: string[] = [],
+    resultClaimId?: string
+  ): Promise<DisputeResponse> {
+    return withActionState(raiseDisputeState, async () => {
+      const body: RaiseDisputeRequest = {
+        reason,
+        description,
+        registration_id: registrationId,
+        evidence_ids: evidenceIds,
+        result_claim_id: resultClaimId ?? null,
+      }
+
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/dispute', {
+        params: { path: { tournament_id: tournamentId, match_id: matchId } },
+        body,
+      }))
+
+      return result.data
+    }, 'Failed to raise dispute')
+  }
+
   // ==================== Utility ====================
 
   function clear() {
@@ -184,6 +218,7 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
     submitResultState,
     confirmResultState,
     disputeResultState,
+    raiseDisputeState,
 
     // Actions
     fetchCurrentResult,
@@ -191,6 +226,7 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
     submitResult,
     confirmResult,
     disputeResult,
+    raiseDispute,
 
     // Utility
     clear,
@@ -211,37 +247,11 @@ export type {
 
 // Helper functions
 export function getResultStatusColor(status: string): string {
-  switch (status) {
-    case 'pending':
-      return 'warning'
-    case 'confirmed':
-      return 'success'
-    case 'disputed':
-      return 'error'
-    case 'expired':
-      return 'grey'
-    case 'superseded':
-      return 'grey-darken-1'
-    default:
-      return 'grey'
-  }
+  return getMapColor(resultClaimStatusMap, status)
 }
 
 export function getResultStatusLabel(status: string): string {
-  switch (status) {
-    case 'pending':
-      return 'Awaiting Confirmation'
-    case 'confirmed':
-      return 'Confirmed'
-    case 'disputed':
-      return 'Disputed'
-    case 'expired':
-      return 'Expired'
-    case 'superseded':
-      return 'Superseded'
-    default:
-      return status
-  }
+  return getMapLabel(resultClaimStatusMap, status)
 }
 
 export function formatResultDate(dateStr: string): string {

@@ -58,6 +58,7 @@
 import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import type { TournamentResponse } from '@/stores/tournaments'
+import { useFormRules } from '@/composables/useFormRules'
 
 const props = defineProps<{
   modelValue: boolean
@@ -76,7 +77,9 @@ const loading = ref(false)
 const participantName = ref('')
 
 // Validation rules
+const { maxLength: _maxLength, ...baseRules } = useFormRules()
 const rules = {
+  ...baseRules,
   required: (v: string) => !!v?.trim() || 'Required',
   maxLength: (v: string) => !v || v.length <= 100 || 'Max 100 characters',
 }

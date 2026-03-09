@@ -33,6 +33,21 @@ export const testUsers = {
     password: process.env.E2E_ADMIN_PASSWORD || 'AdminPassword123!',
   },
 
+  // Second test player — fixed credentials for multi-player E2E flows
+  // Registered by global-setup.ts; used for match scheduling, result submission, invitations
+  player2: {
+    username: 'e2e_player2',
+    email: 'e2e_player2@example.com',
+    password: 'Player2Password123!',
+    display_name: 'E2E Player 2',
+  },
+
+  // Login credentials for player2
+  player2Login: {
+    username_or_email: 'e2e_player2@example.com',
+    password: 'Player2Password123!',
+  },
+
   // Invalid credentials for negative tests
   invalid: {
     username_or_email: 'nonexistent@example.com',

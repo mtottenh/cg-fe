@@ -38,6 +38,7 @@
                   :aspect-ratio="1"
                   :max-size="2"
                   :upload-endpoint="avatarUploadUrl"
+                  response-field="avatar_url"
                   @upload-complete="handleAvatarUploaded"
                   @upload-error="handleUploadError"
                 />
@@ -52,6 +53,7 @@
                   :aspect-ratio="3"
                   :max-size="5"
                   :upload-endpoint="bannerUploadUrl"
+                  response-field="banner_url"
                   @upload-complete="handleBannerUploaded"
                   @upload-error="handleUploadError"
                 />
@@ -118,6 +120,29 @@
                 class="mb-4"
               />
 
+              <v-text-field
+                v-model="form.steam_id"
+                label="Steam ID (SteamID64)"
+                prepend-inner-icon="mdi-steam"
+                :rules="[rules.steamId]"
+                :readonly="!!player?.steam_id"
+                :hint="player?.steam_id
+                  ? 'Steam ID is permanently linked and cannot be changed.'
+                  : 'Enter your SteamID64 (e.g., 76561198012345678). This cannot be changed later.'"
+                persistent-hint
+                placeholder="76561198012345678"
+                class="mb-4"
+              />
+
+              <v-switch
+                v-model="form.looking_for_team"
+                label="Looking for Team"
+                hint="Show other players that you're looking for a team to join"
+                persistent-hint
+                color="primary"
+                class="mb-4"
+              />
+
               <v-btn
                 type="submit"
                 color="primary"
@@ -146,6 +171,11 @@
           Save Social Links
         </v-btn>
       </v-col>
+
+      <!-- CS2 Match Tracking Section -->
+      <v-col cols="12" md="6">
+        <SteamTrackingCard />
+      </v-col>
     </v-row>
   </v-container>
 </template>
@@ -153,8 +183,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { usePlayersStore, type SocialLinks } from '@/stores/players'
+import { useFormRules } from '@/composables/useFormRules'
 import ImageUpload from '@/components/ImageUpload.vue'
 import SocialLinksEditor from '@/components/SocialLinksEditor.vue'
+import SteamTrackingCard from '@/components/SteamTrackingCard.vue'
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000') + '/v1'
 
@@ -177,6 +209,8 @@ const form = reactive({
   country_code: '',
   region: '',
   timezone: '',
+  steam_id: '',
+  looking_for_team: false,
   social_links: {} as SocialLinks,
 })
 
@@ -186,13 +220,18 @@ const originalForm = ref({
   country_code: '',
   region: '',
   timezone: '',
+  steam_id: '',
+  looking_for_team: false,
   social_links: {} as SocialLinks,
 })
 
 const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => !v || v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
+  ...useFormRules(),
+  steamId: (v: string) => {
+    if (!v) return true
+    if (!/^\d{17,20}$/.test(v)) return 'Must be a 17-20 digit SteamID64'
+    return true
+  },
 }
 
 const hasBasicChanges = computed(() => {
@@ -201,7 +240,9 @@ const hasBasicChanges = computed(() => {
     form.bio !== originalForm.value.bio ||
     form.country_code !== originalForm.value.country_code ||
     form.region !== originalForm.value.region ||
-    form.timezone !== originalForm.value.timezone
+    form.timezone !== originalForm.value.timezone ||
+    form.steam_id !== originalForm.value.steam_id ||
+    form.looking_for_team !== originalForm.value.looking_for_team
   )
 })
 
@@ -281,6 +322,8 @@ function populateForm() {
   form.country_code = player.value.country_code || ''
   form.region = player.value.region || ''
   form.timezone = player.value.timezone || ''
+  form.steam_id = player.value.steam_id || ''
+  form.looking_for_team = player.value.looking_for_team ?? false
   form.social_links = player.value.social_links ? { ...player.value.social_links } : {}
 
   // Store original values for comparison
@@ -290,6 +333,8 @@ function populateForm() {
     country_code: form.country_code,
     region: form.region,
     timezone: form.timezone,
+    steam_id: form.steam_id,
+    looking_for_team: form.looking_for_team,
     social_links: { ...form.social_links },
   }
 }
@@ -308,6 +353,9 @@ async function saveBasicInfo() {
       country_code: form.country_code || undefined,
       region: form.region || undefined,
       timezone: form.timezone || undefined,
+      steam_id: (form.steam_id && form.steam_id !== originalForm.value.steam_id)
+        ? form.steam_id : undefined,
+      looking_for_team: form.looking_for_team,
     })
     successMessage.value = 'Profile updated successfully'
     populateForm()

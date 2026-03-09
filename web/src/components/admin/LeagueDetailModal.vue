@@ -77,9 +77,6 @@
         {{ error }}
       </v-alert>
 
-      <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-        {{ snackbarText }}
-      </v-snackbar>
     </v-card>
 
     <!-- Season Create Modal -->
@@ -116,6 +113,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { ApiError } from '@/api'
+import { useSnackbar } from '@/composables/useSnackbar'
 import { type UserLeagueMembership } from '@/stores/leagues'
 import LeagueSeasonsPanel from './LeagueSeasonsPanel.vue'
 import LeagueTeamsPanel from './LeagueTeamsPanel.vue'
@@ -195,9 +193,7 @@ const createTeamModalOpen = ref(false)
 const teamDetailModalOpen = ref(false)
 
 // Snackbar
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+const snackbar = useSnackbar()
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -299,13 +295,13 @@ function viewSeasonTeams(season: LeagueSeason) {
 }
 
 function onSeasonCreated() {
-  showSnackbar('Season created successfully', 'success')
+  snackbar.show('Season created successfully', 'success')
   fetchSeasons()
   emit('updated')
 }
 
 function onSeasonSaved() {
-  showSnackbar('Season updated successfully', 'success')
+  snackbar.show('Season updated successfully', 'success')
   fetchSeasons()
   emit('updated')
 }
@@ -321,24 +317,18 @@ function openTeamDetailModal(team: LeagueTeamSummary) {
 }
 
 function onTeamCreated() {
-  showSnackbar('Team created successfully', 'success')
+  snackbar.show('Team created successfully', 'success')
   fetchTeams()
   emit('updated')
 }
 
 function onTeamUpdated() {
-  showSnackbar('Team updated successfully', 'success')
+  snackbar.show('Team updated successfully', 'success')
   fetchTeams()
   emit('updated')
 }
 
 // Helpers
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
-}
-
 function close() {
   error.value = null
   emit('update:modelValue', false)

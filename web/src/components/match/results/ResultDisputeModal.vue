@@ -61,6 +61,8 @@ import EvidenceAttachmentPanel from '../evidence/EvidenceAttachmentPanel.vue'
 const props = defineProps<{
   matchId: string
   claimId: string
+  tournamentId?: string
+  registrationId?: string
 }>()
 
 const emit = defineEmits<{
@@ -102,6 +104,20 @@ async function handleDispute() {
 
   try {
     await store.disputeResult(props.matchId, props.claimId, reason.value, evidenceIds.value)
+    // Also raise a tournament-scoped dispute so it appears in the admin queue
+    if (props.tournamentId && props.registrationId) {
+      await store.raiseDispute(
+        props.tournamentId,
+        props.matchId,
+        props.registrationId,
+        reason.value,
+        reason.value,
+        evidenceIds.value,
+        props.claimId,
+      ).catch(() => {
+        // Non-fatal: the claim is already marked disputed
+      })
+    }
     isOpen.value = false
     emit('disputed')
   } catch {

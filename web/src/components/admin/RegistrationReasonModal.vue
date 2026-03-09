@@ -79,6 +79,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import type { TournamentRegistrationResponse } from '@/stores/tournaments'
+import { useFormRules } from '@/composables/useFormRules'
 
 const props = defineProps<{
   modelValue: boolean
@@ -96,7 +97,9 @@ const reason = ref('')
 
 const isReject = computed(() => props.mode === 'reject')
 
+const { required: _required, ...formRules } = useFormRules()
 const rules = {
+  ...formRules,
   required: (v: string) => !!v?.trim() || 'Reason is required',
 }
 

@@ -3,7 +3,7 @@ import { createPinia } from 'pinia'
 import vuetify from './plugins/vuetify'
 import router from './router'
 import App from './App.vue'
-import { setUnauthorizedHandler } from './api/middleware'
+import { setUnauthorizedHandler, setRefreshHandler } from './api/middleware'
 import { useAuthStore } from './stores/auth'
 
 import './styles/main.scss'
@@ -21,5 +21,8 @@ setUnauthorizedHandler(() => {
   authStore.logout()
   router.push({ name: 'login' })
 })
+
+// Wire refresh handler for silent token renewal on 401
+setRefreshHandler(() => authStore.refreshAccessToken())
 
 app.mount('#app')

@@ -147,6 +147,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useBansStore, type BanType, type CreateBanRequest } from '@/stores/bans'
+import { useFormRules } from '@/composables/useFormRules'
 import UserSearchAutocomplete from '@/components/admin/UserSearchAutocomplete.vue'
 import LeagueSearchAutocomplete from '@/components/admin/LeagueSearchAutocomplete.vue'
 import type { components } from '@/api/types'
@@ -211,17 +212,7 @@ const isFormComplete = computed(() => {
   return true
 })
 
-const rules = {
-  required: (v: unknown) => !!v || 'This field is required',
-  minLength: (min: number) => (v: string) =>
-    !v || v.length >= min || `Must be at least ${min} characters`,
-  positiveNumber: (v: number) => v > 0 || 'Must be a positive number',
-  uuid: (v: string) => {
-    if (!v) return true
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    return uuidRegex.test(v) || 'Must be a valid UUID'
-  },
-}
+const rules = useFormRules()
 
 function getBanTypeIcon(type: string): string {
   switch (type) {

@@ -160,10 +160,6 @@
       {{ error }}
     </v-alert>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
-
     <!-- Modals -->
     <LeagueCreateModal
       v-model="createModalOpen"
@@ -199,6 +195,8 @@ import LeagueCreateModal from '@/components/admin/LeagueCreateModal.vue'
 import LeagueEditModal from '@/components/admin/LeagueEditModal.vue'
 import LeagueMembersModal from '@/components/admin/LeagueMembersModal.vue'
 import LeagueDetailModal from '@/components/admin/LeagueDetailModal.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { formatDate } from '@/utils/formatters'
 
 // Stores
 const gamesStore = useGamesStore()
@@ -225,9 +223,7 @@ const selectedLeagueForMembers = ref<UserLeagueMembership | null>(null)
 const selectedLeagueForDetail = ref<UserLeagueMembership | null>(null)
 
 // Snackbar
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+const snackbar = useSnackbar()
 
 // Computed: loading from either store
 const loading = computed(() => gamesStore.loading || leaguesStore.loading)
@@ -311,10 +307,6 @@ function getRoleColor(role: string): string {
   }
 }
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString()
-}
-
 // API calls - now using stores
 async function fetchData() {
   try {
@@ -348,12 +340,12 @@ function openDetailModal(league: UserLeagueMembership) {
 }
 
 function onLeagueCreated() {
-  showSnackbar('League created successfully', 'success')
+  snackbar.show('League created successfully', 'success')
   fetchData()
 }
 
 function onLeagueSaved() {
-  showSnackbar('League updated successfully', 'success')
+  snackbar.show('League updated successfully', 'success')
   fetchData()
 }
 
@@ -365,12 +357,6 @@ function onMembersUpdated() {
 function onDetailUpdated() {
   // Refresh in case seasons/teams changed
   fetchData()
-}
-
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
 }
 
 onMounted(() => {

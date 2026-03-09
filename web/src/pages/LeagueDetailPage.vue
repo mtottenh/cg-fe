@@ -29,12 +29,101 @@
                 <v-chip size="small" :color="league.status === 'active' ? 'success' : 'grey'" variant="tonal">
                   {{ league.status }}
                 </v-chip>
+                <v-chip size="small" :color="accessTypeColor" variant="tonal" class="ml-1">
+                  <v-icon start size="small">{{ accessTypeIcon }}</v-icon>
+                  {{ accessTypeLabel }}
+                </v-chip>
               </v-card-subtitle>
             </v-card-item>
             <v-card-text v-if="league.description">
               {{ league.description }}
             </v-card-text>
           </v-card>
+        </v-col>
+      </v-row>
+
+      <!-- League Membership / Join CTA -->
+      <v-row class="mb-4">
+        <v-col cols="12">
+          <!-- Already a member -->
+          <v-alert v-if="isLeagueMember" type="success" variant="tonal" density="compact" class="d-flex align-center">
+            <div class="d-flex align-center flex-grow-1">
+              <v-icon start>mdi-check-circle</v-icon>
+              <span>You are a <strong>{{ membershipType }}</strong> of this league.</span>
+              <v-spacer />
+              <v-btn
+                v-if="membershipType === 'member'"
+                variant="text"
+                size="small"
+                color="error"
+                @click="handleLeaveLeague"
+              >
+                Leave League
+              </v-btn>
+            </div>
+          </v-alert>
+
+          <!-- Not authenticated -->
+          <v-alert v-else-if="!isAuthenticated" type="info" variant="tonal" density="compact">
+            <v-icon start>mdi-account-plus</v-icon>
+            <router-link to="/login" class="text-decoration-none">Sign in</router-link> to join this league.
+          </v-alert>
+
+          <!-- Open league: Join directly -->
+          <v-alert v-else-if="league.access_type === 'open'" type="info" variant="tonal" density="compact">
+            <div class="d-flex align-center">
+              <span>This league is open to everyone. Join to create or join a team!</span>
+              <v-spacer />
+              <v-btn
+                color="primary"
+                size="small"
+                :loading="joiningLeague"
+                @click="handleJoinLeague"
+              >
+                <v-icon start size="small">mdi-account-plus</v-icon>
+                Join League
+              </v-btn>
+            </div>
+          </v-alert>
+
+          <!-- Application league: Apply -->
+          <template v-else-if="league.access_type === 'application'">
+            <v-alert v-if="hasPendingApplication" type="warning" variant="tonal" density="compact">
+              <v-icon start>mdi-clock-outline</v-icon>
+              Your application is pending review by a league admin.
+            </v-alert>
+            <v-alert v-else type="info" variant="tonal" density="compact">
+              <div class="d-flex align-center">
+                <span>This league requires an application to join.</span>
+                <v-spacer />
+                <v-btn
+                  color="primary"
+                  size="small"
+                  @click="showApplyDialog = true"
+                >
+                  <v-icon start size="small">mdi-file-document-edit</v-icon>
+                  Apply to Join
+                </v-btn>
+              </div>
+            </v-alert>
+          </template>
+
+          <!-- Invite-only league -->
+          <v-alert v-else-if="league.access_type === 'invite_only'" type="info" variant="tonal" density="compact">
+            <v-icon start>mdi-lock</v-icon>
+            This league is invite-only. Contact a league admin to request an invitation.
+          </v-alert>
+
+          <!-- Entry requirements (shown when league has eligibility restrictions) -->
+          <v-alert v-if="entryRequirements" type="warning" variant="tonal" density="compact" class="mt-2">
+            <div class="d-flex align-center">
+              <v-icon start size="small">mdi-shield-check</v-icon>
+              <strong class="mr-2">Entry Requirements:</strong>
+              <span v-for="(req, i) in entryRequirementsList" :key="i">
+                {{ req }}<span v-if="i < entryRequirementsList.length - 1" class="mx-1">|</span>
+              </span>
+            </div>
+          </v-alert>
         </v-col>
       </v-row>
 
@@ -62,9 +151,18 @@
             </template>
           </v-select>
         </v-col>
-        <v-col cols="12" sm="6" md="8" class="d-flex align-center justify-end">
+        <v-col cols="12" sm="6" md="8" class="d-flex align-center justify-end gap-2">
           <v-btn
-            v-if="isAuthenticated && selectedSeasonId && !hasTeamInSeason"
+            v-if="canCreateTournament"
+            color="primary"
+            variant="tonal"
+            prepend-icon="mdi-tournament"
+            @click="showCreateTournamentModal = true"
+          >
+            Create Tournament
+          </v-btn>
+          <v-btn
+            v-if="isLeagueMember && selectedSeasonId && !hasTeamInSeason"
             color="primary"
             prepend-icon="mdi-plus"
             @click="showCreateTeamModal = true"
@@ -75,6 +173,32 @@
             <v-icon start>mdi-check</v-icon>
             You have a team in this season
           </v-chip>
+        </v-col>
+      </v-row>
+
+      <!-- Tournaments Section -->
+      <v-row class="mb-4">
+        <v-col cols="12">
+          <h2 class="text-h6 mb-4">
+            <v-icon start>mdi-tournament</v-icon>
+            Tournaments
+            <v-chip size="small" variant="tonal" class="ml-2">{{ tournaments.length }}</v-chip>
+          </h2>
+        </v-col>
+      </v-row>
+
+      <v-progress-linear v-if="loadingTournaments" indeterminate class="mb-4" />
+
+      <v-row v-if="tournaments.length > 0" class="mb-6">
+        <v-col v-for="tournament in tournaments" :key="tournament.id" cols="12" sm="6" md="4" lg="3">
+          <TournamentCard :tournament="tournament" @click="openTournament(tournament)" />
+        </v-col>
+      </v-row>
+
+      <v-row v-else-if="!loadingTournaments && selectedSeasonId" class="mb-6">
+        <v-col cols="12" class="text-center py-8">
+          <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-tournament</v-icon>
+          <p class="text-body-2 text-medium-emphasis">No tournaments for this season yet.</p>
         </v-col>
       </v-row>
 
@@ -125,15 +249,15 @@
             Be the first to create a team for this season!
           </p>
           <v-btn
-            v-if="isAuthenticated"
+            v-if="isLeagueMember"
             color="primary"
             prepend-icon="mdi-plus"
             @click="showCreateTeamModal = true"
           >
             Create Team
           </v-btn>
-          <v-btn v-else color="primary" to="/login">
-            Sign In to Create Team
+          <v-btn v-else-if="!isAuthenticated" color="primary" to="/login">
+            Sign In to Join League
           </v-btn>
         </v-col>
       </v-row>
@@ -190,6 +314,45 @@
             @click="handleCreateTeam"
           >
             Create Team
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Create Tournament Modal -->
+    <TournamentCreateModal
+      v-model="showCreateTournamentModal"
+      :games="gamesForModal"
+      :leagues="leaguesForModal"
+      :seasons="seasonsForModal"
+      @created="showCreateTournamentModal = false"
+    />
+
+    <!-- Apply to League Dialog -->
+    <v-dialog v-model="showApplyDialog" max-width="450">
+      <v-card>
+        <v-card-title>Apply to {{ league?.name }}</v-card-title>
+        <v-card-text>
+          <p class="text-body-2 mb-4">
+            Your application will be reviewed by a league admin. You can include an optional message.
+          </p>
+          <v-textarea
+            v-model="applyMessage"
+            label="Message (optional)"
+            rows="3"
+            counter="500"
+            hint="Tell the admins why you'd like to join"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showApplyDialog = false">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            :loading="applyingToLeague"
+            @click="handleApplyToLeague"
+          >
+            Submit Application
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -256,21 +419,52 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useLeagueDetail } from '@/composables/useLeagueDetail'
+import { useAuthStore } from '@/stores/auth'
+import { useGamesStore } from '@/stores/games'
+import { useLeagueSeasonsStore } from '@/stores/leagueSeasons'
+import { useFormRules } from '@/composables/useFormRules'
+import TournamentCreateModal from '@/components/admin/TournamentCreateModal.vue'
+import TournamentCard from '@/components/tournament/TournamentCard.vue'
 import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
+import type { TournamentSummaryResponse } from '@/stores/tournaments'
+
+const router = useRouter()
 
 const {
-  league, seasons, teams, gameName, hasTeamInSeason,
+  league, seasons, teams, tournaments, gameName, hasTeamInSeason,
+  isLeagueMember, membershipType, hasPendingApplication,
   selectedSeasonId, selectedTeam, teamMembers,
-  loading, loadingSeasons, loadingTeams, loadingMembers, creatingTeam,
+  loading, loadingSeasons, loadingTeams, loadingTournaments, loadingMembers, creatingTeam,
+  joiningLeague, applyingToLeague,
   error, clearError, isAuthenticated,
   fetchAll, fetchTeamMembers, createTeam,
+  joinLeague, applyToLeague, leaveLeague,
 } = useLeagueDetail()
+
+const authStore = useAuthStore()
+const gamesStore = useGamesStore()
+const seasonsStore = useLeagueSeasonsStore()
+
+const canCreateTournament = computed(() => authStore.isAdmin)
+const showCreateTournamentModal = ref(false)
+
+const gamesForModal = computed(() => gamesStore.games.filter(g => g.status === 'active'))
+const leaguesForModal = computed(() => {
+  if (!league.value) return []
+  return [{ id: league.value.id, name: league.value.name, game_id: league.value.game_id, status: league.value.status }]
+})
+const seasonsForModal = computed(() =>
+  seasonsStore.seasons.map(s => ({ id: s.id, name: s.name, league_id: s.league_id, status: s.status }))
+)
 
 // UI state (stays in the page)
 const showCreateTeamModal = ref(false)
 const showTeamDetailModal = ref(false)
+const showApplyDialog = ref(false)
+const applyMessage = ref('')
 const createTeamValid = ref(false)
 
 const newTeam = ref({
@@ -279,10 +473,85 @@ const newTeam = ref({
   description: '',
 })
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => (v && v.length >= min) || `Must be at least ${min} characters`,
-  maxLength: (max: number) => (v: string) => (!v || v.length <= max) || `Must be at most ${max} characters`,
+const rules = useFormRules()
+
+// Entry requirements from league settings
+const entryRequirements = computed(() => {
+  const settings = league.value?.settings as Record<string, unknown> | null
+  if (!settings) return null
+  const eligibility = settings.eligibility as Record<string, unknown> | null
+  if (!eligibility) return null
+  const hasAny = Object.values(eligibility).some(v => v !== null && v !== undefined)
+  return hasAny ? eligibility : null
+})
+
+const entryRequirementsList = computed((): string[] => {
+  if (!entryRequirements.value) return []
+  const reqs: string[] = []
+  const e = entryRequirements.value
+  if (e.min_rating_per_player) reqs.push(`Min Rating: ${e.min_rating_per_player}`)
+  if (e.max_rating_per_player) reqs.push(`Max Rating: ${e.max_rating_per_player}`)
+  if (e.max_peak_rating_per_player) reqs.push(`Max Peak Rating: ${e.max_peak_rating_per_player}`)
+  if (e.min_matches_played) reqs.push(`Min Matches: ${e.min_matches_played}`)
+  if (e.allowed_rank_tiers && (e.allowed_rank_tiers as string[]).length > 0)
+    reqs.push(`Rank Tiers: ${(e.allowed_rank_tiers as string[]).join(', ')}`)
+  return reqs
+})
+
+// Access type display helpers
+const accessTypeLabel = computed(() => {
+  switch (league.value?.access_type) {
+    case 'open': return 'Open'
+    case 'application': return 'Application'
+    case 'invite_only': return 'Invite Only'
+    default: return league.value?.access_type || ''
+  }
+})
+
+const accessTypeColor = computed(() => {
+  switch (league.value?.access_type) {
+    case 'open': return 'success'
+    case 'application': return 'warning'
+    case 'invite_only': return 'grey'
+    default: return 'grey'
+  }
+})
+
+const accessTypeIcon = computed(() => {
+  switch (league.value?.access_type) {
+    case 'open': return 'mdi-lock-open-variant'
+    case 'application': return 'mdi-file-document-edit'
+    case 'invite_only': return 'mdi-lock'
+    default: return 'mdi-help-circle'
+  }
+})
+
+// Join/Apply handlers
+async function handleJoinLeague() {
+  try {
+    await joinLeague()
+  } catch {
+    // Error already set in composable
+  }
+}
+
+async function handleApplyToLeague() {
+  try {
+    await applyToLeague(applyMessage.value || undefined)
+    showApplyDialog.value = false
+    applyMessage.value = ''
+  } catch {
+    // Error already set in composable
+  }
+}
+
+async function handleLeaveLeague() {
+  if (!confirm('Are you sure you want to leave this league?')) return
+  try {
+    await leaveLeague()
+  } catch {
+    // Error already set in composable
+  }
 }
 
 // Template helpers
@@ -297,6 +566,10 @@ function getSeasonStatusColor(status: string): string {
     case 'completed': return 'grey'
     default: return 'grey'
   }
+}
+
+function openTournament(tournament: TournamentSummaryResponse) {
+  router.push({ name: 'tournament-detail', params: { slug: tournament.slug } })
 }
 
 async function viewTeam(team: LeagueTeamSummaryResponse) {

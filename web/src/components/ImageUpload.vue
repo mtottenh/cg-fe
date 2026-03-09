@@ -86,7 +86,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { getAuthToken } from '@/api/client'
+import { useFileUpload } from '@/composables/useFileUpload'
+
+interface ImageMeta {
+  url: string | null
+}
 
 interface Props {
   modelValue?: string | null
@@ -97,6 +103,7 @@ interface Props {
   maxSize?: number // in MB
   accept?: string
   uploadEndpoint: string
+  responseField?: string
   removable?: boolean
 }
 
@@ -108,6 +115,7 @@ const props = withDefaults(defineProps<Props>(), {
   aspectRatio: 1,
   maxSize: 5,
   accept: 'image/jpeg,image/png,image/webp',
+  responseField: 'url',
   removable: true,
 })
 
@@ -119,10 +127,59 @@ const emit = defineEmits<{
   (e: 'remove'): void
 }>()
 
+const { uploads, uploadFile: rawUpload, clear } = useFileUpload<ImageMeta>({
+  async onUpload(file) {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const token = getAuthToken()
+    const headers: Record<string, string> = {}
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
+    return {
+      url: props.uploadEndpoint,
+      method: 'POST',
+      headers,
+      body: formData,
+    }
+  },
+
+  parseResponse(responseText) {
+    const response = JSON.parse(responseText)
+    const data = response.data || response
+    const url = data[props.responseField] || data.url
+    return { url }
+  },
+})
+
+// React to upload state changes
+const currentUpload = computed(() => uploads.value[uploads.value.length - 1] ?? null)
+const uploading = computed(() => currentUpload.value?.status === 'uploading')
+const uploadProgress = computed(() => currentUpload.value?.progress ?? 0)
+
+watch(
+  () => currentUpload.value?.status,
+  (status) => {
+    if (status === 'complete' && currentUpload.value?.meta.url) {
+      const url = currentUpload.value.meta.url
+      emit('update:modelValue', url)
+      emit('upload-complete', url)
+      localPreview.value = null
+      clear()
+    } else if (status === 'error' && currentUpload.value) {
+      const message = currentUpload.value.error || 'Upload failed'
+      errorMessage.value = message
+      emit('upload-error', message)
+      localPreview.value = null
+      clear()
+    }
+  },
+)
+
 const fileInput = ref<HTMLInputElement | null>(null)
 const isDragging = ref(false)
-const uploading = ref(false)
-const uploadProgress = ref(0)
 const errorMessage = ref<string | null>(null)
 const localPreview = ref<string | null>(null)
 
@@ -198,70 +255,8 @@ async function processFile(file: File) {
   reader.readAsDataURL(file)
 
   // Upload file
-  await uploadFile(file)
-}
-
-async function uploadFile(file: File) {
-  uploading.value = true
-  uploadProgress.value = 0
   emit('upload-start')
-
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    // Get auth token from localStorage (following the store pattern)
-    const token = localStorage.getItem('token')
-
-    const xhr = new XMLHttpRequest()
-
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable) {
-        uploadProgress.value = Math.round((e.loaded / e.total) * 100)
-      }
-    })
-
-    await new Promise<void>((resolve, reject) => {
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const response = JSON.parse(xhr.responseText)
-            const url = response.data?.url || response.url
-            emit('update:modelValue', url)
-            emit('upload-complete', url)
-            localPreview.value = null
-            resolve()
-          } catch {
-            reject(new Error('Invalid response format'))
-          }
-        } else {
-          try {
-            const error = JSON.parse(xhr.responseText)
-            reject(new Error(error.detail || error.message || 'Upload failed'))
-          } catch {
-            reject(new Error('Upload failed'))
-          }
-        }
-      }
-
-      xhr.onerror = () => reject(new Error('Network error'))
-      xhr.ontimeout = () => reject(new Error('Upload timed out'))
-
-      xhr.open('POST', props.uploadEndpoint)
-      if (token) {
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-      }
-      xhr.send(formData)
-    })
-  } catch (e) {
-    const message = e instanceof Error ? e.message : 'Upload failed'
-    errorMessage.value = message
-    emit('upload-error', message)
-    localPreview.value = null
-  } finally {
-    uploading.value = false
-    uploadProgress.value = 0
-  }
+  await rawUpload(file, { url: null })
 }
 
 function handleRemove() {

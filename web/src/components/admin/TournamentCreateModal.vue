@@ -428,6 +428,7 @@
 import { ref, computed, watch } from 'vue'
 import { useTournamentsStore, TOURNAMENT_FORMATS, PARTICIPANT_TYPES, REGISTRATION_TYPES, SCHEDULING_MODES, MATCH_FORMATS, WITHDRAWAL_POLICIES } from '@/stores/tournaments'
 import { useGamesStore, type GameSummary, type GameDetail } from '@/stores/games'
+import type { GameDetailWithMapPool } from '@/api/overrides'
 import { useFormRules } from '@/composables/useFormRules'
 import MapPoolPicker from '@/components/MapPoolPicker.vue'
 
@@ -563,7 +564,7 @@ watch(() => form.value.game_id, async (gameId) => {
     try {
       gameDetail.value = await gamesStore.fetchGame(gameId)
       // Initialize map pool from game default
-      const pool = (gameDetail.value as any)?.map_pool || []
+      const pool = (gameDetail.value as GameDetailWithMapPool | null | undefined)?.map_pool ?? []
       selectedMapIds.value = [...pool]
       gameDefaultPoolIds.value = [...pool]
     } catch {

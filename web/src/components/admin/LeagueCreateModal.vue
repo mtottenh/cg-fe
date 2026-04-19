@@ -298,7 +298,7 @@ async function save() {
       description: form.value.description || undefined,
       logo_url: form.value.logo_url || undefined,
       settings,
-    } as any)
+    })
 
     emit('created')
     close()

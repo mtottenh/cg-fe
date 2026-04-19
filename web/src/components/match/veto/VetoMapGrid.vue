@@ -7,7 +7,7 @@
           :map-id="map.map_id"
           :display-name="map.map_name"
           :image-url="map.image_url"
-          :status="map.status as any"
+          :status="map.status as 'available' | 'banned' | 'picked' | 'decider'"
           :game-number="map.game_number"
           :selectable="canSelect(map)"
           :disabled="!canSelect(map)"

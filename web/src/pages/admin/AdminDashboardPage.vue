@@ -191,6 +191,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { api, ApiError } from '@/api'
+import { unwrapApi } from '@/stores/helpers'
 import type { components } from '@/api/types'
 import BanCreateModal from '@/components/admin/BanCreateModal.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
@@ -215,9 +216,8 @@ async function fetchStats() {
   loading.value = true
   error.value = null
   try {
-    const { data, error: apiError } = await api.GET('/v1/admin/stats')
-    if (apiError) throw new ApiError((apiError as any).status || 500, (apiError as any).detail || 'Failed to fetch stats')
-    stats.value = data!.data
+    const result = await unwrapApi(api.GET('/v1/admin/stats'))
+    stats.value = result.data
   } catch (e) {
     error.value = e instanceof ApiError ? e.detail : 'Failed to load dashboard stats'
   } finally {

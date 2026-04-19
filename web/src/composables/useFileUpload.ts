@@ -35,7 +35,7 @@
  * ```
  */
 
-import { ref, computed } from 'vue'
+import { ref, computed, type Ref } from 'vue'
 
 export type UploadStatus = 'pending' | 'uploading' | 'completing' | 'complete' | 'error'
 
@@ -100,7 +100,9 @@ let nextId = 0
 export function useFileUpload<TMeta = Record<string, unknown>>(
   options: UseFileUploadOptions<TMeta>,
 ) {
-  const uploads = ref<UploadItem<TMeta>[]>([]) as ReturnType<typeof ref<UploadItem<TMeta>[]>>
+  // Explicit Ref<...> typing — Vue's default deep-unwrap makes push/filter
+  // on a `ref([])` with a generic element type fight TypeScript otherwise.
+  const uploads: Ref<UploadItem<TMeta>[]> = ref([])
 
   const isUploading = computed(() => uploads.value.some((u) => u.status === 'uploading' || u.status === 'completing'))
 
@@ -119,7 +121,7 @@ export function useFileUpload<TMeta = Record<string, unknown>>(
       error: null,
       meta: (initialMeta ?? {}) as TMeta,
     }
-    uploads.value.push(item as any)
+    uploads.value.push(item)
 
     try {
       // Step 1: Let caller prepare the upload target
@@ -151,7 +153,7 @@ export function useFileUpload<TMeta = Record<string, unknown>>(
             if (options.parseResponse) {
               try {
                 const parsed = options.parseResponse(xhr.responseText)
-                Object.assign(item.meta as any, parsed)
+                Object.assign(item.meta as Record<string, unknown>, parsed)
               } catch {
                 // parseResponse is optional — ignore errors
               }
@@ -211,7 +213,7 @@ export function useFileUpload<TMeta = Record<string, unknown>>(
       options.onAbort(item as UploadItem<TMeta>).catch(() => {})
     }
 
-    uploads.value = uploads.value.filter((u) => u.localId !== localId) as any
+    uploads.value = uploads.value.filter((u) => u.localId !== localId)
   }
 
   function clear() {
@@ -220,7 +222,7 @@ export function useFileUpload<TMeta = Record<string, unknown>>(
       xhr.abort()
       xhrMap.delete(id)
     }
-    uploads.value = [] as any
+    uploads.value = []
   }
 
   return {

@@ -124,14 +124,14 @@
 
     <!-- Delete Map Confirm -->
     <ConfirmDialog
-      :open="confirmDialog.open.value"
-      :title="confirmDialog.title.value"
-      :message="confirmDialog.message.value"
-      :action-label="confirmDialog.actionLabel.value"
-      :color="confirmDialog.color.value"
-      :loading="confirmDialog.loading.value"
-      :error="confirmDialog.dialogError.value"
-      @clear-error="confirmDialog.dialogError.value = null"
+      :open="confirmDialog.state.open"
+      :title="confirmDialog.state.title"
+      :message="confirmDialog.state.message"
+      :action-label="confirmDialog.state.actionLabel"
+      :color="confirmDialog.state.color"
+      :loading="confirmDialog.state.loading"
+      :error="confirmDialog.state.dialogError"
+      @clear-error="confirmDialog.clearError()"
       @confirm="confirmDialog.execute"
       @cancel="confirmDialog.cancel"
     />
@@ -349,6 +349,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useGamesStore, type GameSummary, type MapInfo } from '@/stores/games'
+import type { GameDetailWithMapPool } from '@/api/overrides'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import GameEditModal from '@/components/admin/GameEditModal.vue'
@@ -470,9 +471,11 @@ async function openConfigPanel(game: GameSummary) {
       gamesStore.fetchGame(game.id).catch(() => null),
     ])
     maps.value = (mapsResult as MapInfo[]) || []
-    rankTiers.value = (tiersResult as any[]) || []
+    // Rank-tier endpoint returns a shape that the UI maps into its own local
+    // structure; tolerate the mismatch through `unknown` rather than `any`.
+    rankTiers.value = (tiersResult as unknown as typeof rankTiers.value) ?? []
     // Initialize pool from game detail
-    const pool = (gameDetail as any)?.map_pool || []
+    const pool = (gameDetail as GameDetailWithMapPool | null | undefined)?.map_pool ?? []
     poolMapIds.value = [...pool]
     poolOriginalIds.value = [...pool]
   } finally {

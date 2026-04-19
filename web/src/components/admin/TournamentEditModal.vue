@@ -313,6 +313,7 @@
 import { ref, computed, watch } from 'vue'
 import { useTournamentsStore, MATCH_FORMATS, WITHDRAWAL_POLICIES, getStatusColor, getStatusLabel, type TournamentResponse } from '@/stores/tournaments'
 import { useGamesStore, type GameDetail } from '@/stores/games'
+import type { TournamentSettings, GameDetailWithMapPool } from '@/api/overrides'
 import { useFormRules } from '@/composables/useFormRules'
 import MapPoolPicker from '@/components/MapPoolPicker.vue'
 
@@ -454,7 +455,9 @@ watch(() => props.tournament, async (t) => {
       withdrawal_policy: t.withdrawal_policy,
       default_match_format: t.default_match_format,
       default_map_veto_format: t.default_map_veto_format ?? null,
-      side_selection_mode: (t as any).settings?.side_selection_mode ?? (t as any).side_selection_mode ?? 'picker_choice',
+      side_selection_mode: (t.settings as TournamentSettings | undefined)?.side_selection_mode
+        ?? (t as unknown as { side_selection_mode?: string }).side_selection_mode
+        ?? 'picker_choice',
       registration_start: formatDateTimeForInput(t.registration_start),
       registration_end: formatDateTimeForInput(t.registration_end),
       starts_at: formatDateTimeForInput(t.starts_at),
@@ -480,7 +483,7 @@ watch(() => props.tournament, async (t) => {
       ])
       gameDetail.value = gd
       // Set game default pool
-      gameDefaultPoolIds.value = (gd as any)?.map_pool || []
+      gameDefaultPoolIds.value = (gd as GameDetailWithMapPool | null | undefined)?.map_pool ?? []
       // Set selected from tournament pool (or game default)
       if (poolResult && poolResult.source === 'tournament') {
         selectedMapIds.value = [...poolResult.maps]

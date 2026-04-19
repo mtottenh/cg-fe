@@ -1,23 +1,20 @@
 <template>
-  <v-autocomplete
-    v-model="selectedUser"
-    v-model:search="searchQuery"
-    :items="searchResults"
-    :loading="loading"
-    :item-title="itemTitle"
-    item-value="id"
+  <SearchAutocomplete
+    v-model="selected"
+    :fetch-fn="fetchPlayers"
+    :item-title="(p: PlayerSummary) => p.display_name"
     :label="label"
     :placeholder="placeholder"
-    :prepend-inner-icon="prependIcon"
+    :prepend-icon="prependIcon"
     :variant="variant"
     :density="density"
     :rules="rules"
     :disabled="disabled"
     :clearable="clearable"
-    return-object
-    no-filter
+    prompt-text="Type at least 2 characters to search"
+    no-results-text="No players found"
     hide-no-data
-    @update:model-value="onSelect"
+    @select="(p) => emit('select', p)"
   >
     <template v-slot:item="{ item, props: itemProps }">
       <v-list-item v-bind="itemProps" :title="undefined">
@@ -44,26 +41,13 @@
         <span>{{ item.raw.display_name }}</span>
       </div>
     </template>
-
-    <template v-slot:no-data>
-      <v-list-item v-if="searchQuery && searchQuery.length >= 2">
-        <v-list-item-title class="text-grey">
-          {{ loading ? 'Searching...' : 'No players found' }}
-        </v-list-item-title>
-      </v-list-item>
-      <v-list-item v-else>
-        <v-list-item-title class="text-grey">
-          Type at least 2 characters to search
-        </v-list-item-title>
-      </v-list-item>
-    </template>
-  </v-autocomplete>
+  </SearchAutocomplete>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { watchDebounced } from '@vueuse/core'
+import SearchAutocomplete from '@/components/SearchAutocomplete.vue'
 import { api } from '@/api'
+import { unwrapApi } from '@/stores/helpers'
 import type { components } from '@/api/types'
 
 type PlayerSummary = components['schemas']['PlayerSearchResponse']
@@ -88,57 +72,19 @@ withDefaults(
     rules: () => [],
     disabled: false,
     clearable: true,
-  }
+  },
 )
 
-const selectedUser = defineModel<PlayerSummary | null>({ default: null })
+const selected = defineModel<PlayerSummary | null>({ default: null })
 
 const emit = defineEmits<{
   (e: 'select', player: PlayerSummary | null): void
 }>()
 
-const searchQuery = ref('')
-const searchResults = ref<PlayerSummary[]>([])
-const loading = ref(false)
-
-// Debounced search
-watchDebounced(
-  searchQuery,
-  async (query) => {
-    if (!query || query.length < 2) {
-      searchResults.value = []
-      return
-    }
-
-    loading.value = true
-    try {
-      const { data, error } = await api.GET('/v1/players', {
-        params: { query: { q: query, per_page: 10 } },
-      })
-
-      if (error) {
-        console.error('Player search error:', error)
-        searchResults.value = []
-        return
-      }
-
-      searchResults.value = data?.data || []
-    } catch (e) {
-      console.error('Player search failed:', e)
-      searchResults.value = []
-    } finally {
-      loading.value = false
-    }
-  },
-  { debounce: 300 }
-)
-
-function itemTitle(item: PlayerSummary): string {
-  return item.display_name
-}
-
-function onSelect(player: PlayerSummary | null) {
-  selectedUser.value = player
-  emit('select', player)
+async function fetchPlayers(query: string): Promise<PlayerSummary[]> {
+  const result = await unwrapApi(api.GET('/v1/players', {
+    params: { query: { q: query, per_page: 10 } },
+  }))
+  return result.data
 }
 </script>

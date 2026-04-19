@@ -298,12 +298,12 @@
 
     <!-- Cancel Confirmation Dialog (shared between page + useTournamentAdminActions) -->
     <ConfirmDialog
-      :open="tournamentActions.confirmDialog.open.value"
-      :title="tournamentActions.confirmDialog.title.value"
-      :message="tournamentActions.confirmDialog.message.value"
-      :action-label="tournamentActions.confirmDialog.actionLabel.value"
-      :color="tournamentActions.confirmDialog.color.value"
-      :loading="tournamentActions.confirmDialog.loading.value"
+      :open="tournamentActions.confirmDialog.state.open"
+      :title="tournamentActions.confirmDialog.state.title"
+      :message="tournamentActions.confirmDialog.state.message"
+      :action-label="tournamentActions.confirmDialog.state.actionLabel"
+      :color="tournamentActions.confirmDialog.state.color"
+      :loading="tournamentActions.confirmDialog.state.loading"
       @confirm="tournamentActions.confirmDialog.execute"
       @cancel="tournamentActions.confirmDialog.cancel"
     />
@@ -487,22 +487,35 @@ async function handleBulkStartMatches() {
   if (!tournament.value) return
   bulkStartLoading.value = true
   try {
-    const eligible = matches.value.filter(m => ['pending', 'ready', 'scheduled'].includes(m.status))
+    const tournamentId = tournament.value.id
+    const eligible = matches.value.filter((m) => ['pending', 'ready', 'scheduled'].includes(m.status))
     const reason = 'Bulk admin action'
-    for (const m of eligible) {
-      // Follow state machine: pending → ready → scheduled → in_progress
-      if (m.status === 'pending') {
-        await tournamentsStore.adminMatchTransition(tournament.value.id, m.id, 'ready', reason)
+
+    // Walk each match through its remaining state-machine steps in sequence,
+    // but run matches in parallel with allSettled so one failure doesn't skip the rest.
+    async function promoteMatch(match: typeof eligible[number]) {
+      if (match.status === 'pending') {
+        await tournamentsStore.adminMatchTransition(tournamentId, match.id, 'ready', reason)
       }
-      if (m.status === 'pending' || m.status === 'ready') {
-        await tournamentsStore.adminMatchTransition(tournament.value.id, m.id, 'scheduled', reason)
+      if (match.status === 'pending' || match.status === 'ready') {
+        await tournamentsStore.adminMatchTransition(tournamentId, match.id, 'scheduled', reason)
       }
-      await tournamentsStore.adminMatchTransition(tournament.value.id, m.id, 'in_progress', reason)
+      await tournamentsStore.adminMatchTransition(tournamentId, match.id, 'in_progress', reason)
     }
-    snackbar.show(`${eligible.length} match(es) started`, 'success')
-    await tournamentsStore.fetchMatches(tournament.value.id)
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to start matches', 'error')
+
+    const results = await Promise.allSettled(eligible.map((m) => promoteMatch(m)))
+    const succeeded = results.filter((r) => r.status === 'fulfilled').length
+    const failed = results.length - succeeded
+
+    if (failed === 0) {
+      snackbar.show(`${succeeded} match(es) started`, 'success')
+    } else if (succeeded === 0) {
+      snackbar.show(`Failed to start ${failed} match(es)`, 'error')
+    } else {
+      snackbar.show(`Started ${succeeded} match(es); ${failed} failed`, 'warning')
+    }
+
+    await tournamentsStore.fetchMatches(tournamentId)
   } finally {
     bulkStartLoading.value = false
   }
@@ -644,9 +657,9 @@ async function handleCreateStage() {
     () => tournamentsStore.createStage(tournament.value!.id, {
       name: newStage.value.name,
       stage_order: newStage.value.stage_order,
-      format: newStage.value.format,
+      format: newStage.value.format ?? '',
       match_format: newStage.value.match_format,
-    } as any),
+    }),
     { success: 'Stage created', errorSource: tournamentsStore },
   )
   if (result !== null) {

@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
+import type { CreateStageRequest } from '@/api/overrides'
 import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
 
 type TournamentStageResponse = components['schemas']['TournamentStageResponse']
@@ -26,7 +27,7 @@ export function createStagesSlice() {
 
   async function createStage(
     tournamentId: string,
-    request: components['schemas']['CreateStageRequest']
+    request: CreateStageRequest,
   ): Promise<TournamentStageResponse> {
     return withActionState(createStageState, async () => {
       const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/stages', {

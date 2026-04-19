@@ -7,6 +7,10 @@ export type { UploadStatus } from './useFileUpload'
 
 export interface EvidenceMeta {
   evidenceId: string | null
+  /** Set from uploadFile() when the caller wants to override the derived type. */
+  evidenceType?: string
+  /** Series game number for grouped matches. */
+  gameNumber?: number
 }
 
 /** Re-export shaped like the old UploadItem for consumers that check .evidenceId */
@@ -32,7 +36,7 @@ export function useEvidenceUpload(matchId: Ref<string>) {
           file_size_bytes: file.size,
           mime_type: file.type || 'application/octet-stream',
           evidence_type: resolvedType,
-          game_number: (item.meta as any).gameNumber ?? null,
+          game_number: item.meta.gameNumber ?? null,
         })
 
         item.meta.evidenceId = uploadInfo.evidence_id
@@ -63,7 +67,7 @@ export function useEvidenceUpload(matchId: Ref<string>) {
       evidenceId: null,
       evidenceType,
       gameNumber,
-    } as any)
+    })
   }
 
   return { uploads, isUploading, completedEvidenceIds, uploadFile, removeUpload, clear }

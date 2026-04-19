@@ -325,12 +325,12 @@
 
     <!-- Confirm Dialog -->
     <ConfirmDialog
-      :open="confirmDialogState.open.value"
-      :title="confirmDialogState.title.value"
-      :message="confirmDialogState.message.value"
-      :action-label="confirmDialogState.actionLabel.value"
-      :color="confirmDialogState.color.value"
-      :loading="confirmDialogState.loading.value"
+      :open="confirmDialogState.state.open"
+      :title="confirmDialogState.state.title"
+      :message="confirmDialogState.state.message"
+      :action-label="confirmDialogState.state.actionLabel"
+      :color="confirmDialogState.state.color"
+      :loading="confirmDialogState.state.loading"
       @confirm="confirmDialogState.execute"
       @cancel="confirmDialogState.cancel"
     />

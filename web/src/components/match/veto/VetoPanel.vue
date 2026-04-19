@@ -105,7 +105,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, toRef, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useMatchLobby, type VetoPhase } from '@/composables/useMatchLobby'
 import VetoCoinFlip from './VetoCoinFlip.vue'
 import VetoMapGrid from './VetoMapGrid.vue'
@@ -122,8 +122,11 @@ const props = defineProps<{
   participant2Name: string
 }>()
 
-const matchIdRef = toRef(props, 'matchId')
-const userRegRef = toRef(props, 'userRegistrationId')
+// `useMatchLobby` signature widens to `string | null` / `string | null | undefined`.
+// Use `computed()` so the narrower prop types (string / string | null | undefined)
+// pass the covariance check — `toRef()` would yield an invariant `Ref<string>`.
+const matchIdRef = computed(() => props.matchId as string | null)
+const userRegRef = computed(() => props.userRegistrationId)
 
 const loading = ref(true)
 
@@ -135,7 +138,7 @@ const {
   connected, usingFallback,
   chatMessages, sendChat, participants, spectatorCount,
   initialize,
-} = useMatchLobby(matchIdRef as any, userRegRef as any)
+} = useMatchLobby(matchIdRef, userRegRef)
 
 const sideSelectionMode = computed(() => session.value?.side_selection_mode ?? 'knife')
 

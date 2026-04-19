@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { reactive } from 'vue'
 
 export interface ConfirmDialogOptions {
   title: string
@@ -8,47 +8,91 @@ export interface ConfirmDialogOptions {
   handler: () => Promise<void>
 }
 
+export interface ConfirmDialogState {
+  open: boolean
+  title: string
+  message: string
+  actionLabel: string
+  color: string
+  loading: boolean
+  dialogError: string | null
+}
+
+/**
+ * Imperative confirm-dialog composable.
+ *
+ * Usage:
+ *
+ *   const confirmDialog = useConfirmDialog()
+ *   confirmDialog.confirm({
+ *     title: 'Delete team',
+ *     message: 'Are you sure?',
+ *     color: 'error',
+ *     handler: async () => { await store.deleteTeam(id) },
+ *   })
+ *
+ * Render with:
+ *
+ *   <ConfirmDialog
+ *     :open="confirmDialog.state.open"
+ *     :title="confirmDialog.state.title"
+ *     ...
+ *     @confirm="confirmDialog.execute"
+ *     @cancel="confirmDialog.cancel"
+ *   />
+ *
+ * The returned `state` is a reactive object, so templates access fields
+ * without `.value`. Handlers that throw will keep the dialog open and
+ * surface the error through `state.dialogError`.
+ */
 export function useConfirmDialog() {
-  const open = ref(false)
-  const title = ref('')
-  const message = ref('')
-  const actionLabel = ref('Confirm')
-  const color = ref('primary')
-  const loading = ref(false)
-  const dialogError = ref<string | null>(null)
-  const onConfirm = ref<(() => Promise<void>) | null>(null)
+  const state = reactive<ConfirmDialogState>({
+    open: false,
+    title: '',
+    message: '',
+    actionLabel: 'Confirm',
+    color: 'primary',
+    loading: false,
+    dialogError: null,
+  })
+
+  let onConfirm: (() => Promise<void>) | null = null
 
   function confirm(opts: ConfirmDialogOptions) {
-    title.value = opts.title
-    message.value = opts.message
-    actionLabel.value = opts.action ?? 'Confirm'
-    color.value = opts.color ?? 'primary'
-    dialogError.value = null
-    onConfirm.value = opts.handler
-    open.value = true
+    state.title = opts.title
+    state.message = opts.message
+    state.actionLabel = opts.action ?? 'Confirm'
+    state.color = opts.color ?? 'primary'
+    state.dialogError = null
+    onConfirm = opts.handler
+    state.open = true
   }
 
   async function execute() {
-    if (!onConfirm.value) return
-    loading.value = true
-    dialogError.value = null
+    if (!onConfirm) return
+    state.loading = true
+    state.dialogError = null
     try {
-      await onConfirm.value()
+      await onConfirm()
       // Only close on success
-      open.value = false
-      onConfirm.value = null
+      state.open = false
+      onConfirm = null
     } catch (e: unknown) {
-      dialogError.value = e instanceof Error ? e.message : 'Operation failed'
+      state.dialogError = e instanceof Error ? e.message : 'Operation failed'
     } finally {
-      loading.value = false
+      state.loading = false
     }
   }
 
   function cancel() {
-    open.value = false
-    onConfirm.value = null
-    dialogError.value = null
+    state.open = false
+    onConfirm = null
+    state.dialogError = null
   }
 
-  return { open, title, message, actionLabel, color, loading, dialogError, confirm, execute, cancel }
+  function clearError() {
+    state.dialogError = null
+  }
+
+  return { state, confirm, execute, cancel, clearError }
 }

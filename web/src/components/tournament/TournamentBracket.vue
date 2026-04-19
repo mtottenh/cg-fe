@@ -109,10 +109,10 @@
         class="elevation-0"
       >
         <template v-slot:item.rank="{ item }">
-          <strong>#{{ item.rank }}</strong>
+          <strong>#{{ item.position }}</strong>
         </template>
         <template v-slot:item.record="{ item }">
-          {{ item.wins }}-{{ item.losses }}<span v-if="item.draws">-{{ item.draws }}</span>
+          {{ item.matches_won }}-{{ item.matches_lost }}<span v-if="item.matches_drawn">-{{ item.matches_drawn }}</span>
         </template>
       </v-data-table>
     </v-card>
@@ -122,6 +122,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { TournamentBracketResponse, TournamentMatchResponse } from '@/stores/tournaments'
+import type { BracketStandingsRow } from '@/api/overrides'
 import { useTournamentsStore } from '@/stores/tournaments'
 import TournamentMatchCard from './TournamentMatchCard.vue'
 
@@ -132,7 +133,7 @@ const props = defineProps<{
   matches: TournamentMatchResponse[]
 }>()
 
-const standings = ref<Array<{ rank: number; participant_name: string; wins: number; losses: number; draws: number; points: number }>>([])
+const standings = ref<BracketStandingsRow[]>([])
 
 const standingsHeaders = [
   { title: '#', key: 'rank', width: '50px' },
@@ -152,7 +153,7 @@ watch(() => props.brackets, async (brackets) => {
     if (!tournament) return
     try {
       const data = await tournamentsStore.fetchBracketStandings(tournament.id, bracket.id)
-      standings.value = (data as any[]) || []
+      standings.value = data ?? []
     } catch {
       standings.value = []
     }

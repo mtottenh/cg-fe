@@ -16,70 +16,12 @@
           </div>
         </div>
       </div>
-      <div v-if="tournament" class="d-flex gap-2">
-        <v-btn variant="tonal" prepend-icon="mdi-open-in-new" @click="viewPublic">
-          View Public
-        </v-btn>
-        <v-btn
-          v-if="canPublish"
-          color="primary"
-          prepend-icon="mdi-eye"
-          @click="publishTournament"
-        >
-          Publish
-        </v-btn>
-        <v-btn
-          v-if="canOpenRegistration"
-          color="success"
-          prepend-icon="mdi-account-plus"
-          @click="openRegistration"
-        >
-          Open Registration
-        </v-btn>
-        <v-btn
-          v-if="canStart"
-          color="primary"
-          prepend-icon="mdi-play"
-          @click="startTournament"
-        >
-          Start Tournament
-        </v-btn>
-        <v-btn
-          v-if="canComplete"
-          color="success"
-          prepend-icon="mdi-flag-checkered"
-          @click="completeTournament"
-        >
-          Complete
-        </v-btn>
-        <v-btn
-          v-if="canFinalize"
-          color="success"
-          prepend-icon="mdi-check-all"
-          @click="finalizeTournament"
-        >
-          Finalize
-        </v-btn>
-        <v-btn
-          v-if="canProcessNoShows"
-          color="warning"
-          variant="tonal"
-          prepend-icon="mdi-account-alert"
-          :loading="tournamentsStore.processNoShowsState.loading.value"
-          @click="handleProcessNoShows"
-        >
-          Process No-Shows
-        </v-btn>
-        <v-btn
-          v-if="canCancel"
-          color="error"
-          variant="tonal"
-          prepend-icon="mdi-cancel"
-          @click="confirmCancelTournament"
-        >
-          Cancel
-        </v-btn>
-      </div>
+      <TournamentStatusActions
+        v-if="tournament"
+        :actions="tournamentActions"
+        :process-no-shows-loading="tournamentsStore.processNoShowsState.loading.value"
+        @view-public="viewPublic"
+      />
     </div>
 
     <!-- Loading State -->
@@ -211,12 +153,12 @@
                         Edit Tournament
                       </v-btn>
                       <v-btn
-                        v-if="canCloseRegistration"
+                        v-if="tournamentActions.canCloseRegistration.value"
                         block
                         class="mb-2"
                         color="warning"
                         prepend-icon="mdi-account-cancel"
-                        @click="closeRegistration"
+                        @click="tournamentActions.closeRegistration"
                       >
                         Close Registration
                       </v-btn>
@@ -229,117 +171,16 @@
 
           <!-- Registrations Tab -->
           <v-tabs-window-item value="registrations">
-            <v-card-text>
-              <v-data-table
-                :headers="registrationHeaders"
-                :items="registrations"
-                :loading="loading"
-                density="comfortable"
-              >
-                <template v-slot:item.participant_logo_url="{ item }">
-                  <v-avatar size="32" rounded="sm">
-                    <v-img v-if="item.participant_logo_url" :src="item.participant_logo_url" />
-                    <v-icon v-else>mdi-account</v-icon>
-                  </v-avatar>
-                </template>
-
-                <template v-slot:item.participant_name="{ item }">
-                  <div class="font-weight-medium">{{ item.participant_name }}</div>
-                </template>
-
-                <template v-slot:item.status="{ item }">
-                  <v-chip :color="getRegistrationStatusColor(item.status)" size="small">
-                    {{ item.status }}
-                  </v-chip>
-                </template>
-
-                <template v-slot:item.checked_in="{ item }">
-                  <v-icon v-if="item.checked_in" color="success">mdi-check-circle</v-icon>
-                  <v-icon v-else color="grey">mdi-circle-outline</v-icon>
-                </template>
-
-                <template v-slot:item.seed="{ item }">
-                  {{ item.seed || '-' }}
-                </template>
-
-                <template v-slot:item.registered_at="{ item }">
-                  {{ formatDateTime(item.registered_at) }}
-                </template>
-
-                <template v-slot:item.actions="{ item }">
-                  <div class="d-flex gap-1">
-                    <!-- Pending: Approve / Reject -->
-                    <template v-if="item.status === 'pending'">
-                      <v-btn
-                        color="success"
-                        size="small"
-                        variant="tonal"
-                        :loading="actionLoadingId === item.id"
-                        :disabled="actionLoadingId !== null && actionLoadingId !== item.id"
-                        @click="handleApprove(item)"
-                      >
-                        Approve
-                      </v-btn>
-                      <v-btn
-                        color="warning"
-                        size="small"
-                        variant="tonal"
-                        :disabled="actionLoadingId !== null"
-                        @click="handleReject(item)"
-                      >
-                        Reject
-                      </v-btn>
-                    </template>
-
-                    <!-- Approved: Admin Check-In + Disqualify -->
-                    <template v-else-if="item.status === 'approved'">
-                      <v-btn
-                        v-if="tournament?.check_in_required"
-                        color="info"
-                        size="small"
-                        variant="tonal"
-                        :loading="actionLoadingId === item.id"
-                        :disabled="actionLoadingId !== null && actionLoadingId !== item.id"
-                        @click="handleAdminCheckIn(item)"
-                      >
-                        Check In
-                      </v-btn>
-                      <v-btn
-                        color="error"
-                        size="small"
-                        variant="tonal"
-                        :disabled="actionLoadingId !== null"
-                        @click="handleDisqualify(item)"
-                      >
-                        Disqualify
-                      </v-btn>
-                    </template>
-
-                    <!-- Checked-in / Active: Disqualify only -->
-                    <template v-else-if="['checked_in', 'active'].includes(item.status)">
-                      <v-btn
-                        color="error"
-                        size="small"
-                        variant="tonal"
-                        :disabled="actionLoadingId !== null"
-                        @click="handleDisqualify(item)"
-                      >
-                        Disqualify
-                      </v-btn>
-                    </template>
-
-                    <!-- Terminal states: No actions -->
-                    <span v-else class="text-grey text-caption">-</span>
-                  </div>
-                </template>
-
-                <template v-slot:no-data>
-                  <div class="text-center pa-4">
-                    <p class="text-grey">No registrations yet</p>
-                  </div>
-                </template>
-              </v-data-table>
-            </v-card-text>
+            <RegistrationsTab
+              :registrations="registrations"
+              :loading="loading"
+              :check-in-required="tournament?.check_in_required ?? false"
+              :action-loading-id="actionLoadingId"
+              @approve="handleApprove"
+              @reject="handleReject"
+              @disqualify="handleDisqualify"
+              @admin-check-in="handleAdminCheckIn"
+            />
           </v-tabs-window-item>
 
           <!-- Bracket Tab -->
@@ -348,7 +189,7 @@
               <!-- Swiss Round Advancement -->
               <div v-if="isSwissFormat && tournament?.status === 'in_progress'" class="mb-4 d-flex align-center gap-3">
                 <span v-if="swissBracket" class="text-subtitle-1">
-                  Round {{ (swissBracket as Record<string, unknown>).current_round }} of {{ (swissBracket as Record<string, unknown>).total_rounds }}
+                  Round {{ swissBracket.current_round }} of {{ swissBracket.total_rounds }}
                 </span>
                 <v-btn
                   v-if="canAdvanceRound"
@@ -379,168 +220,30 @@
 
           <!-- Seeding Tab -->
           <v-tabs-window-item value="seeding">
-            <v-card-text>
-              <div class="d-flex align-center gap-2 mb-4">
-                <v-btn
-                  color="primary"
-                  prepend-icon="mdi-auto-fix"
-                  :loading="tournamentsStore.autoSeedState.loading.value"
-                  @click="handleAutoSeed"
-                >
-                  Auto Seed
-                </v-btn>
-                <v-btn
-                  variant="tonal"
-                  prepend-icon="mdi-content-save"
-                  :loading="tournamentsStore.manualSeedState.loading.value"
-                  :disabled="seedingList.length === 0"
-                  @click="handleSaveSeeding"
-                >
-                  Save Manual Seeding
-                </v-btn>
-                <v-btn
-                  variant="tonal"
-                  color="error"
-                  prepend-icon="mdi-delete"
-                  :loading="tournamentsStore.clearSeedingState.loading.value"
-                  :disabled="tournamentsStore.seeding.length === 0"
-                  @click="handleClearSeeding"
-                >
-                  Clear Seeding
-                </v-btn>
-              </div>
-
-              <v-list v-if="seedingList.length > 0" density="compact">
-                <v-list-item
-                  v-for="(item, index) in seedingList"
-                  :key="item.registration_id"
-                  class="px-2"
-                >
-                  <template v-slot:prepend>
-                    <v-chip size="small" variant="tonal" class="mr-3" min-width="40">
-                      #{{ index + 1 }}
-                    </v-chip>
-                  </template>
-                  <v-list-item-title>{{ item.participant_name }}</v-list-item-title>
-                  <v-list-item-subtitle v-if="item.seed_rating">
-                    Rating: {{ item.seed_rating }}
-                  </v-list-item-subtitle>
-                  <template v-slot:append>
-                    <v-btn icon size="x-small" variant="text" :disabled="index === 0" @click="moveSeed(index, -1)">
-                      <v-icon>mdi-chevron-up</v-icon>
-                    </v-btn>
-                    <v-btn icon size="x-small" variant="text" :disabled="index === seedingList.length - 1" @click="moveSeed(index, 1)">
-                      <v-icon>mdi-chevron-down</v-icon>
-                    </v-btn>
-                  </template>
-                </v-list-item>
-              </v-list>
-              <div v-else class="text-center pa-8">
-                <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-sort-numeric-ascending</v-icon>
-                <h3 class="text-h6 mb-2">No Seeding</h3>
-                <p class="text-grey">Use "Auto Seed" to generate seeding based on ratings, or manually arrange participants.</p>
-              </div>
-            </v-card-text>
+            <SeedingTab
+              :seeding-list="seedingList"
+              :auto-seed-loading="tournamentsStore.autoSeedState.loading.value"
+              :save-seeding-loading="tournamentsStore.manualSeedState.loading.value"
+              :clear-seeding-loading="tournamentsStore.clearSeedingState.loading.value"
+              @auto-seed="handleAutoSeed"
+              @save="handleSaveSeeding"
+              @clear="handleClearSeeding"
+              @move="moveSeed"
+            />
           </v-tabs-window-item>
 
           <!-- Matches Tab -->
           <v-tabs-window-item value="matches">
-            <v-card-text>
-              <div v-if="hasEligibleMatches" class="mb-4">
-                <v-btn
-                  color="primary"
-                  prepend-icon="mdi-play-circle"
-                  :loading="bulkStartLoading"
-                  @click="handleBulkStartMatches"
-                >
-                  Start All Matches
-                </v-btn>
-              </div>
-              <v-data-table
-                :headers="matchHeaders"
-                :items="matches"
-                :loading="loading"
-                :items-per-page="-1"
-                density="comfortable"
-              >
-                <template v-slot:item.match_number="{ item }">
-                  <v-chip size="small" variant="tonal">
-                    #{{ item.match_number }}
-                  </v-chip>
-                </template>
-
-                <template v-slot:item.participants="{ item }">
-                  <div class="d-flex align-center">
-                    <span :class="{ 'font-weight-bold': item.winner_registration_id === item.participant1_registration_id }">
-                      {{ item.participant1_name || 'TBD' }}
-                    </span>
-                    <span class="mx-2">vs</span>
-                    <span :class="{ 'font-weight-bold': item.winner_registration_id === item.participant2_registration_id }">
-                      {{ item.participant2_name || 'TBD' }}
-                    </span>
-                  </div>
-                </template>
-
-                <template v-slot:item.score="{ item }">
-                  <span v-if="item.status === 'completed'">
-                    {{ item.participant1_score }} - {{ item.participant2_score }}
-                  </span>
-                  <span v-else class="text-grey">-</span>
-                </template>
-
-                <template v-slot:item.status="{ item }">
-                  <v-chip :color="getMatchStatusColor(item.status)" size="small">
-                    {{ formatMatchStatus(item.status) }}
-                  </v-chip>
-                </template>
-
-                <template v-slot:item.scheduled_at="{ item }">
-                  {{ item.scheduled_at ? formatDateTime(item.scheduled_at) : 'Not scheduled' }}
-                </template>
-
-                <template v-slot:item.actions="{ item }">
-                  <div class="d-flex gap-1">
-                    <v-btn
-                      icon
-                      size="small"
-                      variant="text"
-                      @click="openMatchDetail(item.id)"
-                    >
-                      <v-icon>mdi-eye</v-icon>
-                      <v-tooltip activator="parent" location="top">View Details</v-tooltip>
-                    </v-btn>
-                    <v-menu v-if="getNextMatchStatus(item.status)">
-                      <template v-slot:activator="{ props: menuProps }">
-                        <v-btn
-                          size="small"
-                          variant="tonal"
-                          :color="getMatchActionColor(item.status)"
-                          v-bind="menuProps"
-                          :loading="matchTransitionLoadingId === item.id"
-                          :disabled="matchTransitionLoadingId !== null && matchTransitionLoadingId !== item.id"
-                        >
-                          {{ getMatchActionLabel(item.status) }}
-                          <v-icon end size="small">mdi-chevron-down</v-icon>
-                        </v-btn>
-                      </template>
-                      <v-list density="compact">
-                        <v-list-item
-                          @click="handleMatchTransition(item.id, getNextMatchStatus(item.status)!)"
-                        >
-                          <v-list-item-title>{{ getMatchActionLabel(item.status) }}</v-list-item-title>
-                        </v-list-item>
-                      </v-list>
-                    </v-menu>
-                  </div>
-                </template>
-
-                <template v-slot:no-data>
-                  <div class="text-center pa-4">
-                    <p class="text-grey">No matches generated yet</p>
-                  </div>
-                </template>
-              </v-data-table>
-            </v-card-text>
+            <MatchesTab
+              :matches="matches"
+              :loading="loading"
+              :tournament-status="tournament?.status"
+              :bulk-start-loading="bulkStartLoading"
+              :match-transition-loading-id="matchTransitionLoadingId"
+              @view-detail="openMatchDetail"
+              @transition="handleMatchTransition"
+              @bulk-start="handleBulkStartMatches"
+            />
           </v-tabs-window-item>
           <!-- Stages Tab -->
           <v-tabs-window-item value="stages">
@@ -593,16 +296,16 @@
       @saved="onTournamentSaved"
     />
 
-    <!-- Cancel Confirmation Dialog -->
+    <!-- Cancel Confirmation Dialog (shared between page + useTournamentAdminActions) -->
     <ConfirmDialog
-      :open="confirmDialog.open.value"
-      :title="confirmDialog.title.value"
-      :message="confirmDialog.message.value"
-      :action-label="confirmDialog.actionLabel.value"
-      :color="confirmDialog.color.value"
-      :loading="confirmDialog.loading.value"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
+      :open="tournamentActions.confirmDialog.open.value"
+      :title="tournamentActions.confirmDialog.title.value"
+      :message="tournamentActions.confirmDialog.message.value"
+      :action-label="tournamentActions.confirmDialog.actionLabel.value"
+      :color="tournamentActions.confirmDialog.color.value"
+      :loading="tournamentActions.confirmDialog.loading.value"
+      @confirm="tournamentActions.confirmDialog.execute"
+      @cancel="tournamentActions.confirmDialog.cancel"
     />
 
     <!-- Match Detail Modal -->
@@ -667,20 +370,21 @@ import { useRoute, useRouter } from 'vue-router'
 import { useGamesStore, type GameSummary } from '@/stores/games'
 import { useTournamentsStore, formatTournamentFormat } from '@/stores/tournaments'
 import TournamentStatusChip from '@/components/admin/TournamentStatusChip.vue'
+import TournamentStatusActions from '@/components/admin/TournamentStatusActions.vue'
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
 import TournamentBracket from '@/components/tournament/TournamentBracket.vue'
 import RegistrationReasonModal from '@/components/admin/RegistrationReasonModal.vue'
 import AdminMatchDetailModal from '@/components/admin/AdminMatchDetailModal.vue'
+import RegistrationsTab from '@/components/admin/tournament-detail/RegistrationsTab.vue'
+import MatchesTab from '@/components/admin/tournament-detail/MatchesTab.vue'
+import SeedingTab from '@/components/admin/tournament-detail/SeedingTab.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
-import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useActionFeedback } from '@/composables/useActionFeedback'
+import { useTournamentAdminActions } from '@/composables/useTournamentAdminActions'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { formatDate, formatDateTime } from '@/utils/formatters'
-import {
-  getMatchStatusColor, formatMatchStatus,
-  getNextMatchStatus, getMatchActionLabel, getMatchActionColor,
-} from '@/utils/matchStatus'
 import type { TournamentRegistrationResponse } from '@/stores/tournaments'
+import type { BracketProgress } from '@/api/overrides'
 
 const route = useRoute()
 const router = useRouter()
@@ -692,7 +396,6 @@ const activeTab = ref('overview')
 const editModalOpen = ref(false)
 const snackbar = useSnackbar()
 
-const confirmDialog = useConfirmDialog()
 const feedback = useActionFeedback()
 const stageCreateModalOpen = ref(false)
 const newStage = ref({ name: '', stage_order: 1, format: null as string | null, match_format: null as string | null })
@@ -726,62 +429,29 @@ const registrationCount = computed(() => registrations.value.length)
 const matchCount = computed(() => matches.value.length)
 
 const isSwissFormat = computed(() => tournament.value?.format === 'swiss')
-const swissBracket = computed(() => brackets.value.length > 0 ? brackets.value[0] : null)
+const swissBracket = computed<BracketProgress | null>(() =>
+  (brackets.value[0] as BracketProgress | undefined) ?? null
+)
 const allCurrentRoundMatchesCompleted = computed(() => {
-  if (!swissBracket.value) return false
-  const currentRound = (swissBracket.value as Record<string, unknown>).current_round as number | undefined
-  if (!currentRound) return false
-  const roundMatches = matches.value.filter((m) => m.round === currentRound)
+  const b = swissBracket.value
+  if (!b?.current_round) return false
+  const roundMatches = matches.value.filter((m) => m.round === b.current_round)
   return roundMatches.length > 0 && roundMatches.every((m) => m.status === 'completed')
 })
 const canAdvanceRound = computed(() => {
   if (!isSwissFormat.value || tournament.value?.status !== 'in_progress') return false
-  const bracket = swissBracket.value as Record<string, unknown> | null
-  if (!bracket) return false
-  const currentRound = bracket.current_round as number | undefined
-  const totalRounds = bracket.total_rounds as number | undefined
-  if (!currentRound || !totalRounds) return false
-  return currentRound < totalRounds && allCurrentRoundMatchesCompleted.value
+  const b = swissBracket.value
+  if (!b?.current_round || !b?.total_rounds) return false
+  return b.current_round < b.total_rounds && allCurrentRoundMatchesCompleted.value
 })
 
 const canEditSeeding = computed(() =>
   tournament.value && ['registration', 'scheduled'].includes(tournament.value.status)
 )
-const canProcessNoShows = computed(() =>
-  tournament.value?.status === 'scheduled' && tournament.value.check_in_required
-)
-const canPublish = computed(() => tournament.value?.status === 'draft')
-const canOpenRegistration = computed(() => tournament.value?.status === 'published')
-const canCloseRegistration = computed(() => tournament.value?.status === 'registration')
-const canStart = computed(() => tournament.value?.status === 'scheduled')
-const canCancel = computed(() => tournament.value && !['completed', 'finalized', 'cancelled'].includes(tournament.value.status))
-const canComplete = computed(() => tournament.value?.status === 'in_progress')
-const canFinalize = computed(() => tournament.value?.status === 'completed')
 
-const hasEligibleMatches = computed(() => {
-  if (tournament.value?.status !== 'in_progress') return false
-  return matches.value.some(m => ['pending', 'ready', 'scheduled'].includes(m.status))
-})
-
-// Table headers
-const registrationHeaders = [
-  { title: '', key: 'participant_logo_url', width: '50px', sortable: false },
-  { title: 'Participant', key: 'participant_name' },
-  { title: 'Status', key: 'status', width: '120px' },
-  { title: 'Checked In', key: 'checked_in', width: '100px' },
-  { title: 'Seed', key: 'seed', width: '80px' },
-  { title: 'Registered', key: 'registered_at', width: '150px' },
-  { title: 'Actions', key: 'actions', width: '200px', sortable: false },
-]
-
-const matchHeaders = [
-  { title: 'Match', key: 'match_number', width: '80px' },
-  { title: 'Participants', key: 'participants' },
-  { title: 'Score', key: 'score', width: '100px' },
-  { title: 'Status', key: 'status', width: '120px' },
-  { title: 'Scheduled', key: 'scheduled_at', width: '150px' },
-  { title: 'Actions', key: 'actions', width: '200px', sortable: false },
-]
+// Lifecycle actions + their `can*` guards live in useTournamentAdminActions.
+// Reached from the template as `tournamentActions.canX` / `tournamentActions.x()`.
+const tournamentActions = useTournamentAdminActions(tournament, { after: () => fetchData() })
 
 // Helpers
 function getGame(gameId: string): GameSummary | undefined {
@@ -790,33 +460,11 @@ function getGame(gameId: string): GameSummary | undefined {
 
 function formatMatchFormat(format: string): string {
   switch (format) {
-    case 'bo1':
-      return 'Best of 1'
-    case 'bo3':
-      return 'Best of 3'
-    case 'bo5':
-      return 'Best of 5'
-    case 'bo7':
-      return 'Best of 7'
-    default:
-      return format
-  }
-}
-
-function getRegistrationStatusColor(status: string): string {
-  switch (status) {
-    case 'pending':
-      return 'warning'
-    case 'approved':
-      return 'success'
-    case 'checked_in':
-      return 'primary'
-    case 'rejected':
-      return 'error'
-    case 'withdrawn':
-      return 'grey'
-    default:
-      return 'grey'
+    case 'bo1': return 'Best of 1'
+    case 'bo3': return 'Best of 3'
+    case 'bo5': return 'Best of 5'
+    case 'bo7': return 'Best of 7'
+    default: return format
   }
 }
 
@@ -880,62 +528,10 @@ function viewPublic() {
   }
 }
 
-// Lifecycle actions — fire-and-forget with feedback wrapper
-async function publishTournament() {
-  if (!tournament.value) return
-  await feedback.run(() => tournamentsStore.publishTournament(tournament.value!.id),
-    { success: 'Tournament published successfully', errorSource: tournamentsStore })
-}
-
-async function openRegistration() {
-  if (!tournament.value) return
-  await feedback.run(() => tournamentsStore.openRegistration(tournament.value!.id),
-    { success: 'Registration opened successfully', errorSource: tournamentsStore })
-}
-
-async function closeRegistration() {
-  if (!tournament.value) return
-  await feedback.run(() => tournamentsStore.closeRegistration(tournament.value!.id),
-    { success: 'Registration closed successfully', errorSource: tournamentsStore })
-}
-
-async function startTournament() {
-  if (!tournament.value) return
-  await feedback.run(() => tournamentsStore.startTournament(tournament.value!.id),
-    { success: 'Tournament started successfully', errorSource: tournamentsStore, after: fetchData })
-}
-
-async function completeTournament() {
-  if (!tournament.value) return
-  await feedback.run(() => tournamentsStore.completeTournament(tournament.value!.id),
-    { success: 'Tournament completed successfully', errorSource: tournamentsStore })
-}
-
-async function finalizeTournament() {
-  if (!tournament.value) return
-  await feedback.run(() => tournamentsStore.finalizeTournament(tournament.value!.id),
-    { success: 'Tournament finalized successfully', errorSource: tournamentsStore })
-}
-
-function confirmCancelTournament() {
-  confirmDialog.confirm({
-    title: 'Cancel Tournament',
-    message: 'Are you sure you want to cancel this tournament? This action cannot be undone.',
-    action: 'Cancel Tournament',
-    color: 'error',
-    handler: async () => {
-      if (!tournament.value) return
-      await feedback.run(() => tournamentsStore.cancelTournament(tournament.value!.id),
-        { success: 'Tournament cancelled', errorSource: tournamentsStore, rethrow: true })
-    },
-  })
-}
-
-async function advanceRound() {
-  if (!tournament.value) return
-  await feedback.run(() => tournamentsStore.generateNextRound(tournament.value!.id),
-    { success: 'Next round generated successfully', errorSource: tournamentsStore })
-}
+// Lifecycle actions (publish / open-close-registration / start / complete /
+// finalize / cancel / advance / processNoShows) live in useTournamentAdminActions
+// above. The bracket tab still references advanceRound directly:
+const advanceRound = tournamentActions.advanceRound
 
 function openEditModal() {
   editModalOpen.value = true
@@ -1059,12 +655,6 @@ async function handleCreateStage() {
   }
 }
 
-// No-shows handler
-async function handleProcessNoShows() {
-  if (!tournament.value) return
-  await feedback.run(() => tournamentsStore.processNoShows(tournament.value!.id),
-    { success: 'No-shows processed', errorSource: tournamentsStore })
-}
 
 // Admin check-in handler
 async function handleAdminCheckIn(registration: TournamentRegistrationResponse) {

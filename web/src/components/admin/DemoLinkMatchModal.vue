@@ -1,5 +1,5 @@
 <template>
-  <v-dialog :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)" max-width="500" persistent>
+  <v-dialog v-model="open" max-width="500" persistent>
     <v-card>
       <v-card-title class="d-flex align-center">
         <v-icon class="mr-2">mdi-link-plus</v-icon>
@@ -66,14 +66,12 @@
 import { ref, watch } from 'vue'
 import { useDemosStore } from '@/stores/demos'
 
-const props = defineProps<{
-  modelValue: boolean
-  demoId: string
+const props = defineProps<{  demoId: string
 }>()
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  'linked': []
+const emit = defineEmits<{  'linked': []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const demosStore = useDemosStore()
 
@@ -89,7 +87,7 @@ const linkTypeOptions = [
   { title: 'Evidence', value: 'evidence' },
 ]
 
-watch(() => props.modelValue, (open) => {
+watch(open, (open) => {
   if (open) {
     matchId.value = ''
     linkType.value = 'manual'
@@ -118,6 +116,6 @@ async function submit() {
 }
 
 function close() {
-  emit('update:modelValue', false)
+  open.value = false
 }
 </script>

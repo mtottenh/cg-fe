@@ -151,15 +151,13 @@
 import { ref, computed, watch } from 'vue'
 import { useRbacStore, type RoleResponse, type PermissionResponse, type RoleWithPermissionsResponse } from '@/stores/rbac'
 
-const props = defineProps<{
-  modelValue: boolean
-  role: RoleResponse | null
+const props = defineProps<{  role: RoleResponse | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  updated: []
+const emit = defineEmits<{  updated: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const rbacStore = useRbacStore()
 const loading = ref(false)
@@ -168,8 +166,8 @@ const searchQuery = ref('')
 const roleData = ref<RoleWithPermissionsResponse | null>(null)
 
 const dialogOpen = computed({
-  get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value),
+  get: () => open.value,
+  set: (value) => open.value = value,
 })
 
 // Current permissions assigned to role
@@ -207,7 +205,7 @@ const availablePermissionsByCategory = computed(() => {
 
 // Watch for role changes to load data
 watch(
-  () => [props.modelValue, props.role],
+  () => [open.value, props.role],
   async ([open, role]) => {
     if (open && role) {
       await loadRoleData()

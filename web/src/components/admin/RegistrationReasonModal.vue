@@ -1,5 +1,5 @@
 <template>
-  <v-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" max-width="500">
+  <v-dialog v-model="open" max-width="500">
     <v-card>
       <v-card-title class="d-flex align-center">
         <v-icon :color="isReject ? 'warning' : 'error'" class="mr-2">
@@ -81,17 +81,15 @@ import { ref, computed, watch } from 'vue'
 import type { TournamentRegistrationResponse } from '@/stores/tournaments'
 import { useFormRules } from '@/composables/useFormRules'
 
-const props = defineProps<{
-  modelValue: boolean
-  mode: 'reject' | 'disqualify'
+const props = defineProps<{  mode: 'reject' | 'disqualify'
   registration: TournamentRegistrationResponse | null
   loading?: boolean
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  confirm: [reason: string]
+const emit = defineEmits<{  confirm: [reason: string]
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const reason = ref('')
 
@@ -126,7 +124,7 @@ function getStatusColor(status: string): string {
 }
 
 function close() {
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 function confirm() {
@@ -134,8 +132,7 @@ function confirm() {
 }
 
 // Reset reason when modal opens
-watch(
-  () => props.modelValue,
+watch(open,
   (isOpen) => {
     if (isOpen) {
       reason.value = ''

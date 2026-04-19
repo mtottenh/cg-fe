@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="1100"
     persistent
   >
@@ -163,15 +162,13 @@ interface LeagueTeamSummary {
   substitute_count: number
 }
 
-const props = defineProps<{
-  modelValue: boolean
-  league: UserLeagueMembership | null
+const props = defineProps<{  league: UserLeagueMembership | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  updated: []
+const emit = defineEmits<{  updated: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 // State
 const activeTab = ref('seasons')
@@ -198,7 +195,7 @@ const snackbar = useSnackbar()
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 // Watch for dialog opening
-watch(() => props.modelValue, async (isOpen) => {
+watch(open, async (isOpen) => {
   if (isOpen && props.league) {
     activeTab.value = 'seasons'
     selectedSeasonId.value = null
@@ -331,6 +328,6 @@ function onTeamUpdated() {
 // Helpers
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 </script>

@@ -1,5 +1,5 @@
 <template>
-  <v-dialog v-model="dialogOpen" max-width="700">
+  <v-dialog v-model="open" max-width="700">
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Ban Details</span>
@@ -226,26 +226,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useBansStore, type BanResponse } from '@/stores/bans'
 import { formatDateTime } from '@/utils/formatters'
 
-const props = defineProps<{
-  modelValue: boolean
-  banId: string | null
+const props = defineProps<{  banId: string | null
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: boolean): void
   (e: 'updated'): void
 }>()
 
-const bansStore = useBansStore()
+const open = defineModel<boolean>({ required: true })
 
-const dialogOpen = computed({
-  get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value),
-})
+const bansStore = useBansStore()
 
 const loading = ref(false)
 const loadingHistory = ref(false)
@@ -255,10 +249,9 @@ const showLiftForm = ref(false)
 const liftReason = ref('')
 const lifting = ref(false)
 
-watch(
-  () => props.modelValue,
-  async (open) => {
-    if (open && props.banId) {
+watch(open,
+  async (isOpen) => {
+    if (isOpen && props.banId) {
       await loadBan()
     } else {
       ban.value = null
@@ -311,7 +304,7 @@ async function liftBan() {
 }
 
 function close() {
-  dialogOpen.value = false
+  open.value = false
 }
 
 function getStatusText(): string {

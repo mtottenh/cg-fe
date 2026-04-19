@@ -1,5 +1,5 @@
 <template>
-  <v-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" max-width="600">
+  <v-dialog v-model="open" max-width="600">
     <v-card>
       <v-card-title class="d-flex align-center">
         <v-icon class="mr-2">mdi-account-group-outline</v-icon>
@@ -108,16 +108,14 @@ import { useLeagueTeamsStore, type PlayerLeagueTeamMembershipResponse } from '@/
 import type { TournamentResponse, TournamentRegistrationResponse } from '@/stores/tournaments'
 import { useFormRules } from '@/composables/useFormRules'
 
-const props = defineProps<{
-  modelValue: boolean
-  tournament: TournamentResponse
+const props = defineProps<{  tournament: TournamentResponse
   registrations: TournamentRegistrationResponse[]
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  register: [teamSeasonId: string, participantName: string, participantLogoUrl?: string]
+const emit = defineEmits<{  register: [teamSeasonId: string, participantName: string, participantLogoUrl?: string]
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const leagueTeamsStore = useLeagueTeamsStore()
 
@@ -191,7 +189,7 @@ function selectTeam(team: PlayerLeagueTeamMembershipResponse) {
 }
 
 function close() {
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function handleRegister() {
@@ -215,8 +213,7 @@ async function loadTeams() {
 }
 
 // Watch for dialog open
-watch(
-  () => props.modelValue,
+watch(open,
   (isOpen) => {
     if (isOpen) {
       // Reset state
@@ -228,7 +225,7 @@ watch(
 )
 
 onMounted(() => {
-  if (props.modelValue) {
+  if (open.value) {
     loadTeams()
   }
 })

@@ -61,16 +61,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { watchDebounced } from '@vueuse/core'
 import { api } from '@/api'
 import type { components } from '@/api/types'
 
 type PlayerSummary = components['schemas']['PlayerSearchResponse']
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
-    modelValue?: PlayerSummary | null
     label?: string
     placeholder?: string
     prependIcon?: string
@@ -81,7 +80,6 @@ const props = withDefaults(
     clearable?: boolean
   }>(),
   {
-    modelValue: null,
     label: 'Search Player',
     placeholder: 'Enter player name...',
     prependIcon: 'mdi-account-search',
@@ -93,23 +91,15 @@ const props = withDefaults(
   }
 )
 
+const selectedUser = defineModel<PlayerSummary | null>({ default: null })
+
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: PlayerSummary | null): void
   (e: 'select', player: PlayerSummary | null): void
 }>()
 
-const selectedUser = ref<PlayerSummary | null>(props.modelValue)
 const searchQuery = ref('')
 const searchResults = ref<PlayerSummary[]>([])
 const loading = ref(false)
-
-// Watch for external modelValue changes
-watch(
-  () => props.modelValue,
-  (newValue) => {
-    selectedUser.value = newValue
-  }
-)
 
 // Debounced search
 watchDebounced(
@@ -148,7 +138,7 @@ function itemTitle(item: PlayerSummary): string {
 }
 
 function onSelect(player: PlayerSummary | null) {
-  emit('update:modelValue', player)
+  selectedUser.value = player
   emit('select', player)
 }
 </script>

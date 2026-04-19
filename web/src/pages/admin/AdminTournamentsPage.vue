@@ -243,6 +243,7 @@ import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { useActionFeedback } from '@/composables/useActionFeedback'
 import { formatShortDateTime } from '@/utils/formatters'
 
 const router = useRouter()
@@ -265,6 +266,62 @@ const snackbar = useSnackbar()
 
 // Confirm dialog
 const confirmDialog = useConfirmDialog()
+
+// Wraps store actions with snackbar + refetch.
+const feedback = useActionFeedback()
+
+// Data-driven confirm-and-execute config for lifecycle transitions
+const TOURNAMENT_CONFIRM_ACTIONS: Record<string, {
+  title: string
+  message: string
+  actionLabel: string
+  color: string
+  run: (id: string) => Promise<unknown>
+  success: string
+}> = {
+  publish: {
+    title: 'Publish Tournament',
+    message: 'Are you sure you want to publish this tournament? It will become visible to the public.',
+    actionLabel: 'Publish', color: 'primary',
+    run: (id) => tournamentsStore.publishTournament(id),
+    success: 'Tournament published successfully',
+  },
+  'open-registration': {
+    title: 'Open Registration',
+    message: 'Are you sure you want to open registration for this tournament?',
+    actionLabel: 'Open', color: 'success',
+    run: (id) => tournamentsStore.openRegistration(id),
+    success: 'Registration opened successfully',
+  },
+  'close-registration': {
+    title: 'Close Registration',
+    message: 'Are you sure you want to close registration? No new participants will be able to register.',
+    actionLabel: 'Close', color: 'warning',
+    run: (id) => tournamentsStore.closeRegistration(id),
+    success: 'Registration closed successfully',
+  },
+  start: {
+    title: 'Start Tournament',
+    message: 'Are you sure you want to start this tournament? This will generate the bracket and begin matches.',
+    actionLabel: 'Start', color: 'primary',
+    run: (id) => tournamentsStore.startTournament(id),
+    success: 'Tournament started successfully',
+  },
+  cancel: {
+    title: 'Cancel Tournament',
+    message: 'Are you sure you want to cancel this tournament? This action cannot be undone.',
+    actionLabel: 'Cancel Tournament', color: 'error',
+    run: (id) => tournamentsStore.cancelTournament(id),
+    success: 'Tournament cancelled',
+  },
+  finalize: {
+    title: 'Finalize Tournament',
+    message: 'Are you sure you want to finalize this tournament? Results will be locked.',
+    actionLabel: 'Finalize', color: 'success',
+    run: (id) => tournamentsStore.finalizeTournament(id),
+    success: 'Tournament finalized',
+  },
+}
 
 // Store-backed reactive refs
 const { tournaments, loading: tournamentsLoading, error: tournamentsError } = storeToRefs(tournamentsStore)
@@ -421,104 +478,48 @@ function openTournament(tournament: TournamentSummaryResponse) {
 
 // Action handlers
 async function handleAction(tournament: TournamentSummaryResponse, action: string) {
+  const confirmable = TOURNAMENT_CONFIRM_ACTIONS[action]
+  if (confirmable) {
+    confirmDialog.confirm({
+      title: confirmable.title,
+      message: confirmable.message,
+      action: confirmable.actionLabel,
+      color: confirmable.color,
+      handler: async () => {
+        await feedback.run(
+          () => confirmable.run(tournament.id),
+          {
+            success: confirmable.success,
+            errorSource: tournamentsStore,
+            after: fetchData,
+            rethrow: true, // keep the confirm dialog open on error
+          },
+        )
+      },
+    })
+    return
+  }
+
   switch (action) {
     case 'edit':
       await openEditModal(tournament)
-      break
-    case 'publish':
-      confirmDialog.confirm({
-        title: 'Publish Tournament',
-        message: 'Are you sure you want to publish this tournament? It will become visible to the public.',
-        action: 'Publish',
-        color: 'primary',
-        handler: async () => {
-          await tournamentsStore.publishTournament(tournament.id)
-          snackbar.show('Tournament published successfully', 'success')
-          await fetchData()
-        },
-      })
-      break
-    case 'open-registration':
-      confirmDialog.confirm({
-        title: 'Open Registration',
-        message: 'Are you sure you want to open registration for this tournament?',
-        action: 'Open',
-        color: 'success',
-        handler: async () => {
-          await tournamentsStore.openRegistration(tournament.id)
-          snackbar.show('Registration opened successfully', 'success')
-          await fetchData()
-        },
-      })
-      break
-    case 'close-registration':
-      confirmDialog.confirm({
-        title: 'Close Registration',
-        message: 'Are you sure you want to close registration? No new participants will be able to register.',
-        action: 'Close',
-        color: 'warning',
-        handler: async () => {
-          await tournamentsStore.closeRegistration(tournament.id)
-          snackbar.show('Registration closed successfully', 'success')
-          await fetchData()
-        },
-      })
-      break
-    case 'start':
-      confirmDialog.confirm({
-        title: 'Start Tournament',
-        message: 'Are you sure you want to start this tournament? This will generate the bracket and begin matches.',
-        action: 'Start',
-        color: 'primary',
-        handler: async () => {
-          await tournamentsStore.startTournament(tournament.id)
-          snackbar.show('Tournament started successfully', 'success')
-          await fetchData()
-        },
-      })
-      break
+      return
     case 'view-registrations':
       router.push({ name: 'admin-tournament-detail', params: { id: tournament.id }, query: { tab: 'registrations' } })
-      break
+      return
     case 'view-bracket':
       router.push({ name: 'admin-tournament-detail', params: { id: tournament.id }, query: { tab: 'bracket' } })
-      break
+      return
     case 'manage-matches':
       router.push({ name: 'admin-tournament-detail', params: { id: tournament.id }, query: { tab: 'matches' } })
-      break
-    case 'cancel':
-      confirmDialog.confirm({
-        title: 'Cancel Tournament',
-        message: 'Are you sure you want to cancel this tournament? This action cannot be undone.',
-        action: 'Cancel Tournament',
-        color: 'error',
-        handler: async () => {
-          await tournamentsStore.cancelTournament(tournament.id)
-          snackbar.show('Tournament cancelled', 'success')
-          await fetchData()
-        },
-      })
-      break
-    case 'finalize':
-      confirmDialog.confirm({
-        title: 'Finalize Tournament',
-        message: 'Are you sure you want to finalize this tournament? Results will be locked.',
-        action: 'Finalize',
-        color: 'success',
-        handler: async () => {
-          await tournamentsStore.finalizeTournament(tournament.id)
-          snackbar.show('Tournament finalized', 'success')
-          await fetchData()
-        },
-      })
-      break
+      return
     case 'view-public':
       window.open(`/tournaments/${tournament.slug}`, '_blank')
-      break
+      return
     case 'view-results':
     case 'view-details':
       router.push({ name: 'admin-tournament-detail', params: { id: tournament.id } })
-      break
+      return
     default:
       snackbar.show(`Action "${action}" not implemented yet`, 'info')
   }

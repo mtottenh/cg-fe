@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="800"
     persistent
     scrollable
@@ -450,17 +449,15 @@ interface SeasonSummary {
 const tournamentsStore = useTournamentsStore()
 const gamesStore = useGamesStore()
 
-const props = defineProps<{
-  modelValue: boolean
-  games: GameSummary[]
+const props = defineProps<{  games: GameSummary[]
   leagues?: LeagueSummary[]
   seasons?: SeasonSummary[]
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  created: []
+const emit = defineEmits<{  created: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const formRef = ref()
 const formValid = ref(false)
@@ -603,7 +600,7 @@ function formatDateTimeForApi(datetime: string): string | null {
 }
 
 // Reset form when dialog opens
-watch(() => props.modelValue, (isOpen) => {
+watch(open, (isOpen) => {
   if (isOpen) {
     form.value = {
       game_id: '',
@@ -639,7 +636,7 @@ watch(() => props.modelValue, (isOpen) => {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function save() {

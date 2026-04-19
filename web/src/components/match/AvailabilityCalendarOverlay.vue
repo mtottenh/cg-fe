@@ -186,7 +186,6 @@ const props = withDefaults(
     opponentPlayerId: string
     tournamentId: string
     matchId: string
-    modelValue: string[]
     maxSelections?: number
   }>(),
   {
@@ -194,14 +193,12 @@ const props = withDefaults(
   }
 )
 
-const emit = defineEmits<{
-  'update:modelValue': [times: string[]]
-}>()
+const times = defineModel<string[]>({ required: true })
 
 const overlay = useAvailabilityOverlay(
-  toRef(props, 'opponentPlayerId') as any,
-  toRef(props, 'tournamentId') as any,
-  toRef(props, 'matchId') as any,
+  toRef(props, 'opponentPlayerId'),
+  toRef(props, 'tournamentId'),
+  toRef(props, 'matchId'),
 )
 
 const grid = computed(() => overlay.overlayData.value)
@@ -219,7 +216,7 @@ const hasMobileDaySlots = computed(() => {
 })
 
 // Selected times (filter out empty strings from parent)
-const selectedTimes = computed(() => props.modelValue.filter(t => t !== ''))
+const selectedTimes = computed(() => times.value.filter(t => t !== ''))
 
 // Build a set of selected "date|time" keys for fast lookup
 const selectedKeys = computed(() => {
@@ -252,7 +249,7 @@ function handleCellClick(date: string, timeKey: string, status: OverlayCellStatu
 
   if (selectedKeys.value.has(key)) {
     // Deselect
-    const newTimes = props.modelValue.filter(t => {
+    const newTimes = times.value.filter(t => {
       if (t === '') return false
       const d = new Date(t)
       const y = d.getFullYear()
@@ -262,17 +259,17 @@ function handleCellClick(date: string, timeKey: string, status: OverlayCellStatu
       const m = d.getMinutes().toString().padStart(2, '0')
       return `${y}-${mo}-${day}|${h}:${m}` !== key
     })
-    emit('update:modelValue', newTimes.length > 0 ? newTimes : [''])
+    times.value = newTimes.length > 0 ? newTimes : ['']
   } else if (selectedTimes.value.length < props.maxSelections) {
     // Select
-    const newTimes = [...props.modelValue.filter(t => t !== ''), iso]
-    emit('update:modelValue', newTimes)
+    const newTimes = [...times.value.filter(t => t !== ''), iso]
+    times.value = newTimes
   }
 }
 
 function removeTime(iso: string) {
-  const newTimes = props.modelValue.filter(t => t !== '' && t !== iso)
-  emit('update:modelValue', newTimes.length > 0 ? newTimes : [''])
+  const newTimes = times.value.filter(t => t !== '' && t !== iso)
+  times.value = newTimes.length > 0 ? newTimes : ['']
 }
 
 function formatDayDate(dateStr: string): string {

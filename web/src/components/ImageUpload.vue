@@ -95,7 +95,6 @@ interface ImageMeta {
 }
 
 interface Props {
-  modelValue?: string | null
   placeholder?: string
   placeholderIcon?: string
   shape?: 'square' | 'circle' | 'banner'
@@ -108,7 +107,6 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  modelValue: null,
   placeholder: 'Click or drag to upload',
   placeholderIcon: 'mdi-image-plus',
   shape: 'square',
@@ -119,8 +117,9 @@ const props = withDefaults(defineProps<Props>(), {
   removable: true,
 })
 
+const imageUrl = defineModel<string | null>({ default: null })
+
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: string | null): void
   (e: 'upload-start'): void
   (e: 'upload-complete', url: string): void
   (e: 'upload-error', error: string): void
@@ -164,7 +163,7 @@ watch(
   (status) => {
     if (status === 'complete' && currentUpload.value?.meta.url) {
       const url = currentUpload.value.meta.url
-      emit('update:modelValue', url)
+      imageUrl.value = url
       emit('upload-complete', url)
       localPreview.value = null
       clear()
@@ -183,7 +182,7 @@ const isDragging = ref(false)
 const errorMessage = ref<string | null>(null)
 const localPreview = ref<string | null>(null)
 
-const previewUrl = computed(() => localPreview.value || props.modelValue)
+const previewUrl = computed(() => localPreview.value || imageUrl.value)
 
 const shapeClass = computed(() => {
   switch (props.shape) {
@@ -261,7 +260,7 @@ async function processFile(file: File) {
 
 function handleRemove() {
   localPreview.value = null
-  emit('update:modelValue', null)
+  imageUrl.value = null
   emit('remove')
 }
 </script>

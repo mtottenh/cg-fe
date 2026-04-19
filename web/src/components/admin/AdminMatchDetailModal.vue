@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="1000"
     persistent
     scrollable
@@ -488,16 +487,14 @@ import {
 } from '@/utils/matchStatus'
 import EvidenceDisplay from '@/components/match/evidence/EvidenceDisplay.vue'
 
-const props = defineProps<{
-  modelValue: boolean
-  matchId: string | null
+const props = defineProps<{  matchId: string | null
   tournamentId: string
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  updated: []
+const emit = defineEmits<{  updated: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const tournamentsStore = useTournamentsStore()
 const matchResultsStore = useMatchResultsStore()
@@ -564,7 +561,7 @@ const nextStatus = computed(() => {
 })
 
 watch(() => props.matchId, async (id) => {
-  if (id && props.modelValue) {
+  if (id && open.value) {
     activeTab.value = 'overview'
     resetForms()
     // Pre-fill progression winner from match scores
@@ -582,7 +579,7 @@ watch(() => props.matchId, async (id) => {
 })
 
 function close() {
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 function resetForms() {

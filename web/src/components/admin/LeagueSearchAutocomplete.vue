@@ -68,15 +68,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
 
 type LeagueResponse = components['schemas']['LeagueResponse']
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
-    modelValue?: LeagueResponse | null
     label?: string
     placeholder?: string
     prependIcon?: string
@@ -87,7 +86,6 @@ const props = withDefaults(
     clearable?: boolean
   }>(),
   {
-    modelValue: null,
     label: 'Search League',
     placeholder: 'Enter league name or slug...',
     prependIcon: 'mdi-trophy-outline',
@@ -99,23 +97,15 @@ const props = withDefaults(
   }
 )
 
+const selectedLeague = defineModel<LeagueResponse | null>({ default: null })
+
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: LeagueResponse | null): void
   (e: 'select', league: LeagueResponse | null): void
 }>()
 
-const selectedLeague = ref<LeagueResponse | null>(props.modelValue)
 const searchQuery = ref('')
 const allLeagues = ref<LeagueResponse[]>([])
 const loading = ref(false)
-
-// Watch for external modelValue changes
-watch(
-  () => props.modelValue,
-  (newValue) => {
-    selectedLeague.value = newValue
-  }
-)
 
 // Filtered leagues based on search query
 const filteredLeagues = computed(() => {
@@ -156,7 +146,7 @@ function itemTitle(item: LeagueResponse): string {
 }
 
 function onSelect(league: LeagueResponse | null) {
-  emit('update:modelValue', league)
+  selectedLeague.value = league
   emit('select', league)
 }
 </script>

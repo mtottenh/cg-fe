@@ -673,6 +673,7 @@ import RegistrationReasonModal from '@/components/admin/RegistrationReasonModal.
 import AdminMatchDetailModal from '@/components/admin/AdminMatchDetailModal.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { useActionFeedback } from '@/composables/useActionFeedback'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { formatDate, formatDateTime } from '@/utils/formatters'
 import {
@@ -692,6 +693,7 @@ const editModalOpen = ref(false)
 const snackbar = useSnackbar()
 
 const confirmDialog = useConfirmDialog()
+const feedback = useActionFeedback()
 const stageCreateModalOpen = ref(false)
 const newStage = ref({ name: '', stage_order: 1, format: null as string | null, match_format: null as string | null })
 
@@ -878,67 +880,41 @@ function viewPublic() {
   }
 }
 
-// Actions
+// Lifecycle actions — fire-and-forget with feedback wrapper
 async function publishTournament() {
   if (!tournament.value) return
-  try {
-    await tournamentsStore.publishTournament(tournament.value.id)
-    snackbar.show('Tournament published successfully', 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to publish tournament', 'error')
-  }
+  await feedback.run(() => tournamentsStore.publishTournament(tournament.value!.id),
+    { success: 'Tournament published successfully', errorSource: tournamentsStore })
 }
 
 async function openRegistration() {
   if (!tournament.value) return
-  try {
-    await tournamentsStore.openRegistration(tournament.value.id)
-    snackbar.show('Registration opened successfully', 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to open registration', 'error')
-  }
+  await feedback.run(() => tournamentsStore.openRegistration(tournament.value!.id),
+    { success: 'Registration opened successfully', errorSource: tournamentsStore })
 }
 
 async function closeRegistration() {
   if (!tournament.value) return
-  try {
-    await tournamentsStore.closeRegistration(tournament.value.id)
-    snackbar.show('Registration closed successfully', 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to close registration', 'error')
-  }
+  await feedback.run(() => tournamentsStore.closeRegistration(tournament.value!.id),
+    { success: 'Registration closed successfully', errorSource: tournamentsStore })
 }
 
 async function startTournament() {
   if (!tournament.value) return
-  try {
-    await tournamentsStore.startTournament(tournament.value.id)
-    snackbar.show('Tournament started successfully', 'success')
-    // Refresh to load generated bracket and matches
-    await fetchData()
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to start tournament', 'error')
-  }
+  await feedback.run(() => tournamentsStore.startTournament(tournament.value!.id),
+    { success: 'Tournament started successfully', errorSource: tournamentsStore, after: fetchData })
 }
 
 async function completeTournament() {
   if (!tournament.value) return
-  try {
-    await tournamentsStore.completeTournament(tournament.value.id)
-    snackbar.show('Tournament completed successfully', 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to complete tournament', 'error')
-  }
+  await feedback.run(() => tournamentsStore.completeTournament(tournament.value!.id),
+    { success: 'Tournament completed successfully', errorSource: tournamentsStore })
 }
 
 async function finalizeTournament() {
   if (!tournament.value) return
-  try {
-    await tournamentsStore.finalizeTournament(tournament.value.id)
-    snackbar.show('Tournament finalized successfully', 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to finalize tournament', 'error')
-  }
+  await feedback.run(() => tournamentsStore.finalizeTournament(tournament.value!.id),
+    { success: 'Tournament finalized successfully', errorSource: tournamentsStore })
 }
 
 function confirmCancelTournament() {
@@ -949,20 +925,16 @@ function confirmCancelTournament() {
     color: 'error',
     handler: async () => {
       if (!tournament.value) return
-      await tournamentsStore.cancelTournament(tournament.value.id)
-      snackbar.show('Tournament cancelled', 'success')
+      await feedback.run(() => tournamentsStore.cancelTournament(tournament.value!.id),
+        { success: 'Tournament cancelled', errorSource: tournamentsStore, rethrow: true })
     },
   })
 }
 
 async function advanceRound() {
   if (!tournament.value) return
-  try {
-    await tournamentsStore.generateNextRound(tournament.value.id)
-    snackbar.show('Next round generated successfully', 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to generate next round', 'error')
-  }
+  await feedback.run(() => tournamentsStore.generateNextRound(tournament.value!.id),
+    { success: 'Next round generated successfully', errorSource: tournamentsStore })
 }
 
 function openEditModal() {
@@ -979,14 +951,11 @@ function onTournamentSaved() {
 async function handleApprove(registration: TournamentRegistrationResponse) {
   if (!tournament.value) return
   actionLoadingId.value = registration.id
-  try {
-    await tournamentsStore.approveRegistration(tournament.value.id, registration.id)
-    snackbar.show(`${registration.participant_name} approved`, 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to approve registration', 'error')
-  } finally {
-    actionLoadingId.value = null
-  }
+  await feedback.run(
+    () => tournamentsStore.approveRegistration(tournament.value!.id, registration.id),
+    { success: `${registration.participant_name} approved`, errorSource: tournamentsStore },
+  )
+  actionLoadingId.value = null
 }
 
 function handleReject(registration: TournamentRegistrationResponse) {
@@ -1052,79 +1021,60 @@ function moveSeed(index: number, direction: -1 | 1) {
 
 async function handleAutoSeed() {
   if (!tournament.value) return
-  try {
-    await tournamentsStore.autoSeed(tournament.value.id)
-    snackbar.show('Seeding generated automatically', 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to auto-seed', 'error')
-  }
+  await feedback.run(() => tournamentsStore.autoSeed(tournament.value!.id),
+    { success: 'Seeding generated automatically', errorSource: tournamentsStore })
 }
 
 async function handleSaveSeeding() {
   if (!tournament.value) return
-  try {
-    const seeds = seedingList.value.map((s, i) => ({
-      registration_id: s.registration_id,
-      seed: i + 1,
-    }))
-    await tournamentsStore.manualSeed(tournament.value.id, seeds)
-    snackbar.show('Seeding saved', 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to save seeding', 'error')
-  }
+  const seeds = seedingList.value.map((s, i) => ({
+    registration_id: s.registration_id,
+    seed: i + 1,
+  }))
+  await feedback.run(() => tournamentsStore.manualSeed(tournament.value!.id, seeds),
+    { success: 'Seeding saved', errorSource: tournamentsStore })
 }
 
 async function handleClearSeeding() {
   if (!tournament.value) return
-  try {
-    await tournamentsStore.clearSeeding(tournament.value.id)
-    snackbar.show('Seeding cleared', 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to clear seeding', 'error')
-  }
+  await feedback.run(() => tournamentsStore.clearSeeding(tournament.value!.id),
+    { success: 'Seeding cleared', errorSource: tournamentsStore })
 }
 
 // Stage handler
 async function handleCreateStage() {
   if (!tournament.value || !newStage.value.name) return
-  try {
-    await tournamentsStore.createStage(tournament.value.id, {
+  const result = await feedback.run(
+    () => tournamentsStore.createStage(tournament.value!.id, {
       name: newStage.value.name,
       stage_order: newStage.value.stage_order,
       format: newStage.value.format,
       match_format: newStage.value.match_format,
-    } as any)
+    } as any),
+    { success: 'Stage created', errorSource: tournamentsStore },
+  )
+  if (result !== null) {
     stageCreateModalOpen.value = false
     newStage.value = { name: '', stage_order: stages.value.length + 1, format: null, match_format: null }
-    snackbar.show('Stage created', 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to create stage', 'error')
   }
 }
 
 // No-shows handler
 async function handleProcessNoShows() {
   if (!tournament.value) return
-  try {
-    await tournamentsStore.processNoShows(tournament.value.id)
-    snackbar.show('No-shows processed', 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to process no-shows', 'error')
-  }
+  await feedback.run(() => tournamentsStore.processNoShows(tournament.value!.id),
+    { success: 'No-shows processed', errorSource: tournamentsStore })
 }
 
 // Admin check-in handler
 async function handleAdminCheckIn(registration: TournamentRegistrationResponse) {
   if (!tournament.value) return
   actionLoadingId.value = registration.id
-  try {
-    await tournamentsStore.adminCheckIn(tournament.value.id, registration.id)
-    snackbar.show(`${registration.participant_name} checked in`, 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to admin check-in', 'error')
-  } finally {
-    actionLoadingId.value = null
-  }
+  await feedback.run(
+    () => tournamentsStore.adminCheckIn(tournament.value!.id, registration.id),
+    { success: `${registration.participant_name} checked in`, errorSource: tournamentsStore },
+  )
+  actionLoadingId.value = null
 }
 
 // Data fetching

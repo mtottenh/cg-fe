@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="600"
     persistent
   >
@@ -113,15 +112,13 @@ import { unwrapApi } from '@/stores/helpers/apiAction'
 import type { GameSummary } from '@/stores/games'
 import { useFormRules } from '@/composables/useFormRules'
 
-const props = defineProps<{
-  modelValue: boolean
-  game: GameSummary | null
+const props = defineProps<{  game: GameSummary | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  saved: [game: GameSummary]
+const emit = defineEmits<{  saved: [game: GameSummary]
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const formRef = ref()
 const formValid = ref(false)
@@ -155,7 +152,7 @@ watch(() => props.game, (newGame) => {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function save() {

@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="500"
     persistent
   >
@@ -74,15 +73,13 @@ import { ref, watch } from 'vue'
 import { useLeaguesStore } from '@/stores/leagues'
 import { useFormRules } from '@/composables/useFormRules'
 
-const props = defineProps<{
-  modelValue: boolean
-  leagueId: string
+const props = defineProps<{  leagueId: string
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  invited: []
+const emit = defineEmits<{  invited: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const leaguesStore = useLeaguesStore()
 
@@ -98,7 +95,7 @@ const form = ref({
 
 const rules = useFormRules()
 
-watch(() => props.modelValue, (isOpen) => {
+watch(open, (isOpen) => {
   if (isOpen) {
     form.value = { user_id: '', message: '' }
     error.value = null
@@ -107,7 +104,7 @@ watch(() => props.modelValue, (isOpen) => {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function sendInvitation() {

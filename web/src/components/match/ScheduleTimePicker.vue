@@ -47,7 +47,7 @@
         Custom Times
       </div>
       <v-row>
-        <v-col v-for="(time, index) in modelValue" :key="index" cols="12" md="6">
+        <v-col v-for="(time, index) in times" :key="index" cols="12" md="6">
           <v-text-field
             :model-value="toLocalDatetime(time)"
             :label="`Time Option ${index + 1}`"
@@ -60,7 +60,7 @@
           >
             <template v-slot:append>
               <v-btn
-                v-if="index > 0 || modelValue.length > 1"
+                v-if="index > 0 || times.length > 1"
                 icon
                 size="small"
                 variant="text"
@@ -74,7 +74,7 @@
       </v-row>
 
       <v-btn
-        v-if="modelValue.length < maxTimes"
+        v-if="times.length < maxTimes"
         variant="tonal"
         size="small"
         @click="addEmptySlot"
@@ -109,7 +109,6 @@ import { useFormRules } from '@/composables/useFormRules'
 
 const props = withDefaults(
   defineProps<{
-    modelValue: string[]
     suggestedTimes?: string[]
     maxTimes?: number
     minHoursFromNow?: number
@@ -121,12 +120,10 @@ const props = withDefaults(
   }
 )
 
-const emit = defineEmits<{
-  'update:modelValue': [times: string[]]
-}>()
+const times = defineModel<string[]>({ required: true })
 
 // Computed
-const validTimes = computed(() => props.modelValue.filter((t) => t !== ''))
+const validTimes = computed(() => times.value.filter((t) => t !== ''))
 
 const minDateTime = computed(() => {
   const min = new Date()
@@ -212,64 +209,64 @@ function formatTime(isoString: string): string {
 }
 
 function isTimeSelected(time: string): boolean {
-  return props.modelValue.includes(time)
+  return times.value.includes(time)
 }
 
 function toggleSuggestedTime(time: string) {
-  const index = props.modelValue.indexOf(time)
+  const index = times.value.indexOf(time)
   if (index >= 0) {
     // Remove it
-    const newTimes = [...props.modelValue]
+    const newTimes = [...times.value]
     newTimes.splice(index, 1)
     if (newTimes.length === 0) {
       newTimes.push('') // Keep at least one slot
     }
-    emit('update:modelValue', newTimes)
-  } else if (props.modelValue.length < props.maxTimes) {
+    times.value = newTimes
+  } else if (times.value.length < props.maxTimes) {
     // Add it
-    const newTimes = props.modelValue.filter((t) => t !== '')
+    const newTimes = times.value.filter((t) => t !== '')
     newTimes.push(time)
-    emit('update:modelValue', newTimes)
+    times.value = newTimes
   }
 }
 
 function addQuickTime(time: Date) {
   const isoTime = time.toISOString()
-  if (!props.modelValue.includes(isoTime) && props.modelValue.length < props.maxTimes) {
+  if (!times.value.includes(isoTime) && times.value.length < props.maxTimes) {
     // Replace first empty slot or add new
-    const emptyIndex = props.modelValue.findIndex((t) => t === '')
+    const emptyIndex = times.value.findIndex((t) => t === '')
     if (emptyIndex >= 0) {
-      const newTimes = [...props.modelValue]
+      const newTimes = [...times.value]
       newTimes[emptyIndex] = isoTime
-      emit('update:modelValue', newTimes)
+      times.value = newTimes
     } else {
-      emit('update:modelValue', [...props.modelValue, isoTime])
+      times.value = [...times.value, isoTime]
     }
   }
 }
 
 function updateTime(index: number, localValue: string) {
-  const newTimes = [...props.modelValue]
+  const newTimes = [...times.value]
   if (localValue) {
     newTimes[index] = new Date(localValue).toISOString()
   } else {
     newTimes[index] = ''
   }
-  emit('update:modelValue', newTimes)
+  times.value = newTimes
 }
 
 function removeTime(index: number) {
-  const newTimes = [...props.modelValue]
+  const newTimes = [...times.value]
   newTimes.splice(index, 1)
   if (newTimes.length === 0) {
     newTimes.push('')
   }
-  emit('update:modelValue', newTimes)
+  times.value = newTimes
 }
 
 function addEmptySlot() {
-  if (props.modelValue.length < props.maxTimes) {
-    emit('update:modelValue', [...props.modelValue, ''])
+  if (times.value.length < props.maxTimes) {
+    times.value = [...times.value, '']
   }
 }
 </script>

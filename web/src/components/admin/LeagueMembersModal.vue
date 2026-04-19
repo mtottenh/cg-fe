@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="900"
     persistent
   >
@@ -283,15 +282,13 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import { formatDate } from '@/utils/formatters'
 import InviteUserModal from './InviteUserModal.vue'
 
-const props = defineProps<{
-  modelValue: boolean
-  league: UserLeagueMembership | null
+const props = defineProps<{  league: UserLeagueMembership | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  updated: []
+const emit = defineEmits<{  updated: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const leaguesStore = useLeaguesStore()
 const snackbar = useSnackbar()
@@ -357,7 +354,7 @@ function getRoleColor(role: string): string {
 }
 
 // Watch for dialog opening
-watch(() => props.modelValue, async (isOpen) => {
+watch(open, async (isOpen) => {
   if (isOpen && props.league) {
     activeTab.value = 'members'
     const leagueId = props.league.league_id
@@ -449,6 +446,6 @@ function onUserInvited() {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 </script>

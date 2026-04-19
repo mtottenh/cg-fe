@@ -79,28 +79,18 @@ export interface SocialLinks {
   youtube?: string | null
 }
 
-interface Props {
-  modelValue?: SocialLinks
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  modelValue: () => ({}),
-})
-
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: SocialLinks): void
-}>()
+const model = defineModel<SocialLinks>({ default: () => ({}) })
 
 const links = reactive<SocialLinks>({
-  steam: props.modelValue?.steam || '',
-  discord: props.modelValue?.discord || '',
-  twitch: props.modelValue?.twitch || '',
-  twitter: props.modelValue?.twitter || '',
-  youtube: props.modelValue?.youtube || '',
+  steam: model.value?.steam || '',
+  discord: model.value?.discord || '',
+  twitch: model.value?.twitch || '',
+  twitter: model.value?.twitter || '',
+  youtube: model.value?.youtube || '',
 })
 
 watch(
-  () => props.modelValue,
+  model,
   (newVal) => {
     if (newVal) {
       links.steam = newVal.steam || ''
@@ -121,6 +111,6 @@ function emitUpdate() {
   if (links.twitch) result.twitch = links.twitch
   if (links.twitter) result.twitter = links.twitter
   if (links.youtube) result.youtube = links.youtube
-  emit('update:modelValue', result)
+  model.value = result
 }
 </script>

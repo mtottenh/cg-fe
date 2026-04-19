@@ -122,15 +122,13 @@ import { ref, computed, watch } from 'vue'
 import { useRbacStore, type RoleResponse, type CreateRoleRequest, type UpdateRoleRequest } from '@/stores/rbac'
 import { useFormRules } from '@/composables/useFormRules'
 
-const props = defineProps<{
-  modelValue: boolean
-  role: RoleResponse | null
+const props = defineProps<{  role: RoleResponse | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  saved: []
+const emit = defineEmits<{  saved: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const rbacStore = useRbacStore()
 const formRef = ref()
@@ -153,8 +151,8 @@ const form = ref<{
 })
 
 const dialogOpen = computed({
-  get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value),
+  get: () => open.value,
+  set: (value) => open.value = value,
 })
 
 const isEditMode = computed(() => !!props.role)

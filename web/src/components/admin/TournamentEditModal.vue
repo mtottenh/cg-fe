@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="800"
     persistent
     scrollable
@@ -320,15 +319,13 @@ import MapPoolPicker from '@/components/MapPoolPicker.vue'
 const tournamentsStore = useTournamentsStore()
 const gamesStore = useGamesStore()
 
-const props = defineProps<{
-  modelValue: boolean
-  tournament: TournamentResponse | null
+const props = defineProps<{  tournament: TournamentResponse | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  saved: []
+const emit = defineEmits<{  saved: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const formRef = ref()
 const formValid = ref(false)
@@ -502,7 +499,7 @@ watch(() => props.tournament, async (t) => {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function save() {

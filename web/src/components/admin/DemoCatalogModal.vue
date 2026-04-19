@@ -1,5 +1,5 @@
 <template>
-  <v-dialog :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)" max-width="600" persistent>
+  <v-dialog v-model="open" max-width="600" persistent>
     <v-card>
       <v-card-title class="d-flex align-center">
         <v-icon class="mr-2">mdi-plus-circle</v-icon>
@@ -134,11 +134,10 @@ import { ref, computed, watch } from 'vue'
 import { useDemosStore, type BatchCatalogResultResponse } from '@/stores/demos'
 import { useGamesStore } from '@/stores/games'
 
-const props = defineProps<{ modelValue: boolean }>()
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  'cataloged': []
+const emit = defineEmits<{  'cataloged': []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const demosStore = useDemosStore()
 const gamesStore = useGamesStore()
@@ -197,7 +196,7 @@ const canSubmit = computed(() => {
 })
 
 // Reset on open
-watch(() => props.modelValue, (open) => {
+watch(open, (open) => {
   if (open) {
     form.value = { game_id: '', s3_bucket: '', s3_key: '', file_name: '', file_size_bytes: null }
     batchGameId.value = ''
@@ -245,6 +244,6 @@ async function submit() {
 }
 
 function close() {
-  emit('update:modelValue', false)
+  open.value = false
 }
 </script>

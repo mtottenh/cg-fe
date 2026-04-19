@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="900"
     persistent
     scrollable
@@ -381,15 +380,13 @@ import { useDisputesStore, getDisputeStatusColor, getDisputeStatusLabel, getDisp
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatDateTime } from '@/utils/formatters'
 
-const props = defineProps<{
-  modelValue: boolean
-  disputeId: string | null
+const props = defineProps<{  disputeId: string | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  resolved: []
+const emit = defineEmits<{  resolved: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const store = useDisputesStore()
 const snackbar = useSnackbar()
@@ -420,7 +417,7 @@ const canAdjust = computed(() =>
 )
 
 watch(() => props.disputeId, async (id) => {
-  if (id && props.modelValue) {
+  if (id && open.value) {
     resetForm()
     try {
       await store.fetchDispute(id)
@@ -436,7 +433,7 @@ watch(() => props.disputeId, async (id) => {
 })
 
 function close() {
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 function resetForm() {

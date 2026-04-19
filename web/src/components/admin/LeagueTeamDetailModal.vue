@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="900"
     persistent
   >
@@ -355,16 +354,14 @@ interface TeamInvitation {
   responded_at: string | null
 }
 
-const props = defineProps<{
-  modelValue: boolean
-  team: LeagueTeamSummary | null
+const props = defineProps<{  team: LeagueTeamSummary | null
   seasonId: string
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  updated: []
+const emit = defineEmits<{  updated: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 // State
 const activeTab = ref('roster')
@@ -416,7 +413,7 @@ const invitationHeaders = [
 const rules = useFormRules()
 
 // Watch for dialog opening
-watch(() => props.modelValue, async (isOpen) => {
+watch(open, async (isOpen) => {
   if (isOpen && props.team) {
     activeTab.value = 'roster'
     settingsForm.value = {
@@ -703,6 +700,6 @@ function getInvitationStatusColor(status: string): string {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 </script>

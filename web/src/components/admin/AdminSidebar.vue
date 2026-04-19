@@ -1,11 +1,5 @@
 <template>
-  <v-navigation-drawer
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
-    :rail="rail"
-    permanent
-    color="surface"
-  >
+  <v-navigation-drawer v-model="open" :rail="rail" permanent color="surface">
     <v-list density="compact" nav>
       <v-list-item
         prepend-icon="mdi-view-dashboard"
@@ -112,12 +106,12 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 
 defineProps<{
-  modelValue: boolean
   rail: boolean
 }>()
 
 defineEmits<{
-  'update:modelValue': [value: boolean]
   'update:rail': [value: boolean]
 }>()
+
+const open = defineModel<boolean>({ required: true })
 </script>

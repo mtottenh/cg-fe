@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="600"
     persistent
   >
@@ -135,15 +134,13 @@ import { ref, watch } from 'vue'
 import { ApiError } from '@/api'
 import { useFormRules } from '@/composables/useFormRules'
 
-const props = defineProps<{
-  modelValue: boolean
-  leagueId: string
+const props = defineProps<{  leagueId: string
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  created: []
+const emit = defineEmits<{  created: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const formRef = ref()
 const formValid = ref(false)
@@ -185,7 +182,7 @@ function generateSlug() {
   }
 }
 
-watch(() => props.modelValue, (isOpen) => {
+watch(open, (isOpen) => {
   if (isOpen) {
     form.value = {
       name: '',
@@ -202,7 +199,7 @@ watch(() => props.modelValue, (isOpen) => {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function save() {

@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="600"
     persistent
   >
@@ -173,15 +172,13 @@ interface LeagueSeason {
   updated_at: string
 }
 
-const props = defineProps<{
-  modelValue: boolean
-  season: LeagueSeason | null
+const props = defineProps<{  season: LeagueSeason | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  saved: []
+const emit = defineEmits<{  saved: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const formRef = ref()
 const formValid = ref(false)
@@ -228,7 +225,7 @@ const rules = {
   },
 }
 
-watch(() => props.modelValue, (isOpen) => {
+watch(open, (isOpen) => {
   if (isOpen && props.season) {
     form.value = {
       name: props.season.name,
@@ -247,7 +244,7 @@ watch(() => props.modelValue, (isOpen) => {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function save() {

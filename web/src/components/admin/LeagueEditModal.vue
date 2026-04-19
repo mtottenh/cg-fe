@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="600"
     persistent
   >
@@ -186,15 +185,13 @@ import { useFormRules } from '@/composables/useFormRules'
 // Store
 const leaguesStore = useLeaguesStore()
 
-const props = defineProps<{
-  modelValue: boolean
-  league: UserLeagueMembership | null
+const props = defineProps<{  league: UserLeagueMembership | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  saved: []
+const emit = defineEmits<{  saved: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const formRef = ref()
 const formValid = ref(false)
@@ -224,7 +221,7 @@ const accessTypes = [
 const rules = useFormRules()
 
 // Fetch full league details when dialog opens
-watch(() => props.modelValue, async (isOpen) => {
+watch(open, async (isOpen) => {
   if (isOpen && props.league) {
     await fetchLeagueDetails()
   }
@@ -263,7 +260,7 @@ async function fetchLeagueDetails() {
 function close() {
   error.value = null
   leagueDetails.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function save() {

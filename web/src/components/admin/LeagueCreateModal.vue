@@ -1,10 +1,5 @@
 <template>
-  <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
-    max-width="600"
-    persistent
-  >
+  <v-dialog v-model="open" max-width="600" persistent>
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Create New League</span>
@@ -203,14 +198,14 @@ import { useFormRules } from '@/composables/useFormRules'
 const leaguesStore = useLeaguesStore()
 
 const props = defineProps<{
-  modelValue: boolean
   games: GameSummary[]
 }>()
 
 const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
   created: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const formRef = ref()
 const formValid = ref(false)
@@ -256,7 +251,7 @@ function generateSlug() {
 }
 
 // Reset form when dialog opens
-watch(() => props.modelValue, (isOpen) => {
+watch(open, (isOpen) => {
   if (isOpen) {
     form.value = {
       game_id: '',
@@ -276,7 +271,7 @@ watch(() => props.modelValue, (isOpen) => {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function save() {

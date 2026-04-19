@@ -1,5 +1,5 @@
 <template>
-  <v-dialog v-model="dialogOpen" max-width="600" persistent>
+  <v-dialog v-model="open" max-width="600" persistent>
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Create Ban</span>
@@ -155,21 +155,13 @@ import type { components } from '@/api/types'
 type PlayerSummary = components['schemas']['PlayerSearchResponse']
 type LeagueResponse = components['schemas']['LeagueResponse']
 
-const props = defineProps<{
-  modelValue: boolean
-}>()
-
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: boolean): void
   (e: 'created'): void
 }>()
 
-const bansStore = useBansStore()
+const open = defineModel<boolean>({ required: true })
 
-const dialogOpen = computed({
-  get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value),
-})
+const bansStore = useBansStore()
 
 const formRef = ref()
 const formValid = ref(false)
@@ -298,7 +290,7 @@ async function submit() {
 }
 
 function close() {
-  dialogOpen.value = false
+  open.value = false
   resetForm()
 }
 
@@ -317,8 +309,8 @@ function resetForm() {
 }
 
 // Reset form when dialog closes
-watch(dialogOpen, (open) => {
-  if (!open) {
+watch(open, (isOpen) => {
+  if (!isOpen) {
     resetForm()
   }
 })

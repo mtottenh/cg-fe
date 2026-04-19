@@ -10,10 +10,10 @@
           variant="tonal"
         >
           <template v-if="defaultPoolIds">
-            {{ isCustom ? `Custom (${modelValue.length} maps)` : 'Using game default' }}
+            {{ isCustom ? `Custom (${selected.length} maps)` : 'Using game default' }}
           </template>
           <template v-else>
-            {{ modelValue.length }} / {{ maps.length }} maps
+            {{ selected.length }} / {{ maps.length }} maps
           </template>
         </v-chip>
       </div>
@@ -22,7 +22,7 @@
           v-if="defaultPoolIds && isCustom"
           variant="text"
           size="small"
-          @click="$emit('update:modelValue', [...defaultPoolIds])"
+          @click="selected = [...defaultPoolIds]"
         >
           Reset to default
         </v-btn>
@@ -68,36 +68,33 @@ interface MapItem {
 
 const props = withDefaults(defineProps<{
   maps: MapItem[]
-  modelValue: string[]
   defaultPoolIds?: string[]
   label?: string
 }>(), {
   label: 'Map Pool',
 })
 
-const emit = defineEmits<{
-  'update:modelValue': [value: string[]]
-}>()
+const selected = defineModel<string[]>({ required: true })
 
 const isCustom = computed(() => {
   if (!props.defaultPoolIds) return false
   const sorted = (ids: string[]) => JSON.stringify([...ids].sort())
-  return sorted(props.modelValue) !== sorted(props.defaultPoolIds)
+  return sorted(selected.value) !== sorted(props.defaultPoolIds)
 })
 
 function isSelected(mapId: string) {
-  return props.modelValue.includes(mapId)
+  return selected.value.includes(mapId)
 }
 
 function toggle(mapId: string) {
-  const current = [...props.modelValue]
+  const current = [...selected.value]
   const idx = current.indexOf(mapId)
   if (idx >= 0) {
     current.splice(idx, 1)
   } else {
     current.push(mapId)
   }
-  emit('update:modelValue', current)
+  selected.value = current
 }
 </script>
 

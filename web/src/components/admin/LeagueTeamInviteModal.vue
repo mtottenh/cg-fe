@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="500"
     persistent
   >
@@ -120,15 +119,13 @@ interface PlayerSearchResult {
   avatar_url: string | null
 }
 
-const props = defineProps<{
-  modelValue: boolean
-  teamSeasonId: string
+const props = defineProps<{  teamSeasonId: string
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  invited: []
+const emit = defineEmits<{  invited: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const formRef = ref()
 const formValid = ref(false)
@@ -199,7 +196,7 @@ async function searchPlayers(search: string) {
   }, 300)
 }
 
-watch(() => props.modelValue, (isOpen) => {
+watch(open, (isOpen) => {
   if (isOpen) {
     form.value = {
       player_id: null,
@@ -214,7 +211,7 @@ watch(() => props.modelValue, (isOpen) => {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function send() {

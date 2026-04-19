@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="800"
     persistent
     scrollable
@@ -250,15 +249,13 @@ import { useResultReviewsStore, getReviewStatusColor, getReviewStatusLabel } fro
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatDateTime } from '@/utils/formatters'
 
-const props = defineProps<{
-  modelValue: boolean
-  reviewId: string | null
+const props = defineProps<{  reviewId: string | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  decided: []
+const emit = defineEmits<{  decided: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const store = useResultReviewsStore()
 const snackbar = useSnackbar()
@@ -268,7 +265,7 @@ const decisionNotes = ref('')
 const review = computed(() => store.currentReview)
 
 watch(() => props.reviewId, async (id) => {
-  if (id && props.modelValue) {
+  if (id && open.value) {
     decisionNotes.value = ''
     try {
       await store.fetchReview(id)
@@ -279,7 +276,7 @@ watch(() => props.reviewId, async (id) => {
 })
 
 function close() {
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function handleApprove() {

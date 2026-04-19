@@ -5,17 +5,17 @@
       <div class="color-preview-wrapper">
         <input
           type="color"
-          :value="modelValue || '#000000'"
+          :value="color || '#000000'"
           @input="handleColorInput"
           class="color-input"
         />
         <div
           class="color-preview"
-          :style="{ backgroundColor: modelValue || '#000000' }"
+          :style="{ backgroundColor: color || '#000000' }"
         />
       </div>
       <v-text-field
-        :model-value="modelValue || ''"
+        :model-value="color || ''"
         @update:model-value="handleTextInput"
         density="compact"
         variant="outlined"
@@ -25,11 +25,11 @@
         class="hex-input"
       />
       <v-btn
-        v-if="modelValue && clearable"
+        v-if="color && clearable"
         icon
         variant="text"
         size="small"
-        @click="$emit('update:modelValue', null)"
+        @click="color = null"
       >
         <v-icon>mdi-close</v-icon>
         <v-tooltip activator="parent" location="top">Clear</v-tooltip>
@@ -43,38 +43,34 @@
 
 <script setup lang="ts">
 interface Props {
-  modelValue?: string | null
   label?: string
   hint?: string
   clearable?: boolean
 }
 
 withDefaults(defineProps<Props>(), {
-  modelValue: null,
   label: undefined,
   hint: undefined,
   clearable: true,
 })
 
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: string | null): void
-}>()
+const color = defineModel<string | null>({ default: null })
 
 function handleColorInput(e: Event) {
   const target = e.target as HTMLInputElement
-  emit('update:modelValue', target.value)
+  color.value = target.value
 }
 
 function handleTextInput(value: string) {
   if (!value) {
-    emit('update:modelValue', null)
+    color.value = null
     return
   }
   // Auto-add # if missing
   if (value && !value.startsWith('#')) {
     value = '#' + value
   }
-  emit('update:modelValue', value)
+  color.value = value
 }
 
 function validateHex(v: string): boolean | string {

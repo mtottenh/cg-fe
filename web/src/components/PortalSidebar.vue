@@ -1,11 +1,5 @@
 <template>
-  <v-navigation-drawer
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
-    :rail="rail"
-    permanent
-    color="surface"
-  >
+  <v-navigation-drawer v-model="open" :rail="rail" permanent color="surface">
     <v-list density="compact" nav>
       <!-- Home -->
       <v-list-item
@@ -106,14 +100,14 @@ const captainActionsStore = useCaptainActionsStore()
 const { actionCount, hasCritical: hasCriticalAction } = storeToRefs(captainActionsStore)
 
 defineProps<{
-  modelValue: boolean
   rail: boolean
 }>()
 
 defineEmits<{
-  'update:modelValue': [value: boolean]
   'update:rail': [value: boolean]
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const pendingInvitationsCount = computed(() =>
   leagueTeamsStore.myInvitations.length + leaguesStore.myLeagueInvitations.length

@@ -230,6 +230,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useGamesStore, type GameSummary } from '@/stores/games'
 import { useLeaguesStore } from '@/stores/leagues'
@@ -265,10 +266,12 @@ const snackbar = useSnackbar()
 // Confirm dialog
 const confirmDialog = useConfirmDialog()
 
-// Computed
-const loading = computed(() => gamesStore.loading || tournamentsStore.loading || leaguesStore.loading)
-const error = computed(() => gamesStore.error || tournamentsStore.error || leaguesStore.error)
-const tournaments = computed(() => tournamentsStore.tournaments)
+// Store-backed reactive refs
+const { tournaments, loading: tournamentsLoading, error: tournamentsError } = storeToRefs(tournamentsStore)
+const { loading: gamesLoading, error: gamesError } = storeToRefs(gamesStore)
+const { loading: leaguesLoading, error: leaguesError } = storeToRefs(leaguesStore)
+const loading = computed(() => gamesLoading.value || tournamentsLoading.value || leaguesLoading.value)
+const error = computed(() => gamesError.value || tournamentsError.value || leaguesError.value)
 
 const activeGames = computed(() => gamesStore.games.filter((g) => g.status === 'active'))
 

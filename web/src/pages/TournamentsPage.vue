@@ -137,6 +137,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useGamesStore } from '@/stores/games'
 import { useTournamentsStore, type TournamentSummaryResponse } from '@/stores/tournaments'
@@ -152,12 +153,13 @@ const activeTab = ref('all')
 const page = ref(1)
 const filters = ref<{ game_id?: string; status?: string }>({})
 
-// Computed
-const loading = computed(() => tournamentsStore.loading || gamesStore.loading)
-const error = computed(() => tournamentsStore.error)
-const tournaments = computed(() => tournamentsStore.tournaments)
+// Store-backed reactive refs
+const { tournaments, pagination } = storeToRefs(tournamentsStore)
+const { loading: tournamentsLoading, error } = storeToRefs(tournamentsStore)
+const { loading: gamesLoading } = storeToRefs(gamesStore)
+const loading = computed(() => tournamentsLoading.value || gamesLoading.value)
 const games = computed(() => gamesStore.games.filter((g) => g.status === 'active'))
-const totalPages = computed(() => tournamentsStore.pagination.total_pages || 1)
+const totalPages = computed(() => pagination.value.total_pages || 1)
 
 const statusOptions = [
   { value: 'registration_open', label: 'Open Registration' },

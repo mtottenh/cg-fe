@@ -662,6 +662,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useGamesStore, type GameSummary } from '@/stores/games'
 import { useTournamentsStore, formatTournamentFormat } from '@/stores/tournaments'
@@ -708,14 +709,12 @@ const showReasonModal = ref(false)
 const reasonModalMode = ref<'reject' | 'disqualify'>('reject')
 const selectedRegistration = ref<TournamentRegistrationResponse | null>(null)
 
-// Computed
-const loading = computed(() => tournamentsStore.loading)
-const error = computed(() => tournamentsStore.error)
-const tournament = computed(() => tournamentsStore.currentTournament)
-const registrations = computed(() => tournamentsStore.registrations)
-const matches = computed(() => tournamentsStore.matches)
-const brackets = computed(() => tournamentsStore.brackets)
-const stages = computed(() => tournamentsStore.stages)
+// Reactive refs straight from the store (replaces the computed-indirection pattern)
+const {
+  loading, error,
+  currentTournament: tournament,
+  registrations, matches, brackets, stages,
+} = storeToRefs(tournamentsStore)
 
 const sortedStages = computed(() =>
   [...stages.value].sort((a, b) => a.stage_order - b.stage_order)

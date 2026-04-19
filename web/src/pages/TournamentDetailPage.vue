@@ -307,6 +307,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useGamesStore, type GameSummary } from '@/stores/games'
 import { useAuthStore } from '@/stores/auth'
@@ -332,10 +333,13 @@ const authStore = useAuthStore()
 const tournamentsStore = useTournamentsStore()
 const leagueTeamsStore = useLeagueTeamsStore()
 
-// Computed (tournament must be declared before useTournamentContext)
-const loading = computed(() => tournamentsStore.loading)
-const error = computed(() => tournamentsStore.error)
-const tournament = computed(() => tournamentsStore.currentTournament)
+// Store-backed reactive refs (tournament must be resolved before useTournamentContext).
+const {
+  loading, error,
+  currentTournament: tournament,
+  registrations: allRegistrations,
+  matches, brackets,
+} = storeToRefs(tournamentsStore)
 
 const {
   isOrganizer, isTeamTournament, myRegistration, hasEligibleTeams,
@@ -349,12 +353,9 @@ const snackbar = useSnackbar()
 const showTeamRegistrationModal = ref(false)
 const showPlayerRegistrationModal = ref(false)
 const editModalOpen = ref(false)
-const allRegistrations = computed(() => tournamentsStore.registrations)
 const registrations = computed(() =>
   allRegistrations.value.filter((r) => r.status !== 'withdrawn' && r.status !== 'disqualified'),
 )
-const matches = computed(() => tournamentsStore.matches)
-const brackets = computed(() => tournamentsStore.brackets)
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 const game = computed<GameSummary | undefined>(() => {

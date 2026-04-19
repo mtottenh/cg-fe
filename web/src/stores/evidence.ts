@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 
 type DiscoveredEvidenceResponse = components['schemas']['DiscoveredEvidenceResponse']
 type DemoMatchLinkWithDemoResponse = components['schemas']['DemoMatchLinkWithDemoResponse']
@@ -28,8 +28,6 @@ export const useEvidenceStore = defineStore('evidence', () => {
   const browseDemos = ref<DemoResponse[]>([])
   const browseTotal = ref(0)
   const evidenceIdMap = ref<Record<string, string>>({}) // demoLinkId → evidenceId
-  const loading = ref(false)
-  const error = ref<string | null>(null)
 
   // Per-action states
   const discoverState = createActionState()
@@ -46,6 +44,13 @@ export const useEvidenceStore = defineStore('evidence', () => {
   const validateDemoState = createActionState()
   const getAccessUrlState = createActionState()
   const linkEvidenceState = createActionState()
+
+  const { loading, error } = aggregateActionStates([
+    discoverState, fetchLinkedState, linkDemoState, fetchStatsState, browseDemosState,
+    linkManualDemoState, unlinkDemoState, fetchEvidenceState,
+    initiateUploadState, completeUploadState, validateEvidenceState, validateDemoState,
+    getAccessUrlState, linkEvidenceState,
+  ])
 
   async function discoverDemos(matchId: string): Promise<DiscoveredEvidenceResponse[]> {
     return withActionState(discoverState, async () => {
@@ -282,7 +287,6 @@ export const useEvidenceStore = defineStore('evidence', () => {
     browseDemos.value = []
     browseTotal.value = 0
     evidenceIdMap.value = {}
-    loading.value = false
     error.value = null
   }
 

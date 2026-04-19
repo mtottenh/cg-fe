@@ -155,6 +155,46 @@ export function useMatchDetail() {
     ])
   }
 
+  /**
+   * Refresh just the match-state-dependent endpoints. Used by the poll loop:
+   * skips tournament metadata, registrations, my-teams, linked demos, evidence list —
+   * none of which change during an in-flight match.
+   */
+  async function pollMatch() {
+    const tournament = tournamentsStore.currentTournament
+    if (!tournament || !match.value) return
+    const tournamentId = tournament.id
+    const matchId = match.value.id
+
+    const refreshed = await tournamentsStore.fetchMatch(tournamentId, matchId).catch(() => null)
+    if (refreshed) match.value = refreshed
+
+    const tasks: Promise<unknown>[] = []
+
+    if (tournament.scheduling_mode === 'self_scheduled' && match.value) {
+      const status = match.value.status
+      if (['ready', 'scheduled', 'checking_in'].includes(status)) {
+        tasks.push(
+          schedulingStore.fetchActiveProposal(tournamentId, matchId).catch(() => null),
+          schedulingStore.fetchProposalHistory(tournamentId, matchId).catch(() => []),
+        )
+      }
+    }
+
+    if (match.value && ['in_progress', 'awaiting_result', 'completed'].includes(match.value.status)) {
+      tasks.push(fetchResultData())
+      if (['in_progress', 'awaiting_result'].includes(match.value.status)) {
+        // Backend pushes discovered demos as they upload — worth polling.
+        tasks.push(evidenceStore.discoverDemos(match.value.id).catch(() => []))
+      }
+      if (match.value.disputed) {
+        tasks.push(disputesStore.fetchMatchDispute(tournamentId, match.value.id).catch(() => null))
+      }
+    }
+
+    await Promise.all(tasks)
+  }
+
   async function fetchAll() {
     const tournamentSlug = route.params.tournamentSlug as string
     const matchId = route.params.matchId as string
@@ -243,7 +283,9 @@ export function useMatchDetail() {
       if (status && !TERMINAL_STATUSES.includes(status)) {
         isPolling.value = true
         try {
-          await fetchAll()
+          // Only refresh match-state-dependent endpoints; fetchAll re-hit 10+
+          // endpoints every 15s including invariant data (tournament, my teams).
+          await pollMatch()
         } finally {
           isPolling.value = false
         }
@@ -262,7 +304,8 @@ export function useMatchDetail() {
     if (document.visibilityState === 'visible') {
       const status = match.value?.status
       if (status && !TERMINAL_STATUSES.includes(status)) {
-        fetchAll()
+        // Same rationale as startPolling: tab-regain shouldn't re-fetch invariants.
+        pollMatch()
       }
     }
   }

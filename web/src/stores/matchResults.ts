@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api, ApiError } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 import { resultClaimStatusMap, getStatusColor as getMapColor, getStatusLabel as getMapLabel } from '@/utils/statusMaps'
 
 // Use generated types
@@ -24,8 +24,6 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
   // State
   const currentResult = ref<ResultClaimResponse | null>(null)
   const resultHistory = ref<ResultClaimResponse[]>([])
-  const loading = ref(false)
-  const error = ref<string | null>(null)
 
   // Per-action states
   const fetchCurrentResultState = createActionState()
@@ -34,6 +32,11 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
   const confirmResultState = createActionState()
   const disputeResultState = createActionState()
   const raiseDisputeState = createActionState()
+
+  const { loading, error } = aggregateActionStates([
+    fetchCurrentResultState, fetchResultHistoryState, submitResultState,
+    confirmResultState, disputeResultState, raiseDisputeState,
+  ])
 
   // ==================== Result CRUD ====================
 
@@ -197,7 +200,6 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
   function clear() {
     currentResult.value = null
     resultHistory.value = []
-    loading.value = false
     error.value = null
   }
 

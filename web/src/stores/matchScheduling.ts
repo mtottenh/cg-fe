@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, unwrapApiOptional, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, unwrapApiOptional, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 import { proposalStatusMap, getStatusColor as getMapColor, getStatusLabel as getMapLabel } from '@/utils/statusMaps'
 
 // Use generated types
@@ -18,8 +18,6 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
   // State
   const activeProposal = ref<ScheduleProposalResponse | null>(null)
   const proposalHistory = ref<ScheduleProposalResponse[]>([])
-  const loading = ref(false)
-  const error = ref<string | null>(null)
 
   // Per-action states
   const fetchActiveProposalState = createActionState()
@@ -28,6 +26,11 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
   const acceptProposalState = createActionState()
   const rejectProposalState = createActionState()
   const counterProposeState = createActionState()
+
+  const { loading, error } = aggregateActionStates([
+    fetchActiveProposalState, fetchProposalHistoryState, proposeScheduleState,
+    acceptProposalState, rejectProposalState, counterProposeState,
+  ])
 
   // ==================== Proposal CRUD ====================
 
@@ -123,7 +126,6 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
   function clear() {
     activeProposal.value = null
     proposalHistory.value = []
-    loading.value = false
     error.value = null
   }
 

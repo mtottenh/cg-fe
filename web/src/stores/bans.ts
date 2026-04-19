@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 
 // Export types from generated API
 export type BanResponse = components['schemas']['BanResponse']
@@ -32,8 +32,6 @@ export const useBansStore = defineStore('bans', () => {
     total_items: 0,
     total_pages: 0,
   })
-  const loading = ref(false)
-  const error = ref<string | null>(null)
   const currentBan = ref<BanResponse | null>(null)
 
   const fetchBansState = createActionState()
@@ -41,6 +39,10 @@ export const useBansStore = defineStore('bans', () => {
   const createBanState = createActionState()
   const liftBanState = createActionState()
   const getUserBanHistoryState = createActionState()
+
+  const { loading, error } = aggregateActionStates([
+    fetchBansState, getBanState, createBanState, liftBanState, getUserBanHistoryState,
+  ])
 
   async function fetchBans(filters: BanFilters = {}) {
     return withActionState(fetchBansState, async () => {

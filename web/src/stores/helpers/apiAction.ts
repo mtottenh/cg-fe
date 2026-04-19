@@ -1,4 +1,4 @@
-import { ref, type Ref } from 'vue'
+import { computed, ref, type Ref, type WritableComputedRef } from 'vue'
 import { ApiError } from '@/api'
 import type { components } from '@/api/types'
 
@@ -64,6 +64,39 @@ export function createActionState(): ActionState {
     loading: ref(false),
     error: ref<string | null>(null),
   }
+}
+
+/**
+ * Aggregates loading/error signals over a set of per-action states.
+ *
+ * `loading` is true if any action is in flight. `error` returns the first
+ * non-null action error; writing `error = null` clears every action's error
+ * so snackbar dismiss logic keeps working. Writing a non-null string sets an
+ * override (displayed until any action runs or the override is cleared).
+ *
+ * Replaces the older pattern of a dead `loading = ref(false)` / `error = ref(null)`
+ * that stores never assigned but that consumers read anyway.
+ */
+export function aggregateActionStates(states: ActionState[]): {
+  loading: Ref<boolean>
+  error: WritableComputedRef<string | null>
+} {
+  const override = ref<string | null>(null)
+  const loading = computed(() => states.some((s) => s.loading.value))
+  const error = computed<string | null>({
+    get() {
+      if (override.value !== null) return override.value
+      for (const s of states) if (s.error.value) return s.error.value
+      return null
+    },
+    set(val) {
+      override.value = val
+      if (val === null) {
+        for (const s of states) s.error.value = null
+      }
+    },
+  })
+  return { loading, error }
 }
 
 /**

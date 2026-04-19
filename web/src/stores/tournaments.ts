@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 import { updateById, replaceById } from '@/utils/collections'
 import { tournamentStatusMap, getStatusColor as getMapColor, getStatusLabel as getMapLabel } from '@/utils/statusMaps'
 
@@ -92,8 +92,6 @@ export const useTournamentsStore = defineStore('tournaments', () => {
   const stages = ref<TournamentStageResponse[]>([])
   const seeding = ref<SeededParticipantResponse[]>([])
   const checkInStatus = ref<CheckInStatusResponse | null>(null)
-  const loading = ref(false)
-  const error = ref<string | null>(null)
   const pagination = ref<PaginationMeta>({ page: 1, per_page: 20, total_items: 0, total_pages: 0 })
 
   // Computed
@@ -155,6 +153,28 @@ export const useTournamentsStore = defineStore('tournaments', () => {
   const getMapPoolState = createActionState()
   const setMapPoolState = createActionState()
   const deleteMapPoolState = createActionState()
+
+  // Aggregate loading/error across all actions (replaces the dead
+  // `loading = ref(false)` / `error = ref(null)` refs that were never assigned).
+  const { loading, error } = aggregateActionStates([
+    fetchTournamentsState, fetchTournamentState, fetchTournamentBySlugState,
+    createTournamentState, updateTournamentState,
+    publishState, openRegistrationState, closeRegistrationState, reopenRegistrationState,
+    startTournamentState, cancelTournamentState, completeTournamentState, finalizeTournamentState,
+    generateNextRoundState,
+    fetchRegistrationsState, registerTeamState, registerPlayerState,
+    withdrawState, checkInState, approveRegistrationState, rejectRegistrationState,
+    disqualifyRegistrationState,
+    fetchMatchesState, fetchMatchState, fetchBracketsState, fetchStagesState,
+    adminMatchTransitionState, adminForfeitState, adminDoubleForfeitState, adminScheduleState,
+    processProgressionState, reapplyProgressionState, revertProgressionState,
+    matchCheckInState, forfeitMatchState,
+    fetchSeedingState, autoSeedState, manualSeedState, clearSeedingState,
+    createStageState,
+    fetchCheckInStatusState, processNoShowsState, adminCheckInState,
+    fetchBracketStandingsState,
+    getMapPoolState, setMapPoolState, deleteMapPoolState,
+  ])
 
   // ==================== Tournament CRUD ====================
 
@@ -780,8 +800,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     stages.value = []
     seeding.value = []
     checkInStatus.value = null
-    loading.value = false
-    error.value = null
+    error.value = null // clears override + all per-action errors via the aggregate
     pagination.value = { page: 1, per_page: 20, total_items: 0, total_pages: 0 }
   }
 

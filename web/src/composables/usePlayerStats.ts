@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { api, ApiError } from '@/api'
+import { unwrapApi, unwrapApiOptional } from '@/stores/helpers'
 import type { components } from '@/api/types'
 
 type PublicMmStatsResponse = components['schemas']['PublicMmStatsResponse']
@@ -30,24 +31,17 @@ export function usePlayerStats(playerId: string) {
     mmStatsError.value = null
     mmStatsNotTracked.value = false
     try {
-      const { data, error: apiError } = await api.GET(
+      // 404 is valid: player has no MM stats yet.
+      const result = await unwrapApiOptional(api.GET(
         '/v1/players/{player_id}/games/{game_id}/mm-stats',
         { params: { path: { player_id: playerId, game_id: GAME_SLUG } } },
-      )
-      if (apiError) {
-        const err = apiError as any
-        if (err.status === 404) {
-          mmStatsNotTracked.value = true
-          return
-        }
-        throw new ApiError(err.status || 500, err.detail || 'Failed to fetch MM stats')
-      }
-      mmStats.value = data.data
-    } catch (e: unknown) {
-      if (e instanceof ApiError && e.status === 404) {
+      ))
+      if (result === null) {
         mmStatsNotTracked.value = true
-        return
+      } else {
+        mmStats.value = result.data
       }
+    } catch (e: unknown) {
       mmStatsError.value = e instanceof ApiError ? e.detail : 'Failed to fetch MM stats'
     } finally {
       mmStatsLoading.value = false
@@ -58,12 +52,11 @@ export function usePlayerStats(playerId: string) {
     ratingHistoryLoading.value = true
     ratingHistoryError.value = null
     try {
-      const { data, error: apiError } = await api.GET(
+      const result = await unwrapApi(api.GET(
         '/v1/players/{player_id}/games/{game_id}/rating-history',
         { params: { path: { player_id: playerId, game_id: GAME_SLUG }, query: { limit } } },
-      )
-      if (apiError) return
-      ratingHistory.value = data.data
+      ))
+      ratingHistory.value = result.data
     } catch {
       ratingHistoryError.value = 'Failed to load rating history'
     } finally {
@@ -76,7 +69,7 @@ export function usePlayerStats(playerId: string) {
     matchHistoryError.value = null
     matchHistoryOffset.value = 0
     try {
-      const { data, error: apiError } = await api.GET(
+      const result = await unwrapApi(api.GET(
         '/v1/players/{player_id}/games/{game_id}/match-history',
         {
           params: {
@@ -84,10 +77,9 @@ export function usePlayerStats(playerId: string) {
             query: { limit: MATCH_HISTORY_PAGE_SIZE, offset: 0 },
           },
         },
-      )
-      if (apiError) return
-      matchHistory.value = data.data
-      matchHistoryHasMore.value = data.data.length >= MATCH_HISTORY_PAGE_SIZE
+      ))
+      matchHistory.value = result.data
+      matchHistoryHasMore.value = result.data.length >= MATCH_HISTORY_PAGE_SIZE
     } catch {
       matchHistoryError.value = 'Failed to load match history'
     } finally {
@@ -99,7 +91,7 @@ export function usePlayerStats(playerId: string) {
     matchHistoryLoading.value = true
     const newOffset = matchHistoryOffset.value + MATCH_HISTORY_PAGE_SIZE
     try {
-      const { data, error: apiError } = await api.GET(
+      const result = await unwrapApi(api.GET(
         '/v1/players/{player_id}/games/{game_id}/match-history',
         {
           params: {
@@ -107,11 +99,10 @@ export function usePlayerStats(playerId: string) {
             query: { limit: MATCH_HISTORY_PAGE_SIZE, offset: newOffset },
           },
         },
-      )
-      if (apiError) return
+      ))
       matchHistoryOffset.value = newOffset
-      matchHistory.value = [...matchHistory.value, ...data.data]
-      matchHistoryHasMore.value = data.data.length >= MATCH_HISTORY_PAGE_SIZE
+      matchHistory.value = [...matchHistory.value, ...result.data]
+      matchHistoryHasMore.value = result.data.length >= MATCH_HISTORY_PAGE_SIZE
     } catch {
       matchHistoryError.value = 'Failed to load more match history'
     } finally {

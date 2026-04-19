@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api, setAuthToken } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 
 /** JWT claims structure matching backend */
 interface JwtClaims {
@@ -43,8 +43,6 @@ export const useAuthStore = defineStore('auth', () => {
   const playerId = ref<string | null>(localStorage.getItem('player_id'))
   const user = ref<User | null>(null)
   const player = ref<Player | null>(null)
-  const loading = ref(false)
-  const error = ref<string | null>(null)
 
   // Initialize auth token from stored value
   if (token.value) {
@@ -83,6 +81,10 @@ export const useAuthStore = defineStore('auth', () => {
   const loginState = createActionState()
   const registerState = createActionState()
   const fetchCurrentUserState = createActionState()
+
+  const { loading, error } = aggregateActionStates([
+    loginState, registerState, fetchCurrentUserState,
+  ])
 
   async function login(credentials: LoginRequest): Promise<LoginResponse> {
     return withActionState(loginState, async () => {

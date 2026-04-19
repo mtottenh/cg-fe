@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 import {
   resultReviewStatusMap,
   getStatusColor as getMapColor,
@@ -17,14 +17,20 @@ export const useResultReviewsStore = defineStore('resultReviews', () => {
   const reviews = ref<ResultReviewSummaryResponse[]>([])
   const currentReview = ref<ResultReviewResponse | null>(null)
   const total = ref(0)
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+  const matchResultReview = ref<ResultReviewResponse | null>(null)
 
   // Per-action states
   const fetchReviewsState = createActionState()
   const fetchReviewState = createActionState()
   const approveReviewState = createActionState()
   const rejectReviewState = createActionState()
+  const fetchMatchResultReviewState = createActionState()
+  const acknowledgeResultReviewState = createActionState()
+
+  const { loading, error } = aggregateActionStates([
+    fetchReviewsState, fetchReviewState, approveReviewState, rejectReviewState,
+    fetchMatchResultReviewState, acknowledgeResultReviewState,
+  ])
 
   async function fetchReviews(): Promise<ResultReviewSummaryResponse[]> {
     return withActionState(fetchReviewsState, async () => {
@@ -75,11 +81,6 @@ export const useResultReviewsStore = defineStore('resultReviews', () => {
 
   // ==================== Player-Facing Actions ====================
 
-  const fetchMatchResultReviewState = createActionState()
-  const acknowledgeResultReviewState = createActionState()
-
-  const matchResultReview = ref<ResultReviewResponse | null>(null)
-
   async function fetchMatchResultReview(matchId: string): Promise<ResultReviewResponse | null> {
     return withActionState(fetchMatchResultReviewState, async () => {
       const result = await unwrapApi(api.GET('/v1/matches/{match_id}/result-review', {
@@ -105,7 +106,6 @@ export const useResultReviewsStore = defineStore('resultReviews', () => {
     reviews.value = []
     currentReview.value = null
     total.value = 0
-    loading.value = false
     error.value = null
   }
 

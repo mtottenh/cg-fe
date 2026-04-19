@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 
 // Use generated types
 type Player = components['schemas']['PlayerResponse']
@@ -29,8 +29,6 @@ export const usePlayersStore = defineStore('players', () => {
   const currentPlayer = ref<Player | null>(null)
   const playerTeams = ref<PlayerTeam[]>([])
   const myMatches = ref<components['schemas']['TournamentMatchResponse'][]>([])
-  const loading = ref(false)
-  const error = ref<string | null>(null)
   const pagination = ref<PaginationMeta>({ page: 1, per_page: 20, total_items: 0, total_pages: 0 })
 
   const fetchPlayersState = createActionState()
@@ -38,6 +36,11 @@ export const usePlayersStore = defineStore('players', () => {
   const fetchMyProfileState = createActionState()
   const updateMyProfileState = createActionState()
   const fetchMyMatchesState = createActionState()
+
+  const { loading, error } = aggregateActionStates([
+    fetchPlayersState, fetchPlayerState, fetchMyProfileState,
+    updateMyProfileState, fetchMyMatchesState,
+  ])
 
   async function fetchPlayers(filters?: {
     q?: string

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers/apiAction'
+import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers/apiAction'
 import { replaceById, removeById } from '@/utils/collections'
 
 // Use generated types
@@ -23,8 +23,24 @@ export const useAvailabilityStore = defineStore('availability', () => {
   const windows = ref<AvailabilityWindow[]>([])
   const overrides = ref<AvailabilityOverride[]>([])
   const dateAvailability = ref<DateAvailability | null>(null)
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+
+  // Per-action states (declared up-front so the aggregate can reference them)
+  const fetchWindowsState = createActionState()
+  const createWindowState = createActionState()
+  const updateWindowState = createActionState()
+  const deleteWindowState = createActionState()
+  const fetchOverridesState = createActionState()
+  const createOverrideState = createActionState()
+  const deleteOverrideState = createActionState()
+  const fetchDateAvailabilityState = createActionState()
+  const fetchPlayerDateAvailabilityState = createActionState()
+  const fetchAllState = createActionState()
+
+  const { loading, error } = aggregateActionStates([
+    fetchWindowsState, createWindowState, updateWindowState, deleteWindowState,
+    fetchOverridesState, createOverrideState, deleteOverrideState,
+    fetchDateAvailabilityState, fetchPlayerDateAvailabilityState, fetchAllState,
+  ])
 
   // Computed
   const windowsByDay = computed(() => {
@@ -54,7 +70,6 @@ export const useAvailabilityStore = defineStore('availability', () => {
   const availableOverrides = computed(() => overrides.value.filter((o) => o.override_type === 'available'))
 
   // Actions - Windows
-  const fetchWindowsState = createActionState()
   async function fetchWindows() {
     return withActionState(fetchWindowsState, async () => {
       const result = await unwrapApi(api.GET('/v1/players/me/availability/windows'))
@@ -63,7 +78,6 @@ export const useAvailabilityStore = defineStore('availability', () => {
     }, 'Failed to fetch availability windows')
   }
 
-  const createWindowState = createActionState()
   async function createWindow(windowData: CreateWindowRequest) {
     return withActionState(createWindowState, async () => {
       const result = await unwrapApi(api.POST('/v1/players/me/availability/windows', {
@@ -75,7 +89,6 @@ export const useAvailabilityStore = defineStore('availability', () => {
     }, 'Failed to create availability window')
   }
 
-  const updateWindowState = createActionState()
   async function updateWindow(windowId: string, windowData: UpdateWindowRequest) {
     return withActionState(updateWindowState, async () => {
       const result = await unwrapApi(api.PATCH('/v1/players/me/availability/windows/{window_id}', {
@@ -88,7 +101,6 @@ export const useAvailabilityStore = defineStore('availability', () => {
     }, 'Failed to update availability window')
   }
 
-  const deleteWindowState = createActionState()
   async function deleteWindow(windowId: string) {
     return withActionState(deleteWindowState, async () => {
       await unwrapApi(api.DELETE('/v1/players/me/availability/windows/{window_id}', {
@@ -99,7 +111,6 @@ export const useAvailabilityStore = defineStore('availability', () => {
   }
 
   // Actions - Overrides
-  const fetchOverridesState = createActionState()
   async function fetchOverrides() {
     return withActionState(fetchOverridesState, async () => {
       const result = await unwrapApi(api.GET('/v1/players/me/availability/overrides'))
@@ -108,7 +119,6 @@ export const useAvailabilityStore = defineStore('availability', () => {
     }, 'Failed to fetch availability overrides')
   }
 
-  const createOverrideState = createActionState()
   async function createOverride(overrideData: CreateOverrideRequest) {
     return withActionState(createOverrideState, async () => {
       const result = await unwrapApi(api.POST('/v1/players/me/availability/overrides', {
@@ -120,7 +130,6 @@ export const useAvailabilityStore = defineStore('availability', () => {
     }, 'Failed to create availability override')
   }
 
-  const deleteOverrideState = createActionState()
   async function deleteOverride(overrideId: string) {
     return withActionState(deleteOverrideState, async () => {
       await unwrapApi(api.DELETE('/v1/players/me/availability/overrides/{override_id}', {
@@ -131,7 +140,6 @@ export const useAvailabilityStore = defineStore('availability', () => {
   }
 
   // Actions - Date Availability
-  const fetchDateAvailabilityState = createActionState()
   async function fetchDateAvailability(date: string) {
     return withActionState(fetchDateAvailabilityState, async () => {
       const result = await unwrapApi(api.GET('/v1/players/me/availability/date', {
@@ -142,7 +150,6 @@ export const useAvailabilityStore = defineStore('availability', () => {
     }, 'Failed to fetch date availability')
   }
 
-  const fetchPlayerDateAvailabilityState = createActionState()
   async function fetchPlayerDateAvailability(playerId: string, date: string) {
     return withActionState(fetchPlayerDateAvailabilityState, async () => {
       const result = await unwrapApi(api.GET('/v1/players/{player_id}/availability/date', {
@@ -153,7 +160,6 @@ export const useAvailabilityStore = defineStore('availability', () => {
   }
 
   // Load all availability data
-  const fetchAllState = createActionState()
   async function fetchAll() {
     return withActionState(fetchAllState, async () => {
       await Promise.all([fetchWindows(), fetchOverrides()])
@@ -165,7 +171,6 @@ export const useAvailabilityStore = defineStore('availability', () => {
     windows.value = []
     overrides.value = []
     dateAvailability.value = null
-    loading.value = false
     error.value = null
   }
 

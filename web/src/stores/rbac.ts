@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 
 // Export types from generated API
 export type RoleResponse = components['schemas']['RoleResponse']
@@ -20,8 +20,6 @@ export const useRbacStore = defineStore('rbac', () => {
   const permissions = ref<PermissionResponse[]>([])
   const currentRole = ref<RoleWithPermissionsResponse | null>(null)
   const userRoles = ref<UserRoleAssignmentResponse[]>([])
-  const loading = ref(false)
-  const error = ref<string | null>(null)
 
   // Per-action states
   const fetchRolesState = createActionState()
@@ -35,6 +33,12 @@ export const useRbacStore = defineStore('rbac', () => {
   const getUserRolesState = createActionState()
   const assignRoleState = createActionState()
   const revokeRoleState = createActionState()
+
+  const { loading, error } = aggregateActionStates([
+    fetchRolesState, getRoleState, createRoleState, updateRoleState, deleteRoleState,
+    addPermissionState, removePermissionState, fetchPermissionsState,
+    getUserRolesState, assignRoleState, revokeRoleState,
+  ])
 
   // ============== Role Management ==============
 

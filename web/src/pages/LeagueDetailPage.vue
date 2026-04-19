@@ -415,6 +415,19 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <ConfirmDialog
+      :open="confirmDialog.open.value"
+      :title="confirmDialog.title.value"
+      :message="confirmDialog.message.value"
+      :action-label="confirmDialog.actionLabel.value"
+      :color="confirmDialog.color.value"
+      :loading="confirmDialog.loading.value"
+      :error="confirmDialog.dialogError.value"
+      @clear-error="confirmDialog.dialogError.value = null"
+      @confirm="confirmDialog.execute"
+      @cancel="confirmDialog.cancel"
+    />
   </div>
 </template>
 
@@ -426,8 +439,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useGamesStore } from '@/stores/games'
 import { useLeagueSeasonsStore } from '@/stores/leagueSeasons'
 import { useFormRules } from '@/composables/useFormRules'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import TournamentCreateModal from '@/components/admin/TournamentCreateModal.vue'
 import TournamentCard from '@/components/tournament/TournamentCard.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
 import type { TournamentSummaryResponse } from '@/stores/tournaments'
 
@@ -545,13 +560,18 @@ async function handleApplyToLeague() {
   }
 }
 
-async function handleLeaveLeague() {
-  if (!confirm('Are you sure you want to leave this league?')) return
-  try {
-    await leaveLeague()
-  } catch {
-    // Error already set in composable
-  }
+const confirmDialog = useConfirmDialog()
+
+function handleLeaveLeague() {
+  confirmDialog.confirm({
+    title: 'Leave League',
+    message: 'Are you sure you want to leave this league? You will lose access to teams and tournaments you joined through it.',
+    action: 'Leave',
+    color: 'error',
+    handler: async () => {
+      await leaveLeague()
+    },
+  })
 }
 
 // Template helpers

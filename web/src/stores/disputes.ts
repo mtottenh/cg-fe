@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 import {
   disputeStatusMap,
   disputePriorityMap,
@@ -34,8 +34,6 @@ export const useDisputesStore = defineStore('disputes', () => {
   const currentDispute = ref<DisputeResponse | null>(null)
   const currentThread = ref<DisputeMessageResponse[]>([])
   const pagination = ref({ page: 1, page_size: 20, total: 0 })
-  const loading = ref(false)
-  const error = ref<string | null>(null)
 
   // Per-action states
   const fetchDisputesState = createActionState()
@@ -48,6 +46,12 @@ export const useDisputesStore = defineStore('disputes', () => {
   const resolveRematchState = createActionState()
   const resolveDoubleDqState = createActionState()
   const fetchMatchDisputeState = createActionState()
+
+  const { loading, error } = aggregateActionStates([
+    fetchDisputesState, fetchDisputeState, assignDisputeState, addMessageState,
+    resolveUpholdState, resolveOverturnState, resolveAdjustedState,
+    resolveRematchState, resolveDoubleDqState, fetchMatchDisputeState,
+  ])
 
   // ==================== Match Dispute Lookup ====================
 
@@ -227,7 +231,6 @@ export const useDisputesStore = defineStore('disputes', () => {
     currentThread.value = []
     matchDispute.value = null
     pagination.value = { page: 1, page_size: 20, total: 0 }
-    loading.value = false
     error.value = null
   }
 

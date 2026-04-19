@@ -1,1 +1,1 @@
-export { unwrapApi, unwrapApiOptional, createActionState, withActionState, type ActionState } from './apiAction'
+export { unwrapApi, unwrapApiOptional, createActionState, withActionState, aggregateActionStates, type ActionState } from './apiAction'

@@ -1,13 +1,12 @@
 import { test, expect } from '@playwright/test'
-import { loginAsAdmin } from './fixtures/auth.fixture'
+import { loginAsAdmin, loginAsPlayer2 } from './fixtures/auth.fixture'
+import { getSeededState } from './fixtures/seeded-state'
 import { testTournaments } from './fixtures/test-data'
 import {
   adminAddDisputeMessage,
   adminResolveOverturn,
   getDisputeThread,
   getMatch,
-  getSeededState,
-  loginAsPlayer2,
   raiseDispute,
   seedDisputableMatch,
 } from './fixtures/dispute.fixture'

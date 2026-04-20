@@ -103,12 +103,11 @@ test.describe('Image uploads', () => {
 
       await expect(page.getByText('Team Branding')).toBeVisible({ timeout: 10_000 })
 
-      // Listen for the logo upload POST — the backend endpoint is
-      // /v1/league-teams/{id}/logo; the frontend currently posts to an adjacent
-      // path. Match loosely so the test asserts only that *some* logo POST is
-      // made, then verify persistence via the public team endpoint.
+      // Backend endpoint: POST /v1/league-teams/{team_id}/logo
       const uploadPromise = page.waitForResponse(
-        (resp) => resp.url().includes(`/${teamId}/logo`) && resp.request().method() === 'POST',
+        (resp) =>
+          resp.url().includes(`/v1/league-teams/${teamId}/logo`) &&
+          resp.request().method() === 'POST',
         { timeout: 15_000 }
       )
 
@@ -139,8 +138,11 @@ test.describe('Image uploads', () => {
 
       await expect(page.getByText('Team Branding')).toBeVisible({ timeout: 10_000 })
 
+      // Backend endpoint: POST /v1/league-teams/{team_id}/banner
       const uploadPromise = page.waitForResponse(
-        (resp) => resp.url().includes(`/${teamId}/banner`) && resp.request().method() === 'POST',
+        (resp) =>
+          resp.url().includes(`/v1/league-teams/${teamId}/banner`) &&
+          resp.request().method() === 'POST',
         { timeout: 15_000 }
       )
 
@@ -212,8 +214,7 @@ test.describe('Image uploads', () => {
           request.method() === 'POST' &&
           (url.includes('/v1/players/me/avatar') ||
             url.includes('/v1/players/me/banner') ||
-            url.includes('/logo') ||
-            url.includes('/banner'))
+            /\/v1\/league-teams\/[^/]+\/(logo|banner)/.test(url))
         ) {
           uploadRequests.push(url)
         }

@@ -3,10 +3,15 @@
  * Provides tournament IDs, match IDs, and player tokens to test specs.
  */
 import { readFileSync, existsSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
+import { fileURLToPath } from 'url'
 import type { SeededState } from '../global-setup'
 
-const SEEDED_STATE_PATH = join(__dirname, '..', '.seeded-state.json')
+// The e2e harness runs as `"type": "module"` (see package.json), so
+// `__dirname` isn't defined. Resolve the fixture directory from the
+// module URL instead.
+const THIS_DIR = dirname(fileURLToPath(import.meta.url))
+const SEEDED_STATE_PATH = join(THIS_DIR, '..', '.seeded-state.json')
 
 let _state: SeededState | null = null
 

@@ -12,76 +12,11 @@
  * by a previous run).
  */
 
-import { existsSync, readFileSync } from 'fs'
-import { dirname, join } from 'path'
-import { fileURLToPath } from 'url'
-import type { Page } from '@playwright/test'
-import { login } from './auth.fixture'
-import { testUsers } from './test-data'
-
-// ESM-safe resolution of the fixtures directory. The e2e harness runs as
-// `"type": "module"`, so `__dirname` is not defined.
-const FIXTURES_DIR = dirname(fileURLToPath(import.meta.url))
-
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
-// =============================================================================
-// Local re-exports / shims for seed + login
-// =============================================================================
-//
-// The sibling fixtures `seeded-state.ts` and a `loginAsPlayer2` helper on
-// `auth.fixture.ts` are part of the repo's long-term fixture surface but may
-// not yet be present on older branches. We shim them here so the spec file
-// can import everything it needs from a single place without forcing every
-// consuming spec to know which branch introduced which helper. When/if the
-// canonical versions land, callers can migrate — the shapes match.
-
-interface SeededState {
-  adminToken: string
-  player2Token: string | null
-  player2Id: string | null
-  tournamentId: string | null
-  matchIds: string[]
-  leagueId: string | null
-  seasonId: string | null
-  teamId: string | null
-}
-
-const SEEDED_STATE_PATH = join(FIXTURES_DIR, '..', '.seeded-state.json')
-let _cachedSeededState: SeededState | null = null
-
-/**
- * Read the seeded state written by `global-setup.ts`. Matches the signature
- * of the canonical `fixtures/seeded-state.ts` helper — returns the loaded
- * blob or throws if the file is missing.
- */
-export function getSeededState(): SeededState {
-  if (_cachedSeededState) return _cachedSeededState
-  if (!existsSync(SEEDED_STATE_PATH)) {
-    throw new Error(
-      `Seeded state file not found at ${SEEDED_STATE_PATH}. ` +
-      'Did global-setup.ts run successfully?'
-    )
-  }
-  _cachedSeededState = JSON.parse(readFileSync(SEEDED_STATE_PATH, 'utf-8'))
-  return _cachedSeededState!
-}
-
-/**
- * Log in as the seeded second test player via the UI. Mirrors the shape of
- * `loginAsAdmin(page)` from auth.fixture.ts.
- */
-export async function loginAsPlayer2(page: Page): Promise<void> {
-  const creds = (
-    testUsers as unknown as {
-      player2Login?: { username_or_email: string; password: string }
-    }
-  ).player2Login ?? {
-    username_or_email: 'e2e_player2@example.com',
-    password: 'Player2Password123!',
-  }
-  await login(page, creds)
-}
+// Consumers pull seed/login helpers directly from the canonical fixture
+// modules: `getSeededState` from `./seeded-state`, `loginAsPlayer2` from
+// `./auth.fixture`. This file stays focused on dispute-specific helpers.
 
 // =============================================================================
 // Types

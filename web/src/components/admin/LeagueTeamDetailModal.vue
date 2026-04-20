@@ -316,43 +316,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { ApiError } from '@/api'
+import { computed, ref, watch } from 'vue'
 import type { components } from '@/api/types'
 import LeagueTeamInviteModal from './LeagueTeamInviteModal.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
+import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useFormRules } from '@/composables/useFormRules'
 import { formatDate } from '@/utils/formatters'
+import {
+  useLeagueTeamsStore,
+  type LeagueTeamMemberWithPlayer,
+  type LeagueTeamInvitationResponse,
+} from '@/stores/leagueTeams'
 
 type LeagueTeamSummary = components['schemas']['LeagueTeamSummaryResponse']
 
-interface TeamMember {
-  id: string
-  team_season_id: string
-  player_id: string
-  display_name: string
-  avatar_url: string | null
-  role: string
-  position: string | null
-  jersey_number: number | null
-  status: string
-  joined_at: string
-  left_at: string | null
-}
-
-interface TeamInvitation {
-  id: string
-  team_season_id: string
-  player_id: string
-  invitation_type: string
-  role: string
-  status: string
-  message: string | null
-  invited_by: string | null
-  expires_at: string
-  created_at: string
-  responded_at: string | null
-}
+type TeamMember = LeagueTeamMemberWithPlayer
+type TeamInvitation = LeagueTeamInvitationResponse
 
 const props = defineProps<{  team: LeagueTeamSummary | null
   seasonId: string
@@ -363,33 +343,33 @@ const emit = defineEmits<{  updated: []
 
 const open = defineModel<boolean>({ required: true })
 
+// Store + feedback helpers replace the raw-fetch + manual try/catch pattern.
+const leagueTeamsStore = useLeagueTeamsStore()
+const snackbar = useSnackbar()
+const feedback = useActionFeedback()
+
 // State
 const activeTab = ref('roster')
 const error = ref<string | null>(null)
 
-// Members
-const members = ref<TeamMember[]>([])
-const loadingMembers = ref(false)
+// Members + invitations come from the store; we read the store's collections
+// rather than keeping a local copy. Loading flags come from per-action states.
+const members = computed<TeamMember[]>(() => leagueTeamsStore.members)
+const invitations = computed<TeamInvitation[]>(() => leagueTeamsStore.invitations)
+const loadingMembers = computed(() => leagueTeamsStore.fetchMembersState.loading)
+const loadingInvitations = computed(() => leagueTeamsStore.fetchTeamInvitationsState.loading)
 
-// Invitations
-const invitations = ref<TeamInvitation[]>([])
-const loadingInvitations = ref(false)
 const inviteModalOpen = ref(false)
 
 // Settings
 const settingsFormRef = ref()
 const settingsFormValid = ref(false)
-const savingSettings = ref(false)
+const savingSettings = computed(() => leagueTeamsStore.updateTeamState.loading)
 const settingsForm = ref({
   name: '',
   tag: '',
   description: '',
 })
-
-// Snackbar
-const snackbar = useSnackbar()
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 const memberHeaders = [
   { title: '', key: 'avatar_url', width: '50px', sortable: false },
@@ -421,256 +401,124 @@ watch(open, async (isOpen) => {
       tag: props.team.team_tag,
       description: '',
     }
-    await Promise.all([fetchMembers(), fetchInvitations()])
+    await loadTeamData()
   }
 })
 
-// API calls
-async function fetchMembers() {
+async function loadTeamData() {
   if (!props.team?.team_season_id) return
-
-  loadingMembers.value = true
-  try {
-    const response = await fetch(`${API_URL}/v1/league-team-seasons/${props.team.team_season_id}/members`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to fetch members')
-    }
-
-    const result = await response.json()
-    members.value = result.data
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to load members'
-    }
-  } finally {
-    loadingMembers.value = false
-  }
-}
-
-async function fetchInvitations() {
-  if (!props.team?.team_season_id) return
-
-  loadingInvitations.value = true
-  try {
-    const response = await fetch(`${API_URL}/v1/league-team-seasons/${props.team.team_season_id}/invitations`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to fetch invitations')
-    }
-
-    const result = await response.json()
-    invitations.value = result.data
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to load invitations'
-    }
-  } finally {
-    loadingInvitations.value = false
-  }
+  const seasonId = props.team.team_season_id
+  // The store's withActionState already reports per-action errors; surface
+  // the first one to the modal-level banner if either fetch fails.
+  await Promise.allSettled([
+    leagueTeamsStore.fetchMembers(seasonId),
+    leagueTeamsStore.fetchTeamInvitations(seasonId),
+  ])
+  error.value =
+    leagueTeamsStore.fetchMembersState.error
+    ?? leagueTeamsStore.fetchTeamInvitationsState.error
+    ?? null
 }
 
 async function promoteToCaptain(member: TeamMember) {
   if (!props.team?.team_season_id) return
-
-  try {
-    const response = await fetch(`${API_URL}/v1/league-team-seasons/${props.team.team_season_id}/members/${member.player_id}/promote`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to promote member')
-    }
-
-    snackbar.show(`${member.display_name} promoted to captain`, 'success')
-    await fetchMembers()
-    emit('updated')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      snackbar.show(e.detail, 'error')
-    } else {
-      snackbar.show('Failed to promote member', 'error')
-    }
-  }
+  const seasonId = props.team.team_season_id
+  await feedback.run(
+    () => leagueTeamsStore.promoteToCaptain(seasonId, member.player_id),
+    {
+      success: `${member.display_name} promoted to captain`,
+      errorSource: leagueTeamsStore.promoteToCaptainState,
+      after: () => emit('updated'),
+    },
+  )
 }
 
 async function demoteFromCaptain(member: TeamMember) {
   if (!props.team?.team_season_id) return
-
-  try {
-    const response = await fetch(`${API_URL}/v1/league-team-seasons/${props.team.team_season_id}/members/${member.player_id}/demote`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to demote member')
-    }
-
-    snackbar.show(`${member.display_name} demoted from captain`, 'success')
-    await fetchMembers()
-    emit('updated')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      snackbar.show(e.detail, 'error')
-    } else {
-      snackbar.show('Failed to demote member', 'error')
-    }
-  }
+  const seasonId = props.team.team_season_id
+  await feedback.run(
+    () => leagueTeamsStore.demoteFromCaptain(seasonId, member.player_id),
+    {
+      success: `${member.display_name} demoted from captain`,
+      errorSource: leagueTeamsStore.demoteFromCaptainState,
+      after: () => emit('updated'),
+    },
+  )
 }
 
 async function removeMember(member: TeamMember) {
   if (!props.team?.team_season_id) return
-
-  try {
-    const response = await fetch(`${API_URL}/v1/league-team-seasons/${props.team.team_season_id}/members/${member.player_id}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to remove member')
-    }
-
-    snackbar.show(`${member.display_name} removed from team`, 'success')
-    await fetchMembers()
-    emit('updated')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      snackbar.show(e.detail, 'error')
-    } else {
-      snackbar.show('Failed to remove member', 'error')
-    }
-  }
+  const seasonId = props.team.team_season_id
+  await feedback.run(
+    () => leagueTeamsStore.removeMember(seasonId, member.player_id),
+    {
+      success: `${member.display_name} removed from team`,
+      errorSource: leagueTeamsStore.removeMemberState,
+      after: () => emit('updated'),
+    },
+  )
 }
 
 async function acceptInvitation(invitation: TeamInvitation) {
-  try {
-    const response = await fetch(`${API_URL}/v1/league-team-invitations/${invitation.id}/accept`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to accept invitation')
-    }
-
-    snackbar.show('Application accepted', 'success')
-    await Promise.all([fetchMembers(), fetchInvitations()])
+  const result = await feedback.run(
+    () => leagueTeamsStore.acceptApplication(invitation.id),
+    {
+      success: 'Application accepted',
+      errorSource: leagueTeamsStore.acceptApplicationState,
+    },
+  )
+  if (result !== null && props.team?.team_season_id) {
+    // Roster changed too after acceptance — refresh members.
+    await leagueTeamsStore.fetchMembers(props.team.team_season_id)
     emit('updated')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      snackbar.show(e.detail, 'error')
-    } else {
-      snackbar.show('Failed to accept invitation', 'error')
-    }
   }
 }
 
 async function cancelInvitation(invitation: TeamInvitation) {
-  try {
-    const response = await fetch(`${API_URL}/v1/league-team-invitations/${invitation.id}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to cancel invitation')
-    }
-
-    snackbar.show('Invitation cancelled', 'success')
-    await fetchInvitations()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      snackbar.show(e.detail, 'error')
-    } else {
-      snackbar.show('Failed to cancel invitation', 'error')
-    }
-  }
+  await feedback.run(
+    () => leagueTeamsStore.cancelInvitation(invitation.id),
+    {
+      success: 'Invitation cancelled',
+      errorSource: leagueTeamsStore.cancelInvitationState,
+    },
+  )
 }
 
 async function saveSettings() {
   if (!settingsFormValid.value || !props.team) return
 
-  savingSettings.value = true
-  try {
-    const body: Record<string, unknown> = {}
-
-    if (settingsForm.value.name !== props.team.team_name) {
-      body.name = settingsForm.value.name
-    }
-    if (settingsForm.value.tag !== props.team.team_tag) {
-      body.tag = settingsForm.value.tag
-    }
-    if (settingsForm.value.description) {
-      body.description = settingsForm.value.description
-    }
-
-    if (Object.keys(body).length === 0) {
-      snackbar.show('No changes to save', 'info')
-      return
-    }
-
-    const response = await fetch(`${API_URL}/v1/league-teams/${props.team.team_id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to update team')
-    }
-
-    snackbar.show('Team settings saved', 'success')
-    emit('updated')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      snackbar.show(e.detail, 'error')
-    } else {
-      snackbar.show('Failed to save settings', 'error')
-    }
-  } finally {
-    savingSettings.value = false
+  const body: { name?: string; tag?: string; description?: string } = {}
+  if (settingsForm.value.name !== props.team.team_name) {
+    body.name = settingsForm.value.name
   }
+  if (settingsForm.value.tag !== props.team.team_tag) {
+    body.tag = settingsForm.value.tag
+  }
+  if (settingsForm.value.description) {
+    body.description = settingsForm.value.description
+  }
+
+  if (Object.keys(body).length === 0) {
+    snackbar.show('No changes to save', 'info')
+    return
+  }
+
+  const teamId = props.team.team_id
+  await feedback.run(
+    () => leagueTeamsStore.updateTeam(teamId, body),
+    {
+      success: 'Team settings saved',
+      errorSource: leagueTeamsStore.updateTeamState,
+      after: () => emit('updated'),
+    },
+  )
 }
 
 function onPlayerInvited() {
   snackbar.show('Invitation sent', 'success')
-  fetchInvitations()
+  if (props.team?.team_season_id) {
+    leagueTeamsStore.fetchTeamInvitations(props.team.team_season_id)
+  }
 }
 
 // Helpers

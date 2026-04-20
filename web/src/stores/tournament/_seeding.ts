@@ -29,10 +29,14 @@ export function createSeedingSlice() {
     }, 'Failed to fetch seeding')
   }
 
-  async function autoSeed(tournamentId: string): Promise<SeededParticipantResponse[]> {
+  async function autoSeed(
+    tournamentId: string,
+    algorithm?: string,
+  ): Promise<SeededParticipantResponse[]> {
     return withActionState(autoSeedState, async () => {
       const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/seeding/auto', {
         params: { path: { tournament_id: tournamentId } },
+        body: algorithm ? { algorithm } : {},
       }))
       seeding.value = result.data
       return seeding.value

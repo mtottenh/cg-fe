@@ -19,7 +19,7 @@
       {{ leagueTeamsStore.error || leaguesStore.error }}
     </v-alert>
 
-    <v-progress-linear v-if="leagueTeamsStore.loading || leaguesStore.fetchMyLeagueInvitationsState.loading.value" indeterminate class="mb-4" />
+    <v-progress-linear v-if="leagueTeamsStore.loading || leaguesStore.fetchMyLeagueInvitationsState.loading" indeterminate class="mb-4" />
 
     <!-- League Invitations Section -->
     <template v-if="leaguesStore.myLeagueInvitations.length > 0">

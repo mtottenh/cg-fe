@@ -15,10 +15,10 @@ type UpdateMapRequest = components['schemas']['UpdateMapRequest']
 export const useGamesStore = defineStore('games', () => {
   const games = ref<GameSummary[]>([])
   const currentGame = ref<GameDetail | null>(null)
-  const loading = computed(() => fetchGamesState.loading.value)
+  const loading = computed(() => fetchGamesState.loading)
   const error = computed({
-    get: () => fetchGamesState.error.value,
-    set: (val: string | null) => { fetchGamesState.error.value = val },
+    get: () => fetchGamesState.error,
+    set: (val: string | null) => { fetchGamesState.error = val },
   })
 
   const fetchGamesState = createActionState()

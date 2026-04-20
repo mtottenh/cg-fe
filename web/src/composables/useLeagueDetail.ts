@@ -119,7 +119,10 @@ export function useLeagueDetail() {
     }
   }
 
-  async function fetchTournamentsForSeason(seasonId: string) {
+  // Prefixed with _ because we accept the season id for API symmetry + future
+  // filtering, but currently fetch by league_id only (not all tournaments are
+  // pinned to a specific season).
+  async function fetchTournamentsForSeason(_seasonId: string) {
     if (!league.value) return
     loadingTournaments.value = true
     try {
@@ -176,7 +179,7 @@ export function useLeagueDetail() {
     try {
       await leaguesStore.joinLeague(league.value.id)
     } catch (e) {
-      error.value = leaguesStore.joinLeagueState.error.value || 'Failed to join league'
+      error.value = leaguesStore.joinLeagueState.error || 'Failed to join league'
       throw e
     } finally {
       joiningLeague.value = false
@@ -189,7 +192,7 @@ export function useLeagueDetail() {
     try {
       await leaguesStore.applyToLeague(league.value.id, message)
     } catch (e) {
-      error.value = leaguesStore.applyToLeagueState.error.value || 'Failed to apply to league'
+      error.value = leaguesStore.applyToLeagueState.error || 'Failed to apply to league'
       throw e
     } finally {
       applyingToLeague.value = false

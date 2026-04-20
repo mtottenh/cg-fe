@@ -44,10 +44,10 @@ export const useDemosStore = defineStore('demos', () => {
   const links = ref<DemoMatchLinkResponse[]>([])
   const statusCounts = ref<DemoStatusCountsResponse | null>(null)
 
-  const loading = computed(() => fetchDemosState.loading.value)
+  const loading = computed(() => fetchDemosState.loading)
   const error = computed({
-    get: () => fetchDemosState.error.value,
-    set: (val: string | null) => { fetchDemosState.error.value = val },
+    get: () => fetchDemosState.error,
+    set: (val: string | null) => { fetchDemosState.error = val },
   })
 
   // Per-action states

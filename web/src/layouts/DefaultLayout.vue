@@ -1,13 +1,7 @@
 <template>
   <v-app>
-    <v-app-bar color="surface" elevation="0" border="b">
-      <v-app-bar-title>
-        <router-link to="/" class="text-decoration-none text-white">
-          Gaming Portal
-        </router-link>
-      </v-app-bar-title>
-
-      <template v-slot:append>
+    <AppHeader title="Gaming Portal">
+      <template #append>
         <v-btn variant="text" to="/tournaments">Tournaments</v-btn>
         <v-btn variant="text" to="/leagues">Leagues</v-btn>
         <v-btn variant="text" to="/players">Players</v-btn>
@@ -39,7 +33,7 @@
           <v-btn variant="text" @click="handleLogout">Logout</v-btn>
         </template>
       </template>
-    </v-app-bar>
+    </AppHeader>
 
     <v-main>
       <slot />
@@ -60,6 +54,7 @@ import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
+import AppHeader from '@/components/AppHeader.vue'
 
 const authStore = useAuthStore()
 const leagueTeamsStore = useLeagueTeamsStore()

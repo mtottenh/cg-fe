@@ -58,6 +58,7 @@
 
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
+import { storeToRefs } from 'pinia'
 import { usePlayersStore } from '@/stores/players'
 import type { components } from '@/api/types'
 
@@ -65,8 +66,8 @@ type MatchResponse = components['schemas']['TournamentMatchResponse']
 
 const playersStore = usePlayersStore()
 
-const loading = computed(() => playersStore.fetchMyMatchesState.loading.value)
-const matches = computed(() => playersStore.myMatches)
+const loading = computed(() => playersStore.fetchMyMatchesState.loading)
+const { myMatches: matches } = storeToRefs(playersStore)
 
 function matchRoute(match: MatchResponse) {
   // We need the tournament slug — use tournament_id as fallback

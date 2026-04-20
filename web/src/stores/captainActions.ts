@@ -18,10 +18,10 @@ export const useCaptainActionsStore = defineStore('captainActions', () => {
   const actions = ref<CaptainAction[]>([])
 
   const fetchActionsState = createActionState()
-  const loading = computed(() => fetchActionsState.loading.value)
+  const loading = computed(() => fetchActionsState.loading)
   const error = computed({
-    get: () => fetchActionsState.error.value,
-    set: (val: string | null) => { fetchActionsState.error.value = val },
+    get: () => fetchActionsState.error,
+    set: (val: string | null) => { fetchActionsState.error = val },
   })
 
   const actionCount = computed(() => actions.value.length)
@@ -63,8 +63,8 @@ export const useCaptainActionsStore = defineStore('captainActions', () => {
 
   function $reset() {
     actions.value = []
-    fetchActionsState.loading.value = false
-    fetchActionsState.error.value = null
+    fetchActionsState.loading = false
+    fetchActionsState.error = null
   }
 
   return {

@@ -124,9 +124,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api'
 import { useFormRules } from '@/composables/useFormRules'
+import {
+  useLeagueTeamsStore,
+  type CreateLeagueTeamRequest,
+} from '@/stores/leagueTeams'
 
 const props = defineProps<{  seasonId: string
 }>()
@@ -136,9 +140,11 @@ const emit = defineEmits<{  created: []
 
 const open = defineModel<boolean>({ required: true })
 
+const leagueTeamsStore = useLeagueTeamsStore()
+
 const formRef = ref()
 const formValid = ref(false)
-const saving = ref(false)
+const saving = computed(() => leagueTeamsStore.createTeamState.loading)
 const error = ref<string | null>(null)
 
 const form = ref({
@@ -149,8 +155,6 @@ const form = ref({
   secondary_color: '',
   logo_url: '',
 })
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 const rules = {
   ...useFormRules(),
@@ -184,53 +188,25 @@ function close() {
 
 async function save() {
   if (!formValid.value || !props.seasonId) return
-
-  saving.value = true
   error.value = null
 
+  const body: CreateLeagueTeamRequest = {
+    name: form.value.name,
+    tag: form.value.tag.toUpperCase(),
+  }
+  if (form.value.description) body.description = form.value.description
+  if (form.value.primary_color) body.primary_color = form.value.primary_color
+  if (form.value.secondary_color) body.secondary_color = form.value.secondary_color
+  if (form.value.logo_url) body.logo_url = form.value.logo_url
+
   try {
-    const body: Record<string, unknown> = {
-      name: form.value.name,
-      tag: form.value.tag.toUpperCase(),
-    }
-
-    if (form.value.description) {
-      body.description = form.value.description
-    }
-    if (form.value.primary_color) {
-      body.primary_color = form.value.primary_color
-    }
-    if (form.value.secondary_color) {
-      body.secondary_color = form.value.secondary_color
-    }
-    if (form.value.logo_url) {
-      body.logo_url = form.value.logo_url
-    }
-
-    const response = await fetch(`${API_URL}/v1/league-seasons/${props.seasonId}/teams`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to create team')
-    }
-
+    await leagueTeamsStore.createTeam(props.seasonId, body)
     emit('created')
     close()
   } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to create team'
-    }
-  } finally {
-    saving.value = false
+    error.value = e instanceof ApiError
+      ? e.detail
+      : (leagueTeamsStore.createTeamState.error ?? 'Failed to create team')
   }
 }
 </script>

@@ -85,34 +85,58 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup lang="ts" generic="P extends MultipartPath">
 import { ref, computed, watch } from 'vue'
 import { getAuthToken } from '@/api/client'
+import { refreshAccessToken } from '@/api/middleware'
+import {
+  buildUploadUrl,
+  type MultipartPath,
+  type PathParamsFor,
+} from '@/api/uploadUrl'
 import { useFileUpload } from '@/composables/useFileUpload'
 
 interface ImageMeta {
   url: string | null
 }
 
-interface Props {
+interface Props<Path extends MultipartPath> {
   placeholder?: string
   placeholderIcon?: string
   shape?: 'square' | 'circle' | 'banner'
   aspectRatio?: number
   maxSize?: number // in MB
   accept?: string
-  uploadEndpoint: string
+  /**
+   * OpenAPI-typed path template to POST the upload to. `MultipartPath` is
+   * restricted to paths whose POST accepts `multipart/form-data`, so typos
+   * or non-upload endpoints are rejected at compile time. Example:
+   * `path="/v1/league-teams/{team_id}/logo"`.
+   */
+  path: Path
+  /**
+   * Path parameters for `path`. Required when the template contains
+   * placeholders (e.g. `{team_id}`); omitted for parameter-less endpoints
+   * like `/v1/players/me/avatar`.
+   */
+  pathParams?: PathParamsFor<Path>
+  /**
+   * Field on the response body to pluck the uploaded image URL from. The
+   * component reads `response.data?.[responseField]` first, then `response.url`.
+   * Defaults to `url` to match endpoints returning `UploadResponse`.
+   */
   responseField?: string
   removable?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props<P>>(), {
   placeholder: 'Click or drag to upload',
   placeholderIcon: 'mdi-image-plus',
   shape: 'square',
   aspectRatio: 1,
   maxSize: 5,
   accept: 'image/jpeg,image/png,image/webp',
+  pathParams: undefined,
   responseField: 'url',
   removable: true,
 })
@@ -126,6 +150,9 @@ const emit = defineEmits<{
   (e: 'remove'): void
 }>()
 
+/** Fully-qualified URL for the configured upload endpoint. */
+const endpoint = computed(() => buildUploadUrl(props.path, props.pathParams))
+
 const { uploads, uploadFile: rawUpload, clear } = useFileUpload<ImageMeta>({
   async onUpload(file) {
     const formData = new FormData()
@@ -138,11 +165,17 @@ const { uploads, uploadFile: rawUpload, clear } = useFileUpload<ImageMeta>({
     }
 
     return {
-      url: props.uploadEndpoint,
+      url: endpoint.value,
       method: 'POST',
       headers,
       body: formData,
     }
+  },
+
+  /** Silent-refresh on 401 via the shared refresh promise (dedup'd with any
+   *  concurrent openapi-fetch request). Returns true to request a retry. */
+  async onUnauthorized() {
+    return refreshAccessToken()
   },
 
   parseResponse(responseText) {

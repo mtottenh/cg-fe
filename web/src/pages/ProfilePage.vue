@@ -152,6 +152,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayersStore } from '@/stores/players'
@@ -166,8 +167,8 @@ const playersStore = usePlayersStore()
 const loading = ref(true)
 const error = ref<string | null>(null)
 
-const user = computed(() => authStore.user)
-const playerProfile = computed(() => playersStore.currentPlayer)
+const { user } = storeToRefs(authStore)
+const { currentPlayer: playerProfile } = storeToRefs(playersStore)
 
 const bannerStyle = computed(() => {
   if (playerProfile.value?.banner_url) {

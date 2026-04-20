@@ -36,11 +36,27 @@ export function createSnackbar(): SnackbarInstance {
 
 /**
  * Get the provided snackbar instance.
- * Falls back to creating a local instance if no provider exists (backwards compat).
+ *
+ * Requires a `<AppSnackbar>` to be mounted and the instance to be
+ * `provide()`-d at the app root (see `App.vue`). Throws in dev to surface
+ * missing providers immediately; in prod returns a no-op stub so a runtime
+ * slip does not crash the page (messages will be lost, but the UI keeps working).
  */
 export function useSnackbar(): SnackbarInstance {
   const provided = inject(SnackbarKey, null)
   if (provided) return provided
-  // Fallback: create a local instance (legacy behavior)
-  return createSnackbar()
+  if (import.meta.env.DEV) {
+    throw new Error(
+      'useSnackbar(): no provider found. Ensure <AppSnackbar> is mounted at ' +
+      'the app root and that createSnackbar() is provided under SnackbarKey.'
+    )
+  }
+  return {
+    visible: false,
+    text: '',
+    color: '',
+    show() {},
+    success() {},
+    error() {},
+  }
 }

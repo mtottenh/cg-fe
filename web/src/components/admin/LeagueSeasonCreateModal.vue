@@ -130,9 +130,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api'
 import { useFormRules } from '@/composables/useFormRules'
+import {
+  useLeagueSeasonsStore,
+  type CreateLeagueSeasonRequest,
+} from '@/stores/leagueSeasons'
 
 const props = defineProps<{  leagueId: string
 }>()
@@ -142,9 +146,11 @@ const emit = defineEmits<{  created: []
 
 const open = defineModel<boolean>({ required: true })
 
+const leagueSeasonsStore = useLeagueSeasonsStore()
+
 const formRef = ref()
 const formValid = ref(false)
-const saving = ref(false)
+const saving = computed(() => leagueSeasonsStore.createSeasonState.loading)
 const error = ref<string | null>(null)
 
 const form = ref({
@@ -156,8 +162,6 @@ const form = ref({
   max_substitutes: 2,
   max_teams: null as number | null,
 })
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 const rules = {
   ...useFormRules(),
@@ -204,57 +208,28 @@ function close() {
 
 async function save() {
   if (!formValid.value || !props.leagueId) return
-
-  saving.value = true
   error.value = null
 
+  const body: CreateLeagueSeasonRequest = {
+    league_id: props.leagueId,
+    name: form.value.name,
+    slug: form.value.slug,
+  }
+
+  if (form.value.description) body.description = form.value.description
+  if (form.value.team_size_min) body.team_size_min = form.value.team_size_min
+  if (form.value.team_size_max) body.team_size_max = form.value.team_size_max
+  if (form.value.max_substitutes !== null) body.max_substitutes = form.value.max_substitutes
+  if (form.value.max_teams) body.max_teams = form.value.max_teams
+
   try {
-    const body: Record<string, unknown> = {
-      league_id: props.leagueId,
-      name: form.value.name,
-      slug: form.value.slug,
-    }
-
-    if (form.value.description) {
-      body.description = form.value.description
-    }
-    if (form.value.team_size_min) {
-      body.team_size_min = form.value.team_size_min
-    }
-    if (form.value.team_size_max) {
-      body.team_size_max = form.value.team_size_max
-    }
-    if (form.value.max_substitutes !== null) {
-      body.max_substitutes = form.value.max_substitutes
-    }
-    if (form.value.max_teams) {
-      body.max_teams = form.value.max_teams
-    }
-
-    const response = await fetch(`${API_URL}/v1/league-seasons`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to create season')
-    }
-
+    await leagueSeasonsStore.createSeason(body)
     emit('created')
     close()
   } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to create season'
-    }
-  } finally {
-    saving.value = false
+    error.value = e instanceof ApiError
+      ? e.detail
+      : (leagueSeasonsStore.createSeasonState.error ?? 'Failed to create season')
   }
 }
 </script>

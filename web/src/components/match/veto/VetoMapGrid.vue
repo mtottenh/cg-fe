@@ -18,7 +18,7 @@
     </v-row>
 
     <!-- Loading overlay for action in progress -->
-    <v-overlay v-if="vetoStore.vetoActionState.loading.value" contained class="align-center justify-center">
+    <v-overlay v-if="vetoStore.vetoActionState.loading" contained class="align-center justify-center">
       <v-progress-circular indeterminate color="primary" />
     </v-overlay>
   </div>
@@ -67,7 +67,7 @@ async function handleSelect(map: MapStatusResponse) {
     const action = props.phase === 'banning' ? 'banned' : 'picked'
     snackbar.show(`${map.map_name} ${action}!`, 'success')
   } catch {
-    snackbar.show(vetoStore.vetoActionState.error.value || 'Failed to perform action', 'error')
+    snackbar.show(vetoStore.vetoActionState.error || 'Failed to perform action', 'error')
   }
 }
 </script>

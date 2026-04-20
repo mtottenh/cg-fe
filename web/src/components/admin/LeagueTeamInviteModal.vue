@@ -109,9 +109,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { ApiError } from '@/api'
+import { computed, ref, watch } from 'vue'
+import { api, ApiError } from '@/api'
+import { unwrapApi } from '@/stores/helpers'
 import { useFormRules } from '@/composables/useFormRules'
+import {
+  useLeagueTeamsStore,
+  type InviteToLeagueTeamRequest,
+} from '@/stores/leagueTeams'
 
 interface PlayerSearchResult {
   id: string
@@ -127,9 +132,11 @@ const emit = defineEmits<{  invited: []
 
 const open = defineModel<boolean>({ required: true })
 
+const leagueTeamsStore = useLeagueTeamsStore()
+
 const formRef = ref()
 const formValid = ref(false)
-const sending = ref(false)
+const sending = computed(() => leagueTeamsStore.invitePlayerState.loading)
 const error = ref<string | null>(null)
 
 // Player search
@@ -147,8 +154,6 @@ const form = ref<{
   role: 'player',
   message: '',
 })
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 const roleOptions = [
   { value: 'player', label: 'Player' },
@@ -172,21 +177,13 @@ async function searchPlayers(search: string) {
   searchTimeout = setTimeout(async () => {
     searchingPlayers.value = true
     try {
-      const response = await fetch(`${API_URL}/v1/players?search=${encodeURIComponent(search)}&per_page=10`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error('Search failed')
-      }
-
-      const result = await response.json()
-      playerResults.value = result.data.map((p: { id: string; display_name: string; avatar_url: string | null }) => ({
+      const result = await unwrapApi(api.GET('/v1/players', {
+        params: { query: { q: search, per_page: 10 } },
+      }))
+      playerResults.value = result.data.map((p) => ({
         id: p.id,
         display_name: p.display_name,
-        avatar_url: p.avatar_url,
+        avatar_url: p.avatar_url ?? null,
       }))
     } catch {
       playerResults.value = []
@@ -216,44 +213,22 @@ function close() {
 
 async function send() {
   if (!formValid.value || !props.teamSeasonId || !form.value.player_id) return
-
-  sending.value = true
   error.value = null
 
+  const body: InviteToLeagueTeamRequest = {
+    player_id: form.value.player_id.id,
+    role: form.value.role,
+  }
+  if (form.value.message) body.message = form.value.message
+
   try {
-    const body: Record<string, unknown> = {
-      player_id: form.value.player_id.id,
-      role: form.value.role,
-    }
-
-    if (form.value.message) {
-      body.message = form.value.message
-    }
-
-    const response = await fetch(`${API_URL}/v1/league-team-seasons/${props.teamSeasonId}/invitations`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to send invitation')
-    }
-
+    await leagueTeamsStore.invitePlayer(props.teamSeasonId, body)
     emit('invited')
     close()
   } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to send invitation'
-    }
-  } finally {
-    sending.value = false
+    error.value = e instanceof ApiError
+      ? e.detail
+      : (leagueTeamsStore.invitePlayerState.error ?? 'Failed to send invitation')
   }
 }
 </script>

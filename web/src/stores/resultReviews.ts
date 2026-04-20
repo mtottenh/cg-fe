@@ -91,10 +91,21 @@ export const useResultReviewsStore = defineStore('resultReviews', () => {
     }, 'Failed to fetch result review')
   }
 
-  async function acknowledgeResultReview(matchId: string): Promise<void> {
+  /**
+   * Acknowledge a result review. Takes `registrationId` (which captain is
+   * acknowledging) as a required `?registration_id=` query parameter. When
+   * both captains acknowledge, the review transitions to acknowledged.
+   */
+  async function acknowledgeResultReview(
+    matchId: string,
+    registrationId: string,
+  ): Promise<void> {
     return withActionState(acknowledgeResultReviewState, async () => {
       await unwrapApi(api.POST('/v1/matches/{match_id}/result-review/acknowledge', {
-        params: { path: { match_id: matchId } },
+        params: {
+          path: { match_id: matchId },
+          query: { registration_id: registrationId },
+        },
       }))
       // Re-fetch to get updated acknowledgment status
       await fetchMatchResultReview(matchId)

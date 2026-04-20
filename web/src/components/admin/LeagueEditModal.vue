@@ -181,6 +181,12 @@
 import { ref, watch } from 'vue'
 import { useLeaguesStore, type UserLeagueMembership, type LeagueResponse } from '@/stores/leagues'
 import { useFormRules } from '@/composables/useFormRules'
+import {
+  LEAGUE_ACCESS_TYPES,
+  extractEligibilityForm,
+  buildEligibilitySettings,
+  type LeagueAccessType,
+} from '@/composables/useLeagueEligibility'
 
 // Store
 const leaguesStore = useLeaguesStore()
@@ -212,11 +218,7 @@ const form = ref({
   min_matches: null as number | null,
 })
 
-const accessTypes = [
-  { value: 'open', label: 'Open', description: 'Anyone can join immediately' },
-  { value: 'invite_only', label: 'Invite Only', description: 'Members can only join via invitation' },
-  { value: 'application', label: 'Application', description: 'Users apply, admins approve/reject' },
-]
+const accessTypes = LEAGUE_ACCESS_TYPES
 
 const rules = useFormRules()
 
@@ -237,18 +239,16 @@ async function fetchLeagueDetails() {
     const league = await leaguesStore.fetchLeague(props.league.league_id)
     leagueDetails.value = league
 
-    // Populate form with league details
-    const eligibility = (league.settings as Record<string, unknown>)?.eligibility as Record<string, unknown> | undefined
+    // Populate form with league details. Eligibility fields are pulled out of
+    // `settings.eligibility` by the shared extractor so the shape stays in
+    // lockstep with the Create modal.
     form.value = {
       name: league.name,
       slug: league.slug,
       description: league.description || '',
       logo_url: league.logo_url || '',
       access_type: league.access_type,
-      min_rating: (eligibility?.min_rating_per_player as number) ?? null,
-      max_rating: (eligibility?.max_rating_per_player as number) ?? null,
-      max_peak_rating: (eligibility?.max_peak_rating_per_player as number) ?? null,
-      min_matches: (eligibility?.min_matches_played as number) ?? null,
+      ...extractEligibilityForm(league.settings),
     }
   } catch {
     error.value = leaguesStore.error || 'Failed to load league details'
@@ -286,17 +286,12 @@ async function save() {
       updateData.logo_url = form.value.logo_url || null
     }
     if (form.value.access_type !== leagueDetails.value.access_type) {
-      updateData.access_type = form.value.access_type as 'open' | 'invite_only' | 'application'
+      updateData.access_type = form.value.access_type as LeagueAccessType
     }
 
-    // Build settings with eligibility restrictions
-    const eligibility: Record<string, unknown> = {}
-    if (form.value.min_rating) eligibility.min_rating_per_player = form.value.min_rating
-    if (form.value.max_rating) eligibility.max_rating_per_player = form.value.max_rating
-    if (form.value.max_peak_rating) eligibility.max_peak_rating_per_player = form.value.max_peak_rating
-    if (form.value.min_matches) eligibility.min_matches_played = form.value.min_matches
-    // Always send settings if any requirement fields are present (to allow clearing)
-    const newSettings = Object.keys(eligibility).length > 0 ? { eligibility } : {}
+    // Build settings via shared helper — shape stays identical to the Create
+    // modal. Send even when empty so callers can clear eligibility rules.
+    const newSettings = buildEligibilitySettings(form.value)
     const currentSettings = leagueDetails.value.settings as Record<string, unknown> ?? {}
     if (JSON.stringify(newSettings) !== JSON.stringify(currentSettings)) {
       updateData.settings = newSettings

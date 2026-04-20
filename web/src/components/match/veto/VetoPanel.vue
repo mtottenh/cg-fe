@@ -106,7 +106,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from 'vue'
-import { useMatchLobby, type VetoPhase } from '@/composables/useMatchLobby'
+import { injectMatchLobby, type VetoPhase } from '@/composables/useMatchLobby'
 import VetoCoinFlip from './VetoCoinFlip.vue'
 import VetoMapGrid from './VetoMapGrid.vue'
 import VetoSideSelect from './VetoSideSelect.vue'
@@ -122,23 +122,19 @@ const props = defineProps<{
   participant2Name: string
 }>()
 
-// `useMatchLobby` signature widens to `string | null` / `string | null | undefined`.
-// Use `computed()` so the narrower prop types (string / string | null | undefined)
-// pass the covariance check — `toRef()` would yield an invariant `Ref<string>`.
-const matchIdRef = computed(() => props.matchId as string | null)
-const userRegRef = computed(() => props.userRegistrationId)
-
 const loading = ref(true)
 
+// Parent (MatchDetailPage) owns the lobby composable + websocket connection
+// and provides it; we inject so there's one WS per match regardless of how
+// many components consume the state.
 const {
   session, hasSession, phase, isMyTurn,
   maps, pickedMaps,
   actions, currentAction, timeRemaining, mapsNeedingSideSelect,
   coinFlipResult, bothParticipantsConnected,
   connected, usingFallback,
-  chatMessages, sendChat, participants, spectatorCount,
   initialize,
-} = useMatchLobby(matchIdRef, userRegRef)
+} = injectMatchLobby()
 
 const sideSelectionMode = computed(() => session.value?.side_selection_mode ?? 'knife')
 
@@ -186,15 +182,7 @@ onMounted(() => {
   initWithLoading()
 })
 
-watch(matchIdRef, () => {
+watch(() => props.matchId, () => {
   initWithLoading()
-})
-
-defineExpose({
-  chatMessages,
-  sendChat,
-  participants,
-  spectatorCount,
-  connected,
 })
 </script>

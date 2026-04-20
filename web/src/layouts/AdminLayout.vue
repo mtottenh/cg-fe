@@ -1,15 +1,7 @@
 <template>
   <v-app>
-    <v-app-bar color="surface" elevation="0" border="b">
-      <v-app-bar-nav-icon @click="drawer = !drawer" />
-
-      <v-app-bar-title>
-        <router-link to="/admin" class="text-decoration-none text-white">
-          Admin Panel
-        </router-link>
-      </v-app-bar-title>
-
-      <template v-slot:append>
+    <AppHeader title="Admin Panel" title-to="/admin" show-nav @toggle-nav="drawer = !drawer">
+      <template #append>
         <v-chip color="warning" size="small" class="mr-4">
           ADMIN
         </v-chip>
@@ -26,7 +18,7 @@
           <v-tooltip activator="parent" location="bottom">Logout</v-tooltip>
         </v-btn>
       </template>
-    </v-app-bar>
+    </AppHeader>
 
     <AdminSidebar
       v-model="drawer"
@@ -46,6 +38,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import AppHeader from '@/components/AppHeader.vue'
 import AdminSidebar from '@/components/admin/AdminSidebar.vue'
 
 const authStore = useAuthStore()

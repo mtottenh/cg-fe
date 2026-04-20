@@ -23,10 +23,10 @@ export const useLeaguesStore = defineStore('leagues', () => {
   const myApplications = ref<LeagueInvitationResponse[]>([])
   const applications = ref<LeagueInvitationResponse[]>([])
   const leagueInvitations = ref<LeagueInvitationResponse[]>([])
-  const loading = computed(() => fetchLeaguesState.loading.value)
+  const loading = computed(() => fetchLeaguesState.loading)
   const error = computed({
-    get: () => fetchLeaguesState.error.value,
-    set: (val: string | null) => { fetchLeaguesState.error.value = val },
+    get: () => fetchLeaguesState.error,
+    set: (val: string | null) => { fetchLeaguesState.error = val },
   })
   const pagination = ref<PaginationMeta>({ page: 1, per_page: 20, total_items: 0, total_pages: 0 })
 
@@ -192,10 +192,11 @@ export const useLeaguesStore = defineStore('leagues', () => {
 
   async function fetchApplications(leagueId: string): Promise<LeagueInvitationResponse[]> {
     return withActionState(fetchApplicationsState, async () => {
+      // Endpoint returns the array directly, not wrapped in a DataResponse envelope.
       const result = await unwrapApi(api.GET('/v1/leagues/{league_id}/applications', {
         params: { path: { league_id: leagueId } },
       }))
-      applications.value = result.data
+      applications.value = result
       return applications.value
     }, 'Failed to fetch applications')
   }
@@ -220,10 +221,11 @@ export const useLeaguesStore = defineStore('leagues', () => {
 
   async function fetchLeagueInvitationsAdmin(leagueId: string): Promise<LeagueInvitationResponse[]> {
     return withActionState(fetchLeagueInvitationsState, async () => {
+      // Endpoint returns the array directly, not wrapped in a DataResponse envelope.
       const result = await unwrapApi(api.GET('/v1/leagues/{league_id}/invitations', {
         params: { path: { league_id: leagueId } },
       }))
-      leagueInvitations.value = result.data
+      leagueInvitations.value = result
       return leagueInvitations.value
     }, 'Failed to fetch league invitations')
   }
@@ -241,22 +243,28 @@ export const useLeaguesStore = defineStore('leagues', () => {
 
   async function fetchMembers(leagueId: string): Promise<LeagueMemberResponse[]> {
     return withActionState(fetchMembersState, async () => {
+      // Endpoint returns the array directly, not wrapped in a DataResponse envelope.
       const result = await unwrapApi(api.GET('/v1/leagues/{league_id}/members', {
         params: { path: { league_id: leagueId } },
       }))
-      members.value = result.data
+      members.value = result
       return members.value
     }, 'Failed to fetch league members')
   }
 
+  /**
+   * Update a league member's role. The backend field is `membership_type`; the
+   * parameter name stays `role` for the store's public API because that's the
+   * UI-facing concept (the modal passes 'admin'/'moderator'/'member' strings).
+   */
   async function updateMemberRole(leagueId: string, userId: string, role: string): Promise<void> {
     return withActionState(updateMemberRoleState, async () => {
       await unwrapApi(api.PATCH('/v1/leagues/{league_id}/members/{user_id}', {
         params: { path: { league_id: leagueId, user_id: userId } },
-        body: { role },
+        body: { membership_type: role },
       }))
       const member = members.value.find(m => m.user_id === userId)
-      if (member) member.role = role
+      if (member) member.membership_type = role
     }, 'Failed to update member role')
   }
 

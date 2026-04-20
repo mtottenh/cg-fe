@@ -259,6 +259,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useBansStore, type BanResponse, type BanFilters } from '@/stores/bans'
 import UserSearchAutocomplete from '@/components/admin/UserSearchAutocomplete.vue'
 import BanCreateModal from '@/components/admin/BanCreateModal.vue'
@@ -272,6 +273,7 @@ import type { components } from '@/api/types'
 type PlayerSummary = components['schemas']['PlayerSearchResponse']
 
 const bansStore = useBansStore()
+const { bans, pagination, loading, error } = storeToRefs(bansStore)
 
 // State
 const currentPage = ref(1)
@@ -290,12 +292,6 @@ const selectedBanId = ref<string | null>(null)
 // Snackbar
 const snackbar = useSnackbar()
 const confirmDialog = useConfirmDialog()
-
-// Computed
-const bans = computed(() => bansStore.bans)
-const pagination = computed(() => bansStore.pagination)
-const loading = computed(() => bansStore.loading)
-const error = computed(() => bansStore.error)
 
 const hasActiveFilters = computed(() => {
   return !!selectedUserFilter.value || !!filters.value.ban_type || statusFilter.value !== 'all'

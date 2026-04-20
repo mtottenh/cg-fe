@@ -19,7 +19,7 @@
       <TournamentStatusActions
         v-if="tournament"
         :actions="tournamentActions"
-        :process-no-shows-loading="tournamentsStore.processNoShowsState.loading.value"
+        :process-no-shows-loading="tournamentsStore.processNoShowsState.loading"
         @view-public="viewPublic"
       />
     </div>
@@ -96,9 +96,7 @@
                       </tr>
                       <tr>
                         <td class="text-grey">Participant Type</td>
-                        <td>
-                          {{ tournament.participant_type === 'team' ? `Teams (${tournament.team_size} players)` : 'Individuals' }}
-                        </td>
+                        <td>{{ formatParticipantType(tournament.participant_type, tournament.team_size) }}</td>
                       </tr>
                       <tr>
                         <td class="text-grey">Match Format</td>
@@ -106,7 +104,7 @@
                       </tr>
                       <tr>
                         <td class="text-grey">Scheduling Mode</td>
-                        <td>{{ tournament.scheduling_mode }}</td>
+                        <td>{{ formatSchedulingMode(tournament.scheduling_mode) }}</td>
                       </tr>
                       <tr>
                         <td class="text-grey">Registration Type</td>
@@ -222,9 +220,9 @@
           <v-tabs-window-item value="seeding">
             <SeedingTab
               :seeding-list="seedingList"
-              :auto-seed-loading="tournamentsStore.autoSeedState.loading.value"
-              :save-seeding-loading="tournamentsStore.manualSeedState.loading.value"
-              :clear-seeding-loading="tournamentsStore.clearSeedingState.loading.value"
+              :auto-seed-loading="tournamentsStore.autoSeedState.loading"
+              :save-seeding-loading="tournamentsStore.manualSeedState.loading"
+              :clear-seeding-loading="tournamentsStore.clearSeedingState.loading"
               @auto-seed="handleAutoSeed"
               @save="handleSaveSeeding"
               @clear="handleClearSeeding"
@@ -342,7 +340,7 @@
           <v-btn variant="text" @click="stageCreateModalOpen = false">Cancel</v-btn>
           <v-btn
             color="primary"
-            :loading="tournamentsStore.createStageState.loading.value"
+            :loading="tournamentsStore.createStageState.loading"
             :disabled="!newStage.name"
             @click="handleCreateStage"
           >
@@ -368,7 +366,13 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useGamesStore, type GameSummary } from '@/stores/games'
-import { useTournamentsStore, formatTournamentFormat } from '@/stores/tournaments'
+import {
+  useTournamentsStore,
+  formatTournamentFormat,
+  formatParticipantType,
+  formatSchedulingMode,
+} from '@/stores/tournaments'
+import { formatMatchFormat } from '@/utils/matchStatus'
 import TournamentStatusChip from '@/components/admin/TournamentStatusChip.vue'
 import TournamentStatusActions from '@/components/admin/TournamentStatusActions.vue'
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
@@ -381,10 +385,10 @@ import SeedingTab from '@/components/admin/tournament-detail/SeedingTab.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useTournamentAdminActions } from '@/composables/useTournamentAdminActions'
+import { useSwissBracketProgress } from '@/composables/useSwissBracketProgress'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { formatDate, formatDateTime } from '@/utils/formatters'
 import type { TournamentRegistrationResponse } from '@/stores/tournaments'
-import type { BracketProgress } from '@/api/overrides'
 
 const route = useRoute()
 const router = useRouter()
@@ -428,22 +432,12 @@ const sortedStages = computed(() =>
 const registrationCount = computed(() => registrations.value.length)
 const matchCount = computed(() => matches.value.length)
 
-const isSwissFormat = computed(() => tournament.value?.format === 'swiss')
-const swissBracket = computed<BracketProgress | null>(() =>
-  (brackets.value[0] as BracketProgress | undefined) ?? null
-)
-const allCurrentRoundMatchesCompleted = computed(() => {
-  const b = swissBracket.value
-  if (!b?.current_round) return false
-  const roundMatches = matches.value.filter((m) => m.round === b.current_round)
-  return roundMatches.length > 0 && roundMatches.every((m) => m.status === 'completed')
-})
-const canAdvanceRound = computed(() => {
-  if (!isSwissFormat.value || tournament.value?.status !== 'in_progress') return false
-  const b = swissBracket.value
-  if (!b?.current_round || !b?.total_rounds) return false
-  return b.current_round < b.total_rounds && allCurrentRoundMatchesCompleted.value
-})
+const {
+  isSwissFormat,
+  swissBracket,
+  allCurrentRoundMatchesCompleted,
+  canAdvanceRound,
+} = useSwissBracketProgress(tournament)
 
 const canEditSeeding = computed(() =>
   tournament.value && ['registration', 'scheduled'].includes(tournament.value.status)
@@ -458,17 +452,7 @@ function getGame(gameId: string): GameSummary | undefined {
   return gamesStore.games.find((g) => g.id === gameId)
 }
 
-function formatMatchFormat(format: string): string {
-  switch (format) {
-    case 'bo1': return 'Best of 1'
-    case 'bo3': return 'Best of 3'
-    case 'bo5': return 'Best of 5'
-    case 'bo7': return 'Best of 7'
-    default: return format
-  }
-}
-
-// Match status helpers imported from @/utils/matchStatus
+// Match + tournament formatters imported from @/utils/matchStatus and @/stores/tournaments.
 
 async function handleMatchTransition(matchId: string, toStatus: string) {
   if (!tournament.value) return

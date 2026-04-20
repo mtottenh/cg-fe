@@ -1,4 +1,4 @@
-import { computed, ref, type Ref, type WritableComputedRef } from 'vue'
+import { computed, reactive, ref, type Ref, type WritableComputedRef } from 'vue'
 import { ApiError } from '@/api'
 import type { components } from '@/api/types'
 
@@ -52,18 +52,23 @@ export async function unwrapApi<T>(
 }
 
 export interface ActionState {
-  loading: Ref<boolean>
-  error: Ref<string | null>
+  loading: boolean
+  error: string | null
 }
 
 /**
  * Creates a per-action loading/error state pair.
+ *
+ * Returns a `reactive({...})` so consumers read `state.loading` / `state.error`
+ * without `.value` ceremony, both in script and template. Pinia already wraps
+ * nested state in reactive at runtime; this aligns the TypeScript shape with
+ * that reality and lets Vuetify's `:loading` prop receive a real boolean.
  */
 export function createActionState(): ActionState {
-  return {
-    loading: ref(false),
-    error: ref<string | null>(null),
-  }
+  return reactive({
+    loading: false,
+    error: null as string | null,
+  })
 }
 
 /**
@@ -82,17 +87,17 @@ export function aggregateActionStates(states: ActionState[]): {
   error: WritableComputedRef<string | null>
 } {
   const override = ref<string | null>(null)
-  const loading = computed(() => states.some((s) => s.loading.value))
+  const loading = computed(() => states.some((s) => s.loading))
   const error = computed<string | null>({
     get() {
       if (override.value !== null) return override.value
-      for (const s of states) if (s.error.value) return s.error.value
+      for (const s of states) if (s.error) return s.error
       return null
     },
     set(val) {
       override.value = val
       if (val === null) {
-        for (const s of states) s.error.value = null
+        for (const s of states) s.error = null
       }
     },
   })
@@ -107,18 +112,18 @@ export async function withActionState<T>(
   action: () => Promise<T>,
   fallbackMessage: string
 ): Promise<T> {
-  state.loading.value = true
-  state.error.value = null
+  state.loading = true
+  state.error = null
   try {
     return await action()
   } catch (e: unknown) {
     if (e instanceof ApiError) {
-      state.error.value = e.detail
+      state.error = e.detail
     } else {
-      state.error.value = fallbackMessage
+      state.error = fallbackMessage
     }
     throw e
   } finally {
-    state.loading.value = false
+    state.loading = false
   }
 }

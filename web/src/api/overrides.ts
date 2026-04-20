@@ -1,55 +1,28 @@
 /**
- * Supplementary types for API responses that the OpenAPI generator produces
- * incompletely or not at all.
+ * Narrow view types for OpenAPI fields that the spec types as `unknown`.
  *
- * Regenerating `src/api/types.ts` requires a live backend (`npm run generate:api`).
- * Until that round-trip happens, declare the missing bits here so call sites don't
- * have to sprinkle `as Record<string, unknown>` / `as any[]` casts.
+ * The backend returns these as freeform JSONB, so the generated types can't
+ * describe the shape. These interfaces declare the specific keys the frontend
+ * reads, while `[key: string]: unknown` leaves room for additional keys.
  *
- * Treat this file as temporary — when the spec is fixed upstream, its definitions
- * should be replaced by the generated ones.
+ * When a field moves from freeform JSONB to a real structured response in the
+ * backend spec, delete the corresponding shim here and use the generated type.
  */
 
 import type { components } from './types'
 
 /**
- * Swiss and round-robin brackets carry round-progress metadata that the spec
- * does not yet surface. These fields are populated by the backend for those
- * formats and are `null`/absent for single/double-elimination.
- */
-export interface BracketProgress {
-  current_round?: number | null
-  total_rounds?: number | null
-}
-
-export type TournamentBracketResponse =
-  components['schemas']['TournamentBracketResponse'] & BracketProgress
-
-/** Re-export of the generated standing row for convenience. */
-export type BracketStandingsRow = components['schemas']['TournamentStandingResponse']
-
-/**
- * Tournament `settings` JSONB on the backend — the spec types this as `unknown`
- * but our code reads `side_selection_mode`. Declared explicitly here.
+ * Tournament `settings` JSONB. The spec types this as `unknown`; the frontend
+ * reads `side_selection_mode` from it (set by the create/edit forms).
  */
 export interface TournamentSettings {
   side_selection_mode?: string
-  // Additional keys are allowed — settings is a freeform JSONB container.
   [key: string]: unknown
 }
 
 /**
- * `GameDetailResponse.map_pool` — the list of default map IDs for a game.
- * Missing from the generated schema.
- */
-export interface GameDetailWithMapPool {
-  map_pool?: string[]
-  [key: string]: unknown
-}
-
-/**
- * `LeagueResponse`/`CreateLeagueRequest`.settings — eligibility rules and other
- * league-level JSONB configuration.
+ * League `settings` JSONB. Holds eligibility rules and other league-level
+ * configuration; the spec types this as `unknown`.
  */
 export interface LeagueSettings {
   eligibility?: {
@@ -63,18 +36,12 @@ export interface LeagueSettings {
   [key: string]: unknown
 }
 
-/**
- * Convenience alias for the stage-create body. The generated spec calls it
- * `CreateTournamentStageRequest`; some call sites still reference the short
- * `CreateStageRequest` name.
- */
-export type CreateStageRequest = components['schemas']['CreateTournamentStageRequest']
+/** Short alias for the bracket-standings row — used by TournamentBracket. */
+export type BracketStandingsRow = components['schemas']['TournamentStandingResponse']
 
 /**
- * Rank-tier lookup endpoint response.
+ * Alias for the stage-create body — some call sites reference the shorter
+ * `CreateStageRequest` name while the generated schema calls it
+ * `CreateTournamentStageRequest`.
  */
-export interface RankTier {
-  id: string
-  display_name: string
-  sort_order: number
-}
+export type CreateStageRequest = components['schemas']['CreateTournamentStageRequest']

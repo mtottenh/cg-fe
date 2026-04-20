@@ -245,6 +245,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRbacStore, type RoleResponse, type PermissionResponse } from '@/stores/rbac'
 import RoleCreateEditModal from '@/components/admin/RoleCreateEditModal.vue'
 import RolePermissionsModal from '@/components/admin/RolePermissionsModal.vue'
@@ -253,6 +254,7 @@ import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const rbacStore = useRbacStore()
+const { roles, permissions, loading, error } = storeToRefs(rbacStore)
 
 // State
 const activeTab = ref('roles')
@@ -266,12 +268,6 @@ const selectedRoleForPermissions = ref<RoleResponse | null>(null)
 // Snackbar
 const snackbar = useSnackbar()
 const confirmDialog = useConfirmDialog()
-
-// Computed
-const roles = computed(() => rbacStore.roles)
-const permissions = computed(() => rbacStore.permissions)
-const loading = computed(() => rbacStore.loading)
-const error = computed(() => rbacStore.error)
 
 const permissionsByCategory = computed(() => {
   const grouped: Record<string, PermissionResponse[]> = {}

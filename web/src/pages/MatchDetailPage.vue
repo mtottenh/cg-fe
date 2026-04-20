@@ -50,8 +50,8 @@
               </template>
               <template v-else>
                 <div class="text-h4 text-grey">VS</div>
-                <v-chip :color="getStatusColor(match.status)" size="small" class="mt-2">
-                  {{ getStatusLabel(match.status) }}
+                <v-chip :color="getMatchStatusColor(match.status)" size="small" class="mt-2">
+                  {{ getMatchStatusLabel(match.status) }}
                 </v-chip>
               </template>
             </v-col>
@@ -181,7 +181,6 @@
       <!-- Veto Panel (map pick/ban before match starts) -->
       <VetoPanel
         v-if="showVetoPanel"
-        ref="vetoPanelRef"
         :match-id="match.id"
         :match-format="match.match_format"
         :user-registration-id="userRegistrationId"
@@ -212,7 +211,7 @@
             color="error"
             variant="outlined"
             size="small"
-            :loading="tournamentsStore.forfeitMatchState.loading.value"
+            :loading="tournamentsStore.forfeitMatchState.loading"
             @click="handleForfeit"
           >
             <v-icon start size="small">mdi-flag</v-icon>
@@ -384,12 +383,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProposalStatusColor, getProposalStatusLabel } from '@/stores/matchScheduling'
 import type { ResultClaimResponse } from '@/stores/matchResults'
 import { useTournamentsStore } from '@/stores/tournaments'
 import { useMatchDetail } from '@/composables/useMatchDetail'
+import { useMatchLobby, provideMatchLobby } from '@/composables/useMatchLobby'
 import MatchStatusTimeline from '@/components/match/MatchStatusTimeline.vue'
 import MatchSchedulingPanel from '@/components/match/MatchSchedulingPanel.vue'
 import ResultSubmissionPanel from '@/components/match/results/ResultSubmissionPanel.vue'
@@ -404,6 +404,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useDisputesStore } from '@/stores/disputes'
 import ResultReviewAlert from '@/components/match/results/ResultReviewAlert.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
+import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { formatDateTime } from '@/utils/formatters'
 import {
@@ -430,17 +431,25 @@ const disputesStore = useDisputesStore()
 
 // UI state (stays in the page)
 const snackbar = useSnackbar()
+const feedback = useActionFeedback()
 const confirmDialog = useConfirmDialog()
 
-// Lobby state from VetoPanel
-const vetoPanelRef = ref<InstanceType<typeof VetoPanel> | null>(null)
-const lobbyParticipants = computed(() => vetoPanelRef.value?.participants ?? [])
-const lobbySpectatorCount = computed(() => vetoPanelRef.value?.spectatorCount ?? 0)
-const lobbyConnected = computed(() => vetoPanelRef.value?.connected ?? false)
-const lobbyChatMessages = computed(() => vetoPanelRef.value?.chatMessages ?? [])
+// Own the match-lobby composable at the page level and provide it to
+// descendants (VetoPanel, chat/presence panels) so there's a single
+// websocket per match regardless of consumer count. Previously VetoPanel
+// instantiated the composable and re-exposed lobby state via defineExpose,
+// which coupled MatchDetailPage to a template ref — moved to provide/inject.
+const matchIdRef = computed<string | null>(() => match.value?.id ?? null)
+const matchLobby = useMatchLobby(matchIdRef, userRegistrationId)
+provideMatchLobby(matchLobby)
+
+const lobbyParticipants = matchLobby.participants
+const lobbySpectatorCount = matchLobby.spectatorCount
+const lobbyConnected = matchLobby.connected
+const lobbyChatMessages = matchLobby.chatMessages
 
 function handleChatSend(chatType: 'team' | 'all', content: string) {
-  vetoPanelRef.value?.sendChat(chatType, content)
+  matchLobby.sendChat(chatType, content)
 }
 
 // Veto panel visibility: show when match has veto_required and is in veto-relevant states
@@ -485,10 +494,7 @@ function isWinner(registrationId: string | null | undefined): boolean {
   return match.value.winner_registration_id === registrationId
 }
 
-// Match status/format helpers imported from @/utils/matchStatus
-// Alias to match template usage
-const getStatusColor = getMatchStatusColor
-const getStatusLabel = getMatchStatusLabel
+// Match status/format helpers imported from @/utils/matchStatus.
 
 function getSubmitterName(claim: ResultClaimResponse): string {
   if (claim.submitted_by_registration_id === match.value?.participant1_registration_id) {
@@ -500,25 +506,29 @@ function getSubmitterName(claim: ResultClaimResponse): string {
 // Match check-in
 async function handleMatchCheckIn() {
   if (!tournament.value || !match.value || !userRegistrationId.value) return
-  try {
-    await tournamentsStore.matchCheckIn(tournament.value.id, match.value.id, userRegistrationId.value)
-    snackbar.show('Checked in successfully!', 'success')
-    await fetchAll()
-  } catch {
-    snackbar.show(combinedError.value || 'Failed to check in', 'error')
-  }
+  await feedback.run(
+    () => tournamentsStore.matchCheckIn(tournament.value!.id, match.value!.id, userRegistrationId.value!),
+    {
+      success: 'Checked in successfully!',
+      failureFallback: 'Failed to check in',
+      errorSource: tournamentsStore,
+      after: fetchAll,
+    },
+  )
 }
 
-// Forfeit handler
+// Forfeit handler — requires the forfeiting user's registration id so the
+// backend knows which side conceded (endpoint body is { registration_id }).
 function handleForfeit() {
-  if (!tournament.value || !match.value) return
+  if (!tournament.value || !match.value || !userRegistrationId.value) return
+  const regId = userRegistrationId.value
   confirmDialog.confirm({
     title: 'Forfeit Match',
     message: 'Are you sure you want to forfeit this match? This cannot be undone. Your opponent will be declared the winner.',
     action: 'Forfeit',
     color: 'error',
     handler: async () => {
-      await tournamentsStore.forfeitMatch(tournament.value!.id, match.value!.id)
+      await tournamentsStore.forfeitMatch(tournament.value!.id, match.value!.id, regId)
       snackbar.show('Match forfeited.', 'warning')
       await fetchAll()
     },
@@ -528,51 +538,65 @@ function handleForfeit() {
 // Thin event handlers
 async function handlePropose(times: string[]) {
   if (!tournament.value || !match.value) return
-  try {
-    await schedulingStore.proposeSchedule(tournament.value.id, match.value.id, times)
-    snackbar.show('Schedule proposal sent!', 'success')
-    await fetchAll()
-  } catch {
-    snackbar.show(combinedError.value || 'Failed to send proposal', 'error')
-  }
+  await feedback.run(
+    () => schedulingStore.proposeSchedule(tournament.value!.id, match.value!.id, times),
+    {
+      success: 'Schedule proposal sent!',
+      failureFallback: 'Failed to send proposal',
+      errorSource: schedulingStore,
+      after: fetchAll,
+    },
+  )
 }
 
 async function handleAccept(selectedTime: string) {
   if (!tournament.value || !match.value || !activeProposal.value) return
-  try {
-    await schedulingStore.acceptProposal(tournament.value.id, match.value.id, {
-      proposal_id: activeProposal.value.id,
+  const proposalId = activeProposal.value.id
+  await feedback.run(
+    () => schedulingStore.acceptProposal(tournament.value!.id, match.value!.id, {
+      proposal_id: proposalId,
       selected_time: selectedTime,
-    })
-    snackbar.show('Schedule accepted!', 'success')
-    await fetchAll()
-  } catch {
-    snackbar.show(combinedError.value || 'Failed to accept proposal', 'error')
-  }
+    }),
+    {
+      success: 'Schedule accepted!',
+      failureFallback: 'Failed to accept proposal',
+      errorSource: schedulingStore,
+      after: fetchAll,
+    },
+  )
 }
 
 async function handleReject(_reason?: string) {
   if (!tournament.value || !match.value || !activeProposal.value) return
-  try {
-    await schedulingStore.rejectProposal(tournament.value.id, match.value.id, {
-      proposal_id: activeProposal.value.id,
-    })
-    snackbar.show('Proposal rejected', 'info')
-    await fetchAll()
-  } catch {
-    snackbar.show(combinedError.value || 'Failed to reject proposal', 'error')
-  }
+  const proposalId = activeProposal.value.id
+  await feedback.run(
+    () => schedulingStore.rejectProposal(tournament.value!.id, match.value!.id, {
+      proposal_id: proposalId,
+    }),
+    {
+      // Info-level result; useActionFeedback always shows 'success' as success color,
+      // but the original code used 'info'. Snackbar color doesn't carry semantic
+      // weight here beyond visual tone — keep as success for consistency.
+      success: 'Proposal rejected',
+      failureFallback: 'Failed to reject proposal',
+      errorSource: schedulingStore,
+      after: fetchAll,
+    },
+  )
 }
 
 async function handleCounter(times: string[]) {
   if (!tournament.value || !match.value || !activeProposal.value) return
-  try {
-    await schedulingStore.counterPropose(tournament.value.id, match.value.id, activeProposal.value.id, times)
-    snackbar.show('Counter-proposal sent!', 'success')
-    await fetchAll()
-  } catch {
-    snackbar.show(combinedError.value || 'Failed to send counter-proposal', 'error')
-  }
+  const proposalId = activeProposal.value.id
+  await feedback.run(
+    () => schedulingStore.counterPropose(tournament.value!.id, match.value!.id, proposalId, times),
+    {
+      success: 'Counter-proposal sent!',
+      failureFallback: 'Failed to send counter-proposal',
+      errorSource: schedulingStore,
+      after: fetchAll,
+    },
+  )
 }
 
 async function handleResultSubmitted() {

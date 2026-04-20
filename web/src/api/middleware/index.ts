@@ -1,1 +1,7 @@
-export { errorMiddleware, setUnauthorizedHandler, setRefreshHandler } from './errorMiddleware'
+export {
+  errorMiddleware,
+  setUnauthorizedHandler,
+  setRefreshHandler,
+  refreshAccessToken,
+  triggerUnauthorized,
+} from './errorMiddleware'

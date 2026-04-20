@@ -346,7 +346,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useDemosStore, type DemoMatchLinkResponse } from '@/stores/demos'
 import { useSnackbar } from '@/composables/useSnackbar'
@@ -359,6 +360,10 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 const route = useRoute()
 const router = useRouter()
 const demosStore = useDemosStore()
+const {
+  currentDemo, players, links,
+  fetchDemoState, fetchPlayersState, fetchLinksState,
+} = storeToRefs(demosStore)
 const snackbar = useSnackbar()
 const confirmDialogState = useConfirmDialog()
 
@@ -366,14 +371,6 @@ const confirmDialogState = useConfirmDialog()
 const linkModalOpen = ref(false)
 const notesText = ref('')
 const selectedCategory = ref('')
-
-// Computed
-const currentDemo = computed(() => demosStore.currentDemo)
-const players = computed(() => demosStore.players)
-const links = computed(() => demosStore.links)
-const fetchDemoState = computed(() => demosStore.fetchDemoState)
-const fetchPlayersState = computed(() => demosStore.fetchPlayersState)
-const fetchLinksState = computed(() => demosStore.fetchLinksState)
 
 const categoryOptions = [
   { title: 'Uncategorized', value: 'uncategorized' },

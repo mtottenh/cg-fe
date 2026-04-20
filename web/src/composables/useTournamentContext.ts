@@ -3,6 +3,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useTournamentsStore, type TournamentResponse, type TournamentRegistrationResponse } from '@/stores/tournaments'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { api } from '@/api'
+import { useTournamentLifecycleGuards } from '@/composables/useTournamentAdminActions'
+import { useSwissBracketProgress } from '@/composables/useSwissBracketProgress'
 
 export function useTournamentContext(tournament: Ref<TournamentResponse | null>) {
   const authStore = useAuthStore()
@@ -66,38 +68,24 @@ export function useTournamentContext(tournament: Ref<TournamentResponse | null>)
     return organizerScopeIds.value.has(tournament.value.id)
   })
 
-  // Status-based visibility flags
-  const canPublish = computed(() => isOrganizer.value && tournament.value?.status === 'draft')
-  const canOpenRegistration = computed(() => isOrganizer.value && tournament.value?.status === 'published')
-  const canCloseRegistration = computed(() => isOrganizer.value && tournament.value?.status === 'registration')
-  const canReopenRegistration = computed(() => isOrganizer.value && tournament.value?.status === 'scheduled')
-  const canStart = computed(() => isOrganizer.value && tournament.value?.status === 'scheduled')
-  const canCancel = computed(() =>
-    isOrganizer.value && tournament.value && !['completed', 'finalized', 'cancelled'].includes(tournament.value.status)
-  )
-  const canComplete = computed(() => isOrganizer.value && tournament.value?.status === 'in_progress')
-  const canFinalize = computed(() => isOrganizer.value && tournament.value?.status === 'completed')
+  // Status-based lifecycle guards sourced from the single-source-of-truth
+  // `useTournamentLifecycleGuards`, then gated on organizer role.
+  const lifecycleGuards = useTournamentLifecycleGuards(tournament)
+  const withOrganizer = (flag: Ref<boolean>) => computed(() => isOrganizer.value && flag.value)
+  const canPublish = withOrganizer(lifecycleGuards.canPublish)
+  const canOpenRegistration = withOrganizer(lifecycleGuards.canOpenRegistration)
+  const canCloseRegistration = withOrganizer(lifecycleGuards.canCloseRegistration)
+  const canReopenRegistration = withOrganizer(lifecycleGuards.canReopenRegistration)
+  const canStart = withOrganizer(lifecycleGuards.canStart)
+  const canCancel = withOrganizer(lifecycleGuards.canCancel)
+  const canComplete = withOrganizer(lifecycleGuards.canComplete)
+  const canFinalize = withOrganizer(lifecycleGuards.canFinalize)
 
-  // Swiss round advancement
-  const isSwissFormat = computed(() => tournament.value?.format === 'swiss')
-  const swissBracket = computed(() => tournamentsStore.brackets.length > 0 ? tournamentsStore.brackets[0] : null)
-  const allCurrentRoundMatchesCompleted = computed(() => {
-    if (!swissBracket.value) return false
-    const bracket = swissBracket.value as Record<string, unknown>
-    const currentRound = bracket.current_round as number | undefined
-    if (!currentRound) return false
-    const roundMatches = tournamentsStore.matches.filter(m => m.round === currentRound)
-    return roundMatches.length > 0 && roundMatches.every(m => m.status === 'completed')
-  })
-  const canAdvanceRound = computed(() => {
-    if (!isSwissFormat.value || tournament.value?.status !== 'in_progress') return false
-    const bracket = swissBracket.value as Record<string, unknown> | null
-    if (!bracket) return false
-    const currentRound = bracket.current_round as number | undefined
-    const totalRounds = bracket.total_rounds as number | undefined
-    if (!currentRound || !totalRounds) return false
-    return currentRound < totalRounds && allCurrentRoundMatchesCompleted.value
-  })
+  // Swiss round advancement — delegated to useSwissBracketProgress so the
+  // logic lives in one place (AdminTournamentDetailPage consumes it directly).
+  const swissProgress = useSwissBracketProgress(tournament)
+  const isSwissFormat = swissProgress.isSwissFormat
+  const canAdvanceRound = swissProgress.canAdvanceRound
 
   // Pending registrations count
   const pendingRegistrationCount = computed(() =>

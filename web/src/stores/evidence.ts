@@ -236,19 +236,27 @@ export const useEvidenceStore = defineStore('evidence', () => {
     }, 'Failed to complete upload')
   }
 
-  async function validateEvidence(matchId: string) {
+  async function validateEvidence(
+    matchId: string,
+    body: components['schemas']['ValidateEvidenceRequest'],
+  ) {
     return withActionState(validateEvidenceState, async () => {
       const result = await unwrapApi(api.POST('/v1/matches/{match_id}/evidence/validate', {
         params: { path: { match_id: matchId } },
+        body,
       }))
       return result.data
     }, 'Failed to validate evidence')
   }
 
-  async function validateDemo(matchId: string) {
+  async function validateDemo(
+    matchId: string,
+    body: components['schemas']['ValidateDemoRequest'],
+  ) {
     return withActionState(validateDemoState, async () => {
       const result = await unwrapApi(api.POST('/v1/matches/{match_id}/evidence/validate-demo', {
         params: { path: { match_id: matchId } },
+        body,
       }))
       return result.data
     }, 'Failed to validate demo')

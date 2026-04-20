@@ -107,27 +107,9 @@
 
 <script setup lang="ts">
 import { formatDate } from '@/utils/formatters'
+import type { LeagueSeasonResponse } from '@/stores/leagueSeasons'
 
-interface LeagueSeason {
-  id: string
-  league_id: string
-  name: string
-  slug: string
-  description: string | null
-  status: string
-  registration_start: string | null
-  registration_end: string | null
-  season_start: string | null
-  season_end: string | null
-  team_size_min: number | null
-  team_size_max: number | null
-  max_substitutes: number | null
-  max_teams: number | null
-  roster_lock_status: string
-  created_by: string
-  created_at: string
-  updated_at: string
-}
+type LeagueSeason = LeagueSeasonResponse
 
 defineProps<{
   leagueId: string

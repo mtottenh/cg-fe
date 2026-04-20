@@ -186,3 +186,25 @@ export function formatTournamentFormat(format: string): string {
   const found = TOURNAMENT_FORMATS.find((f) => f.value === format)
   return found?.label || format
 }
+
+export function formatSchedulingMode(mode: string): string {
+  const found = SCHEDULING_MODES.find((m) => m.value === mode)
+  return found?.label || mode
+}
+
+/**
+ * Labels the participant type for display. For team tournaments, surfaces the
+ * team size alongside the label so callers don't have to branch themselves.
+ */
+export function formatParticipantType(participantType: string, teamSize?: number | null): string {
+  if (participantType === 'team') {
+    return teamSize ? `Teams (${teamSize} players)` : 'Teams'
+  }
+  const found = PARTICIPANT_TYPES.find((p) => p.value === participantType)
+  return found?.label || participantType
+}
+
+/** mdi icon name for a participant type (individual → account, team → group). */
+export function participantTypeIcon(participantType: string | null | undefined): string {
+  return participantType === 'team' ? 'mdi-account-group' : 'mdi-account'
+}

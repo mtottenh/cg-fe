@@ -51,10 +51,10 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
   const viewedPlayerTeams = ref<PlayerLeagueTeamMembershipResponse[]>([])
 
   // Computed aliases wired to fetchMyTeamsState for backward compatibility
-  const loading = computed(() => fetchMyTeamsState.loading.value)
+  const loading = computed(() => fetchMyTeamsState.loading)
   const error = computed({
-    get: () => fetchMyTeamsState.error.value,
-    set: (val: string | null) => { fetchMyTeamsState.error.value = val },
+    get: () => fetchMyTeamsState.error,
+    set: (val: string | null) => { fetchMyTeamsState.error = val },
   })
   const pagination = ref<PaginationMeta>({ page: 1, per_page: 20, total_items: 0, total_pages: 0 })
 
@@ -228,6 +228,20 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     }, 'Failed to cancel invitation')
   }
 
+  // Captain/admin-side acceptance of a pending team application.
+  // Hits the same endpoint as accepting your own invitation but does not touch
+  // myInvitations — the accepter is not the invitee. Both sides of the
+  // backend's accept endpoint converge here.
+  const acceptApplicationState = createActionState()
+  async function acceptApplication(invitationId: string): Promise<void> {
+    return withActionState(acceptApplicationState, async () => {
+      await unwrapApi(api.POST('/v1/league-team-invitations/{invitation_id}/accept', {
+        params: { path: { invitation_id: invitationId } },
+      }))
+      invitations.value = invitations.value.filter(i => i.id !== invitationId)
+    }, 'Failed to accept application')
+  }
+
   // ==================== Viewed Player's Data ====================
 
   async function fetchPlayerLeagueTeams(playerId: string): Promise<PlayerLeagueTeamMembershipResponse[]> {
@@ -350,6 +364,8 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     fetchTeamInvitations,
     invitePlayer,
     cancelInvitation,
+    acceptApplication,
+    acceptApplicationState,
 
     // Viewed player
     fetchPlayerLeagueTeams,

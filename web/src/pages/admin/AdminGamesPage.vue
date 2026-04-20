@@ -348,8 +348,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useGamesStore, type GameSummary, type MapInfo } from '@/stores/games'
-import type { GameDetailWithMapPool } from '@/api/overrides'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import GameEditModal from '@/components/admin/GameEditModal.vue'
@@ -394,11 +394,9 @@ const mapForm = ref({
   image_url: '',
 })
 
-const loading = computed(() => gamesStore.loading)
-const error = computed({
-  get: () => gamesStore.error,
-  set: (val: string | null) => { gamesStore.error = val },
-})
+// `loading` aggregates every games-action state; `error` is a WritableComputedRef
+// (see `aggregateActionStates`) that storeToRefs exposes with get/set intact.
+const { loading, error } = storeToRefs(gamesStore)
 
 const headers = [
   { title: '', key: 'icon_url', width: '50px', sortable: false },
@@ -475,7 +473,7 @@ async function openConfigPanel(game: GameSummary) {
     // structure; tolerate the mismatch through `unknown` rather than `any`.
     rankTiers.value = (tiersResult as unknown as typeof rankTiers.value) ?? []
     // Initialize pool from game detail
-    const pool = (gameDetail as GameDetailWithMapPool | null | undefined)?.map_pool ?? []
+    const pool = gameDetail?.map_pool ?? []
     poolMapIds.value = [...pool]
     poolOriginalIds.value = [...pool]
   } finally {

@@ -118,7 +118,7 @@ async function sendInvitation() {
     emit('invited')
     close()
   } catch {
-    error.value = leaguesStore.sendInvitationState.error.value || 'Failed to send invitation'
+    error.value = leaguesStore.sendInvitationState.error || 'Failed to send invitation'
   } finally {
     sending.value = false
   }

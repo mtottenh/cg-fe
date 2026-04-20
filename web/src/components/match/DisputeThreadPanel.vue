@@ -6,7 +6,7 @@
     </v-card-title>
     <v-divider />
     <v-card-text>
-      <v-progress-linear v-if="disputesStore.fetchDisputeState?.loading.value" indeterminate class="mb-4" />
+      <v-progress-linear v-if="disputesStore.fetchDisputeState?.loading" indeterminate class="mb-4" />
 
       <!-- Thread messages -->
       <div v-if="disputesStore.currentThread.length > 0" class="mb-4">
@@ -20,7 +20,7 @@
           </v-avatar>
           <div class="flex-grow-1">
             <div class="d-flex align-center mb-1">
-              <span class="text-body-2 font-weight-medium">{{ msg.author_name || 'User' }}</span>
+              <span class="text-body-2 font-weight-medium">{{ authorLabel(msg) }}</span>
               <v-chip v-if="msg.is_internal" size="x-small" color="warning" variant="tonal" class="ml-2">Admin</v-chip>
               <span class="text-caption text-medium-emphasis ml-auto">{{ formatTime(msg.created_at) }}</span>
             </div>
@@ -29,7 +29,7 @@
         </div>
       </div>
 
-      <p v-else-if="!disputesStore.fetchDisputeState?.loading.value" class="text-medium-emphasis text-center py-4">
+      <p v-else-if="!disputesStore.fetchDisputeState?.loading" class="text-medium-emphasis text-center py-4">
         No messages in this dispute yet.
       </p>
 
@@ -48,7 +48,7 @@
         <v-btn
           color="primary"
           size="small"
-          :loading="disputesStore.addPlayerMessageState.loading.value"
+          :loading="disputesStore.addPlayerMessageState.loading"
           :disabled="!replyMessage.trim()"
           @click="handleSendMessage"
         >
@@ -64,6 +64,9 @@
 import { ref, onMounted } from 'vue'
 import { useDisputesStore } from '@/stores/disputes'
 import { formatShortDateTime } from '@/utils/formatters'
+import type { components } from '@/api/types'
+
+type DisputeMessage = components['schemas']['DisputeMessageResponse']
 
 const props = defineProps<{
   disputeId: string
@@ -89,5 +92,15 @@ async function handleSendMessage() {
 
 function formatTime(dateStr: string): string {
   return formatShortDateTime(dateStr)
+}
+
+/**
+ * Dispute messages carry `author_type` / `author_user_id` but no display
+ * name — the backend doesn't join the users table in this endpoint. Show a
+ * role-based label; the is_internal chip to the right already flags admins.
+ */
+function authorLabel(msg: DisputeMessage): string {
+  if (msg.is_internal) return 'Admin'
+  return msg.author_type === 'admin' ? 'Admin' : 'Player'
 }
 </script>

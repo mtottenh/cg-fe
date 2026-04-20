@@ -311,7 +311,15 @@ import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useGamesStore, type GameSummary } from '@/stores/games'
 import { useAuthStore } from '@/stores/auth'
-import { useTournamentsStore, type TournamentMatchResponse } from '@/stores/tournaments'
+import {
+  useTournamentsStore,
+  formatTournamentFormat,
+  formatSchedulingMode,
+  formatParticipantType,
+  participantTypeIcon,
+  type TournamentMatchResponse,
+} from '@/stores/tournaments'
+import { formatMatchFormat } from '@/utils/matchStatus'
 import TournamentHeader from '@/components/tournament/TournamentHeader.vue'
 import TournamentRegistrationCard from '@/components/tournament/TournamentRegistrationCard.vue'
 import OrganizerToolbar from '@/components/tournament/OrganizerToolbar.vue'
@@ -322,7 +330,7 @@ import TeamRegistrationModal from '@/components/tournament/TeamRegistrationModal
 import PlayerRegistrationModal from '@/components/tournament/PlayerRegistrationModal.vue'
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
-import { useSnackbar } from '@/composables/useSnackbar'
+import { useActionFeedback } from '@/composables/useActionFeedback'
 import { formatDateTime } from '@/utils/formatters'
 import { registrationStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
@@ -348,11 +356,19 @@ const {
 
 // State
 const activeTab = ref('overview')
-const registering = ref(false)
-const snackbar = useSnackbar()
+const feedback = useActionFeedback()
 const showTeamRegistrationModal = ref(false)
 const showPlayerRegistrationModal = ref(false)
 const editModalOpen = ref(false)
+
+// Aggregated loading signal for the registration panel — true whenever any
+// registration-related store action is in flight.
+const registering = computed(() =>
+  tournamentsStore.registerTeamState.loading
+    || tournamentsStore.registerPlayerState.loading
+    || tournamentsStore.withdrawState.loading
+    || tournamentsStore.checkInState.loading
+)
 const registrations = computed(() =>
   allRegistrations.value.filter((r) => r.status !== 'withdrawn' && r.status !== 'disqualified'),
 )
@@ -372,67 +388,22 @@ const showRegistrationCard = computed(() => {
   return ['published', 'registration', 'scheduled', 'in_progress'].includes(status)
 })
 
-// Format helpers
-const formatLabel = computed(() => {
-  if (!tournament.value) return ''
-  switch (tournament.value.format) {
-    case 'single_elimination':
-      return 'Single Elimination'
-    case 'double_elimination':
-      return 'Double Elimination'
-    case 'round_robin':
-      return 'Round Robin'
-    case 'swiss':
-      return 'Swiss'
-    case 'groups_and_playoffs':
-      return 'Groups & Playoffs'
-    default:
-      return tournament.value.format
-  }
-})
-
-const matchFormatLabel = computed(() => {
-  if (!tournament.value) return ''
-  switch (tournament.value.default_match_format) {
-    case 'bo1':
-      return 'Best of 1'
-    case 'bo3':
-      return 'Best of 3'
-    case 'bo5':
-      return 'Best of 5'
-    case 'bo7':
-      return 'Best of 7'
-    default:
-      return tournament.value.default_match_format
-  }
-})
-
-const participantIcon = computed(() => {
-  if (!tournament.value) return 'mdi-account'
-  return tournament.value.participant_type === 'team' ? 'mdi-account-group' : 'mdi-account'
-})
-
-const participantTypeLabel = computed(() => {
-  if (!tournament.value) return ''
-  if (tournament.value.participant_type === 'team') {
-    return `Teams (${tournament.value.team_size} players)`
-  }
-  return 'Individuals'
-})
-
-const schedulingModeLabel = computed(() => {
-  if (!tournament.value) return ''
-  switch (tournament.value.scheduling_mode) {
-    case 'live':
-      return 'Live Event'
-    case 'self_scheduled':
-      return 'Self-Scheduled'
-    case 'hybrid':
-      return 'Hybrid'
-    default:
-      return tournament.value.scheduling_mode
-  }
-})
+// Format helpers — delegated to the shared tournament formatters.
+const formatLabel = computed(() =>
+  tournament.value ? formatTournamentFormat(tournament.value.format) : ''
+)
+const matchFormatLabel = computed(() =>
+  tournament.value ? formatMatchFormat(tournament.value.default_match_format) : ''
+)
+const participantIcon = computed(() => participantTypeIcon(tournament.value?.participant_type))
+const participantTypeLabel = computed(() =>
+  tournament.value
+    ? formatParticipantType(tournament.value.participant_type, tournament.value.team_size)
+    : ''
+)
+const schedulingModeLabel = computed(() =>
+  tournament.value ? formatSchedulingMode(tournament.value.scheduling_mode) : ''
+)
 
 // Registration action state
 const regActionLoadingId = ref<string | null>(null)
@@ -487,97 +458,91 @@ function handleRegister() {
 
 async function handleTeamRegister(teamSeasonId: string, participantName: string, participantLogoUrl?: string) {
   if (!tournament.value) return
-
-  registering.value = true
   showTeamRegistrationModal.value = false
-  try {
-    await tournamentsStore.registerTeam(tournament.value.id, {
+  await feedback.run(
+    () => tournamentsStore.registerTeam(tournament.value!.id, {
       team_season_id: teamSeasonId,
       participant_name: participantName,
       participant_logo_url: participantLogoUrl ?? null,
-    })
-    snackbar.show('Team registered successfully!', 'success')
-    await fetchData()
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to register team', 'error')
-  } finally {
-    registering.value = false
-  }
+    }),
+    {
+      success: 'Team registered successfully!',
+      failureFallback: 'Failed to register team',
+      errorSource: tournamentsStore,
+      after: fetchData,
+    },
+  )
 }
 
 async function handlePlayerRegister(participantName: string) {
   if (!tournament.value) return
-
-  registering.value = true
   showPlayerRegistrationModal.value = false
-  try {
-    await tournamentsStore.registerPlayer(tournament.value.id, {
+  await feedback.run(
+    () => tournamentsStore.registerPlayer(tournament.value!.id, {
       participant_name: participantName,
-    })
-    snackbar.show('Successfully registered!', 'success')
-    await fetchData()
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to register', 'error')
-  } finally {
-    registering.value = false
-  }
+    }),
+    {
+      success: 'Successfully registered!',
+      failureFallback: 'Failed to register',
+      errorSource: tournamentsStore,
+      after: fetchData,
+    },
+  )
 }
 
 async function handleWithdraw() {
   if (!tournament.value || !myRegistration.value) return
-
-  registering.value = true
-  try {
-    await tournamentsStore.withdrawFromTournament(tournament.value.id, myRegistration.value.id)
-    snackbar.show('Successfully withdrawn', 'success')
-    await fetchData()
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to withdraw', 'error')
-  } finally {
-    registering.value = false
-  }
+  await feedback.run(
+    () => tournamentsStore.withdrawFromTournament(tournament.value!.id, myRegistration.value!.id),
+    {
+      success: 'Successfully withdrawn',
+      failureFallback: 'Failed to withdraw',
+      errorSource: tournamentsStore,
+      after: fetchData,
+    },
+  )
 }
 
 async function handleCheckIn() {
   if (!tournament.value || !myRegistration.value) return
-
-  registering.value = true
-  try {
-    await tournamentsStore.checkIn(tournament.value.id, myRegistration.value.id)
-    snackbar.show('Successfully checked in!', 'success')
-    await fetchData()
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to check in', 'error')
-  } finally {
-    registering.value = false
-  }
+  await feedback.run(
+    () => tournamentsStore.checkIn(tournament.value!.id, myRegistration.value!.id),
+    {
+      success: 'Successfully checked in!',
+      failureFallback: 'Failed to check in',
+      errorSource: tournamentsStore,
+      after: fetchData,
+    },
+  )
 }
 
 // Organizer registration actions
 async function handleApproveRegistration(registration: { id: string; participant_name: string }) {
   if (!tournament.value) return
   regActionLoadingId.value = registration.id
-  try {
-    await tournamentsStore.approveRegistration(tournament.value.id, registration.id)
-    snackbar.show(`${registration.participant_name} approved`, 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to approve registration', 'error')
-  } finally {
-    regActionLoadingId.value = null
-  }
+  await feedback.run(
+    () => tournamentsStore.approveRegistration(tournament.value!.id, registration.id),
+    {
+      success: `${registration.participant_name} approved`,
+      failureFallback: 'Failed to approve registration',
+      errorSource: tournamentsStore,
+    },
+  )
+  regActionLoadingId.value = null
 }
 
 async function handleRejectRegistration(registration: { id: string; participant_name: string }) {
   if (!tournament.value) return
   regActionLoadingId.value = registration.id
-  try {
-    await tournamentsStore.rejectRegistration(tournament.value.id, registration.id)
-    snackbar.show(`${registration.participant_name} rejected`, 'success')
-  } catch {
-    snackbar.show(tournamentsStore.error || 'Failed to reject registration', 'error')
-  } finally {
-    regActionLoadingId.value = null
-  }
+  await feedback.run(
+    () => tournamentsStore.rejectRegistration(tournament.value!.id, registration.id),
+    {
+      success: `${registration.participant_name} rejected`,
+      failureFallback: 'Failed to reject registration',
+      errorSource: tournamentsStore,
+    },
+  )
+  regActionLoadingId.value = null
 }
 
 async function fetchData() {

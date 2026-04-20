@@ -1,15 +1,7 @@
 <template>
   <v-app>
-    <v-app-bar color="surface" elevation="0" border="b">
-      <v-app-bar-nav-icon @click="drawer = !drawer" />
-
-      <v-app-bar-title>
-        <router-link to="/" class="text-decoration-none text-white">
-          Gaming Portal
-        </router-link>
-      </v-app-bar-title>
-
-      <template v-slot:append>
+    <AppHeader title="Gaming Portal" show-nav @toggle-nav="drawer = !drawer">
+      <template #append>
         <v-chip v-if="authStore.isDevMode" color="warning" size="small" class="mr-2">
           DEV
         </v-chip>
@@ -27,7 +19,7 @@
           <v-tooltip activator="parent" location="bottom">Logout</v-tooltip>
         </v-btn>
       </template>
-    </v-app-bar>
+    </AppHeader>
 
     <PortalSidebar
       v-model="drawer"
@@ -47,6 +39,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import AppHeader from '@/components/AppHeader.vue'
 import PortalSidebar from '@/components/PortalSidebar.vue'
 import CaptainActionsBell from '@/components/CaptainActionsBell.vue'
 

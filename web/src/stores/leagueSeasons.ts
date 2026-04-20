@@ -21,10 +21,10 @@ export const useLeagueSeasonsStore = defineStore('leagueSeasons', () => {
   const updateSeasonState = createActionState()
 
   // Computed aliases for backward compatibility
-  const loading = computed(() => fetchSeasonsState.loading.value)
+  const loading = computed(() => fetchSeasonsState.loading)
   const error = computed({
-    get: () => fetchSeasonsState.error.value,
-    set: (val: string | null) => { fetchSeasonsState.error.value = val },
+    get: () => fetchSeasonsState.error,
+    set: (val: string | null) => { fetchSeasonsState.error = val },
   })
 
   async function fetchSeasons(leagueId: string): Promise<LeagueSeasonResponse[]> {

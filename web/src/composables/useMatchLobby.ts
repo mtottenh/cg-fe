@@ -1,4 +1,4 @@
-import { computed, ref, watch, onUnmounted, type Ref } from 'vue'
+import { computed, inject, provide, ref, watch, onUnmounted, type InjectionKey, type Ref } from 'vue'
 import { useVetoStore, type MapStatusResponse, type VetoSessionResponse, type VetoActionResponse } from '@/stores/veto'
 import {
   useMatchLobbySocket,
@@ -308,6 +308,36 @@ export function useMatchLobby(
     connect: socket.connect,
     disconnect: socket.disconnect,
   }
+}
+
+export type MatchLobby = ReturnType<typeof useMatchLobby>
+
+/**
+ * Injection key for sharing a single `useMatchLobby` instance across a route's
+ * component tree. The parent (match-detail page) calls `useMatchLobby()` once,
+ * `provide()`s it, and descendants (`VetoPanel`, chat/presence panels) call
+ * `injectMatchLobby()` instead of re-instantiating the composable — which
+ * would open a second websocket connection.
+ */
+export const MatchLobbyKey: InjectionKey<MatchLobby> = Symbol('MatchLobby')
+
+export function provideMatchLobby(lobby: MatchLobby): void {
+  provide(MatchLobbyKey, lobby)
+}
+
+/**
+ * Read the provided match-lobby instance. Throws in dev if no parent has
+ * provided one — matches the `useSnackbar` footgun-prevention pattern.
+ */
+export function injectMatchLobby(): MatchLobby {
+  const lobby = inject(MatchLobbyKey, null)
+  if (!lobby) {
+    throw new Error(
+      'injectMatchLobby(): no provider found. A parent component must call ' +
+      '`provideMatchLobby(useMatchLobby(matchId, userRegId))` before descendants use it.',
+    )
+  }
+  return lobby
 }
 
 export type { ChatMessage, LobbyParticipant }

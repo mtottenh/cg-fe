@@ -4,7 +4,33 @@ import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useActionFeedback } from '@/composables/useActionFeedback'
 
 /**
- * Organizes tournament lifecycle actions (publish, open-/close-registration,
+ * Pure status-based guards for tournament lifecycle actions. No auth/organizer
+ * gating — callers layer `isOrganizer` on top (see `useTournamentContext`).
+ *
+ * Exported separately so `useTournamentContext` can read the guards without
+ * spinning up a confirm dialog + action feedback (which it doesn't need).
+ */
+export function useTournamentLifecycleGuards(tournament: Ref<TournamentResponse | null>) {
+  const status = computed(() => tournament.value?.status ?? null)
+  const checkInRequired = computed(() => tournament.value?.check_in_required === true)
+
+  return {
+    canPublish: computed(() => status.value === 'draft'),
+    canOpenRegistration: computed(() => status.value === 'published'),
+    canCloseRegistration: computed(() => status.value === 'registration'),
+    canReopenRegistration: computed(() => status.value === 'scheduled'),
+    canStart: computed(() => status.value === 'scheduled'),
+    canComplete: computed(() => status.value === 'in_progress'),
+    canFinalize: computed(() => status.value === 'completed'),
+    canCancel: computed(() =>
+      status.value !== null && !['completed', 'finalized', 'cancelled'].includes(status.value)
+    ),
+    canProcessNoShows: computed(() => status.value === 'scheduled' && checkInRequired.value),
+  }
+}
+
+/**
+ * Organizes tournament lifecycle actions (publish, open-/close-/reopen-registration,
  * start, complete, finalize, cancel, advance, process-no-shows) with:
  *
  *  - `can*` computed guards derived from the tournament's current status
@@ -27,20 +53,11 @@ export function useTournamentAdminActions(
   const confirmDialog = useConfirmDialog()
   const feedback = useActionFeedback()
 
-  const status = computed(() => tournament.value?.status ?? null)
-
-  const canPublish = computed(() => status.value === 'draft')
-  const canOpenRegistration = computed(() => status.value === 'published')
-  const canCloseRegistration = computed(() => status.value === 'registration')
-  const canStart = computed(() => status.value === 'scheduled')
-  const canComplete = computed(() => status.value === 'in_progress')
-  const canFinalize = computed(() => status.value === 'completed')
-  const canCancel = computed(() =>
-    status.value !== null && !['completed', 'finalized', 'cancelled'].includes(status.value)
-  )
-  const canProcessNoShows = computed(() =>
-    status.value === 'scheduled' && tournament.value?.check_in_required === true
-  )
+  const guards = useTournamentLifecycleGuards(tournament)
+  const {
+    canPublish, canOpenRegistration, canCloseRegistration, canReopenRegistration,
+    canStart, canComplete, canFinalize, canCancel, canProcessNoShows,
+  } = guards
 
   function feedbackOptions(success: string) {
     return {
@@ -66,6 +83,12 @@ export function useTournamentAdminActions(
     if (!tournament.value) return
     await feedback.run(() => store.closeRegistration(tournament.value!.id),
       feedbackOptions('Registration closed successfully'))
+  }
+
+  async function reopenRegistration() {
+    if (!tournament.value) return
+    await feedback.run(() => store.reopenRegistration(tournament.value!.id),
+      feedbackOptions('Registration reopened successfully'))
   }
 
   async function start() {
@@ -118,6 +141,7 @@ export function useTournamentAdminActions(
     canPublish,
     canOpenRegistration,
     canCloseRegistration,
+    canReopenRegistration,
     canStart,
     canComplete,
     canFinalize,
@@ -127,6 +151,7 @@ export function useTournamentAdminActions(
     publish,
     openRegistration,
     closeRegistration,
+    reopenRegistration,
     start,
     complete,
     finalize,

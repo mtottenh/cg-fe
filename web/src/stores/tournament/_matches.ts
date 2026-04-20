@@ -169,10 +169,15 @@ export function createMatchesSlice() {
     }, 'Failed to check in for match')
   }
 
-  async function forfeitMatch(tournamentId: string, matchId: string): Promise<void> {
+  async function forfeitMatch(
+    tournamentId: string,
+    matchId: string,
+    registrationId: string,
+  ): Promise<void> {
     return withActionState(forfeitMatchState, async () => {
       await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/forfeit', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
+        body: { registration_id: registrationId },
       }))
       await fetchMatches(tournamentId)
     }, 'Failed to forfeit match')

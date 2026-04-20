@@ -445,6 +445,7 @@ import TournamentCard from '@/components/tournament/TournamentCard.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
 import type { TournamentSummaryResponse } from '@/stores/tournaments'
+import type { LeagueSettings } from '@/api/overrides'
 
 const router = useRouter()
 
@@ -492,24 +493,23 @@ const rules = useFormRules()
 
 // Entry requirements from league settings
 const entryRequirements = computed(() => {
-  const settings = league.value?.settings as Record<string, unknown> | null
-  if (!settings) return null
-  const eligibility = settings.eligibility as Record<string, unknown> | null
+  const settings = league.value?.settings as LeagueSettings | null | undefined
+  const eligibility = settings?.eligibility
   if (!eligibility) return null
   const hasAny = Object.values(eligibility).some(v => v !== null && v !== undefined)
   return hasAny ? eligibility : null
 })
 
 const entryRequirementsList = computed((): string[] => {
-  if (!entryRequirements.value) return []
-  const reqs: string[] = []
   const e = entryRequirements.value
+  if (!e) return []
+  const reqs: string[] = []
   if (e.min_rating_per_player) reqs.push(`Min Rating: ${e.min_rating_per_player}`)
   if (e.max_rating_per_player) reqs.push(`Max Rating: ${e.max_rating_per_player}`)
   if (e.max_peak_rating_per_player) reqs.push(`Max Peak Rating: ${e.max_peak_rating_per_player}`)
   if (e.min_matches_played) reqs.push(`Min Matches: ${e.min_matches_played}`)
-  if (e.allowed_rank_tiers && (e.allowed_rank_tiers as string[]).length > 0)
-    reqs.push(`Rank Tiers: ${(e.allowed_rank_tiers as string[]).join(', ')}`)
+  if (e.allowed_rank_tiers && e.allowed_rank_tiers.length > 0)
+    reqs.push(`Rank Tiers: ${e.allowed_rank_tiers.join(', ')}`)
   return reqs
 })
 

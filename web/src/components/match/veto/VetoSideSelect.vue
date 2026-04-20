@@ -13,7 +13,7 @@
           <v-btn
             color="blue"
             variant="outlined"
-            :loading="vetoStore.sideSelectState.loading.value"
+            :loading="vetoStore.sideSelectState.loading"
             @click="selectSide(action.action_number, 'ct')"
           >
             CT
@@ -21,7 +21,7 @@
           <v-btn
             color="orange"
             variant="outlined"
-            :loading="vetoStore.sideSelectState.loading.value"
+            :loading="vetoStore.sideSelectState.loading"
             @click="selectSide(action.action_number, 't')"
           >
             T
@@ -62,7 +62,7 @@ async function selectSide(actionNumber: number, side: string) {
     })
     snackbar.show(`Selected ${side.toUpperCase()} side`, 'success')
   } catch {
-    snackbar.show(vetoStore.sideSelectState.error.value || 'Failed to select side', 'error')
+    snackbar.show(vetoStore.sideSelectState.error || 'Failed to select side', 'error')
   }
 }
 </script>

@@ -4,15 +4,30 @@ import { api, setAuthToken } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 
-/** JWT claims structure matching backend */
+/** JWT claims structure matching backend (see portal-domain/src/jwt.rs).
+ *
+ * NOTE: `is_admin` is intentionally NOT in the claim set. The backend moved
+ * role/admin resolution to live RBAC tables so the DB is the single source
+ * of truth on every request (the comment in `jwt.rs` explains the staleness
+ * problem the old claim created). Admin-ness is derived from
+ * `/v1/users/me/roles` instead — see `fetchMyRoles()` below.
+ */
 interface JwtClaims {
   sub: string
   player_id: string
   username: string
-  is_admin: boolean
   exp: number
   iat: number
 }
+
+/** Role names the frontend treats as "can see the admin UI".
+ *
+ * The backend exposes RBAC via `/v1/users/me/roles` — any assignment whose
+ * `role.name` appears in this set unlocks the admin sidebar button and the
+ * `requiresAdmin` router guard. Scope is intentionally coarse (system-wide
+ * admin only, not league/tournament moderators).
+ */
+const SYSTEM_ADMIN_ROLES = new Set(['super_admin', 'admin'])
 
 /** Decode JWT payload without verification (verification happens on backend) */
 function decodeJwtPayload(token: string): JwtClaims | null {
@@ -35,6 +50,7 @@ type LoginRequest = components['schemas']['LoginRequest']
 type LoginResponse = components['schemas']['LoginResponse']
 type RegisterRequest = components['schemas']['RegisterRequest']
 type RegisterResponse = components['schemas']['RegisterResponse']
+type UserRoleAssignment = components['schemas']['UserRoleAssignmentResponse']
 
 export const useAuthStore = defineStore('auth', () => {
   // Get token and player_id from localStorage, null if not present
@@ -43,6 +59,7 @@ export const useAuthStore = defineStore('auth', () => {
   const playerId = ref<string | null>(localStorage.getItem('player_id'))
   const user = ref<User | null>(null)
   const player = ref<Player | null>(null)
+  const roles = ref<UserRoleAssignment[]>([])
 
   // Initialize auth token from stored value
   if (token.value) {
@@ -67,11 +84,10 @@ export const useAuthStore = defineStore('auth', () => {
     return true
   })
 
-  // Check if user has admin privileges by decoding JWT claims
+  // Check if user has admin privileges by inspecting RBAC role assignments
+  // fetched from the server (JWT has no is_admin claim — see type comment above).
   const isAdmin = computed(() => {
-    if (!token.value) return false
-    const claims = decodeJwtPayload(token.value)
-    return claims?.is_admin ?? false
+    return roles.value.some(r => SYSTEM_ADMIN_ROLES.has(r.role.name))
   })
 
   // Check if running in dev mode (dev-token set)
@@ -81,9 +97,10 @@ export const useAuthStore = defineStore('auth', () => {
   const loginState = createActionState()
   const registerState = createActionState()
   const fetchCurrentUserState = createActionState()
+  const fetchMyRolesState = createActionState()
 
   const { loading, error } = aggregateActionStates([
-    loginState, registerState, fetchCurrentUserState,
+    loginState, registerState, fetchCurrentUserState, fetchMyRolesState,
   ])
 
   async function login(credentials: LoginRequest): Promise<LoginResponse> {
@@ -109,6 +126,10 @@ export const useAuthStore = defineStore('auth', () => {
         playerId.value = data.player_id
         localStorage.setItem('player_id', data.player_id)
       }
+
+      // Load roles immediately so isAdmin is correct before the router
+      // sees the next navigation (admin guard fires on beforeEach).
+      await fetchMyRoles().catch(() => { roles.value = [] })
 
       return data
     }, 'Login failed')
@@ -139,6 +160,9 @@ export const useAuthStore = defineStore('auth', () => {
       playerId.value = data.player.id
       localStorage.setItem('player_id', data.player.id)
 
+      // Load roles (empty for fresh registrations — but keeps the contract).
+      await fetchMyRoles().catch(() => { roles.value = [] })
+
       return data
     }, 'Registration failed')
   }
@@ -149,6 +173,16 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = result.data
       return user.value
     }, 'Failed to fetch user')
+  }
+
+  /** Fetch the current user's role assignments. Populates `roles` which
+   * backs the `isAdmin` computed. Admin-gated routes + UI check this. */
+  async function fetchMyRoles(): Promise<UserRoleAssignment[]> {
+    return withActionState(fetchMyRolesState, async () => {
+      const result = await unwrapApi(api.GET('/v1/users/me/roles'))
+      roles.value = result.data
+      return roles.value
+    }, 'Failed to fetch roles')
   }
 
   /**
@@ -202,9 +236,12 @@ export const useAuthStore = defineStore('auth', () => {
           if (!refreshed) {
             logout()
           } else {
-            // Refreshed successfully, fetch user profile
+            // Refreshed successfully, verify + load roles. Only fetchCurrentUser
+            // failing indicates a revoked/invalid session; a role fetch hiccup
+            // is non-fatal (isAdmin just starts false and reconverges).
             try {
               await fetchCurrentUser()
+              await fetchMyRoles().catch(() => { roles.value = [] })
             } catch {
               logout()
             }
@@ -213,9 +250,10 @@ export const useAuthStore = defineStore('auth', () => {
           logout()
         }
       } else {
-        // Token looks valid, verify with server
+        // Token looks valid, verify with server + load roles for isAdmin
         try {
           await fetchCurrentUser()
+          await fetchMyRoles().catch(() => { roles.value = [] })
         } catch {
           // Token rejected by server (revoked, etc.)
           logout()
@@ -242,6 +280,7 @@ export const useAuthStore = defineStore('auth', () => {
     playerId.value = null
     user.value = null
     player.value = null
+    roles.value = []
     localStorage.removeItem('token')
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('player_id')
@@ -254,6 +293,7 @@ export const useAuthStore = defineStore('auth', () => {
     playerId,
     user,
     player,
+    roles,
     loading,
     error,
     initialized,
@@ -264,6 +304,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     register,
     fetchCurrentUser,
+    fetchMyRoles,
     refreshAccessToken,
     setToken,
     enableDevMode,
@@ -272,6 +313,7 @@ export const useAuthStore = defineStore('auth', () => {
     loginState,
     registerState,
     fetchCurrentUserState,
+    fetchMyRolesState,
   }
 })
 

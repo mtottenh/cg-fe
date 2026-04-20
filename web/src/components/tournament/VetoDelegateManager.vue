@@ -9,7 +9,7 @@
         Designate a player to handle map veto on behalf of your team.
       </p>
 
-      <v-progress-linear v-if="vetoStore.fetchDelegatesState.loading.value" indeterminate class="mb-2" />
+      <v-progress-linear v-if="vetoStore.fetchDelegatesState.loading" indeterminate class="mb-2" />
 
       <v-list v-if="vetoStore.delegates.length > 0" density="compact">
         <v-list-item v-for="delegate in vetoStore.delegates" :key="delegate.id">
@@ -32,7 +32,7 @@
           </template>
         </v-list-item>
       </v-list>
-      <p v-else-if="!vetoStore.fetchDelegatesState.loading.value" class="text-caption text-medium-emphasis text-center py-2">
+      <p v-else-if="!vetoStore.fetchDelegatesState.loading" class="text-caption text-medium-emphasis text-center py-2">
         No delegates assigned. The captain handles veto by default.
       </p>
 
@@ -69,7 +69,7 @@
           <v-btn variant="text" @click="showAddDialog = false">Cancel</v-btn>
           <v-btn
             color="primary"
-            :loading="vetoStore.createDelegateState.loading.value"
+            :loading="vetoStore.createDelegateState.loading"
             :disabled="!newDelegatePlayerId"
             @click="handleAdd"
           >

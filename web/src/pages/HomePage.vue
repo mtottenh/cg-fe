@@ -303,6 +303,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useGamesStore } from '@/stores/games'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
@@ -343,8 +344,7 @@ const matchStatusMap: Record<string, { color: string; label: string }> = {
 }
 
 const activeGames = computed(() => gamesStore.games.filter(g => g.status === 'active'))
-const myTeams = computed(() => leagueTeamsStore.myTeams)
-const myInvitations = computed(() => leagueTeamsStore.myInvitations)
+const { myTeams, myInvitations } = storeToRefs(leagueTeamsStore)
 
 onMounted(async () => {
   // Fetch games for all users

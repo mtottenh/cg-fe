@@ -129,7 +129,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, toRef } from 'vue'
+import { ref, watch, toRef } from 'vue'
 import EvidenceTypeSelector, { type EvidenceTab } from './EvidenceTypeSelector.vue'
 import EvidenceUploadZone from './EvidenceUploadZone.vue'
 import DemoBrowser from './DemoBrowser.vue'

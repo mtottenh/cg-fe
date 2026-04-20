@@ -287,6 +287,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { watchDebounced } from '@vueuse/core'
 import { useDemosStore, type DemoResponse, type DemoFilters } from '@/stores/demos'
 import { useGamesStore } from '@/stores/games'
@@ -298,6 +299,7 @@ import DemoCatalogModal from '@/components/admin/DemoCatalogModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const demosStore = useDemosStore()
+const { demos, total, loading, error, statusCounts } = storeToRefs(demosStore)
 const gamesStore = useGamesStore()
 const snackbar = useSnackbar()
 const confirmDialog = useConfirmDialog()
@@ -314,12 +316,6 @@ const filters = ref<DemoFilters>({
   include_hidden: true,
 })
 
-// Computed
-const demos = computed(() => demosStore.demos)
-const total = computed(() => demosStore.total)
-const loading = computed(() => demosStore.loading)
-const error = computed(() => demosStore.error)
-const statusCounts = computed(() => demosStore.statusCounts)
 const totalPages = computed(() => Math.ceil(total.value / pageSize))
 
 const pipelineStats = computed(() => {

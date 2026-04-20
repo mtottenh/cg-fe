@@ -37,7 +37,7 @@
                   shape="circle"
                   :aspect-ratio="1"
                   :max-size="2"
-                  :upload-endpoint="avatarUploadUrl"
+                  path="/v1/players/me/avatar"
                   response-field="avatar_url"
                   @upload-complete="handleAvatarUploaded"
                   @upload-error="handleUploadError"
@@ -52,7 +52,7 @@
                   shape="banner"
                   :aspect-ratio="3"
                   :max-size="5"
-                  :upload-endpoint="bannerUploadUrl"
+                  path="/v1/players/me/banner"
                   response-field="banner_url"
                   @upload-complete="handleBannerUploaded"
                   @upload-error="handleUploadError"
@@ -182,13 +182,12 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { usePlayersStore, type SocialLinks } from '@/stores/players'
 import { useFormRules } from '@/composables/useFormRules'
 import ImageUpload from '@/components/ImageUpload.vue'
 import SocialLinksEditor from '@/components/SocialLinksEditor.vue'
 import SteamTrackingCard from '@/components/SteamTrackingCard.vue'
-
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000') + '/v1'
 
 const playersStore = usePlayersStore()
 
@@ -198,10 +197,7 @@ const savingSocial = ref(false)
 const error = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
 
-const player = computed(() => playersStore.currentPlayer)
-
-const avatarUploadUrl = computed(() => `${API_URL}/players/me/avatar`)
-const bannerUploadUrl = computed(() => `${API_URL}/players/me/banner`)
+const { currentPlayer: player } = storeToRefs(playersStore)
 
 const form = reactive({
   display_name: '',

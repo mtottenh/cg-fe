@@ -34,6 +34,11 @@ export function useMatchDetail() {
   // Polling
   const POLL_MS = 15_000
   const TERMINAL_STATUSES = ['completed', 'cancelled']
+  // During pick_ban and checking_in, the VetoPanel's websocket pushes all
+  // relevant state changes live. Polling on top of the WS is redundant and
+  // costs an extra round-trip per poll tick. If the WS drops, its own
+  // reconnect loop owns the fallback poll (see useMatchLobbySocket).
+  const WS_DRIVEN_STATUSES = ['checking_in', 'pick_ban']
   const pollInterval = ref<ReturnType<typeof setInterval> | null>(null)
 
   // Composed state from stores
@@ -280,15 +285,17 @@ export function useMatchDetail() {
       if (document.visibilityState === 'hidden') return
       if (isPolling.value) return
       const status = match.value?.status
-      if (status && !TERMINAL_STATUSES.includes(status)) {
-        isPolling.value = true
-        try {
-          // Only refresh match-state-dependent endpoints; fetchAll re-hit 10+
-          // endpoints every 15s including invariant data (tournament, my teams).
-          await pollMatch()
-        } finally {
-          isPolling.value = false
-        }
+      if (!status) return
+      if (TERMINAL_STATUSES.includes(status)) return
+      // Websocket drives state during pick_ban/checking_in — skip HTTP poll.
+      if (WS_DRIVEN_STATUSES.includes(status)) return
+      isPolling.value = true
+      try {
+        // Only refresh match-state-dependent endpoints; fetchAll re-hit 10+
+        // endpoints every 15s including invariant data (tournament, my teams).
+        await pollMatch()
+      } finally {
+        isPolling.value = false
       }
     }, POLL_MS)
   }
@@ -301,13 +308,13 @@ export function useMatchDetail() {
   }
 
   function onVisibilityChange() {
-    if (document.visibilityState === 'visible') {
-      const status = match.value?.status
-      if (status && !TERMINAL_STATUSES.includes(status)) {
-        // Same rationale as startPolling: tab-regain shouldn't re-fetch invariants.
-        pollMatch()
-      }
-    }
+    if (document.visibilityState !== 'visible') return
+    const status = match.value?.status
+    if (!status) return
+    if (TERMINAL_STATUSES.includes(status)) return
+    if (WS_DRIVEN_STATUSES.includes(status)) return
+    // Same rationale as startPolling: tab-regain shouldn't re-fetch invariants.
+    pollMatch()
   }
 
   onMounted(() => {

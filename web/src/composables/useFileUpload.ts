@@ -93,6 +93,17 @@ export interface UseFileUploadOptions<TMeta = Record<string, unknown>> {
    * Use to clean up server-side resources (e.g. delete pending evidence).
    */
   onAbort?: (item: UploadItem<TMeta>) => Promise<void>
+
+  /**
+   * Optional 401 handler. Called once per upload if the XHR returns 401.
+   * Should refresh the access token and return `true` to request a single
+   * retry (the callback is invoked again to fetch fresh headers), or
+   * `false` to surface the 401 as a normal error.
+   *
+   * Mirrors the openapi-fetch `errorMiddleware` flow so XHR-based uploads
+   * get the same silent-refresh semantics as JSON API calls.
+   */
+  onUnauthorized?: () => Promise<boolean>
 }
 
 let nextId = 0
@@ -111,6 +122,80 @@ export function useFileUpload<TMeta = Record<string, unknown>>(
   /** Active XHR handles keyed by localId, for abort support. */
   const xhrMap = new Map<string, XMLHttpRequest>()
 
+  /**
+   * Error raised by the XHR step when the server returns 401. Distinct class
+   * so `uploadFile` can catch it and route through `onUnauthorized` without
+   * resorting to error-message pattern matching.
+   */
+  class UnauthorizedUploadError extends Error {
+    constructor(message: string) {
+      super(message)
+      this.name = 'UnauthorizedUploadError'
+    }
+  }
+
+  /** Send a single XHR. Reports progress on `item.progress`. Rejects on 4xx/5xx. */
+  function sendXhr(item: UploadItem<TMeta>, target: UploadTarget): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhrMap.set(item.localId, xhr)
+
+      xhr.open(target.method || 'PUT', target.url, true)
+
+      if (target.headers) {
+        for (const [key, value] of Object.entries(target.headers)) {
+          xhr.setRequestHeader(key, value)
+        }
+      }
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          item.progress = Math.round((e.loaded / e.total) * 100)
+        }
+      }
+
+      xhr.onload = () => {
+        xhrMap.delete(item.localId)
+        if (xhr.status >= 200 && xhr.status < 300) {
+          if (options.parseResponse) {
+            try {
+              const parsed = options.parseResponse(xhr.responseText)
+              Object.assign(item.meta as Record<string, unknown>, parsed)
+            } catch {
+              // parseResponse is optional — ignore errors
+            }
+          }
+          resolve()
+          return
+        }
+        let message = `Upload failed: ${xhr.status}`
+        try {
+          const body = JSON.parse(xhr.responseText)
+          message = body.detail || body.message || message
+        } catch {
+          // ignore parse error
+        }
+        if (xhr.status === 401) {
+          reject(new UnauthorizedUploadError(message))
+        } else {
+          reject(new Error(message))
+        }
+      }
+
+      xhr.onerror = () => {
+        xhrMap.delete(item.localId)
+        reject(new Error('Upload failed: network error'))
+      }
+
+      xhr.ontimeout = () => {
+        xhrMap.delete(item.localId)
+        reject(new Error('Upload timed out'))
+      }
+
+      xhr.send(target.body)
+    })
+  }
+
   async function uploadFile(file: File, initialMeta?: Partial<TMeta>): Promise<UploadItem<TMeta>> {
     const localId = `upload-${++nextId}-${Date.now()}`
     const item: UploadItem<TMeta> = {
@@ -126,63 +211,22 @@ export function useFileUpload<TMeta = Record<string, unknown>>(
     try {
       // Step 1: Let caller prepare the upload target
       item.status = 'uploading'
-      const target = await options.onUpload(file, item)
+      let target = await options.onUpload(file, item)
 
-      // Step 2: XHR with progress tracking
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhrMap.set(localId, xhr)
-
-        xhr.open(target.method || 'PUT', target.url, true)
-
-        if (target.headers) {
-          for (const [key, value] of Object.entries(target.headers)) {
-            xhr.setRequestHeader(key, value)
-          }
+      // Step 2: XHR send. On 401, run the refresh hook once and retry with
+      // fresh headers (the onUpload callback re-reads the auth token).
+      try {
+        await sendXhr(item, target)
+      } catch (err) {
+        if (!(err instanceof UnauthorizedUploadError) || !options.onUnauthorized) {
+          throw err
         }
-
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            item.progress = Math.round((e.loaded / e.total) * 100)
-          }
-        }
-
-        xhr.onload = () => {
-          xhrMap.delete(localId)
-          if (xhr.status >= 200 && xhr.status < 300) {
-            if (options.parseResponse) {
-              try {
-                const parsed = options.parseResponse(xhr.responseText)
-                Object.assign(item.meta as Record<string, unknown>, parsed)
-              } catch {
-                // parseResponse is optional — ignore errors
-              }
-            }
-            resolve()
-          } else {
-            let message = `Upload failed: ${xhr.status}`
-            try {
-              const body = JSON.parse(xhr.responseText)
-              message = body.detail || body.message || message
-            } catch {
-              // ignore parse error
-            }
-            reject(new Error(message))
-          }
-        }
-
-        xhr.onerror = () => {
-          xhrMap.delete(localId)
-          reject(new Error('Upload failed: network error'))
-        }
-
-        xhr.ontimeout = () => {
-          xhrMap.delete(localId)
-          reject(new Error('Upload timed out'))
-        }
-
-        xhr.send(target.body)
-      })
+        const refreshed = await options.onUnauthorized()
+        if (!refreshed) throw err
+        item.progress = 0
+        target = await options.onUpload(file, item)
+        await sendXhr(item, target)
+      }
 
       // Step 3: Optional completion callback
       if (options.onComplete) {

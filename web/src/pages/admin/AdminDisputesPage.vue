@@ -146,11 +146,9 @@ import { ref, computed, onMounted } from 'vue'
 import { useDisputesStore, getDisputeStatusColor, getDisputeStatusLabel, getDisputePriorityColor, getDisputePriorityLabel } from '@/stores/disputes'
 import type { DisputeResponse } from '@/stores/disputes'
 import DisputeDetailModal from '@/components/admin/DisputeDetailModal.vue'
-import { useSnackbar } from '@/composables/useSnackbar'
 import { formatDateTime } from '@/utils/formatters'
 
 const store = useDisputesStore()
-const snackbar = useSnackbar()
 
 const detailModalOpen = ref(false)
 const selectedDisputeId = ref<string | null>(null)

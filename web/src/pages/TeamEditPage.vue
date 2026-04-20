@@ -69,7 +69,9 @@
                       placeholder-icon="mdi-image"
                       shape="square"
                       :aspect-ratio="1"
-                      :upload-endpoint="`${apiUrl}/v1/teams/${teamId}/logo`"
+                      path="/v1/league-teams/{team_id}/logo"
+                      :path-params="{ team_id: teamId }"
+                      response-field="logo_url"
                       @upload-complete="onLogoUploaded"
                       @upload-error="onUploadError"
                     />
@@ -82,7 +84,9 @@
                       placeholder-icon="mdi-panorama-wide-angle"
                       shape="banner"
                       :aspect-ratio="3"
-                      :upload-endpoint="`${apiUrl}/v1/teams/${teamId}/banner`"
+                      path="/v1/league-teams/{team_id}/banner"
+                      :path-params="{ team_id: teamId }"
+                      response-field="banner_url"
                       @upload-complete="onBannerUploaded"
                       @upload-error="onUploadError"
                     />
@@ -210,6 +214,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { useAuthStore } from '@/stores/auth'
@@ -221,7 +226,6 @@ const route = useRoute()
 const leagueTeamsStore = useLeagueTeamsStore()
 const authStore = useAuthStore()
 
-const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 const teamId = computed(() => route.params.id as string)
 const isNewTeam = computed(() => route.query.newTeam === 'true')
 
@@ -231,10 +235,10 @@ const error = ref<string | null>(null)
 const showSuccess = ref(false)
 const successMessage = ref('')
 
-const team = computed(() => leagueTeamsStore.currentTeam)
+const { currentTeam: team } = storeToRefs(leagueTeamsStore)
 
 // Check if current user is the team owner
-const currentPlayerId = computed(() => authStore.playerId)
+const { playerId: currentPlayerId } = storeToRefs(authStore)
 const isOwner = computed(() => team.value?.owner_player_id === currentPlayerId.value)
 
 const form = reactive({

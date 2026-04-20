@@ -140,9 +140,13 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { getAuthToken } from '@/api'
+import { api } from '@/api'
 
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000') + '/v1'
+// The /v1/audit endpoints are not in the OpenAPI spec yet. We still route
+// through the typed api client using an `as never` escape hatch so that the
+// auth middleware (token injection) and error middleware (401 silent-refresh)
+// apply — exactly like `captainActions.ts` does for its missing-from-spec
+// endpoint.
 
 interface EntityChange {
   id: string
@@ -186,31 +190,26 @@ const selectedChange = ref<EntityChange | null>(null)
 const revertReason = ref('')
 const reverting = ref(false)
 
-function getHeaders(): HeadersInit {
-  const token = getAuthToken()
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  }
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-  return headers
+async function fetchAuditPage(pageNum: number): Promise<{ data?: EntityChange[]; changes?: EntityChange[] } | null> {
+  const { data, error } = await api.GET(
+    '/v1/audit/{entity_type}/{entity_id}' as never,
+    {
+      params: {
+        path: { entity_type: props.entityType, entity_id: props.entityId },
+        query: { page: pageNum, per_page: perPage },
+      },
+    } as never,
+  )
+  if (error) return null
+  return data as { data?: EntityChange[]; changes?: EntityChange[] } | null
 }
 
 async function loadHistory() {
   loading.value = true
   page.value = 1
   try {
-    const params = new URLSearchParams({
-      page: String(page.value),
-      per_page: String(perPage),
-    })
-    const response = await fetch(
-      `${API_URL}/audit/${props.entityType}/${props.entityId}?${params}`,
-      { headers: getHeaders() }
-    )
-    if (response.ok) {
-      const data = await response.json()
+    const data = await fetchAuditPage(page.value)
+    if (data) {
       changes.value = data.data || data.changes || []
       hasMore.value = changes.value.length === perPage
     }
@@ -225,16 +224,8 @@ async function loadMore() {
   loadingMore.value = true
   page.value += 1
   try {
-    const params = new URLSearchParams({
-      page: String(page.value),
-      per_page: String(perPage),
-    })
-    const response = await fetch(
-      `${API_URL}/audit/${props.entityType}/${props.entityId}?${params}`,
-      { headers: getHeaders() }
-    )
-    if (response.ok) {
-      const data = await response.json()
+    const data = await fetchAuditPage(page.value)
+    if (data) {
       const newChanges = data.data || data.changes || []
       changes.value.push(...newChanges)
       hasMore.value = newChanges.length === perPage
@@ -258,14 +249,14 @@ async function confirmRevert() {
 
   reverting.value = true
   try {
-    const response = await fetch(`${API_URL}/audit/revert/${selectedChange.value.id}`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({
-        reason: revertReason.value || undefined,
-      }),
-    })
-    if (response.ok) {
+    const { error } = await api.POST(
+      '/v1/audit/revert/{change_id}' as never,
+      {
+        params: { path: { change_id: selectedChange.value.id } },
+        body: { reason: revertReason.value || undefined },
+      } as never,
+    )
+    if (!error) {
       emit('reverted', selectedChange.value)
       revertDialog.value = false
       await loadHistory()

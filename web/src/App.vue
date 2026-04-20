@@ -1,8 +1,15 @@
 <template>
   <template v-if="ready">
-    <component :is="layoutComponent">
+    <!--
+      Admin routes nest `AdminLayout` as their own route component, so for them
+      we render `<router-view />` directly and let the child route supply the
+      layout. Non-admin routes wrap `<router-view />` in a dynamically-picked
+      layout here (Default/Portal, driven by `meta.layout` + auth state).
+    -->
+    <component v-if="layoutComponent" :is="layoutComponent">
       <router-view />
     </component>
+    <router-view v-else />
     <AppSnackbar />
   </template>
   <v-app v-else>
@@ -13,7 +20,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, defineComponent, provide } from 'vue'
+import { computed, defineAsyncComponent, provide } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { createSnackbar, SnackbarKey } from '@/composables/useSnackbar'
@@ -21,14 +28,6 @@ import AppSnackbar from '@/components/AppSnackbar.vue'
 
 const DefaultLayout = defineAsyncComponent(() => import('@/layouts/DefaultLayout.vue'))
 const PortalLayout = defineAsyncComponent(() => import('@/layouts/PortalLayout.vue'))
-
-// Simple pass-through component for routes that handle their own layout (like admin)
-const PassThrough = defineComponent({
-  name: 'PassThrough',
-  setup(_, { slots }) {
-    return () => slots.default?.()
-  }
-})
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -39,32 +38,17 @@ const ready = computed(() => authStore.initialized)
 const isAuthenticated = computed(() => authStore.isAuthenticated || authStore.isDevMode)
 
 const layoutComponent = computed(() => {
-  // Check if current route or any matched route has admin layout
-  const hasAdminLayout = route.matched.some(r => r.meta.layout === 'admin')
-
-  if (hasAdminLayout) {
-    // Admin routes handle their own layout via router component
-    return PassThrough
-  }
+  // Admin routes supply their own layout via the `/admin` parent route
+  // (AdminLayout renders `<router-view />` for its children). Return null
+  // so the template falls through to a bare `<router-view />`.
+  if (route.matched.some(r => r.meta.layout === 'admin')) return null
 
   const layoutMeta = route.meta.layout as string | undefined
-
-  // Explicit portal layout
-  if (layoutMeta === 'portal') {
-    return PortalLayout
-  }
-
-  // Explicit default layout
-  if (layoutMeta === 'default') {
-    return DefaultLayout
-  }
-
-  // Dynamic: use portal if authenticated, default otherwise
+  if (layoutMeta === 'portal') return PortalLayout
+  if (layoutMeta === 'default') return DefaultLayout
   if (layoutMeta === 'dynamic') {
     return isAuthenticated.value ? PortalLayout : DefaultLayout
   }
-
-  // Fallback to default
   return DefaultLayout
 })
 </script>

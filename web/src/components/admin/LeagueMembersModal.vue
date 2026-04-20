@@ -277,6 +277,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useLeaguesStore, type UserLeagueMembership, type LeagueMemberResponse, type LeagueInvitationResponse } from '@/stores/leagues'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatDate } from '@/utils/formatters'
@@ -291,6 +292,11 @@ const emit = defineEmits<{  updated: []
 const open = defineModel<boolean>({ required: true })
 
 const leaguesStore = useLeaguesStore()
+const {
+  members,
+  leagueInvitations: invitations,
+  applications,
+} = storeToRefs(leaguesStore)
 const snackbar = useSnackbar()
 
 // State
@@ -302,13 +308,12 @@ const inviteModalOpen = ref(false)
 const processingApplicationId = ref<string | null>(null)
 const approving = ref(false)
 
-// Computed from store
-const members = computed(() => leaguesStore.members)
-const invitations = computed(() => leaguesStore.leagueInvitations)
-const applications = computed(() => leaguesStore.applications)
-const loadingMembers = computed(() => leaguesStore.fetchMembersState.loading.value)
-const loadingInvitations = computed(() => leaguesStore.fetchLeagueInvitationsState.loading.value)
-const loadingApplications = computed(() => leaguesStore.fetchApplicationsState.loading.value)
+// Nested-state loading flags: keep computed() because we only want the inner
+// boolean, and `storeToRefs(leaguesStore).fetchMembersState.value.loading` would
+// need `.value` in script to reach the same thing.
+const loadingMembers = computed(() => leaguesStore.fetchMembersState.loading)
+const loadingInvitations = computed(() => leaguesStore.fetchLeagueInvitationsState.loading)
+const loadingApplications = computed(() => leaguesStore.fetchApplicationsState.loading)
 
 // Table headers
 const memberHeaders = [
@@ -374,7 +379,7 @@ async function updateMemberRole(member: LeagueMemberResponse, newRole: string) {
     await leaguesStore.fetchMembers(props.league.league_id)
     emit('updated')
   } catch {
-    snackbar.show(leaguesStore.updateMemberRoleState.error.value || 'Failed to update role', 'error')
+    snackbar.show(leaguesStore.updateMemberRoleState.error || 'Failed to update role', 'error')
   }
 }
 
@@ -386,7 +391,7 @@ async function removeMember(member: LeagueMemberResponse) {
     snackbar.show(`Removed ${member.username} from the league`, 'success')
     emit('updated')
   } catch {
-    snackbar.show(leaguesStore.removeMemberState.error.value || 'Failed to remove member', 'error')
+    snackbar.show(leaguesStore.removeMemberState.error || 'Failed to remove member', 'error')
   } finally {
     removingMemberId.value = null
   }
@@ -416,7 +421,7 @@ async function approveApplication(application: LeagueInvitationResponse) {
     await leaguesStore.fetchMembers(props.league.league_id)
     emit('updated')
   } catch {
-    snackbar.show(leaguesStore.approveApplicationState.error.value || 'Failed to approve application', 'error')
+    snackbar.show(leaguesStore.approveApplicationState.error || 'Failed to approve application', 'error')
   } finally {
     processingApplicationId.value = null
     approving.value = false
@@ -431,7 +436,7 @@ async function rejectApplication(application: LeagueInvitationResponse) {
     await leaguesStore.rejectApplication(props.league.league_id, application.id)
     snackbar.show('Application rejected', 'success')
   } catch {
-    snackbar.show(leaguesStore.rejectApplicationState.error.value || 'Failed to reject application', 'error')
+    snackbar.show(leaguesStore.rejectApplicationState.error || 'Failed to reject application', 'error')
   } finally {
     processingApplicationId.value = null
   }

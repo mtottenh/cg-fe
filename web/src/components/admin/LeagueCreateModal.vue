@@ -193,6 +193,11 @@ import { ref, computed, watch } from 'vue'
 import { useLeaguesStore } from '@/stores/leagues'
 import type { GameSummary } from '@/stores/games'
 import { useFormRules } from '@/composables/useFormRules'
+import {
+  LEAGUE_ACCESS_TYPES,
+  buildEligibilitySettings,
+  type LeagueAccessType,
+} from '@/composables/useLeagueEligibility'
 
 // Store for creating leagues
 const leaguesStore = useLeaguesStore()
@@ -225,11 +230,7 @@ const form = ref({
   min_matches: null as number | null,
 })
 
-const accessTypes = [
-  { value: 'open', label: 'Open', description: 'Anyone can join immediately' },
-  { value: 'invite_only', label: 'Invite Only', description: 'Members can only join via invitation' },
-  { value: 'application', label: 'Application', description: 'Users apply, admins approve/reject' },
-]
+const accessTypes = LEAGUE_ACCESS_TYPES
 
 // Filter to active games only
 const activeGames = computed(() => {
@@ -281,20 +282,16 @@ async function save() {
   error.value = null
 
   try {
-    // Build settings with eligibility restrictions if any are set
-    const eligibility: Record<string, unknown> = {}
-    if (form.value.min_rating) eligibility.min_rating_per_player = form.value.min_rating
-    if (form.value.max_rating) eligibility.max_rating_per_player = form.value.max_rating
-    if (form.value.max_peak_rating) eligibility.max_peak_rating_per_player = form.value.max_peak_rating
-    if (form.value.min_matches) eligibility.min_matches_played = form.value.min_matches
-
-    const settings = Object.keys(eligibility).length > 0 ? { eligibility } : undefined
+    const settingsPayload = buildEligibilitySettings(form.value)
+    // Create endpoint treats missing `settings` the same as empty — drop the
+    // key when there are no rules to avoid sending `{ settings: {} }`.
+    const settings = Object.keys(settingsPayload).length > 0 ? settingsPayload : undefined
 
     await leaguesStore.createLeague({
       game_id: form.value.game_id,
       name: form.value.name,
       slug: form.value.slug,
-      access_type: form.value.access_type as 'open' | 'invite_only' | 'application',
+      access_type: form.value.access_type as LeagueAccessType,
       description: form.value.description || undefined,
       logo_url: form.value.logo_url || undefined,
       settings,

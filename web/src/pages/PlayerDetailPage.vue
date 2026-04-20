@@ -193,6 +193,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { storeToRefs } from 'pinia'
 import { usePlayersStore } from '@/stores/players'
 import { useAuthStore } from '@/stores/auth'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
@@ -207,8 +208,8 @@ const leagueTeamsStore = useLeagueTeamsStore()
 const loading = ref(true)
 const error = ref<string | null>(null)
 
-const player = computed(() => playersStore.currentPlayer)
-const playerLeagueTeams = computed(() => leagueTeamsStore.viewedPlayerTeams)
+const { currentPlayer: player } = storeToRefs(playersStore)
+const { viewedPlayerTeams: playerLeagueTeams } = storeToRefs(leagueTeamsStore)
 const playerId = computed(() => route.params.id as string)
 
 const isLoggedIn = computed(() => authStore.isAuthenticated || authStore.isDevMode)

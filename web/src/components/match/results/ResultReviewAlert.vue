@@ -14,7 +14,7 @@
         <div class="text-subtitle-2 font-weight-bold">Result Under Review</div>
         <p class="text-body-2 mb-0">
           An admin has flagged this match result for review.
-          <span v-if="review.review_type"> Reason: <strong>{{ review.review_type }}</strong></span>
+          <span v-if="reviewReason"> Reason: <strong>{{ reviewReason }}</strong></span>
         </p>
       </div>
       <v-btn
@@ -22,7 +22,7 @@
         color="warning"
         variant="flat"
         size="small"
-        :loading="reviewsStore.acknowledgeResultReviewState.loading.value"
+        :loading="reviewsStore.acknowledgeResultReviewState.loading"
         @click="handleAcknowledge"
       >
         Acknowledge
@@ -36,6 +36,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useResultReviewsStore } from '@/stores/resultReviews'
 
 const props = defineProps<{
@@ -45,13 +46,28 @@ const props = defineProps<{
 
 const reviewsStore = useResultReviewsStore()
 
-const review = computed(() => reviewsStore.matchResultReview)
+const { matchResultReview: review } = storeToRefs(reviewsStore)
+
+/** Human-readable reason derived from the review's mismatch flags. */
+const reviewReason = computed(() => {
+  if (!review.value) return ''
+  const reasons: string[] = []
+  if (review.value.roster_mismatch) reasons.push('roster mismatch')
+  if (review.value.score_mismatch) reasons.push('score mismatch')
+  if (review.value.winner_mismatch) reasons.push('winner mismatch')
+  return reasons.join(', ')
+})
 
 const hasAcknowledged = computed(() => {
   if (!review.value || !props.userRegistrationId) return false
-  // Check if the current user's registration has acknowledged
-  const r = review.value as Record<string, unknown>
-  return r.captain1_acknowledged === true || r.captain2_acknowledged === true
+  // A user has acknowledged if their specific captain slot is marked as such.
+  if (review.value.captain1_registration_id === props.userRegistrationId) {
+    return review.value.captain1_acknowledged
+  }
+  if (review.value.captain2_registration_id === props.userRegistrationId) {
+    return review.value.captain2_acknowledged
+  }
+  return false
 })
 
 const canAcknowledge = computed(() => {
@@ -59,8 +75,9 @@ const canAcknowledge = computed(() => {
 })
 
 async function handleAcknowledge() {
+  if (!props.userRegistrationId) return
   try {
-    await reviewsStore.acknowledgeResultReview(props.matchId)
+    await reviewsStore.acknowledgeResultReview(props.matchId, props.userRegistrationId)
   } catch {
     // Error in store
   }

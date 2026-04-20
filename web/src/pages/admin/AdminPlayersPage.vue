@@ -334,6 +334,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { watchDebounced } from '@vueuse/core'
 import { api, ApiError } from '@/api'
 import { useGamesStore } from '@/stores/games'
@@ -363,8 +364,7 @@ const gameFilter = ref<string | null>(null)
 const teamStatusFilter = ref<string | null>(null)
 
 // Game and team status options (for future backend support)
-const games = computed(() => gamesStore.games)
-const loadingGames = computed(() => gamesStore.loading)
+const { games, loading: loadingGames } = storeToRefs(gamesStore)
 const teamStatusOptions = [
   { title: 'Any', value: null },
   { title: 'On a team', value: 'has_team' },

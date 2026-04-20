@@ -5,10 +5,16 @@
  */
 
 import { writeFileSync, mkdirSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
+import { fileURLToPath } from 'url'
 import { testUsers } from './fixtures/test-data'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
+
+// `__dirname` is undefined in ESM scope (package.json has "type": "module").
+// Resolve the e2e directory from the module URL so the seeded-state file
+// lands next to this script regardless of working directory.
+const THIS_DIR = dirname(fileURLToPath(import.meta.url))
 
 /** Shared seeded state persisted for test specs */
 export interface SeededState {
@@ -22,10 +28,10 @@ export interface SeededState {
   teamId: string | null
 }
 
-const SEEDED_STATE_PATH = join(__dirname, '.seeded-state.json')
+const SEEDED_STATE_PATH = join(THIS_DIR, '.seeded-state.json')
 
 function persistSeededState(state: SeededState): void {
-  mkdirSync(join(__dirname), { recursive: true })
+  mkdirSync(THIS_DIR, { recursive: true })
   writeFileSync(SEEDED_STATE_PATH, JSON.stringify(state, null, 2))
   console.log(`Seeded state persisted to ${SEEDED_STATE_PATH}`)
 }

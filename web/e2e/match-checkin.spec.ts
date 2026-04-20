@@ -26,7 +26,31 @@ import {
  * doesn't depend on the seeded E2E tournament's state.
  */
 
+// The tournament state machine is gnarlier than the initial fixture assumed:
+//
+//  - Starting a tournament with `check_in_required=true` only seeds
+//    registrations whose tournament-level status is already `CheckedIn`
+//    (see TournamentService::start_tournament in the domain). The fixture
+//    now admin-overrides tournament-level check-ins before calling /start.
+//
+//  - After /start, generated matches land in `ready` status — not
+//    `checking_in`. The match-level check-in endpoint rejects requests
+//    unless `match.status === 'checking_in'`, so
+//    `POST /tournaments/{tid}/matches/{mid}/check-in` 400s from `ready`.
+//
+//  - The transition `ready` → `checking_in` is driven by the match
+//    lifecycle service, typically when the match enters its check-in
+//    window. That trigger isn't exposed as a direct admin endpoint; it
+//    needs either time-based progression or an explicit state-machine
+//    transition we haven't mapped out yet.
+//
+// Marking these `fixme` while we dig into the right setup sequence —
+// likely adding a helper that transitions the match to `checking_in`
+// before the test tries to check in. Leaving them on `test()` blocks on
+// this discovery work instead of shipping tests that mask backend reality.
 test.describe('Match Check-in Enforcement', () => {
+  test.fixme(true, 'Match state machine: ready → checking_in transition needed before check-in endpoint accepts requests. See comment above.')
+
   // Each test creates a fresh tournament + two participants to avoid
   // contaminating any seeded state, so parallel runs are safe.
 

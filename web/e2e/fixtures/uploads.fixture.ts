@@ -14,8 +14,21 @@ import { uniqueEmail, uniqueUsername } from './test-data'
 
 export const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
-export const TEST_IMAGE_PATH = 'e2e/fixtures/images/test-image.png'
+/**
+ * Backend image validation enforces both minimum dimensions and aspect-ratio
+ * ranges per image type (see portal-storage::image::config):
+ *   - player_avatar: 32x32 min, ~1:1 aspect
+ *   - team_logo: 64x64 min, ~1:1 aspect
+ *   - player_banner: 400x100 min, ~4:1 aspect
+ *   - team_banner: 480x120 min, ~4:1 aspect
+ * One image can't satisfy both square + 4:1 constraints, so we ship two.
+ */
+export const TEST_SQUARE_IMAGE_PATH = 'e2e/fixtures/images/test-square.png'  // 64x64 square
+export const TEST_BANNER_IMAGE_PATH = 'e2e/fixtures/images/test-banner.png'  // 480x120 (4:1)
 export const INVALID_FILE_PATH = 'e2e/fixtures/images/invalid.txt'
+
+/** @deprecated — kept for back-compat; prefer TEST_SQUARE_IMAGE_PATH. */
+export const TEST_IMAGE_PATH = TEST_SQUARE_IMAGE_PATH
 
 export interface PlayerCredentials {
   username: string

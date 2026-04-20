@@ -249,6 +249,34 @@ async function startTournament(adminToken: string, tournamentId: string): Promis
   }
 }
 
+/**
+ * Admin-override check-in for a registration. Used by `createCheckInScenario`
+ * to satisfy the backend's start-tournament precondition when the tournament
+ * has `check_in_required=true`: `TournamentService::start_tournament` seeds
+ * only checked-in participants in that mode (see
+ * portal-domain/src/services/tournament/service.rs:513), so the bracket can't
+ * be generated until someone has checked each player in. Admin-override is
+ * synchronous and doesn't depend on the check-in window being open.
+ */
+async function adminCheckIn(
+  adminToken: string,
+  tournamentId: string,
+  registrationId: string,
+): Promise<void> {
+  const resp = await fetch(
+    `${API_URL}/v1/tournaments/${tournamentId}/registrations/${registrationId}/admin-check-in`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    },
+  )
+  // 200 expected; 409 Conflict is acceptable if already checked in.
+  if (!resp.ok && resp.status !== 409) {
+    const text = await resp.text()
+    throw new Error(`Admin check-in failed (${resp.status}): ${text}`)
+  }
+}
+
 async function listMatches(
   adminToken: string,
   tournamentId: string,
@@ -304,6 +332,15 @@ export async function createCheckInScenario(
 
   await approveRegistration(adminToken, tournamentId, p1RegId)
   await approveRegistration(adminToken, tournamentId, p2RegId)
+
+  // When check-in is required, the start endpoint only seeds checked-in
+  // registrations. Admin-override both players' check-in so the bracket
+  // actually generates — tests that care about check-in status assert the
+  // MATCH-level participant{1,2}_checked_in_at, which starts null regardless.
+  if (opts.checkInRequired) {
+    await adminCheckIn(adminToken, tournamentId, p1RegId)
+    await adminCheckIn(adminToken, tournamentId, p2RegId)
+  }
 
   // Start the tournament so matches are generated.
   await startTournament(adminToken, tournamentId)

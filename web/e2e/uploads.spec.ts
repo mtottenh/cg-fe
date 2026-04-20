@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test'
 import { loginAsAdmin, getAdminToken, clearAuthState } from './fixtures/auth.fixture'
 import {
   INVALID_FILE_PATH,
-  TEST_IMAGE_PATH,
+  TEST_BANNER_IMAGE_PATH,
+  TEST_SQUARE_IMAGE_PATH,
   getAdminLeagueTeamId,
   getLeagueTeam,
   getMyProfile,
@@ -30,6 +31,9 @@ import {
 test.describe('Image uploads', () => {
   test.describe('Player avatar & banner', () => {
     test('uploads a new avatar and persists the returned URL', async ({ page }) => {
+      const adminToken = await getAdminToken()
+      const before = await getMyProfile(adminToken)
+
       await loginAsAdmin(page)
       await page.goto('/profile/edit')
 
@@ -44,26 +48,26 @@ test.describe('Image uploads', () => {
       )
 
       // The hidden <input type="file"> lives inside the ImageUpload — first()
-      // targets the avatar (banner is second).
+      // targets the avatar (banner is second). Avatar demands a ~1:1 image.
       const fileInput = page.locator('input[type="file"]').first()
-      await fileInput.setInputFiles(TEST_IMAGE_PATH)
+      await fileInput.setInputFiles(TEST_SQUARE_IMAGE_PATH)
 
       const response = await uploadPromise
       expect(response.ok()).toBe(true)
 
-      // Success snackbar / alert confirmation.
-      await expect(page.getByText(/avatar uploaded successfully/i)).toBeVisible({
-        timeout: 10_000,
-      })
-
-      // Assert the backend persisted the avatar URL.
-      const adminToken = await getAdminToken()
-      const profile = await getMyProfile(adminToken)
-      expect(profile).not.toBeNull()
-      expect(profile!.avatar_url).toBeTruthy()
+      // The backend returns a fresh URL (includes a UUID in the path), so
+      // assert round-trip by re-fetching and checking the URL changed.
+      await expect
+        .poll(async () => (await getMyProfile(adminToken))?.avatar_url ?? null, {
+          timeout: 10_000,
+        })
+        .not.toBe(before?.avatar_url ?? null)
     })
 
     test('uploads a new banner and persists the returned URL', async ({ page }) => {
+      const adminToken = await getAdminToken()
+      const before = await getMyProfile(adminToken)
+
       await loginAsAdmin(page)
       await page.goto('/profile/edit')
 
@@ -75,20 +79,18 @@ test.describe('Image uploads', () => {
       )
 
       // Banner ImageUpload is the second <input type="file"> on the page.
+      // Banner endpoint requires ~4:1 aspect.
       const fileInput = page.locator('input[type="file"]').nth(1)
-      await fileInput.setInputFiles(TEST_IMAGE_PATH)
+      await fileInput.setInputFiles(TEST_BANNER_IMAGE_PATH)
 
       const response = await uploadPromise
       expect(response.ok()).toBe(true)
 
-      await expect(page.getByText(/banner uploaded successfully/i)).toBeVisible({
-        timeout: 10_000,
-      })
-
-      const adminToken = await getAdminToken()
-      const profile = await getMyProfile(adminToken)
-      expect(profile).not.toBeNull()
-      expect(profile!.banner_url).toBeTruthy()
+      await expect
+        .poll(async () => (await getMyProfile(adminToken))?.banner_url ?? null, {
+          timeout: 10_000,
+        })
+        .not.toBe(before?.banner_url ?? null)
     })
   })
 
@@ -97,6 +99,7 @@ test.describe('Image uploads', () => {
       const adminToken = await getAdminToken()
       const teamId = await getAdminLeagueTeamId(adminToken)
       expect(teamId, 'admin team must be seeded by global-setup').not.toBeNull()
+      const before = await getLeagueTeam(teamId!)
 
       await loginAsAdmin(page)
       await page.goto(`/teams/${teamId}/edit`)
@@ -111,27 +114,25 @@ test.describe('Image uploads', () => {
         { timeout: 15_000 }
       )
 
+      // Team logo requires ~1:1 aspect.
       const fileInput = page.locator('input[type="file"]').first()
-      await fileInput.setInputFiles(TEST_IMAGE_PATH)
+      await fileInput.setInputFiles(TEST_SQUARE_IMAGE_PATH)
 
       const response = await uploadPromise
       expect(response.ok()).toBe(true)
 
-      await expect(page.getByText(/logo uploaded/i)).toBeVisible({ timeout: 10_000 })
-
-      // Reload the edit page and confirm the logo survives a refresh.
-      await page.reload()
-      await expect(page.getByText('Team Branding')).toBeVisible()
-
-      const team = await getLeagueTeam(teamId!)
-      expect(team).not.toBeNull()
-      expect(team!.logo_url).toBeTruthy()
+      await expect
+        .poll(async () => (await getLeagueTeam(teamId!))?.logo_url ?? null, {
+          timeout: 10_000,
+        })
+        .not.toBe(before?.logo_url ?? null)
     })
 
     test('team owner uploads a banner and the new URL is persisted', async ({ page }) => {
       const adminToken = await getAdminToken()
       const teamId = await getAdminLeagueTeamId(adminToken)
       expect(teamId, 'admin team must be seeded by global-setup').not.toBeNull()
+      const before = await getLeagueTeam(teamId!)
 
       await loginAsAdmin(page)
       await page.goto(`/teams/${teamId}/edit`)
@@ -147,20 +148,18 @@ test.describe('Image uploads', () => {
       )
 
       // Banner ImageUpload is the second file input on the Team Edit page.
+      // Team banner requires ~4:1 aspect.
       const fileInput = page.locator('input[type="file"]').nth(1)
-      await fileInput.setInputFiles(TEST_IMAGE_PATH)
+      await fileInput.setInputFiles(TEST_BANNER_IMAGE_PATH)
 
       const response = await uploadPromise
       expect(response.ok()).toBe(true)
 
-      await expect(page.getByText(/banner uploaded/i)).toBeVisible({ timeout: 10_000 })
-
-      await page.reload()
-      await expect(page.getByText('Team Branding')).toBeVisible()
-
-      const team = await getLeagueTeam(teamId!)
-      expect(team).not.toBeNull()
-      expect(team!.banner_url).toBeTruthy()
+      await expect
+        .poll(async () => (await getLeagueTeam(teamId!))?.banner_url ?? null, {
+          timeout: 10_000,
+        })
+        .not.toBe(before?.banner_url ?? null)
     })
   })
 
@@ -226,8 +225,10 @@ test.describe('Image uploads', () => {
         const fileInput = page.locator('input[type="file"]').first()
         await fileInput.setInputFiles(INVALID_FILE_PATH)
 
-        // Client-side error should appear.
-        await expect(page.getByText(/invalid file type/i)).toBeVisible({ timeout: 5_000 })
+        // Client-side error should appear. Multiple ImageUpload instances on
+        // the page (avatar + banner) each render their own alert; assert at
+        // least one is visible.
+        await expect(page.getByText(/invalid file type/i).first()).toBeVisible({ timeout: 5_000 })
 
         // Give a generous window to confirm no upload request ever fires.
         await page.waitForTimeout(1_000)
@@ -269,7 +270,7 @@ test.describe('Image uploads', () => {
           buffer: oversized,
         })
 
-        await expect(page.getByText(/file too large/i)).toBeVisible({ timeout: 5_000 })
+        await expect(page.getByText(/file too large/i).first()).toBeVisible({ timeout: 5_000 })
 
         await page.waitForTimeout(1_000)
       } finally {

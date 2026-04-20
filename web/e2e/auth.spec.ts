@@ -33,8 +33,9 @@ test.describe('Authentication', () => {
       // Blur to trigger validation
       await page.getByRole('textbox', { name: 'Email' }).blur()
 
-      // Validation error should appear
-      await expect(page.getByText('Minimum 3 characters')).toBeVisible()
+      // Validation error should appear (useFormRules.minLength returns
+      // "Must be at least N characters").
+      await expect(page.getByText('Must be at least 3 characters')).toBeVisible()
     })
 
     test('should show validation error for invalid email', async ({ page }) => {
@@ -45,8 +46,8 @@ test.describe('Authentication', () => {
       await page.getByRole('textbox', { name: 'Email' }).fill('invalid-email')
       await page.getByRole('textbox', { name: 'Email' }).blur()
 
-      // Validation error should appear
-      await expect(page.getByText('Must be a valid email')).toBeVisible()
+      // Validation error should appear (useFormRules.email returns "Invalid email").
+      await expect(page.getByText('Invalid email')).toBeVisible()
     })
 
     test('should show validation error for short password', async ({ page }) => {
@@ -57,8 +58,8 @@ test.describe('Authentication', () => {
       await passwordInput.fill('short')
       await passwordInput.blur()
 
-      // Validation error should appear
-      await expect(page.getByText('Minimum 8 characters')).toBeVisible()
+      // Validation error should appear.
+      await expect(page.getByText('Must be at least 8 characters')).toBeVisible()
     })
 
     test('should show error for duplicate username', async ({ page }) => {

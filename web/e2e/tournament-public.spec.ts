@@ -307,10 +307,13 @@ test.describe('Tournament Public Flows', () => {
       await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
 
       // Look for team-related registration UI
-      // Could be: Register Team button, team selection, or already registered status
-      const hasRegisterButton = await page.getByRole('button', { name: /Register/i }).isVisible().catch(() => false)
-      const hasTeamSelection = await page.getByText(/Select Team|Team/i).isVisible().catch(() => false)
-      const hasRegisteredStatus = await page.getByText(/Registered/i).isVisible().catch(() => false)
+      // Could be: Register Team button, team selection, or already registered status.
+      // Each regex tends to match multiple elements on a team tournament
+      // page; `.first()` prevents strict-mode from silently tripping the
+      // catch and masking all three branches.
+      const hasRegisterButton = await page.getByRole('button', { name: /Register/i }).first().isVisible().catch(() => false)
+      const hasTeamSelection = await page.getByText(/Select Team|Team/i).first().isVisible().catch(() => false)
+      const hasRegisteredStatus = await page.getByText(/Registered/i).first().isVisible().catch(() => false)
 
       expect(hasRegisterButton || hasTeamSelection || hasRegisteredStatus).toBe(true)
     })

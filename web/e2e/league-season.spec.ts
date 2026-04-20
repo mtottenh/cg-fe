@@ -97,7 +97,9 @@ test.describe('League Season Lifecycle', () => {
       await page.waitForLoadState('networkidle')
       await page.waitForTimeout(1500)
 
-      // Should show either team cards or empty state
+      // Should show either team cards or empty state. Several elements can
+      // match /no teams|be the first/i (heading + paragraph), so `.first()`
+      // avoids strict-mode silently falling through to the catch.
       const hasTeamCards = await page
         .locator('.v-card')
         .filter({ hasText: /members/i })
@@ -106,6 +108,7 @@ test.describe('League Season Lifecycle', () => {
         .catch(() => false)
       const hasEmptyState = await page
         .getByText(/no teams|be the first/i)
+        .first()
         .isVisible()
         .catch(() => false)
 

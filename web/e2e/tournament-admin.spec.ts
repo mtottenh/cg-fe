@@ -74,8 +74,10 @@ test.describe('Tournament Admin Flows', () => {
       const submitButton = modal.getByRole('button', { name: 'Create Tournament' })
       await expect(submitButton).toBeDisabled()
 
-      // Select a game first (required)
-      await modal.locator('.v-select').filter({ hasText: 'Game' }).click()
+      // Select a game first (required). Multiple selects contain "Game"
+      // (the Game select itself + the Map Veto Format select's hint
+      // "Select a game first..."), so pick the first to disambiguate.
+      await modal.locator('.v-select').filter({ hasText: 'Game' }).first().click()
       await page.getByRole('option').first().click()
 
       // Button should still be disabled - name is still required
@@ -102,8 +104,9 @@ test.describe('Tournament Admin Flows', () => {
       const tournamentName = `Test Tournament ${timestamp}`
       const tournamentSlug = `test-tournament-${timestamp}`
 
-      // Select game (required)
-      await modal.locator('.v-select').filter({ hasText: 'Game' }).click()
+      // Select game (required). Use .first() to disambiguate from the
+      // Map Veto Format select that also mentions "Game" in its hint.
+      await modal.locator('.v-select').filter({ hasText: 'Game' }).first().click()
       await page.getByRole('option').first().click()
 
       // Fill required fields
@@ -217,10 +220,16 @@ test.describe('Tournament Admin Flows', () => {
       // Click Bracket tab
       await page.getByRole('tab', { name: 'Bracket' }).click()
 
-      // MUST show bracket or empty state
+      // MUST show bracket or one of the two empty states:
+      //   - "No Bracket Generated" — AdminTournamentDetailPage renders this
+      //     when `brackets.length === 0`
+      //   - "No Bracket Available" — TournamentBracket renders this when
+      //     brackets exist but have no matches yet
+      //   - `.bracket-container` — TournamentBracket root element for
+      //     fully-generated brackets
       const hasBracket =
-        (await page.locator('.tournament-bracket').isVisible().catch(() => false)) ||
-        (await page.getByText(/No Bracket Generated/i).isVisible().catch(() => false))
+        (await page.locator('.bracket-container').first().isVisible().catch(() => false)) ||
+        (await page.getByText(/No Bracket (Generated|Available)/i).first().isVisible().catch(() => false))
       expect(hasBracket).toBe(true)
     })
   })
@@ -512,15 +521,18 @@ test.describe('Tournament Admin Flows', () => {
         await descField.fill('Updated description ' + Date.now())
       }
 
-      // Save changes
+      // Set up the snackbar assertion BEFORE clicking save. The success
+      // snackbar has a 3s Vuetify auto-dismiss, and waiting on networkidle
+      // after the click often pushes the check past that window, so the
+      // test fails with "not found" even though the snackbar flashed.
+      const snackbarPromise = expect(
+        page.locator('.v-snackbar').getByText(/updated|saved|success/i),
+      ).toBeVisible({ timeout: 10_000 })
+
+      // Save changes ("Save Changes" button)
       await modal.getByRole('button', { name: /Save|Update/i }).click()
 
-      // Wait for update
-      await page.waitForLoadState('networkidle')
-
-      // Success snackbar MUST appear
-      const snackbar = page.locator('.v-snackbar')
-      await expect(snackbar.getByText(/updated|saved|success/i)).toBeVisible({ timeout: 5000 })
+      await snackbarPromise
     })
   })
 

@@ -323,8 +323,10 @@ test.describe('League Team Management Flows', () => {
       await page.goto('/my-teams')
       await page.waitForLoadState('networkidle')
 
-      // MUST show my teams page
-      await expect(page.getByRole('heading', { name: /My Teams/i })).toBeVisible()
+      // MUST show my teams page. The page renders both an h1 page header
+      // and a section h2 with the same text — anchor on the h1 so strict
+      // mode doesn't reject the ambiguous match.
+      await expect(page.locator('h1').filter({ hasText: /My Teams/i })).toBeVisible()
     })
 
     test('should show league team memberships or empty state', async ({ page }) => {
@@ -641,12 +643,24 @@ test.describe('League Team Management Flows', () => {
       await page.waitForLoadState('networkidle')
       await page.waitForTimeout(1000)
 
-      // MUST show Create Team button OR teams section OR team indicator
-      const hasCreateButton = await page.getByRole('button', { name: /Create Team/i }).isVisible().catch(() => false)
-      const hasTeamsSection = await page.getByText(/Teams/i).isVisible().catch(() => false)
+      // MUST show Create Team button OR teams section OR team indicator.
+      // Several of these match more than one element (e.g. "Create Team"
+      // appears on a button + in an empty-state CTA); use `.first()` so
+      // `.isVisible()` doesn't trip strict-mode and fall through to catch.
+      const hasCreateButton = await page
+        .getByRole('button', { name: /Create Team/i })
+        .first()
+        .isVisible()
+        .catch(() => false)
+      const hasTeamsSection = await page
+        .getByRole('heading', { name: /Teams/i })
+        .first()
+        .isVisible()
+        .catch(() => false)
       const hasTeamChip = await page
         .locator('.v-chip')
         .filter({ hasText: /have a team|team in this season/i })
+        .first()
         .isVisible()
         .catch(() => false)
 
@@ -682,8 +696,10 @@ test.describe('League Team Management Flows', () => {
           await seasonOptions.nth(1).click()
           await page.waitForLoadState('networkidle')
 
-          // Page MUST update - teams section should still be visible
-          await expect(page.getByText(/Teams/i)).toBeVisible()
+          // Page MUST update - teams section should still be visible.
+          // Multiple elements contain "Teams" on this page (nav link, chip,
+          // heading, empty state); `.first()` avoids strict-mode violation.
+          await expect(page.getByText(/Teams/i).first()).toBeVisible()
         } else {
           // Only one season - close dropdown
           await page.keyboard.press('Escape')

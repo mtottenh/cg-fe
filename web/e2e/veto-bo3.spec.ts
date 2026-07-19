@@ -1,0 +1,347 @@
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
+import { getAdminToken } from './fixtures/auth.fixture'
+import {
+  createCheckInScenario,
+  checkInViaApi,
+  getMatch,
+  primeAuthStorage,
+  type CheckInScenario,
+} from './fixtures/checkin.fixture'
+import { setupVetoScenario, startVetoAndFlipCoin, performVetoAction } from './fixtures/veto.fixture'
+
+/**
+ * WebSocket map-veto E2E for the **bo3** format.
+ *
+ * The bo1 specs (veto-realtime / veto-flow) only exercise *bans*. Bo3 adds
+ * PICK actions and a picked-map side selection, which render and behave
+ * differently. Format (CS2 plugin, api/.../games/cs2/mod.rs):
+ *
+ *   bo3_veto = Ban-Ban-Pick-Pick-Ban-Ban-Decider
+ *
+ * Everything below was verified against the running backend before it was
+ * asserted here:
+ *
+ *  - A 7-map pool completes bo3 after **6** actions (4 bans + 2 picks). The
+ *    trailing "Decider" step in the format never materialises as an action
+ *    (`is_complete_at(n) == n >= sequence.len()` fires on the 6th action),
+ *    so `selected_maps` has length 2 and the match stays in `pick_ban`.
+ *    This mirrors the backend's own `test_ws_full_bo3_veto_flow`, which
+ *    asserts exactly 2 selected maps.
+ *  - The default `side_selection_mode` resolves to `knife` (the game-id →
+ *    plugin lookup misses), so picked maps get no side. The create-session
+ *    endpoint accepts an explicit mode, so the side tests request one.
+ *  - In `coin_flip` mode the backend auto-assigns a random side ("ct"/"t")
+ *    to each pick the instant it is made — this is the only side path that
+ *    round-trips cleanly to a recorded value, so the "side reflected on both
+ *    clients + backend" assertion uses it.
+ *  - In `picker_choice` mode the VetoSideSelect control renders (CT/T for the
+ *    picker, a waiting chip for the opponent), which is what the UI-presence
+ *    test asserts. Note: the REST POST /veto/side endpoint is currently
+ *    broken in this mode — its handler authorises the *opponent* while the
+ *    domain requires the *picker*, so no token can complete the write — hence
+ *    this test asserts the control's *presentation/sync*, not a manual write.
+ *
+ * UI selectors (verified in web/src/components/GameMapCard.vue + veto/*.vue):
+ *   .map-card-selectable  clickable available map
+ *   .map-card-banned      status === 'banned'
+ *   .map-card-picked      status === 'picked' | 'decider'
+ *   "Your turn!" / "Ban a map" / "Pick a map"   turn prompt (VetoPanel)
+ *   "Side Selection" + CT/T buttons             VetoSideSelect (picker)
+ *   "Waiting for picker to select side..."      VetoSideSelect (opponent)
+ *   .v-timeline chip with the side              VetoTimeline
+ */
+
+const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
+
+interface VetoActionRecord {
+  action_number: number
+  action_type: string
+  map_id: string
+  side_selection?: string
+  performed_by_registration_id?: string
+}
+
+interface VetoStateData {
+  session: {
+    status: string
+    selected_maps: string[]
+    remaining_maps: string[]
+    map_pool: string[]
+    current_team_turn?: string
+  }
+  maps: Array<{ map_id: string; status: string }>
+  actions: VetoActionRecord[]
+}
+
+/** Full veto state (data.actions lives here, not on data.session). */
+async function getVetoState(token: string, matchId: string): Promise<VetoStateData> {
+  const resp = await fetch(`${API_URL}/v1/matches/${matchId}/veto`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!resp.ok) {
+    throw new Error(`Get veto state failed (${resp.status}): ${await resp.text()}`)
+  }
+  return (await resp.json()).data as VetoStateData
+}
+
+/**
+ * Bo3 setup with an explicit side-selection mode. The shared fixture's
+ * `setupVetoScenario` can't request a side mode, so this replicates its flow
+ * (session created BEFORE both check-ins → auto-advance lands on pick_ban)
+ * while POSTing the session with `side_selection_mode`.
+ */
+async function setupBo3WithSideMode(
+  request: APIRequestContext,
+  adminToken: string,
+  sideMode: string,
+): Promise<CheckInScenario> {
+  const scenario = await createCheckInScenario(request, adminToken, { checkInRequired: true })
+
+  const resp = await fetch(`${API_URL}/v1/matches/${scenario.matchId}/veto`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({ veto_format_id: 'bo3_veto', side_selection_mode: sideMode }),
+  })
+  if (!resp.ok) {
+    throw new Error(`Create bo3 veto (${sideMode}) failed (${resp.status}): ${await resp.text()}`)
+  }
+
+  await checkInViaApi(
+    request,
+    scenario.p1.token,
+    scenario.tournamentId,
+    scenario.matchId,
+    scenario.p1.registrationId,
+  )
+  await checkInViaApi(
+    request,
+    scenario.p2.token,
+    scenario.tournamentId,
+    scenario.matchId,
+    scenario.p2.registrationId,
+  )
+
+  const match = await getMatch(request, adminToken, scenario.tournamentId, scenario.matchId)
+  expect(match.status, 'both check-ins should auto-advance a veto match to pick_ban').toBe(
+    'pick_ban',
+  )
+
+  await startVetoAndFlipCoin(adminToken, scenario.matchId, scenario.p1.registrationId)
+  return scenario
+}
+
+/**
+ * The page on turn performs the current map action via the UI (click a
+ * selectable card), then BOTH pages are asserted to reflect the new banned /
+ * picked totals live over the veto WebSocket (no reload).
+ */
+async function actOnTurnUi(
+  actingPage: Page,
+  waitingPage: Page,
+  expectBanned: number,
+  expectPicked: number,
+): Promise<void> {
+  await expect(actingPage.getByText('Your turn!')).toBeVisible({ timeout: 15000 })
+  const card = actingPage.locator('.map-card-selectable').first()
+  await expect(card).toBeVisible({ timeout: 10000 })
+  await card.click()
+
+  for (const page of [actingPage, waitingPage]) {
+    await expect(page.locator('.map-card-banned')).toHaveCount(expectBanned, { timeout: 15000 })
+    await expect(page.locator('.map-card-picked')).toHaveCount(expectPicked, { timeout: 15000 })
+  }
+}
+
+test.describe('Map Veto (bo3) — picks + side selection over WebSocket', () => {
+  test.describe.configure({ timeout: 120000 })
+
+  test('drives the full Ban-Ban-Pick-Pick-Ban-Ban sequence, picks render PICKED (not banned) live on both clients', async ({
+    browser,
+    request,
+  }) => {
+    const adminToken = await getAdminToken()
+    const scenario = await setupVetoScenario(request, adminToken, { vetoFormatId: 'bo3_veto' })
+    const matchUrl = `/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`
+
+    const contextA = await browser.newContext()
+    const contextB = await browser.newContext()
+    try {
+      const pageA = await contextA.newPage()
+      const pageB = await contextB.newPage()
+      await primeAuthStorage(pageA, scenario.p1.token, scenario.p1.userId)
+      await primeAuthStorage(pageB, scenario.p2.token, scenario.p2.userId)
+
+      await pageA.goto(matchUrl)
+      await pageB.goto(matchUrl)
+      await pageA.waitForLoadState('networkidle')
+      await pageB.waitForLoadState('networkidle')
+
+      await expect(pageA.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
+      await expect(pageB.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
+
+      // P1 opens by banning — the prompt reads "Ban a map".
+      await expect(pageA.getByText('Your turn!')).toBeVisible({ timeout: 10000 })
+      await expect(pageA.getByText(/Ban a map/i)).toBeVisible({ timeout: 10000 })
+
+      // Action 1 (ban, P1) and Action 2 (ban, P2).
+      await actOnTurnUi(pageA, pageB, 1, 0)
+      await actOnTurnUi(pageB, pageA, 2, 0)
+
+      // Action 3 is a PICK — the turn prompt changes to "Pick a map" (a
+      // different UI treatment than a ban), and the map lands as PICKED
+      // (green .map-card-picked), NOT banned, live on BOTH clients.
+      // (Only the acting client's own prompt is asserted: VetoPanel derives
+      // the label from an off-by-one current-action index after a WS update,
+      // so the *waiting* client's prompt is not a reliable pick/ban signal —
+      // the card colour, asserted below, is the authoritative one.)
+      await expect(pageA.getByText('Your turn!')).toBeVisible({ timeout: 15000 })
+      await expect(pageA.getByText(/Pick a map/i)).toBeVisible({ timeout: 15000 })
+      await actOnTurnUi(pageA, pageB, 2, 1)
+
+      // Action 4 (pick, P2): a second PICKED map, still exactly 2 banned.
+      await actOnTurnUi(pageB, pageA, 2, 2)
+
+      // Action 5 (ban, P1) via the UI — banned climbs to 3.
+      await actOnTurnUi(pageA, pageB, 3, 2)
+
+      // Action 6 (final ban) is driven via the API. The UI can't perform it:
+      // because of the off-by-one current-action index, VetoPanel reads the
+      // trailing decider step and computes a `side_select` phase, which
+      // disables the map grid for the acting client. Driving it over the API
+      // still exercises the WS completion path — both clients flip to the
+      // "Veto complete!" state live via the VetoComplete broadcast, no reload.
+      await expect(pageB.getByText('Your turn!')).toBeVisible({ timeout: 15000 })
+      const pre = await getVetoState(adminToken, scenario.matchId)
+      const turnReg = pre.session.current_team_turn
+      const turnToken =
+        turnReg === scenario.p1.registrationId ? scenario.p1.token : scenario.p2.token
+      await performVetoAction(turnToken, scenario.matchId, pre.session.remaining_maps[0])
+
+      await expect(pageA.getByText(/Veto complete/i)).toBeVisible({ timeout: 15000 })
+      await expect(pageB.getByText(/Veto complete/i)).toBeVisible({ timeout: 15000 })
+
+      // Backend agrees: bo3 over a 7-map pool = 4 bans + 2 picks, session
+      // completed, exactly 2 maps selected for play.
+      const state = await getVetoState(adminToken, scenario.matchId)
+      expect(state.session.status).toBe('completed')
+      const bans = state.actions.filter((a) => a.action_type === 'ban')
+      const picks = state.actions.filter((a) => a.action_type === 'pick')
+      expect(bans.length).toBe(4)
+      expect(picks.length).toBe(2)
+      expect(state.session.selected_maps.length).toBe(2)
+    } finally {
+      await contextA.close()
+      await contextB.close()
+    }
+  })
+
+  test('after a PICK the side-select control appears and syncs its state to both clients (picker_choice)', async ({
+    browser,
+    request,
+  }) => {
+    const adminToken = await getAdminToken()
+    const scenario = await setupBo3WithSideMode(request, adminToken, 'picker_choice')
+    const matchUrl = `/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`
+
+    const contextA = await browser.newContext()
+    const contextB = await browser.newContext()
+    try {
+      const pageA = await contextA.newPage()
+      const pageB = await contextB.newPage()
+      await primeAuthStorage(pageA, scenario.p1.token, scenario.p1.userId)
+      await primeAuthStorage(pageB, scenario.p2.token, scenario.p2.userId)
+
+      await pageA.goto(matchUrl)
+      await pageB.goto(matchUrl)
+      await pageA.waitForLoadState('networkidle')
+      await pageB.waitForLoadState('networkidle')
+
+      await expect(pageA.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
+      await expect(pageB.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
+
+      // Advance past the two opening bans (P1, then P2) via the UI.
+      await actOnTurnUi(pageA, pageB, 1, 0)
+      await actOnTurnUi(pageB, pageA, 2, 0)
+
+      // P1 makes the first PICK via the UI.
+      await expect(pageA.getByText('Your turn!')).toBeVisible({ timeout: 15000 })
+      await expect(pageA.getByText(/Pick a map/i)).toBeVisible({ timeout: 15000 })
+      await pageA.locator('.map-card-selectable').first().click()
+      await expect(pageA.locator('.map-card-picked')).toHaveCount(1, { timeout: 15000 })
+      await expect(pageB.locator('.map-card-picked')).toHaveCount(1, { timeout: 15000 })
+
+      // The VetoSideSelect control now renders, gated by who picked, live on
+      // BOTH clients over the WebSocket (no reload):
+      //  - the picker (P1 / page A) gets the CT/T side buttons
+      //  - the opponent (P2 / page B) gets the "waiting for picker" chip
+      await expect(pageA.getByText('Side Selection')).toBeVisible({ timeout: 15000 })
+      await expect(pageA.getByRole('button', { name: 'CT', exact: true })).toBeVisible({
+        timeout: 15000,
+      })
+      await expect(pageA.getByRole('button', { name: 'T', exact: true })).toBeVisible({
+        timeout: 15000,
+      })
+      await expect(pageB.getByText(/Waiting for picker to select side/i)).toBeVisible({
+        timeout: 15000,
+      })
+    } finally {
+      await contextA.close()
+      await contextB.close()
+    }
+  })
+
+  test('a picked map’s side is recorded and reflected on both clients live (coin_flip auto-assign)', async ({
+    browser,
+    request,
+  }) => {
+    const adminToken = await getAdminToken()
+    const scenario = await setupBo3WithSideMode(request, adminToken, 'coin_flip')
+    const matchUrl = `/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`
+
+    const contextA = await browser.newContext()
+    const contextB = await browser.newContext()
+    try {
+      const pageA = await contextA.newPage()
+      const pageB = await contextB.newPage()
+      await primeAuthStorage(pageA, scenario.p1.token, scenario.p1.userId)
+      await primeAuthStorage(pageB, scenario.p2.token, scenario.p2.userId)
+
+      await pageA.goto(matchUrl)
+      await pageB.goto(matchUrl)
+      await pageA.waitForLoadState('networkidle')
+      await pageB.waitForLoadState('networkidle')
+
+      await expect(pageA.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
+      await expect(pageB.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
+
+      // Two opening bans, then P1's first PICK — all via the UI.
+      await actOnTurnUi(pageA, pageB, 1, 0)
+      await actOnTurnUi(pageB, pageA, 2, 0)
+      await expect(pageA.getByText('Your turn!')).toBeVisible({ timeout: 15000 })
+      await pageA.locator('.map-card-selectable').first().click()
+      await expect(pageA.locator('.map-card-picked')).toHaveCount(1, { timeout: 15000 })
+      await expect(pageB.locator('.map-card-picked')).toHaveCount(1, { timeout: 15000 })
+
+      // The backend auto-assigns a side to the pick in coin_flip mode — the
+      // action record carries a concrete "ct"/"t".
+      const state = await getVetoState(adminToken, scenario.matchId)
+      const pick = state.actions.find((a) => a.action_type === 'pick')
+      expect(pick, 'a pick action should exist').toBeTruthy()
+      const side = pick!.side_selection
+      expect(side === 'ct' || side === 't', `side should be ct|t, got ${side}`).toBe(true)
+
+      // That same side is reflected on BOTH clients live: the veto history
+      // timeline shows the side chip (CT|T) without any reload.
+      const sideUpper = side!.toUpperCase()
+      await expect(
+        pageA.locator('.v-timeline').getByText(sideUpper, { exact: true }),
+      ).toBeVisible({ timeout: 15000 })
+      await expect(
+        pageB.locator('.v-timeline').getByText(sideUpper, { exact: true }),
+      ).toBeVisible({ timeout: 15000 })
+    } finally {
+      await contextA.close()
+      await contextB.close()
+    }
+  })
+})

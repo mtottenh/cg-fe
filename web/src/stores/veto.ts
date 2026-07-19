@@ -193,8 +193,13 @@ export const useVetoStore = defineStore('veto', () => {
           }
           return m
         }),
-        // Advance current_action to the next expected action from format sequence
-        current_action: sessionState.value.format?.sequence?.[newSession.current_action_number] ?? null,
+        // Advance current_action to the next expected action from the format
+        // sequence. current_action_number is 1-based (the backend indexes it
+        // as current_action_number - 1 everywhere, e.g. veto.rs:311), so the
+        // 0-based sequence index is current_action_number - 1. Without the -1
+        // the live path points one step ahead, mislabeling the final action's
+        // phase and disabling the map grid until a reload.
+        current_action: sessionState.value.format?.sequence?.[newSession.current_action_number - 1] ?? null,
         // Append action if not already present (dedupe by action_number)
         actions: sessionState.value.actions?.some(a => a.action_number === action.action_number)
           ? sessionState.value.actions

@@ -39,7 +39,7 @@ deploy/
 │   ├── group_vars/
 │   │   └── all/
 │   │       ├── vars.yml        # Non-secret config
-│   │       └── vault.yml       # Ansible Vault: secrets (encrypted, committed)
+│   │       └── vault.yml       # Ansible Vault: secrets — gitignored, control machine only
 │   └── roles/
 │       ├── base/               # ops user + key, unattended-upgrades, fail2ban, ufw
 │       ├── postgres/           # Postgres 16 (PGDG pin) + portal role + portal_prod DB
@@ -140,8 +140,10 @@ site.yml:
 | `linode_object_storage_region` etc. | Defaults match the London bucket; adjust if you move |
 | `ops_ssh_pubkey_file` | Your public key, installed for the `ops` user |
 
-The vault password itself lives in your password manager — never in the
-repo. Commit `vault.yml` only in its encrypted form.
+`vault.yml` is **gitignored** — it never enters the repo, encrypted or not.
+Keep it on the control machine only, encrypt it with `ansible-vault` for
+defense-in-depth, and store the vault password in your password manager. If
+you lose the control machine, recreate `vault.yml` from `vault.example.yml`.
 
 ## Flow
 
@@ -240,8 +242,10 @@ just ssh                 # plain SSH into the box
 
 ## Secrets
 
-`ansible/group_vars/all/vault.yml` is an Ansible Vault file. Commit it
-encrypted. The password lives in a password manager. `vault.example.yml`
+`ansible/group_vars/all/vault.yml` is an Ansible Vault file that is
+**gitignored — never committed** (encrypted or otherwise); it lives only on
+your control machine. Encrypt it with `ansible-vault` and keep the password
+in a password manager. `vault.example.yml` (tracked, placeholders only)
 shows every key (see the operator checklist above).
 
 Secrets land on the box in `/etc/portal/api.env`,

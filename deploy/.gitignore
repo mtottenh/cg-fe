@@ -2,7 +2,9 @@
 *.vault_pass
 .vault_pass
 
-# Unencrypted vault (should always be encrypted; this is a safety net).
+# The real vault stays on the control machine only — never committed, even
+# encrypted. Only vault.example.yml (placeholders) is tracked.
+ansible/group_vars/all/vault.yml
 ansible/group_vars/all/vault.yml.unencrypted
 
 # Downloaded debs when running `just deploy`.

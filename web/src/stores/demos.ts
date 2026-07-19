@@ -19,6 +19,7 @@ type LinkDemoToMatchRequest = components['schemas']['LinkDemoToMatchRequest']
 type SetDemoNotesRequest = components['schemas']['SetDemoNotesRequest']
 type AssociateDemoRequest = components['schemas']['AssociateDemoRequest']
 type MarkDemoFailedRequest = components['schemas']['MarkDemoFailedRequest']
+type AutoLinkSettingResponse = components['schemas']['AutoLinkSettingResponse']
 
 export interface DemoFilters {
   game_id?: string
@@ -43,6 +44,7 @@ export const useDemosStore = defineStore('demos', () => {
   const players = ref<DemoPlayerResponse[]>([])
   const links = ref<DemoMatchLinkResponse[]>([])
   const statusCounts = ref<DemoStatusCountsResponse | null>(null)
+  const autoLinkEnabled = ref<boolean | null>(null)
 
   const loading = computed(() => fetchDemosState.loading)
   const error = computed({
@@ -68,6 +70,8 @@ export const useDemosStore = defineStore('demos', () => {
   const fetchStatusCountsState = createActionState()
   const submitStatsState = createActionState()
   const markFailedState = createActionState()
+  const fetchAutoLinkSettingState = createActionState()
+  const updateAutoLinkSettingState = createActionState()
 
   async function fetchDemos(filters: DemoFilters = {}) {
     return withActionState(fetchDemosState, async () => {
@@ -221,7 +225,9 @@ export const useDemosStore = defineStore('demos', () => {
       await unwrapApi(api.DELETE('/v1/admin/demos/{demo_id}/link/{match_id}', {
         params: { path: { demo_id: demoId, match_id: matchId } },
       }))
-      removeById(links.value, matchId)
+      links.value = links.value.filter(
+        (l) => !(l.demo_id === demoId && l.match_id === matchId),
+      )
     }, 'Failed to unlink demo from match')
   }
 
@@ -269,6 +275,24 @@ export const useDemosStore = defineStore('demos', () => {
     }, 'Failed to mark demo as failed')
   }
 
+  async function fetchAutoLinkSetting(): Promise<AutoLinkSettingResponse> {
+    return withActionState(fetchAutoLinkSettingState, async () => {
+      const result = await unwrapApi(api.GET('/v1/admin/demos/auto-link'))
+      autoLinkEnabled.value = result.data.enabled
+      return result.data
+    }, 'Failed to fetch auto-link setting')
+  }
+
+  async function updateAutoLinkSetting(enabled: boolean): Promise<AutoLinkSettingResponse> {
+    return withActionState(updateAutoLinkSettingState, async () => {
+      const result = await unwrapApi(api.PUT('/v1/admin/demos/auto-link', {
+        body: { enabled },
+      }))
+      autoLinkEnabled.value = result.data.enabled
+      return result.data
+    }, 'Failed to update auto-link setting')
+  }
+
   function clearCurrent() {
     currentDemo.value = null
     players.value = []
@@ -282,6 +306,7 @@ export const useDemosStore = defineStore('demos', () => {
     players,
     links,
     statusCounts,
+    autoLinkEnabled,
     loading,
     error,
     // Per-action states
@@ -302,6 +327,8 @@ export const useDemosStore = defineStore('demos', () => {
     fetchStatusCountsState,
     submitStatsState,
     markFailedState,
+    fetchAutoLinkSettingState,
+    updateAutoLinkSettingState,
     // Actions
     fetchDemos,
     fetchDemo,
@@ -320,6 +347,8 @@ export const useDemosStore = defineStore('demos', () => {
     fetchStatusCounts,
     submitStats,
     markFailed,
+    fetchAutoLinkSetting,
+    updateAutoLinkSetting,
     clearCurrent,
   }
 })
@@ -339,4 +368,5 @@ export type {
   SetDemoNotesRequest,
   AssociateDemoRequest,
   MarkDemoFailedRequest,
+  AutoLinkSettingResponse,
 }

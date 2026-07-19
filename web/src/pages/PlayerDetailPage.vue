@@ -71,6 +71,7 @@
         </v-col>
 
         <v-col cols="12" md="4">
+          <TrophyCase :player-id="playerId" class="mb-4" />
           <v-card>
             <v-card-title>
               <v-icon start>mdi-account-group</v-icon>
@@ -199,6 +200,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import PlayerGameStatsCard from '@/components/player/PlayerGameStatsCard.vue'
 import PublicMmStatsCard from '@/components/player/PublicMmStatsCard.vue'
+import TrophyCase from '@/components/player/TrophyCase.vue'
 
 const route = useRoute()
 const playersStore = usePlayersStore()

@@ -77,6 +77,7 @@
           <v-tab value="bracket">Bracket</v-tab>
           <v-tab value="matches">Matches</v-tab>
           <v-tab value="stages">Stages</v-tab>
+          <v-tab value="awards" data-testid="admin-awards-tab-btn">Awards</v-tab>
         </v-tabs>
 
         <v-divider />
@@ -278,6 +279,16 @@
               </div>
             </v-card-text>
           </v-tabs-window-item>
+
+          <!-- Awards Tab -->
+          <v-tabs-window-item value="awards">
+            <AwardsTab
+              v-if="tournament"
+              scope-type="tournament"
+              :scope-id="tournament.id"
+              :game-id="tournament.game_id"
+            />
+          </v-tabs-window-item>
         </v-tabs-window>
       </v-card>
     </template>
@@ -382,6 +393,7 @@ import AdminMatchDetailModal from '@/components/admin/AdminMatchDetailModal.vue'
 import RegistrationsTab from '@/components/admin/tournament-detail/RegistrationsTab.vue'
 import MatchesTab from '@/components/admin/tournament-detail/MatchesTab.vue'
 import SeedingTab from '@/components/admin/tournament-detail/SeedingTab.vue'
+import AwardsTab from '@/components/admin/tournament-detail/AwardsTab.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useTournamentAdminActions } from '@/composables/useTournamentAdminActions'

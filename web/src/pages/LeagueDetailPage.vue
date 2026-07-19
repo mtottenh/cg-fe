@@ -202,6 +202,19 @@
         </v-col>
       </v-row>
 
+      <!-- Season Awards -->
+      <template v-if="selectedSeasonId">
+        <v-row class="mb-4">
+          <v-col cols="12">
+            <h2 class="text-h6 mb-4">
+              <v-icon start>mdi-trophy-outline</v-icon>
+              Season Awards
+            </h2>
+            <AwardsPanel scope-type="league_season" :scope-id="selectedSeasonId" />
+          </v-col>
+        </v-row>
+      </template>
+
       <!-- Teams Grid -->
       <v-row class="mb-4">
         <v-col cols="12">
@@ -442,6 +455,7 @@ import { useFormRules } from '@/composables/useFormRules'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import TournamentCreateModal from '@/components/admin/TournamentCreateModal.vue'
 import TournamentCard from '@/components/tournament/TournamentCard.vue'
+import AwardsPanel from '@/components/awards/AwardsPanel.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
 import type { TournamentSummaryResponse } from '@/stores/tournaments'

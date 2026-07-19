@@ -55,6 +55,13 @@ export interface CreateScenarioOptions {
    * registrations BEFORE the bracket exists. `matchId` will be ''.
    */
   skipStart?: boolean
+  /**
+   * ISO timestamp to schedule the generated match at (defaults to
+   * now + 10 minutes). Scheduling is once-only (ready -> scheduled), so
+   * flows that need a specific scheduled_at (e.g. demo auto-linking away
+   * from other test matches) must set it here.
+   */
+  scheduleAt?: string
 }
 
 interface ApiResult<T> {
@@ -394,7 +401,7 @@ export async function createCheckInScenario(
   // Generated matches land in `ready`; the match-level check-in endpoint
   // only accepts requests while status === 'checking_in'. Drive the match
   // there via the admin endpoints (ready → scheduled → checking_in).
-  await advanceMatchToCheckingIn(adminToken, tournamentId, targetMatch.id)
+  await advanceMatchToCheckingIn(adminToken, tournamentId, targetMatch.id, opts.scheduleAt)
 
   return {
     tournamentId,
@@ -436,6 +443,7 @@ export async function advanceMatchToCheckingIn(
   adminToken: string,
   tournamentId: string,
   matchId: string,
+  scheduleAt?: string,
 ): Promise<void> {
   const scheduleResp = await fetch(
     `${API_URL}/v1/admin/tournaments/${tournamentId}/matches/${matchId}/schedule`,
@@ -446,7 +454,7 @@ export async function advanceMatchToCheckingIn(
         Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({
-        scheduled_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        scheduled_at: scheduleAt ?? new Date(Date.now() + 10 * 60 * 1000).toISOString(),
         reason: 'E2E fixture: schedule match for check-in window',
       }),
     },

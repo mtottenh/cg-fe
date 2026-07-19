@@ -131,7 +131,9 @@
         </v-col>
       </v-row>
 
-      <MatchHistoryList class="mt-6 mb-4" />
+      <TrophyCase :player-id="playerProfile.id" own-profile class="mt-6 mb-4" />
+
+      <MatchHistoryList class="mb-4" />
 
       <PublicMmStatsCard :player-id="playerProfile.id" class="mb-4" />
       <PlayerGameStatsCard :player-id="playerProfile.id" />
@@ -159,6 +161,7 @@ import { usePlayersStore } from '@/stores/players'
 import PlayerGameStatsCard from '@/components/player/PlayerGameStatsCard.vue'
 import PublicMmStatsCard from '@/components/player/PublicMmStatsCard.vue'
 import MatchHistoryList from '@/components/player/MatchHistoryList.vue'
+import TrophyCase from '@/components/player/TrophyCase.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()

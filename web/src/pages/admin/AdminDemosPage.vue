@@ -2,13 +2,37 @@
   <div>
     <div class="d-flex justify-space-between align-center mb-6">
       <h1 class="text-h4">Demo Management</h1>
-      <v-btn
-        color="primary"
-        prepend-icon="mdi-plus"
-        @click="catalogModalOpen = true"
-      >
-        Catalog Demo
-      </v-btn>
+      <div class="d-flex align-center ga-4">
+        <v-switch
+          v-if="autoLinkEnabled !== null"
+          :model-value="autoLinkEnabled"
+          color="primary"
+          density="compact"
+          hide-details
+          :disabled="autoLinkToggleLoading"
+          data-testid="auto-link-toggle"
+          @update:model-value="onToggleAutoLink"
+        >
+          <template #label>
+            <span class="text-body-2">
+              Auto-link demos
+              <v-tooltip activator="parent" location="bottom" max-width="320">
+                When enabled, demos are automatically linked to tournament
+                matches by Steam-ID overlap when their stats arrive. Turn off
+                if auto-linking is misbehaving — demos then only link via
+                evidence uploads or manual linking.
+              </v-tooltip>
+            </span>
+          </template>
+        </v-switch>
+        <v-btn
+          color="primary"
+          prepend-icon="mdi-plus"
+          @click="catalogModalOpen = true"
+        >
+          Catalog Demo
+        </v-btn>
+      </div>
     </div>
 
     <!-- Pipeline Status Cards -->
@@ -299,7 +323,7 @@ import DemoCatalogModal from '@/components/admin/DemoCatalogModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const demosStore = useDemosStore()
-const { demos, total, loading, error, statusCounts } = storeToRefs(demosStore)
+const { demos, total, loading, error, statusCounts, autoLinkEnabled } = storeToRefs(demosStore)
 const gamesStore = useGamesStore()
 const snackbar = useSnackbar()
 const confirmDialog = useConfirmDialog()
@@ -456,10 +480,25 @@ function truncateFilename(name: string): string {
 // Polling for pipeline status counts
 let pollInterval: ReturnType<typeof setInterval> | null = null
 
+const autoLinkToggleLoading = computed(() => demosStore.updateAutoLinkSettingState.loading)
+
+async function onToggleAutoLink(value: boolean | null) {
+  const enabled = value === true
+  try {
+    await demosStore.updateAutoLinkSetting(enabled)
+    snackbar.success(enabled ? 'Auto-linking enabled' : 'Auto-linking disabled')
+  } catch {
+    snackbar.error(demosStore.updateAutoLinkSettingState.error ?? 'Failed to update auto-link setting')
+  }
+}
+
 onMounted(async () => {
   await Promise.all([
     loadDemos(),
     demosStore.fetchStatusCounts(),
+    demosStore.fetchAutoLinkSetting().catch(() => {
+      // Non-admins (or transient errors) simply don't see the toggle.
+    }),
     gamesStore.games.length === 0 ? gamesStore.fetchGames() : Promise.resolve(),
   ])
   pollInterval = setInterval(() => demosStore.fetchStatusCounts(), 30_000)

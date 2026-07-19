@@ -207,7 +207,17 @@
                 </template>
                 <v-list-item-title>
                   Match {{ link.match_id.slice(0, 8) }}...
-                  <v-chip size="x-small" class="ml-1">{{ link.link_type }}</v-chip>
+                  <v-chip size="x-small" class="ml-1" data-testid="link-type-chip">{{ link.link_type }}</v-chip>
+                  <v-chip
+                    v-if="link.confidence_score != null"
+                    size="x-small"
+                    color="info"
+                    variant="tonal"
+                    class="ml-1"
+                    data-testid="link-confidence-chip"
+                  >
+                    {{ Math.round(link.confidence_score * 100) }}% confidence
+                  </v-chip>
                   <v-chip v-if="link.game_number" size="x-small" class="ml-1">Game {{ link.game_number }}</v-chip>
                   <v-chip v-if="link.validated" size="x-small" color="success" class="ml-1">Validated</v-chip>
                 </v-list-item-title>
@@ -220,9 +230,11 @@
                     variant="text"
                     size="small"
                     color="error"
+                    data-testid="unlink-match"
                     @click="confirmUnlink(link)"
                   >
                     <v-icon size="18">mdi-link-off</v-icon>
+                    <v-tooltip activator="parent" location="top">Unlink</v-tooltip>
                   </v-btn>
                 </template>
               </v-list-item>
@@ -486,9 +498,13 @@ function confirmUnlink(link: DemoMatchLinkResponse) {
       try {
         await demosStore.unlinkFromMatch(link.demo_id, link.match_id)
         snackbar.success('Match unlinked')
-        await demosStore.fetchLinks(currentDemo.value!.id)
+        await Promise.all([
+          demosStore.fetchLinks(currentDemo.value!.id),
+          demosStore.fetchDemo(currentDemo.value!.id),
+        ])
       } catch {
-        snackbar.error('Failed to unlink match')
+        // Surface the RFC 7807 problem detail captured by the store action.
+        snackbar.error(demosStore.unlinkFromMatchState.error || 'Failed to unlink match')
       }
     },
   })
@@ -496,7 +512,10 @@ function confirmUnlink(link: DemoMatchLinkResponse) {
 
 function onMatchLinked() {
   snackbar.success('Demo linked to match')
-  if (currentDemo.value) demosStore.fetchLinks(currentDemo.value.id)
+  if (currentDemo.value) {
+    demosStore.fetchLinks(currentDemo.value.id)
+    demosStore.fetchDemo(currentDemo.value.id)
+  }
 }
 
 function formatDuration(seconds: number): string {

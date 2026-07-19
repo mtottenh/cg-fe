@@ -73,6 +73,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/demos/auto-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the demo auto-link setting.
+         * @description When disabled, stats ingestion skips the automatic demo→match linking
+         *     pass and the backfill endpoint refuses to run. Manual linking and
+         *     evidence uploads (which link directly to their match) are unaffected.
+         */
+        get: operations["get_auto_link_setting"];
+        /**
+         * Update the demo auto-link setting.
+         * @description Admin kill-switch: turn off if auto-linking is misbehaving; demos then
+         *     only link to matches manually or via evidence uploads.
+         */
+        put: operations["update_auto_link_setting"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/demos/batch": {
         parameters: {
             query?: never;
@@ -104,6 +131,29 @@ export interface paths {
         get: operations["get_pending_demos"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/demos/process-unlinked": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the auto-link pass over demos with stats but no match links.
+         * @description Bounded batch backfill: examines up to `limit` ready demos that have no
+         *     `demo_match_links` rows, resolves their player identities, and attempts
+         *     to auto-link each to a tournament match by Steam-ID overlap within a
+         *     time window.
+         */
+        post: operations["process_unlinked_demos"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1056,6 +1106,23 @@ export interface paths {
         patch: operations["update_game"];
         trace?: never;
     };
+    "/v1/games/{game_id}/award-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A game's award templates (for the organizer's picker). */
+        get: operations["list_award_templates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/games/{game_id}/disable": {
         parameters: {
             query?: never;
@@ -1161,6 +1228,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/games/{game_id}/stat-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A game's stat catalog (for award-builder UIs). */
+        get: operations["get_stat_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/games/{game_id}/team-size": {
         parameters: {
             query?: never;
@@ -1246,6 +1330,93 @@ export interface paths {
         head?: never;
         /** Update a season. */
         patch: operations["update_season"];
+        trace?: never;
+    };
+    "/v1/league-seasons/{season_id}/awards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a league season's awards. */
+        get: operations["list_season_awards"];
+        put?: never;
+        /** Create an award in a league season (from template or custom). */
+        post: operations["create_season_award"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/league-seasons/{season_id}/awards/{award_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Void a season award (soft delete; finalized awards are permanent). */
+        delete: operations["void_season_award"];
+        options?: never;
+        head?: never;
+        /** Update a season award's presentation (active awards only). */
+        patch: operations["update_season_award"];
+        trace?: never;
+    };
+    "/v1/league-seasons/{season_id}/awards/{award_id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize a season award (manual trigger). */
+        post: operations["finalize_season_award"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/league-seasons/{season_id}/awards/{award_id}/standings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live standings for a season award. */
+        get: operations["get_season_award_standings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/league-seasons/{season_id}/leaderboards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Plain stat leaderboard over a league season's linked demos. */
+        get: operations["get_season_leaderboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/league-seasons/{season_id}/teams": {
@@ -2515,6 +2686,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/players/{player_id}/awards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A player's trophy case: finalized award results with scope context. */
+        get: operations["get_player_awards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/players/{player_id}/games": {
         parameters: {
             query?: never;
@@ -2697,6 +2885,76 @@ export interface paths {
         patch: operations["update_tournament"];
         trace?: never;
     };
+    "/v1/tournaments/{tournament_id}/awards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a tournament's awards. */
+        get: operations["list_tournament_awards"];
+        put?: never;
+        /** Create an award in a tournament (from template or custom). */
+        post: operations["create_tournament_award"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/awards/{award_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Void a tournament award (soft delete; finalized awards are permanent). */
+        delete: operations["void_tournament_award"];
+        options?: never;
+        head?: never;
+        /** Update a tournament award's presentation (active awards only). */
+        patch: operations["update_tournament_award"];
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/awards/{award_id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize a tournament award (manual trigger; completion auto-finalizes). */
+        post: operations["finalize_tournament_award"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/awards/{award_id}/standings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live standings for a tournament award. */
+        get: operations["get_tournament_award_standings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tournaments/{tournament_id}/brackets": {
         parameters: {
             query?: never;
@@ -2810,6 +3068,23 @@ export interface paths {
         put?: never;
         /** Finalize a tournament. */
         post: operations["finalize_tournament"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/leaderboards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Plain stat leaderboard over a tournament's linked demos. */
+        get: operations["get_tournament_leaderboard"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3779,6 +4054,11 @@ export interface components {
              */
             tournament_id?: string | null;
         };
+        /** @description Current state of the demo auto-link setting. */
+        AutoLinkSettingResponse: {
+            /** @description Whether the automatic demo→match linking pass is enabled. */
+            enabled: boolean;
+        };
         /** @description Request to auto-seed participants. */
         AutoSeedRequest: {
             /** @description Seeding algorithm to use: random, rating, season_rank. */
@@ -3816,6 +4096,95 @@ export interface components {
             timezone?: string | null;
             /** Format: date-time */
             updated_at: string;
+        };
+        /** @description An award instance scoped to a tournament or league season. */
+        AwardResponse: {
+            /** @description `sum` | `max_single_demo` | `avg_per_demo`. */
+            aggregation: string;
+            color?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            description?: string | null;
+            /** @description `desc` | `asc`. */
+            direction: string;
+            /** Format: uuid */
+            game_id: string;
+            icon?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description `matches` | `rounds`, when a qualifier is set. */
+            min_qualifier_type?: string | null;
+            /** Format: int32 */
+            min_qualifier_value?: number | null;
+            name: string;
+            /**
+             * Format: uuid
+             * @description Tournament id or league-season id depending on `scope_type`.
+             */
+            scope_id: string;
+            /** @description `tournament` | `league_season`. */
+            scope_type: string;
+            stat_key: string;
+            /** @description `active` | `finalized` | `void`. */
+            status: string;
+            /** @description `player` (v1) | `team` (reserved). */
+            subject_type: string;
+            /**
+             * Format: uuid
+             * @description Source template id, when created from one.
+             */
+            template_id?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description A finalized podium row. */
+        AwardResultResponse: {
+            /** Format: uuid */
+            award_id: string;
+            /** Format: int32 */
+            demos_counted: number;
+            /** Format: date-time */
+            finalized_at: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            player_id: string;
+            /**
+             * Format: int32
+             * @description Competition rank (1-based; ties share a rank).
+             */
+            rank: number;
+            /** Format: double */
+            value: number;
+        };
+        /** @description Award standings: the award plus its current ranked rows. */
+        AwardStandingsResponse: {
+            award: components["schemas"]["AwardResponse"];
+            entries: components["schemas"]["LeaderboardEntryResponse"][];
+        };
+        /** @description A per-game award template (organizer picker entry). */
+        AwardTemplateResponse: {
+            /** @description `sum` | `max_single_demo` | `avg_per_demo`. */
+            aggregation: string;
+            /** @description `#rrggbb` accent color. */
+            color?: string | null;
+            description?: string | null;
+            /** @description `desc` | `asc`. */
+            direction: string;
+            /** Format: uuid */
+            game_id: string;
+            /** @description mdi icon name. */
+            icon?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description Stable key used to instantiate the template (e.g. `swag7`). */
+            key: string;
+            /** @description `matches` | `rounds`, when a qualifier is set. */
+            min_qualifier_type?: string | null;
+            /** Format: int32 */
+            min_qualifier_value?: number | null;
+            name: string;
+            stat_key: string;
         };
         /** @description Paginated list of bans. */
         BanListResponse: {
@@ -4000,6 +4369,40 @@ export interface components {
             start_time: string;
             /** @description Optional timezone preference for display. */
             timezone?: string | null;
+        };
+        /**
+         * @description Request to create an award in a tournament or league-season scope.
+         *
+         *     Two modes:
+         *     - **From template**: set `template_key` (optionally `name` to rename);
+         *       the template supplies branding and the metric tuple.
+         *     - **Custom**: leave `template_key` unset and provide `name` + `stat_key`
+         *       (and optionally the rest of the metric tuple).
+         */
+        CreateAwardRequest: {
+            /** @description Aggregation: `sum` (default), `max_single_demo`, or `avg_per_demo`. */
+            aggregation?: string | null;
+            /** @description `#rrggbb` accent color. */
+            color?: string | null;
+            /** @description Longer description for cards/tooltips. */
+            description?: string | null;
+            /** @description Direction: `desc` (default) or `asc`. */
+            direction?: string | null;
+            /** @description mdi icon name. */
+            icon?: string | null;
+            /** @description Qualifier type: `matches` or `rounds`. */
+            min_qualifier_type?: string | null;
+            /**
+             * Format: int32
+             * @description Qualifier threshold (requires `min_qualifier_type`).
+             */
+            min_qualifier_value?: number | null;
+            /** @description Award name (required for custom awards; overrides the template name). */
+            name?: string | null;
+            /** @description Stat key from the game's stat catalog (custom awards only). */
+            stat_key?: string | null;
+            /** @description Template key to instantiate (e.g. `swag7`). Custom awards omit this. */
+            template_key?: string | null;
         };
         /** @description Request body for creating a new ban. */
         CreateBanRequest: {
@@ -4334,6 +4737,16 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_AutoLinkSettingResponse: {
+            /** @description Current state of the demo auto-link setting. */
+            data: {
+                /** @description Whether the automatic demo→match linking pass is enabled. */
+                enabled: boolean;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_AvailabilityOverrideResponse: {
             /** @description Response for an availability override. */
             data: {
@@ -4372,6 +4785,61 @@ export interface components {
                 timezone?: string | null;
                 /** Format: date-time */
                 updated_at: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_AwardResponse: {
+            /** @description An award instance scoped to a tournament or league season. */
+            data: {
+                /** @description `sum` | `max_single_demo` | `avg_per_demo`. */
+                aggregation: string;
+                color?: string | null;
+                /** Format: date-time */
+                created_at: string;
+                description?: string | null;
+                /** @description `desc` | `asc`. */
+                direction: string;
+                /** Format: uuid */
+                game_id: string;
+                icon?: string | null;
+                /** Format: uuid */
+                id: string;
+                /** @description `matches` | `rounds`, when a qualifier is set. */
+                min_qualifier_type?: string | null;
+                /** Format: int32 */
+                min_qualifier_value?: number | null;
+                name: string;
+                /**
+                 * Format: uuid
+                 * @description Tournament id or league-season id depending on `scope_type`.
+                 */
+                scope_id: string;
+                /** @description `tournament` | `league_season`. */
+                scope_type: string;
+                stat_key: string;
+                /** @description `active` | `finalized` | `void`. */
+                status: string;
+                /** @description `player` (v1) | `team` (reserved). */
+                subject_type: string;
+                /**
+                 * Format: uuid
+                 * @description Source template id, when created from one.
+                 */
+                template_id?: string | null;
+                /** Format: date-time */
+                updated_at: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_AwardStandingsResponse: {
+            /** @description Award standings: the award plus its current ranked rows. */
+            data: {
+                award: components["schemas"]["AwardResponse"];
+                entries: components["schemas"]["LeaderboardEntryResponse"][];
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -4967,6 +5435,16 @@ export interface components {
                 validated: boolean;
                 /** Format: date-time */
                 validated_at?: string | null;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_FinalizedAwardResponse: {
+            /** @description Finalization outcome: the finalized award and its podium. */
+            data: {
+                award: components["schemas"]["AwardResponse"];
+                results: components["schemas"]["AwardResultResponse"][];
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -5612,6 +6090,29 @@ export interface components {
                  * @example 550e8400-e29b-41d4-a716-446655440001
                  */
                 user_id: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_ProcessUnlinkedDemosResponse: {
+            /** @description Response for the unlinked-demo backfill pass. */
+            data: {
+                /**
+                 * Format: int64
+                 * @description Demos examined in this batch.
+                 */
+                examined: number;
+                /**
+                 * Format: int64
+                 * @description Demos that were auto-linked to a match.
+                 */
+                linked: number;
+                /**
+                 * Format: int64
+                 * @description Demos examined but not linked.
+                 */
+                skipped: number;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -6464,6 +6965,78 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_AwardResponse: {
+            data: {
+                /** @description `sum` | `max_single_demo` | `avg_per_demo`. */
+                aggregation: string;
+                color?: string | null;
+                /** Format: date-time */
+                created_at: string;
+                description?: string | null;
+                /** @description `desc` | `asc`. */
+                direction: string;
+                /** Format: uuid */
+                game_id: string;
+                icon?: string | null;
+                /** Format: uuid */
+                id: string;
+                /** @description `matches` | `rounds`, when a qualifier is set. */
+                min_qualifier_type?: string | null;
+                /** Format: int32 */
+                min_qualifier_value?: number | null;
+                name: string;
+                /**
+                 * Format: uuid
+                 * @description Tournament id or league-season id depending on `scope_type`.
+                 */
+                scope_id: string;
+                /** @description `tournament` | `league_season`. */
+                scope_type: string;
+                stat_key: string;
+                /** @description `active` | `finalized` | `void`. */
+                status: string;
+                /** @description `player` (v1) | `team` (reserved). */
+                subject_type: string;
+                /**
+                 * Format: uuid
+                 * @description Source template id, when created from one.
+                 */
+                template_id?: string | null;
+                /** Format: date-time */
+                updated_at: string;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_AwardTemplateResponse: {
+            data: {
+                /** @description `sum` | `max_single_demo` | `avg_per_demo`. */
+                aggregation: string;
+                /** @description `#rrggbb` accent color. */
+                color?: string | null;
+                description?: string | null;
+                /** @description `desc` | `asc`. */
+                direction: string;
+                /** Format: uuid */
+                game_id: string;
+                /** @description mdi icon name. */
+                icon?: string | null;
+                /** Format: uuid */
+                id: string;
+                /** @description Stable key used to instantiate the template (e.g. `swag7`). */
+                key: string;
+                /** @description `matches` | `rounds`, when a qualifier is set. */
+                min_qualifier_type?: string | null;
+                /** Format: int32 */
+                min_qualifier_value?: number | null;
+                name: string;
+                stat_key: string;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_Vec_BanResponse: {
             data: {
                 /**
@@ -6756,6 +7329,32 @@ export interface components {
                 name: string;
                 status: string;
                 validated: boolean;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_LeaderboardEntryResponse: {
+            data: {
+                avatar_url?: string | null;
+                /**
+                 * Format: int64
+                 * @description Distinct demos that contributed to `value`.
+                 */
+                demos_counted: number;
+                display_name: string;
+                /** Format: uuid */
+                player_id: string;
+                /**
+                 * Format: int32
+                 * @description Competition rank (1-based; ties share a rank).
+                 */
+                rank: number;
+                /**
+                 * Format: double
+                 * @description Aggregated stat value.
+                 */
+                value: number;
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -7129,6 +7728,17 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_PlayerTrophyResponse: {
+            data: {
+                award: components["schemas"]["AwardResponse"];
+                result: components["schemas"]["AwardResultResponse"];
+                /** @description Tournament or league-season name, when the scope still exists. */
+                scope_name?: string | null;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_Vec_RankTierResponse: {
             data: {
                 /**
@@ -7362,6 +7972,23 @@ export interface components {
                  * @description Rating used for seeding (if applicable).
                  */
                 seed_rating?: number | null;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_StatCatalogEntryResponse: {
+            data: {
+                /** @description UI grouping (`Combat`, `Utility`, `Objective`, `Weapons`). */
+                category: string;
+                /** @description Longer description for tooltips. */
+                description: string;
+                /** @description Stable stat key (e.g. `headshot_kills`, `kills.weapon.mag7`). */
+                key: string;
+                /** @description Human-readable label. */
+                label: string;
+                /** @description `count` (additive) or `ratio` (per-demo; never summed). */
+                value_type: string;
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -8449,7 +9076,7 @@ export interface components {
          *     All fields are optional — only specified fields are enforced.
          */
         EligibilityRestrictionsInput: {
-            /** @description Only allow players in certain rank tiers (e.g., ["silver", "gold"]). */
+            /** @description Only allow players in certain rank tiers (e.g., `["silver", "gold"]`). */
             allowed_rank_tiers?: string[];
             /**
              * Format: int32
@@ -8597,6 +9224,11 @@ export interface components {
              * @example Name must be between 3 and 64 characters
              */
             message: string;
+        };
+        /** @description Finalization outcome: the finalized award and its podium. */
+        FinalizedAwardResponse: {
+            award: components["schemas"]["AwardResponse"];
+            results: components["schemas"]["AwardResultResponse"][];
         };
         /** @description Request to forfeit a match. */
         ForfeitMatchRequest: {
@@ -8887,6 +9519,52 @@ export interface components {
             player_id: string;
             /** @description Role for the player: player or substitute. */
             role?: string;
+        };
+        /** @description One ranked row in award standings or a plain leaderboard. */
+        LeaderboardEntryResponse: {
+            avatar_url?: string | null;
+            /**
+             * Format: int64
+             * @description Distinct demos that contributed to `value`.
+             */
+            demos_counted: number;
+            display_name: string;
+            /** Format: uuid */
+            player_id: string;
+            /**
+             * Format: int32
+             * @description Competition rank (1-based; ties share a rank).
+             */
+            rank: number;
+            /**
+             * Format: double
+             * @description Aggregated stat value.
+             */
+            value: number;
+        };
+        /** @description Query parameters for the plain leaderboard endpoints. */
+        LeaderboardQueryParams: {
+            /** @description Aggregation: `sum` (default), `max_single_demo`, or `avg_per_demo`. */
+            aggregation?: string | null;
+            /** @description Direction: `desc` (default) or `asc`. */
+            direction?: string | null;
+            /**
+             * Format: int64
+             * @description Maximum rows (default 10, max 100).
+             */
+            limit?: number | null;
+            /**
+             * Format: int32
+             * @description Only rank players with at least this many counted demos.
+             */
+            min_matches?: number | null;
+            /**
+             * Format: int32
+             * @description Only rank players with at least this many rounds played in scope.
+             */
+            min_rounds?: number | null;
+            /** @description Stat key to rank on (e.g. `headshot_kills`, `kills.weapon.mag7`). */
+            stat_key: string;
         };
         /** @description Response DTO for a league invitation. */
         LeagueInvitationResponse: {
@@ -10048,12 +10726,40 @@ export interface components {
             /** @description Whether the player is looking for a team. */
             looking_for_team: boolean;
         };
+        /**
+         * @description One trophy-case entry: a finalized result with its award and the scope's
+         *     display name.
+         */
+        PlayerTrophyResponse: {
+            award: components["schemas"]["AwardResponse"];
+            result: components["schemas"]["AwardResultResponse"];
+            /** @description Tournament or league-season name, when the scope still exists. */
+            scope_name?: string | null;
+        };
         /** @description Request to process match progression with explicit winner/loser. */
         ProcessProgressionRequest: {
             /** @description The loser registration ID */
             loser_registration_id: string;
             /** @description The winner registration ID */
             winner_registration_id: string;
+        };
+        /** @description Response for the unlinked-demo backfill pass. */
+        ProcessUnlinkedDemosResponse: {
+            /**
+             * Format: int64
+             * @description Demos examined in this batch.
+             */
+            examined: number;
+            /**
+             * Format: int64
+             * @description Demos that were auto-linked to a match.
+             */
+            linked: number;
+            /**
+             * Format: int64
+             * @description Demos examined but not linked.
+             */
+            skipped: number;
         };
         /** @description Response for bracket progression details. */
         ProgressionResponse: {
@@ -10837,6 +11543,27 @@ export interface components {
              */
             youtube?: string | null;
         };
+        /** @description Query parameters for award standings. */
+        StandingsQueryParams: {
+            /**
+             * Format: int64
+             * @description Maximum rows (default 10, max 100).
+             */
+            limit?: number | null;
+        };
+        /** @description One stat the game plugin can extract, for award-builder UIs. */
+        StatCatalogEntryResponse: {
+            /** @description UI grouping (`Combat`, `Utility`, `Objective`, `Weapons`). */
+            category: string;
+            /** @description Longer description for tooltips. */
+            description: string;
+            /** @description Stable stat key (e.g. `headshot_kills`, `kills.weapon.mag7`). */
+            key: string;
+            /** @description Human-readable label. */
+            label: string;
+            /** @description `count` (additive) or `ratio` (per-demo; never summed). */
+            value_type: string;
+        };
         /** @description Steam tracking status response. */
         SteamTrackingResponse: {
             created_at: string;
@@ -11263,6 +11990,14 @@ export interface components {
             /** @description Team side in demo (e.g., "CT", "T"). */
             team_side: string;
         };
+        /** @description Request to update the demo auto-link setting. */
+        UpdateAutoLinkSettingRequest: {
+            /**
+             * @description Whether the automatic demo→match linking pass runs at stats
+             *     ingestion. Manual linking and evidence uploads are unaffected.
+             */
+            enabled: boolean;
+        };
         /** @description Request to update an availability window. */
         UpdateAvailabilityWindowRequest: {
             /**
@@ -11280,6 +12015,20 @@ export interface components {
             start_time?: string | null;
             /** @description Timezone preference for display. */
             timezone?: string | null;
+        };
+        /**
+         * @description Request to update an active award's presentation. Only provided fields
+         *     change; the metric tuple is immutable after creation.
+         */
+        UpdateAwardRequest: {
+            /** @description New `#rrggbb` accent color. */
+            color?: string | null;
+            /** @description New description. */
+            description?: string | null;
+            /** @description New mdi icon name. */
+            icon?: string | null;
+            /** @description New award name. */
+            name?: string | null;
         };
         /** @description Request to update a game's settings. */
         UpdateGameRequest: {
@@ -12222,6 +12971,86 @@ export interface operations {
             };
         };
     };
+    get_auto_link_setting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current auto-link setting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_AutoLinkSettingResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    update_auto_link_setting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAutoLinkSettingRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated auto-link setting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_AutoLinkSettingResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     batch_catalog_demos: {
         parameters: {
             query?: never;
@@ -12305,6 +13134,56 @@ export interface operations {
             };
             /** @description Admin access required */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    process_unlinked_demos: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of demos to examine (default 100, max 500) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Backfill pass results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_ProcessUnlinkedDemosResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Auto-linking is disabled */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15466,6 +16345,38 @@ export interface operations {
             };
         };
     };
+    list_award_templates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game ID or slug (e.g. cs2) */
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Award templates for the game */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_AwardTemplateResponse"];
+                };
+            };
+            /** @description Game not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     disable_game: {
         parameters: {
             query?: never;
@@ -15943,6 +16854,38 @@ export interface operations {
             };
         };
     };
+    get_stat_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game ID or slug (e.g. cs2) */
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stat definitions the game plugin can extract */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_StatCatalogEntryResponse"];
+                };
+            };
+            /** @description Game not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     update_team_size: {
         parameters: {
             query?: never;
@@ -16264,6 +17207,397 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Season not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_season_awards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description League season ID */
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Awards in the season */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_AwardResponse"];
+                };
+            };
+            /** @description Season not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    create_season_award: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description League season ID */
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAwardRequest"];
+            };
+        };
+        responses: {
+            /** @description Award created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_AwardResponse"];
+                };
+            };
+            /** @description Validation error or unknown stat key */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing league.seasons.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Season or template not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Duplicate award name in scope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    void_season_award: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description League season ID */
+                season_id: string;
+                /** @description Award ID */
+                award_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Award voided */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_AwardResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing league.seasons.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Award not found in this season */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Finalized awards cannot be voided */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    update_season_award: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description League season ID */
+                season_id: string;
+                /** @description Award ID */
+                award_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAwardRequest"];
+            };
+        };
+        responses: {
+            /** @description Award updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_AwardResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing league.seasons.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Award not found in this season */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Award is finalized/void, or name collides */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    finalize_season_award: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description League season ID */
+                season_id: string;
+                /** @description Award ID */
+                award_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Award finalized (podium snapshotted) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_FinalizedAwardResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing league.seasons.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Award not found in this season */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Award voided */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_season_award_standings: {
+        parameters: {
+            query?: {
+                /** @description Maximum rows (default 10, max 100). */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description League season ID */
+                season_id: string;
+                /** @description Award ID */
+                award_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current award standings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_AwardStandingsResponse"];
+                };
+            };
+            /** @description Award not found in this season */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_season_leaderboard: {
+        parameters: {
+            query: {
+                /** @description Stat key to rank on (e.g. `headshot_kills`, `kills.weapon.mag7`). */
+                stat_key: string;
+                /** @description Aggregation: `sum` (default), `max_single_demo`, or `avg_per_demo`. */
+                aggregation?: string | null;
+                /** @description Direction: `desc` (default) or `asc`. */
+                direction?: string | null;
+                /** @description Only rank players with at least this many counted demos. */
+                min_matches?: number | null;
+                /** @description Only rank players with at least this many rounds played in scope. */
+                min_rounds?: number | null;
+                /** @description Maximum rows (default 10, max 100). */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description League season ID */
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ranked leaderboard rows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_LeaderboardEntryResponse"];
+                };
+            };
+            /** @description Invalid query parameters */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19748,7 +21082,16 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Veto session not found */
+            /** @description Not a match participant or admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match or veto session not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -19870,7 +21213,16 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Veto session not found */
+            /** @description Not a match participant or admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match or veto session not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -20667,6 +22019,38 @@ export interface operations {
             };
         };
     };
+    get_player_awards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Player ID */
+                player_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Finalized awards won by the player */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_PlayerTrophyResponse"];
+                };
+            };
+            /** @description Player not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     list_player_game_profiles: {
         parameters: {
             query?: never;
@@ -21135,7 +22519,353 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_tournament_awards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Awards in the tournament */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_AwardResponse"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    create_tournament_award: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAwardRequest"];
+            };
+        };
+        responses: {
+            /** @description Award created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_AwardResponse"];
+                };
+            };
+            /** @description Validation error or unknown stat key */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing tournament.settings.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament or template not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Duplicate award name in scope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    void_tournament_award: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Award ID */
+                award_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Award voided */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_AwardResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing tournament.settings.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Award not found in this tournament */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Finalized awards cannot be voided */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    update_tournament_award: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Award ID */
+                award_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAwardRequest"];
+            };
+        };
+        responses: {
+            /** @description Award updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_AwardResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing tournament.settings.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Award not found in this tournament */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Award is finalized/void, or name collides */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    finalize_tournament_award: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Award ID */
+                award_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Award finalized (podium snapshotted) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_FinalizedAwardResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing tournament.settings.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Award not found in this tournament */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Award voided or results locked */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_tournament_award_standings: {
+        parameters: {
+            query?: {
+                /** @description Maximum rows (default 10, max 100). */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Award ID */
+                award_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current award standings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_AwardStandingsResponse"];
+                };
+            };
+            /** @description Award not found in this tournament */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -21251,6 +22981,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Tournament not found */
             404: {
                 headers: {
@@ -21333,6 +23072,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Tournament not found */
             404: {
                 headers: {
@@ -21383,6 +23131,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Tournament not found */
             404: {
                 headers: {
@@ -21426,6 +23183,69 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_tournament_leaderboard: {
+        parameters: {
+            query: {
+                /** @description Stat key to rank on (e.g. `headshot_kills`, `kills.weapon.mag7`). */
+                stat_key: string;
+                /** @description Aggregation: `sum` (default), `max_single_demo`, or `avg_per_demo`. */
+                aggregation?: string | null;
+                /** @description Direction: `desc` (default) or `asc`. */
+                direction?: string | null;
+                /** @description Only rank players with at least this many counted demos. */
+                min_matches?: number | null;
+                /** @description Only rank players with at least this many rounds played in scope. */
+                min_rounds?: number | null;
+                /** @description Maximum rows (default 10, max 100). */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ranked leaderboard rows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_LeaderboardEntryResponse"];
+                };
+            };
+            /** @description Invalid query parameters */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22377,6 +24197,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Not a participant of this match */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Match not found */
             404: {
                 headers: {
@@ -22420,6 +24249,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22477,6 +24315,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Tournament not found */
             404: {
                 headers: {
@@ -22520,6 +24367,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22796,6 +24652,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Registration not found */
             404: {
                 headers: {
@@ -22841,6 +24706,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22956,6 +24830,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Registration not found */
             404: {
                 headers: {
@@ -23005,6 +24888,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23127,6 +25019,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Tournament not found */
             404: {
                 headers: {
@@ -23198,6 +25099,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Tournament not found */
             404: {
                 headers: {
@@ -23252,6 +25162,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Tournament not found */
             404: {
                 headers: {
@@ -23299,6 +25218,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23392,6 +25320,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Tournament not found */
             404: {
                 headers: {
@@ -23435,6 +25372,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

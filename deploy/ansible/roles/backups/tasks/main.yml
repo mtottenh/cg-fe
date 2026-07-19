@@ -1,0 +1,83 @@
+---
+# Nightly pg_dump → zstd → Linode Object Storage.
+#
+# The service runs as the `postgres` user so the pg_dump is socket-auth
+# (no password on the wire) and has CONNECT on everything. The AWS
+# credentials are read from an env file, same pattern as the API.
+
+- name: /usr/local/bin/pg-backup.sh
+  ansible.builtin.template:
+    src: pg-backup.sh.j2
+    dest: /usr/local/bin/pg-backup.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: /etc/portal/backup.env
+  ansible.builtin.copy:
+    dest: /etc/portal/backup.env
+    owner: root
+    group: postgres
+    mode: "0640"
+    content: |
+      AWS_ACCESS_KEY_ID={{ vault_linode_access_key }}
+      AWS_SECRET_ACCESS_KEY={{ vault_linode_secret_key }}
+      AWS_ENDPOINT_URL={{ linode_object_storage_endpoint }}
+      BACKUP_BUCKET={{ backup_bucket }}
+      BACKUP_LOCAL_RETENTION_DAYS={{ backup_local_retention_days }}
+      POSTGRES_DB={{ postgres_db }}
+
+- name: /var/lib/portal/backups
+  ansible.builtin.file:
+    path: /var/lib/portal/backups
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+
+- name: pg-backup.service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pg-backup.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Nightly portal_prod dump → Linode Object Storage
+      After=postgresql.service network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      User=postgres
+      Group=postgres
+      EnvironmentFile=/etc/portal/backup.env
+      ExecStart=/usr/local/bin/pg-backup.sh
+      # Don't let a wedged dump block the next run.
+      TimeoutStartSec=1800
+      Nice=10
+      IOSchedulingClass=best-effort
+      IOSchedulingPriority=7
+  notify: daemon-reload
+
+- name: pg-backup.timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pg-backup.timer
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Nightly portal_prod backup timer
+
+      [Timer]
+      {{ backup_schedule }}
+      Persistent=true
+      RandomizedDelaySec=300
+
+      [Install]
+      WantedBy=timers.target
+  notify: daemon-reload
+
+- name: Enable pg-backup.timer
+  ansible.builtin.systemd:
+    name: pg-backup.timer
+    enabled: true
+    state: started
+    daemon_reload: true

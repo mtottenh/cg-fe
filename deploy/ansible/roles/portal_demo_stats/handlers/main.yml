@@ -1,0 +1,10 @@
+---
+- name: restart portal-demo-stats
+  ansible.builtin.systemd:
+    name: portal-demo-stats
+    state: restarted
+    daemon_reload: true
+
+- name: daemon-reload
+  ansible.builtin.systemd:
+    daemon_reload: true

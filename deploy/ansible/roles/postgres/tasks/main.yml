@@ -1,0 +1,94 @@
+---
+# Postgres installed from Ubuntu's main repo. For Postgres 16 on Ubuntu
+# 24.04 that's the default package; no PGDG needed.
+#
+# Defense-in-depth:
+#   1. listen_addresses = '127.0.0.1'   — the daemon won't bind public.
+#   2. pg_hba.conf allows local socket + 127.0.0.1/32 only.
+#   3. ufw blocks 5432 anyway (base role, default deny).
+#   4. systemd drop-in: IPAddressDeny=any + IPAddressAllow=localhost.
+
+- name: Install Postgres {{ postgres_version }}
+  ansible.builtin.apt:
+    name:
+      - "postgresql-{{ postgres_version }}"
+      - "postgresql-contrib-{{ postgres_version }}"
+    state: present
+
+- name: Force Postgres to listen on loopback only
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    regexp: '^\s*#?\s*listen_addresses\s*='
+    line: "listen_addresses = '{{ postgres_listen_addresses }}'"
+    validate: /bin/true
+  notify: restart postgres
+
+- name: pg_hba — local socket + loopback only
+  ansible.builtin.copy:
+    dest: "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+    content: |
+      # Managed by Ansible. Do not edit by hand.
+      # TYPE  DATABASE   USER        ADDRESS         METHOD
+      local   all        postgres                    peer
+      local   all        all                         peer
+      host    all        all         127.0.0.1/32    scram-sha-256
+      host    all        all         ::1/128         scram-sha-256
+  notify: restart postgres
+
+# -----------------------------------------------------------------------------
+# systemd drop-in: belt-and-braces network isolation. Even if Postgres
+# somehow tried to bind publicly, the kernel would refuse the packets
+# because the cgroup's eBPF filter rejects non-loopback.
+# -----------------------------------------------------------------------------
+- name: postgresql.service — drop-in dir
+  ansible.builtin.file:
+    path: /etc/systemd/system/postgresql@{{ postgres_version }}-main.service.d
+    state: directory
+    mode: "0755"
+
+- name: postgresql.service — IPAddress{Allow,Deny}
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/postgresql@{{ postgres_version }}-main.service.d/10-network.conf
+    mode: "0644"
+    content: |
+      # Only loopback traffic. systemd's eBPF filter rejects anything else.
+      [Service]
+      IPAddressDeny=any
+      IPAddressAllow=localhost
+      RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+  notify:
+    - daemon-reload
+    - restart postgres
+
+- name: Ensure Postgres is running
+  ansible.builtin.systemd:
+    name: "postgresql@{{ postgres_version }}-main"
+    enabled: true
+    state: started
+
+# -----------------------------------------------------------------------------
+# Role + database. Using peer auth — the portal unix user (created by the
+# portal-api deb's postinst) maps to the portal Postgres role via
+# pg_ident.conf default ("user foo = role foo"). No password on the wire.
+# -----------------------------------------------------------------------------
+- name: Ensure portal role exists
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ postgres_user }}"
+    password: "{{ vault_postgres_password }}"
+    role_attr_flags: "LOGIN"
+    state: present
+
+- name: Ensure portal_prod DB exists
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ postgres_db }}"
+    owner: "{{ postgres_user }}"
+    encoding: UTF-8
+    lc_collate: C.UTF-8
+    lc_ctype: C.UTF-8
+    template: template0
+    state: present

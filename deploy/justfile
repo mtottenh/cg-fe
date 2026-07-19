@@ -1,0 +1,73 @@
+# Top-level ops commands. Run `just` to list.
+#
+# Convention: anything that touches the live box goes through SSH or
+# ansible-playbook so everything is auditable in shell history.
+
+set dotenv-load := false
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+# --- config pulled from the Ansible inventory so we don't repeat ourselves
+HOST := `yq -r '.all.hosts | keys | .[0]' ansible/inventory/prod.yml 2>/dev/null || echo portal`
+USER := "ops"
+
+default:
+    @just --list
+
+# Idempotent full site play. Run after editing Ansible, or monthly.
+bootstrap:
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml --ask-vault-pass
+
+# Deploy a tagged release. Downloads debs from the matching GitHub release
+# and hands them to the playbook via -e overrides.
+#
+# Usage: just deploy v0.2.1
+deploy VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    echo "→ downloading portal-api + portal-scanner {{VERSION}} → $tmp"
+    gh release download {{VERSION}} --repo community-gaming/gaming-portal \
+        --pattern 'portal-api_*_amd64.deb' \
+        --pattern 'portal-scanner_*_amd64.deb' \
+        --dir "$tmp"
+    ls -la "$tmp"
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
+        --ask-vault-pass \
+        --tags portal_api,portal_scanner \
+        -e portal_api_deb_path="$tmp/$(ls "$tmp" | grep ^portal-api_)" \
+        -e portal_scanner_deb_path="$tmp/$(ls "$tmp" | grep ^portal-scanner_)"
+    rm -rf "$tmp"
+
+# Convenience: follow the live API log.
+logs:
+    ssh {{USER}}@{{HOST}} -t 'journalctl -fu portal-api'
+
+# Last 200 warn/error lines across all portal units.
+tail-errors:
+    ssh {{USER}}@{{HOST}} "journalctl -u 'portal-*' -p warning -n 200 --no-pager"
+
+# systemctl status for every portal unit, plus postgres.
+status:
+    ssh {{USER}}@{{HOST}} "systemctl status --no-pager portal-api postgresql caddy portal-scanner 2>&1 | head -200"
+
+# psql shell into the prod DB over SSH (no port forwarded, no password on
+# the network — socket auth on the box).
+db-shell:
+    ssh {{USER}}@{{HOST}} -t "sudo -u portal psql -d portal_prod"
+
+# Kick a backup immediately, outside of the timer's schedule. Useful
+# before a risky migration or deploy.
+backup-now:
+    ssh {{USER}}@{{HOST}} 'sudo systemctl start pg-backup.service'
+    ssh {{USER}}@{{HOST}} 'sudo journalctl -u pg-backup.service -n 50 --no-pager'
+
+# Edit the vault in-place. Needs the vault password.
+edit-vault:
+    ansible-vault edit ansible/group_vars/all/vault.yml
+
+ssh:
+    ssh {{USER}}@{{HOST}}
+
+# Sanity: check what versions are actually installed on the box.
+installed:
+    ssh {{USER}}@{{HOST}} "dpkg -l | awk '/portal-|^ii  caddy|^ii  postgresql/ {print \$2, \$3}'"

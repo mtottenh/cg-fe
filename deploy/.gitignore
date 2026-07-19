@@ -1,0 +1,19 @@
+# Vault password files — never commit.
+*.vault_pass
+.vault_pass
+
+# Unencrypted vault (should always be encrypted; this is a safety net).
+ansible/group_vars/all/vault.yml.unencrypted
+
+# Downloaded debs when running `just deploy`.
+tmp/
+*.deb
+
+# Ansible runtime.
+*.retry
+.ansible/
+
+# Editor noise.
+.idea/
+.vscode/
+*.swp

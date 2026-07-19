@@ -1,0 +1,21 @@
+---
+# Prod inventory. One host for now — add more under `all.hosts` when you
+# split out (e.g. a dedicated DB Linode).
+#
+# ansible_host is the public IP or a DNS name; ansible_user is the
+# unprivileged account you SSH as (set up by roles/base).
+
+all:
+  hosts:
+    portal-prod:
+      ansible_host: CHANGE_ME            # e.g. 45.33.x.x or portal.example.com
+      ansible_user: ops
+      ansible_python_interpreter: /usr/bin/python3
+
+  vars:
+    # The domain Caddy terminates TLS for. Pointed at ansible_host via
+    # an A record elsewhere.
+    portal_domain: portal.example.com
+
+    # Let's Encrypt contact. Caddy nags if this is empty.
+    caddy_acme_email: ops@example.com

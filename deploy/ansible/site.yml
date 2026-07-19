@@ -1,0 +1,35 @@
+---
+# Top-level play. Order matters: base before postgres (user + firewall),
+# postgres before portal_api (DB must exist), caddy last (needs API
+# running to health-check the upstream).
+
+- name: Converge portal host
+  hosts: all
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify required vault values are decrypted
+      ansible.builtin.assert:
+        that:
+          - vault_jwt_secret is defined
+          - vault_jwt_secret | length >= 32
+          - vault_linode_access_key is defined
+          - vault_linode_secret_key is defined
+        fail_msg: "vault.yml is not decrypted or missing required keys"
+
+  roles:
+    - role: base
+      tags: [base]
+
+    - role: postgres
+      tags: [postgres]
+
+    - role: portal_api
+      tags: [portal_api]
+
+    - role: caddy
+      tags: [caddy]
+
+    - role: backups
+      tags: [backups]

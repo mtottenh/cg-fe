@@ -1,0 +1,44 @@
+---
+# Non-secret config shared by all roles. Secrets live in vault.yml.
+
+# --- Postgres ---------------------------------------------------------------
+postgres_version: 16
+postgres_db: portal_prod
+postgres_user: portal
+# The role binds postgres to localhost only; Unix socket is preferred.
+postgres_listen_addresses: "127.0.0.1"
+
+# --- portal-api -------------------------------------------------------------
+# Path to the .deb the playbook will apt-install. Set by `just deploy`,
+# or point at a local file when iterating.
+portal_api_deb_path: ""
+
+# API connects to Postgres over the Unix socket — no TCP, no password on
+# the wire. The portal unix user is granted LOGIN and peer auth.
+portal_api_database_url: "postgres:///{{ postgres_db }}?host=/var/run/postgresql&user={{ postgres_user }}"
+
+# Token lifetimes. Workspace defaults are baked into the binary but we
+# set these explicitly so a rollback doesn't silently change behavior.
+portal_access_token_expiry_minutes: 15
+portal_refresh_token_expiry_minutes: 10080
+
+# Comma-separated CORS allow-list. "" means no CORS (recommended when the
+# frontend is served from the same origin by Caddy).
+portal_cors_origins: "https://{{ portal_domain }}"
+
+# --- Object Storage (evidence + demo bucket) --------------------------------
+linode_object_storage_region: us-east-1
+linode_object_storage_endpoint: "https://{{ linode_object_storage_region }}.linodeobjects.com"
+
+portal_evidence_bucket: portal-evidence
+portal_evidence_public_url: "https://{{ portal_evidence_bucket }}.{{ linode_object_storage_region }}.linodeobjects.com"
+
+portal_demos_bucket: portal-demos
+
+# --- Backups ---------------------------------------------------------------
+backup_bucket: portal-backups
+# Keep 30 days of nightly dumps locally in /var/lib/portal/backups, and
+# upload all of them to Object Storage (retention handled by a bucket
+# lifecycle rule, not this script).
+backup_local_retention_days: 30
+backup_schedule: "OnCalendar=*-*-* 03:15:00"    # 03:15 server local

@@ -1,0 +1,78 @@
+---
+# Host-level hardening. Run once, re-run safely.
+
+- name: Apt — cache & baseline packages
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    name:
+      - ufw
+      - fail2ban
+      - unattended-upgrades
+      - curl
+      - jq
+      - zstd
+      - awscli          # used by the backup script to push to Linode Object Storage
+      - python3-psycopg2  # required by Ansible's postgresql_* modules
+    state: present
+
+- name: Enable unattended security upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+
+# -----------------------------------------------------------------------------
+# ufw: default deny inbound; allow SSH, HTTP, HTTPS. Everything else (the
+# API on :3000, Postgres on :5432) stays on loopback and is also blocked
+# at the firewall — defense in depth.
+# -----------------------------------------------------------------------------
+- name: ufw — default policies
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+    - { direction: routed,   policy: deny }
+
+- name: ufw — allow SSH, HTTP, HTTPS
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: ["22", "80", "443"]
+
+- name: ufw — enable
+  community.general.ufw:
+    state: enabled
+    logging: "low"
+
+# -----------------------------------------------------------------------------
+# An unprivileged 'ops' user for operators. Real deploy work goes through
+# this user via sudo; root SSH is disabled elsewhere (you should also set
+# PermitRootLogin=no in /etc/ssh/sshd_config — not templated here to avoid
+# locking ourselves out if the playbook is run against a fresh box).
+# -----------------------------------------------------------------------------
+- name: ops — group
+  ansible.builtin.group:
+    name: ops
+    state: present
+
+- name: ops — user
+  ansible.builtin.user:
+    name: ops
+    group: ops
+    groups: [sudo]
+    shell: /bin/bash
+    state: present
+
+- name: ops — passwordless sudo
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/ops
+    mode: "0440"
+    content: "ops ALL=(ALL) NOPASSWD:ALL\n"
+    validate: /usr/sbin/visudo -cf %s

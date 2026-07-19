@@ -1,0 +1,31 @@
+#!/bin/bash
+# {{ ansible_managed }}
+#
+# Nightly portal_prod dump. Writes a local copy first (so the S3 upload
+# failing doesn't lose the dump), then uploads, then prunes.
+
+set -euo pipefail
+
+BACKUP_DIR=/var/lib/portal/backups
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+OUT="$BACKUP_DIR/${POSTGRES_DB}_${STAMP}.sql.zst"
+
+mkdir -p "$BACKUP_DIR"
+
+echo "→ pg_dump ${POSTGRES_DB} → $OUT"
+pg_dump --format=custom --compress=0 "$POSTGRES_DB" \
+    | zstd -T0 -q -19 -o "$OUT"
+
+SIZE=$(stat -c%s "$OUT")
+echo "→ local dump written: $OUT ($SIZE bytes)"
+
+echo "→ uploading to s3://${BACKUP_BUCKET}/$(basename "$OUT")"
+aws --endpoint-url="$AWS_ENDPOINT_URL" \
+    s3 cp "$OUT" "s3://${BACKUP_BUCKET}/$(basename "$OUT")" \
+    --only-show-errors
+
+echo "→ pruning local dumps older than ${BACKUP_LOCAL_RETENTION_DAYS} days"
+find "$BACKUP_DIR" -type f -name '*.sql.zst' \
+    -mtime "+${BACKUP_LOCAL_RETENTION_DAYS}" -delete
+
+echo "✓ backup complete"

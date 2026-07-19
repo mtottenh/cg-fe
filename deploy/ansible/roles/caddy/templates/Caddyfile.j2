@@ -1,0 +1,48 @@
+# {{ ansible_managed }}
+
+{
+    email {{ caddy_acme_email }}
+    # Structured logs to journald — no separate log files to rotate.
+    log {
+        output stderr
+        format json
+    }
+}
+
+{{ portal_domain }} {
+    encode zstd gzip
+
+    # API routes — everything the backend owns.
+    @api {
+        path /v1/* /uploads/* /swagger-ui/* /api-docs/* /health
+    }
+    handle @api {
+        reverse_proxy 127.0.0.1:3000 {
+            # Pass client identity through.
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Real-IP {remote}
+            # 60s is plenty; bump if you add long-polling routes.
+            transport http {
+                read_timeout 60s
+                write_timeout 60s
+            }
+        }
+    }
+
+    # Frontend SPA. Fallback to index.html for client-side routing.
+    handle {
+        root * /var/www/portal
+        try_files {path} /index.html
+        file_server
+    }
+
+    # HSTS + sensible defaults.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+}

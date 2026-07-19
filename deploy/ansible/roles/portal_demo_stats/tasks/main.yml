@@ -1,0 +1,46 @@
+---
+# Install/upgrade the portal-demo-stats deb (self-hosted CS2 demo parser —
+# replaces the external demos.cs210mans.uk dependency) and render its env
+# file. The deb's postinst creates the `portal` user and
+# /var/lib/portal-demo-stats/{demos,stats}; this role ships the artifact
+# and the config.
+#
+# The portal API reaches it via CS2_DEMO_SERVICE_URL. In prod that URL must
+# be https and non-private per the API's SSRF validation — front this
+# service with Caddy (e.g. demos.<your-domain> → localhost:3100) rather
+# than pointing the API at localhost directly.
+
+- name: Assert portal_demo_stats_deb_path was provided
+  ansible.builtin.assert:
+    that:
+      - portal_demo_stats_deb_path is defined
+      - portal_demo_stats_deb_path | length > 0
+    fail_msg: "pass -e portal_demo_stats_deb_path=/path/to/portal-demo-stats_X.Y.Z_amd64.deb"
+
+- name: Copy portal-demo-stats deb to target
+  ansible.builtin.copy:
+    src: "{{ portal_demo_stats_deb_path }}"
+    dest: "/tmp/{{ portal_demo_stats_deb_path | basename }}"
+    mode: "0644"
+
+- name: apt install portal-demo-stats
+  ansible.builtin.apt:
+    deb: "/tmp/{{ portal_demo_stats_deb_path | basename }}"
+    state: present
+  notify: restart portal-demo-stats
+
+- name: Render /etc/portal/demo-stats.env from vault
+  ansible.builtin.template:
+    src: demo-stats.env.j2
+    dest: /etc/portal/demo-stats.env
+    owner: root
+    group: portal
+    mode: "0640"
+  notify: restart portal-demo-stats
+
+- name: Ensure portal-demo-stats is running
+  ansible.builtin.systemd:
+    name: portal-demo-stats
+    enabled: true
+    state: started
+    daemon_reload: true

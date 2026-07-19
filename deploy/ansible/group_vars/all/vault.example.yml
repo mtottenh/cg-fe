@@ -1,0 +1,21 @@
+---
+# Copy to vault.yml and `ansible-vault encrypt ansible/group_vars/all/vault.yml`.
+# The encrypted file goes in git; the vault password does not.
+
+# --- Postgres ---------------------------------------------------------------
+# Not strictly required — the Unix socket uses peer auth — but set it so
+# a password-based fallback (e.g. external tooling running as root) works.
+vault_postgres_password: "CHANGE_ME"
+
+# --- portal-api -------------------------------------------------------------
+# openssl rand -hex 32
+vault_jwt_secret: "CHANGE_ME_at_least_32_bytes"
+
+# --- Linode Object Storage --------------------------------------------------
+# Same key pair is fine for evidence + demos + backups if bucket policies
+# are distinct. Split them if you want tighter blast radius.
+vault_linode_access_key: "CHANGE_ME"
+vault_linode_secret_key: "CHANGE_ME"
+
+# --- Internal API key used by the scanner to call back into the API -------
+vault_portal_scanner_api_key: "cgp_CHANGE_ME"

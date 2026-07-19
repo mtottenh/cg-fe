@@ -1,0 +1,74 @@
+---
+# Install/upgrade the portal-api deb and render its env file from the
+# vault.
+#
+# The deb does the heavy lifting via its postinst:
+#   - creates the `portal` system user
+#   - creates /var/lib/portal and /etc/portal
+#   - seeds /etc/portal/api.env from example on first install
+#   - systemd daemon-reload + enable + start
+# This role just ships the artifact and overwrites the env file.
+
+- name: Assert portal_api_deb_path was provided
+  ansible.builtin.assert:
+    that:
+      - portal_api_deb_path is defined
+      - portal_api_deb_path | length > 0
+    fail_msg: "pass -e portal_api_deb_path=/path/to/portal-api_X.Y.Z_amd64.deb (or use `just deploy`)"
+
+- name: Copy portal-api deb to target
+  ansible.builtin.copy:
+    src: "{{ portal_api_deb_path }}"
+    dest: "/tmp/{{ portal_api_deb_path | basename }}"
+    mode: "0644"
+
+- name: apt install portal-api
+  ansible.builtin.apt:
+    deb: "/tmp/{{ portal_api_deb_path | basename }}"
+    state: present
+  notify: restart portal-api
+
+- name: Render /etc/portal/api.env from vault
+  ansible.builtin.template:
+    src: api.env.j2
+    dest: /etc/portal/api.env
+    owner: root
+    group: portal
+    mode: "0640"
+  notify: restart portal-api
+
+# -----------------------------------------------------------------------------
+# systemd drop-in — per-service outbound firewall. The API should only
+# talk to: localhost (Postgres), and Linode Object Storage. We can't
+# easily enumerate LOS's IPs, so we allow 'any' for now but note the
+# direction. Tighten later with explicit ranges.
+# -----------------------------------------------------------------------------
+- name: portal-api.service — drop-in dir
+  ansible.builtin.file:
+    path: /etc/systemd/system/portal-api.service.d
+    state: directory
+    mode: "0755"
+
+- name: portal-api.service — overrides (cgroup filters, tuning)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/portal-api.service.d/10-network.conf
+    mode: "0644"
+    content: |
+      # Loosen only when you can prove it. Outbound is 'any' today because
+      # Linode Object Storage IPs rotate; restrict to a named range once
+      # you have one.
+      [Service]
+      IPAddressDeny=
+      IPAddressAllow=any
+      # Tune with real numbers once prod metrics exist.
+      MemoryMax=2G
+  notify:
+    - daemon-reload
+    - restart portal-api
+
+- name: Ensure portal-api is running
+  ansible.builtin.systemd:
+    name: portal-api
+    enabled: true
+    state: started
+    daemon_reload: true

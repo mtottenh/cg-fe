@@ -162,21 +162,16 @@ test.describe('Tournament Admin Flows', () => {
       // MUST navigate to tournament detail page
       await expect(page).toHaveURL(/\/admin\/tournaments\/[a-f0-9-]+/)
 
-      // Check for action buttons based on status - at least one MUST exist
-      const publishBtn = page.getByRole('button', { name: 'Publish' })
-      const openRegBtn = page.getByRole('button', { name: /Open Registration/i })
-      const startBtn = page.getByRole('button', { name: /Start Tournament/i })
-      const viewPublicBtn = page.getByRole('button', { name: /View Public/i })
-      const editBtn = page.getByRole('button', { name: /Edit Tournament/i })
-
-      const hasActions =
-        (await publishBtn.isVisible().catch(() => false)) ||
-        (await openRegBtn.isVisible().catch(() => false)) ||
-        (await startBtn.isVisible().catch(() => false)) ||
-        (await viewPublicBtn.isVisible().catch(() => false)) ||
-        (await editBtn.isVisible().catch(() => false))
-
-      expect(hasActions).toBe(true)
+      // Check for action buttons based on status - at least one MUST exist.
+      // Auto-waiting union: immediate isVisible() chains race the render
+      // under full-suite parallelism.
+      await expect(
+        page
+          .getByRole('button', {
+            name: /^Publish$|Open Registration|Start Tournament|View Public|Edit Tournament/i,
+          })
+          .first(),
+      ).toBeVisible({ timeout: 10000 })
     })
 
     test('should display overview stats cards', async ({ page }) => {

@@ -106,6 +106,13 @@
     - role: portal_demo_stats
       tags: [portal_demo_stats]
 
+    # Opt-in: the enricher needs a dedicated Steam bot account. Enable with
+    # portal_steam_bot_enabled=true once the vault_steam_bot_* creds are set
+    # (or use `just deploy-steam-bot <deb>`, which sets it for that run).
+    - role: portal_steam_bot
+      tags: [portal_steam_bot]
+      when: portal_steam_bot_enabled | default(false)
+
     - role: caddy
       tags: [caddy]
 

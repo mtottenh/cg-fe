@@ -1,0 +1,95 @@
+---
+# Install/upgrade the portal-steam-bot deb (cs2-poller + cs2-enricher) and
+# render their env files from the vault.
+#
+# The deb's postinst creates the shared `portal` user, ships both systemd
+# units, and enables (but does not start) them; this role writes the real
+# env and starts the services.
+#
+#   cs2-poller   — Steam Web API share-code discovery for opted-in players.
+#                  Needs only PORTAL_API_KEY + STEAM_WEB_API_KEY (no account).
+#   cs2-enricher — Game Coordinator full-match + rank/ELO fetch. Needs a
+#                  DEDICATED Steam bot account (username/password/shared-secret).
+#
+# Opt-in: gated by portal_steam_bot_enabled in site.yml.
+
+- name: Check whether portal-steam-bot is already installed
+  ansible.builtin.command: dpkg-query -W -f='${Status}' portal-steam-bot
+  register: portal_steam_bot_pkg
+  changed_when: false
+  failed_when: false
+
+- name: Assert we have a deb to install (or an existing install to configure)
+  ansible.builtin.assert:
+    that:
+      - (portal_steam_bot_deb_path | default('') | length > 0)
+        or ('install ok installed' in portal_steam_bot_pkg.stdout)
+    fail_msg: >-
+      portal-steam-bot is not installed and no deb was provided. Build it in
+      the sibling steam_bot workspace:
+      cargo build --release -p cs2-poller -p cs2-enricher &&
+      cargo deb -p cs2-enricher --no-build
+      then pass -e portal_steam_bot_deb_path=/path/to/portal-steam-bot_X.Y.Z_amd64.deb
+      (or use `just deploy-steam-bot <deb>`).
+
+- name: Assert Steam bot credentials are configured
+  ansible.builtin.assert:
+    that:
+      - "vault_steam_bot_api_key | default('CHANGE_ME') != 'CHANGE_ME'"
+      - "vault_steam_api_key | default('CHANGE_ME') != 'CHANGE_ME'"
+      - "vault_steam_bot_username | default('CHANGE_ME') != 'CHANGE_ME'"
+      - "vault_steam_bot_password | default('CHANGE_ME') != 'CHANGE_ME'"
+      - "vault_steam_bot_shared_secret | default('CHANGE_ME') != 'CHANGE_ME'"
+    fail_msg: >-
+      portal_steam_bot_enabled is true but the Steam bot vault keys are not
+      all set: vault_steam_bot_api_key, vault_steam_api_key (poller Web API
+      key), vault_steam_bot_username/password/shared_secret (enricher bot
+      account). See deploy/README.md.
+
+- name: Copy portal-steam-bot deb to target
+  ansible.builtin.copy:
+    src: "{{ portal_steam_bot_deb_path }}"
+    dest: "/tmp/{{ portal_steam_bot_deb_path | basename }}"
+    mode: "0644"
+  when: portal_steam_bot_deb_path | default('') | length > 0
+
+- name: Install the portal-steam-bot deb
+  ansible.builtin.apt:
+    deb: "/tmp/{{ portal_steam_bot_deb_path | basename }}"
+    state: present
+  when: portal_steam_bot_deb_path | default('') | length > 0
+  notify:
+    - restart cs2-poller
+    - restart cs2-enricher
+
+- name: Render /etc/portal/cs2-poller.env from vault
+  ansible.builtin.template:
+    src: cs2-poller.env.j2
+    dest: /etc/portal/cs2-poller.env
+    owner: root
+    group: portal
+    mode: "0640"
+  notify: restart cs2-poller
+
+- name: Render /etc/portal/cs2-enricher.env from vault
+  ansible.builtin.template:
+    src: cs2-enricher.env.j2
+    dest: /etc/portal/cs2-enricher.env
+    owner: root
+    group: portal
+    mode: "0640"
+  notify: restart cs2-enricher
+
+- name: Ensure cs2-poller is running
+  ansible.builtin.systemd:
+    name: cs2-poller
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Ensure cs2-enricher is running
+  ansible.builtin.systemd:
+    name: cs2-enricher
+    enabled: true
+    state: started
+    daemon_reload: true

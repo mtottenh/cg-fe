@@ -62,6 +62,19 @@ demo_stats_port: 3100
 # Requires a DNS A record for demos.{{ portal_domain }}.
 cs2_demo_service_url: "https://demos.{{ portal_domain }}"
 
+# --- Steam bots (cs2-poller + cs2-enricher) ---------------------------------
+# Opt-in: cs2-enricher needs a dedicated Steam bot account (Prime + CS2).
+# Flip to true (and set the vault_steam_bot_* keys) to deploy the bots, or
+# use `just deploy-steam-bot <deb>` which enables it for that run.
+portal_steam_bot_enabled: false
+# Path to the portal-steam-bot .deb built in the sibling steam_bot workspace.
+portal_steam_bot_deb_path: ""
+steam_bot_game_slug: cs2
+steam_bot_poll_interval_secs: 60        # cs2-poller: Web API poll cadence
+steam_bot_enrich_interval_secs: 30      # cs2-enricher: GC fetch cadence
+steam_bot_enrich_batch_size: 5          # matches enriched per cycle
+steam_bot_skip_demo_rank: false         # true = GC scoreboard only, no demo
+
 # --- Object Storage (evidence + demo bucket) --------------------------------
 # gb-lon-1 = London, where the existing cs2-10mans demo bucket lives; keep
 # storage in the same region as the Linode (see provision.yml).

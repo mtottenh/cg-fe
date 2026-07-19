@@ -27,6 +27,18 @@ vault_portal_scanner_api_key: "cgp_CHANGE_ME"
 # exposed (see docs/deployment-cs210mans-audit.md) — issue a fresh one.
 vault_steam_api_key: "CHANGE_ME"
 
+# --- Steam bots (cs2-poller + cs2-enricher) ---------------------------------
+# Only required when portal_steam_bot_enabled=true.
+# API key the bots authenticate to the portal with (mint via the portal CLI).
+vault_steam_bot_api_key: "cgp_CHANGE_ME"
+# Dedicated Steam bot account for the enricher's Game Coordinator login —
+# NOT a personal account. Needs CS2 in its library and ideally Prime.
+vault_steam_bot_username: "CHANGE_ME"
+vault_steam_bot_password: "CHANGE_ME"
+# Steam Guard TOTP shared secret (base64) for unattended 2FA login.
+vault_steam_bot_shared_secret: "CHANGE_ME"
+# (The poller's STEAM_WEB_API_KEY reuses vault_steam_api_key above.)
+
 # --- Optional per-service S3 credential overrides ---------------------------
 # The scanner and the demo-stats service default to the vault_linode_* pair
 # above. Uncomment to give them their own keys (tighter blast radius).

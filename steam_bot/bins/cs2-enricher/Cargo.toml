@@ -18,3 +18,38 @@ clap.workspace = true
 rpassword.workspace = true
 parallel_bzip2_decoder.workspace = true
 rayon.workspace = true
+
+# ---------------------------------------------------------------------------
+# Debian package `portal-steam-bot` — ships BOTH long-running services
+# (cs2-poller + cs2-enricher). The metadata lives on this crate but the
+# asset paths are workspace-root-relative, so build from the workspace root:
+#
+#   cargo build --release -p cs2-poller -p cs2-enricher
+#   cargo deb -p cs2-enricher --no-build
+#
+# The dev-only bins (cs2-matches, demo-downloader, steam-totp) are NOT
+# shipped. Unit enable/start is handled by the postinst + the Ansible role
+# (two units, so we don't use cargo-deb's single-unit automation).
+# ---------------------------------------------------------------------------
+[package.metadata.deb]
+name = "portal-steam-bot"
+maintainer = "Gaming Portal Ops <ops@gaming-portal.invalid>"
+copyright = "2026, Gaming Portal"
+extended-description = """\
+CS2 match-tracking bots. cs2-poller discovers new match share codes via the \
+Steam Web API for opted-in players; cs2-enricher fetches full match data \
+(including rank/ELO) from the CS2 Game Coordinator using a dedicated bot \
+account."""
+depends = "$auto, ca-certificates"
+section = "net"
+priority = "optional"
+assets = [
+    ["target/release/cs2-poller", "usr/bin/cs2-poller", "755"],
+    ["target/release/cs2-enricher", "usr/bin/cs2-enricher", "755"],
+    ["dist/cs2-poller.env.example", "etc/portal/cs2-poller.env.example", "0644"],
+    ["dist/cs2-enricher.env.example", "etc/portal/cs2-enricher.env.example", "0644"],
+    ["dist/cs2-poller.service", "lib/systemd/system/cs2-poller.service", "0644"],
+    ["dist/cs2-enricher.service", "lib/systemd/system/cs2-enricher.service", "0644"],
+]
+maintainer-scripts = "dist/maintainer-scripts"
+conf-files = ["/etc/portal/cs2-poller.env", "/etc/portal/cs2-enricher.env"]

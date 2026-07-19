@@ -47,6 +47,7 @@ deploy/
 │       ├── portal_api/         # Installs the portal-api.deb; renders api.env
 │       ├── portal_scanner/     # Installs the portal-scanner.deb; renders scanner.env
 │       ├── portal_demo_stats/  # Installs the portal-demo-stats.deb; renders demo-stats.env
+│       ├── portal_steam_bot/   # Installs portal-steam-bot.deb (cs2-poller + cs2-enricher); opt-in
 │       ├── caddy/              # Caddy auto-HTTPS; proxies API + demos.<domain>
 │       └── portal_web/         # Builds the SPA locally, ships dist → /var/www/portal
 ├── justfile                    # provision, bootstrap, deploy, deploy-web, logs, ...
@@ -126,8 +127,10 @@ site.yml:
 | `vault_jwt_secret` | ≥ 32 bytes, `openssl rand -hex 32` |
 | `vault_linode_access_key` / `vault_linode_secret_key` | Object Storage keys (evidence, demos, backups). **Rotate** — the old box leaked its pair in the Caddyfile |
 | `vault_portal_scanner_api_key` | Portal API key (`cgp_…`) the scanner authenticates with |
-| `vault_steam_api_key` | Steam Web API key. **Rotate** — the old box leaked it in `.env` |
+| `vault_steam_api_key` | Steam Web API key (also the poller's `STEAM_WEB_API_KEY`). **Rotate** — the old box leaked it in `.env` |
 | `vault_scanner_s3_*`, `vault_demo_stats_s3_*` (optional) | Per-service S3 overrides; default to the `vault_linode_*` pair |
+| `vault_steam_bot_api_key` (only if bots enabled) | Portal API key (`cgp_…`) the poller + enricher authenticate with |
+| `vault_steam_bot_username` / `_password` / `_shared_secret` (only if bots enabled) | Dedicated Steam bot account for the enricher's Game Coordinator login (Prime + CS2), and its Guard TOTP secret |
 
 **Non-secret config (`ansible/group_vars/all/vars.yml`)**:
 
@@ -259,10 +262,42 @@ are `conf-files` in the debs so upgrades won't clobber them.
   minimal cloud images) and standard `ufw`/`fail2ban`/`awscli` packages,
   all present in Ubuntu 24.04/26.04 and Debian 12.
 
+## Steam match-tracking bots (opt-in)
+
+Two long-running services in the sibling `../steam_bot` workspace feed the
+portal's match/rank pipeline. They are **opt-in** (`portal_steam_bot_enabled`,
+default `false`) because the enricher needs a dedicated Steam account:
+
+- **cs2-poller** — discovers new match share codes via the Steam Web API for
+  players who opted in with a match-sharing auth code. No Steam account
+  needed, just `vault_steam_bot_api_key` + `vault_steam_api_key`.
+- **cs2-enricher** — logs into the CS2 Game Coordinator with a **dedicated
+  bot account** (never a personal one; needs CS2 in library, ideally Prime),
+  fetches full match data by share code, and extracts rank/ELO from the demo.
+  Needs `vault_steam_bot_username` / `_password` / `_shared_secret`.
+
+Note this is the **auth-code opt-in** model, not an "add the bot as a friend"
+model — players self-serve a Steam match-sharing auth code; nobody has to
+friend the bot. (The friend-list lookup exists only in the `cs2-matches` dev
+CLI, which is not deployed.)
+
+Build and ship (the deb bundles both services + their systemd units):
+
+```bash
+cd ../steam_bot
+cargo build --release -p cs2-poller -p cs2-enricher
+cargo deb -p cs2-enricher --no-build      # → target/debian/portal-steam-bot_X.Y.Z_amd64.deb
+
+# from deploy/, after setting the vault_steam_bot_* keys:
+just deploy-steam-bot ../steam_bot/target/debian/portal-steam-bot_0.1.0_amd64.deb
+```
+
+`just deploy-steam-bot` sets `portal_steam_bot_enabled=true` for that run; to
+include the bots in every `site.yml` converge, set it in `group_vars`. The
+poller and enricher, like the scanner, also need `SCANNER_GAME_ID`-equivalent
+config baked in via `steam_bot_game_slug` (default `cs2`).
+
 ## What's not here yet
 
-- Steam bots (`cs2-poller`, `cs2-enricher`): mirror `portal-scanner`'s
-  deb pattern in `../steam_bot/bins/*/Cargo.toml`, then add a
-  `roles/portal_bots/` that installs all bot debs at once.
 - Monitoring: no Prometheus yet. When added, a `roles/monitoring/` role
   will install node_exporter + Caddy-proxied Grafana.

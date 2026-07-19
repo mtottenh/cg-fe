@@ -26,6 +26,16 @@ const router = createRouter({
       meta: { guest: true, layout: 'default' },
     },
 
+    // Steam sign-in completion — the backend redirects here with tokens
+    // in the URL fragment. Not marked `guest`: by the time the page acts,
+    // the user becomes authenticated and a guest guard would bounce them.
+    {
+      path: '/auth/steam/complete',
+      name: 'steam-complete',
+      component: () => import('@/pages/SteamCompletePage.vue'),
+      meta: { layout: 'default' },
+    },
+
     // Public browse routes - use dynamic layout
     {
       path: '/leagues',

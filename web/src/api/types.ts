@@ -949,6 +949,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/steam/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Complete Steam sign-in.
+         * @description Receives Steam's OpenID assertion as query parameters, validates
+         *     `openid.return_to` against this deployment's public URL, verifies the
+         *     assertion directly with Steam (`check_authentication`), then finds or
+         *     creates the account matching the asserted SteamID64 and redirects to
+         *     `{frontend}/auth/steam/complete` with the access + refresh tokens in
+         *     the URL fragment.
+         */
+        get: operations["steam_callback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/steam/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Begin Steam sign-in.
+         * @description Redirects the browser to Steam's OpenID 2.0 endpoint
+         *     (`checkid_setup` with `identifier_select`). Steam authenticates the
+         *     user and sends them back to `/v1/auth/steam/callback`.
+         */
+        get: operations["steam_login"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/demos": {
         parameters: {
             query?: never;
@@ -6823,6 +6870,11 @@ export interface components {
             /** @description User response DTO. */
             data: {
                 /**
+                 * @description Authentication provider: "local" (password) or "steam" (OpenID).
+                 * @example local
+                 */
+                auth_provider: string;
+                /**
                  * @description When the account was created.
                  * @example 2024-01-15T10:30:00Z
                  */
@@ -12367,6 +12419,11 @@ export interface components {
         /** @description User response DTO. */
         UserResponse: {
             /**
+             * @description Authentication provider: "local" (password) or "steam" (OpenID).
+             * @example local
+             */
+            auth_provider: string;
+            /**
              * @description When the account was created.
              * @example 2024-01-15T10:30:00Z
              */
@@ -15862,6 +15919,76 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiError"];
                 };
+            };
+        };
+    };
+    steam_callback: {
+        parameters: {
+            query: {
+                /** @description OpenID response mode (id_res on success) */
+                "openid.mode": string;
+                /** @description Claimed identity URL carrying the SteamID64 */
+                "openid.claimed_id": string;
+                /** @description Return-to URL echoed by Steam; must match this deployment */
+                "openid.return_to": string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the frontend with tokens in the URL fragment */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Malformed or cancelled OpenID response */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Steam rejected the assertion */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Account is not active */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    steam_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to https://steamcommunity.com/openid/login */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -43,6 +43,19 @@
 
           <v-divider class="my-4" />
 
+          <v-btn
+            :href="steamUrl"
+            color="blue-grey-darken-3"
+            size="large"
+            block
+            prepend-icon="mdi-steam"
+            data-testid="steam-login-button"
+          >
+            Sign in through Steam
+          </v-btn>
+
+          <v-divider class="my-4" />
+
           <div class="text-center">
             <span class="text-body-2 text-grey">Don't have an account?</span>
             <router-link to="/register" class="ml-1 text-primary">Register</router-link>
@@ -58,9 +71,12 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFormRules } from '@/composables/useFormRules'
+import { steamLoginUrl } from '@/utils/steamAuth'
 
 const authStore = useAuthStore()
 const router = useRouter()
+
+const steamUrl = steamLoginUrl()
 
 const form = reactive({
   username_or_email: '',

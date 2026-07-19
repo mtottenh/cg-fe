@@ -167,6 +167,45 @@ export const useAuthStore = defineStore('auth', () => {
     }, 'Registration failed')
   }
 
+  /**
+   * Complete a token-based (Steam) sign-in.
+   *
+   * The Steam OpenID callback hands the browser an access + refresh token
+   * pair in the URL fragment; this stores them exactly like password login
+   * does (localStorage + auth header), derives the player id from the JWT
+   * claims, and loads the user profile + roles.
+   */
+  async function loginWithTokens(accessToken: string, newRefreshToken: string | null): Promise<void> {
+    return withActionState(loginState, async () => {
+      token.value = accessToken
+      localStorage.setItem('token', accessToken)
+      setAuthToken(accessToken)
+
+      if (newRefreshToken) {
+        refreshToken.value = newRefreshToken
+        localStorage.setItem('refresh_token', newRefreshToken)
+      }
+
+      // Password login gets player_id from the response body; here it
+      // comes from the JWT claims (same value, signed by the backend).
+      const claims = decodeJwtPayload(accessToken)
+      if (claims?.player_id) {
+        playerId.value = claims.player_id
+        localStorage.setItem('player_id', claims.player_id)
+      }
+
+      // Verify the token against the server and populate user + roles.
+      // A rejected token must not leave us half-logged-in.
+      try {
+        await fetchCurrentUser()
+      } catch (e) {
+        logout()
+        throw e
+      }
+      await fetchMyRoles().catch(() => { roles.value = [] })
+    }, 'Steam sign-in failed')
+  }
+
   async function fetchCurrentUser(): Promise<User> {
     return withActionState(fetchCurrentUserState, async () => {
       const result = await unwrapApi(api.GET('/v1/users/me'))
@@ -302,6 +341,7 @@ export const useAuthStore = defineStore('auth', () => {
     isDevMode,
     initialize,
     login,
+    loginWithTokens,
     register,
     fetchCurrentUser,
     fetchMyRoles,

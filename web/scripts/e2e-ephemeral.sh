@@ -53,6 +53,8 @@ echo "--- API on :${API_PORT} (migrations run on boot)"
   PORT="${API_PORT}" \
   JWT_SECRET="e2e-ephemeral-jwt-secret-that-is-long-enough" \
   PORTAL_AUTH_RATE_BURST=10000 PORTAL_AUTH_RATE_PER_SECOND=1000 \
+  PORTAL_PUBLIC_URL="http://localhost:${API_PORT}" \
+  PORTAL_FRONTEND_URL="http://localhost:${WEB_PORT}" \
   ./target/debug/portal
 ) > /tmp/portal-e2e-api.log 2>&1 &
 API_PID=$!

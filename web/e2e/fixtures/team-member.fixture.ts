@@ -19,12 +19,12 @@ interface InvitationResponse {
  */
 export async function invitePlayer(
   token: string,
-  seasonId: string,
+  _seasonId: string,
   teamSeasonId: string,
   playerId: string
 ): Promise<InvitationResponse | null> {
   const response = await fetch(
-    `${API_URL}/v1/league-seasons/${seasonId}/teams/${teamSeasonId}/invitations`,
+    `${API_URL}/v1/league-team-seasons/${teamSeasonId}/invitations`,
     {
       method: 'POST',
       headers: {

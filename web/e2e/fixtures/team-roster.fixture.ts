@@ -35,6 +35,8 @@ export interface RosterUser {
   /** Player ID — this is what league-team APIs expect in paths/bodies */
   playerId: string
   username: string
+  /** Display name as shown in the team roster UI ("CheckIn Tester <suffix>"). */
+  displayName: string
   email: string
   password: string
   token: string
@@ -83,16 +85,19 @@ async function jsonOrThrow<T>(response: Response, context: string): Promise<T> {
  * `GET /v1/players/me`. Almost every league-team endpoint is player-scoped,
  * so tests need this id.
  */
-async function registerAsRosterUser(): Promise<RosterUser> {
+export async function registerAsRosterUser(): Promise<RosterUser> {
   const base = await createTestUser()
   const meResp = await fetch(`${API_URL}/v1/players/me`, {
     headers: { Authorization: `Bearer ${base.token}` },
   })
   const me = await jsonOrThrow<ApiResult<{ id: string; user_id?: string }>>(meResp, 'Fetch /players/me')
+  // createTestUser() sets username=ci_${suffix} and display_name=CheckIn Tester ${suffix}
+  const displayName = `CheckIn Tester ${base.username.replace(/^ci_/, '')}`
   return {
     userId: base.userId,
     playerId: me.data.id,
     username: base.username,
+    displayName,
     email: base.email,
     password: base.password,
     token: base.token,
@@ -103,7 +108,7 @@ async function registerAsRosterUser(): Promise<RosterUser> {
  * Join an open league. Silently accepts 409 (already a member) so the helper
  * is safe to call repeatedly.
  */
-async function joinLeague(token: string, leagueId: string): Promise<void> {
+export async function joinLeague(token: string, leagueId: string): Promise<void> {
   const resp = await fetch(`${API_URL}/v1/leagues/${leagueId}/join`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },

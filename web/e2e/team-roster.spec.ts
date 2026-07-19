@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
-import { getSeededState } from './fixtures/seeded-state'
+import { getAdminToken } from './fixtures/auth.fixture'
+import { createLeagueSeasonScenario } from './fixtures/league-season-extra.fixture'
 import {
   createTeamWithMembers,
   getTeamMembers,
@@ -33,15 +34,14 @@ test.describe('Team Roster Management', () => {
   let leagueId: string
   let seasonId: string
 
-  test.beforeAll(() => {
-    const state = getSeededState()
-    if (!state.leagueId || !state.seasonId) {
-      throw new Error(
-        'Seeded state missing leagueId/seasonId — did global-setup.ts run successfully?',
-      )
-    }
-    leagueId = state.leagueId
-    seasonId = state.seasonId
+  test.beforeAll(async () => {
+    // Self-contained: build a fresh open league + registration-phase season via
+    // the admin API so roster mutations run against known-good state without
+    // depending on globally seeded singletons.
+    const adminToken = await getAdminToken()
+    const scenario = await createLeagueSeasonScenario(adminToken)
+    leagueId = scenario.leagueId
+    seasonId = scenario.seasonId
   })
 
   test('captain promotes member to co-captain via action menu', async ({ page }) => {
@@ -59,10 +59,10 @@ test.describe('Team Roster Management', () => {
     await page.waitForLoadState('networkidle')
 
     // Ensure the roster rendered before we reach for the menu.
-    await expect(page.getByText(scenario.owner.username, { exact: false })).toBeVisible({
+    await expect(page.getByText(scenario.owner.displayName, { exact: false })).toBeVisible({
       timeout: 5000,
     })
-    await expect(page.getByText(promotee.username, { exact: false })).toBeVisible()
+    await expect(page.getByText(promotee.displayName, { exact: false })).toBeVisible()
 
     // Click the three-dots action menu on the non-owner member's row.
     const menuTrigger = page.locator('.mdi-dots-vertical').first()
@@ -112,14 +112,14 @@ test.describe('Team Roster Management', () => {
     await page.goto(`/teams/${scenario.teamId}?season=${scenario.teamSeasonId}`)
     await page.waitForLoadState('networkidle')
 
-    await expect(page.getByText(coCaptain.username, { exact: false })).toBeVisible({
+    await expect(page.getByText(coCaptain.displayName, { exact: false })).toBeVisible({
       timeout: 5000,
     })
 
     // Count `captain` chips — owner is still a captain, so exactly 1 should
     // remain (not 2). The "Promote to Captain" action should be available
     // on the demoted member's row again.
-    const captainChips = page.locator('.v-chip').filter({ hasText: /^captain$/i })
+    const captainChips = page.locator('.v-chip').filter({ hasText: /captain/i })
     await expect(captainChips).toHaveCount(1)
   })
 
@@ -131,7 +131,7 @@ test.describe('Team Roster Management', () => {
     await page.goto(`/teams/${scenario.teamId}?season=${scenario.teamSeasonId}`)
     await page.waitForLoadState('networkidle')
 
-    await expect(page.getByText(victim.username, { exact: false })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(victim.displayName, { exact: false })).toBeVisible({ timeout: 5000 })
 
     // Open the action menu on the member row.
     const menuTrigger = page.locator('.mdi-dots-vertical').first()
@@ -147,7 +147,10 @@ test.describe('Team Roster Management', () => {
     await expect(dialog).toBeVisible()
     await dialog.getByRole('button', { name: /Remove/i }).click()
 
-    await page.waitForLoadState('networkidle')
+    // Wait for the store to filter the member out of local state → UI removes the row.
+    await expect(page.getByText(victim.displayName, { exact: false })).toHaveCount(0, {
+      timeout: 10_000,
+    })
 
     // Assert — API cross-check: the member is gone.
     const roster = await getTeamMembers(scenario.teamSeasonId, scenario.owner.token)
@@ -161,14 +164,14 @@ test.describe('Team Roster Management', () => {
       expect(stillOnTeam).toBeUndefined()
     }
 
-    // And the removed user no longer sees this team under /my-teams.
+    // The removed user's membership shows on /my-teams with "Left" status
+    // (the backend keeps historical memberships, it just marks them Left).
     await loginAsUser(page, { email: victim.email, password: victim.password })
     await page.goto('/my-teams')
     await page.waitForLoadState('networkidle')
 
-    // Either zero team cards or none matching our team name.
-    const teamNameOnPage = page.getByText(scenario.teamName)
-    await expect(teamNameOnPage).toHaveCount(0)
+    await expect(page.getByText(scenario.teamName, { exact: false })).toBeVisible({ timeout: 5_000 })
+    await expect(page.locator('.v-chip').filter({ hasText: 'Left' }).first()).toBeVisible()
   })
 
   test('owner transfers team ownership; edit access moves to new owner', async ({ page }) => {

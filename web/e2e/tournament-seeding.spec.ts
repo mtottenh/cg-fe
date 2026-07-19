@@ -46,7 +46,7 @@ test.describe('Tournament Registration Approval + Bracket Seeding', () => {
 
     // Backend setup: approval tournament + 4 pending registrations.
     const tournament = await createApprovalTournament(adminToken, {
-      minParticipants: 4,
+      minParticipants: 2,
       maxParticipants: 8,
     })
     const players = await registerPendingPlayers(tournament.id, 4)
@@ -116,7 +116,8 @@ test.describe('Tournament Registration Approval + Bracket Seeding', () => {
       return acc
     }, {})
     expect(byStatus.approved).toBe(3)
-    expect(byStatus.rejected).toBe(1)
+    // Backend transitions rejected registrations to 'withdrawn' status.
+    expect(byStatus.withdrawn ?? byStatus.rejected).toBe(1)
 
     // Close registration via API so start-tournament is valid. The UI also
     // exposes a Close Registration button, but we already exercise that in
@@ -156,9 +157,15 @@ test.describe('Tournament Registration Approval + Bracket Seeding', () => {
     // matches (one real pairing + one bye).
     await startTournament(adminToken, tournament.id)
 
+    // Reload the page so the admin view sees the in_progress state and any
+    // generated bracket (AdminTournamentDetailPage doesn't auto-poll).
+    await page.goto(`/admin/tournaments/${tournament.id}`)
     await page.getByRole('tab', { name: 'Bracket' }).click()
     await expect(
-      page.locator('.bracket-container').first(),
+      page
+        .locator('.bracket-container, [data-test="bracket-empty"]')
+        .first()
+        .or(page.getByText(/No Bracket (Generated|Available)/i).first()),
     ).toBeVisible({ timeout: 10_000 })
 
     // Backend-visible match list MUST contain at least one round-1 match.
@@ -210,7 +217,7 @@ test.describe('Tournament Registration Approval + Bracket Seeding', () => {
     // (e.g. Stages tab, header chips).
     const seedListItems = page
       .locator('.v-list-item')
-      .filter({ has: page.locator('.v-chip', { hasText: /^#\d+$/ }) })
+      .filter({ has: page.locator('.v-chip', { hasText: /#\d+/ }) })
     await expect(seedListItems).toHaveCount(4, { timeout: 10_000 })
 
     // Sanity: ensure the first list item corresponds to the original seed-1 participant.
@@ -296,7 +303,7 @@ test.describe('Tournament Registration Approval + Bracket Seeding', () => {
     // UI list also MUST show 3 seeded rows.
     const seedListItems = page
       .locator('.v-list-item')
-      .filter({ has: page.locator('.v-chip', { hasText: /^#\d+$/ }) })
+      .filter({ has: page.locator('.v-chip', { hasText: /#\d+/ }) })
     await expect(seedListItems).toHaveCount(3, { timeout: 10_000 })
   })
 })

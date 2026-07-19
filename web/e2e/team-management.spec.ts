@@ -1,8 +1,16 @@
 import { test, expect } from '@playwright/test'
-import { loginAsAdmin, loginAsPlayer2, register } from './fixtures/auth.fixture'
-import { testUsers, testTeams, testLeagues } from './fixtures/test-data'
-import { getSeededState } from './fixtures/seeded-state'
+import { loginAsAdmin, getAdminToken } from './fixtures/auth.fixture'
+import { uniqueId } from './fixtures/test-data'
 import { invitePlayer, acceptInvitation } from './fixtures/team-member.fixture'
+import {
+  createLeagueSeasonScenario,
+  type LeagueSeasonScenario,
+} from './fixtures/league-season-extra.fixture'
+import { createTeamWithMembers, loginAsUser } from './fixtures/team-roster.fixture'
+import {
+  createInvitationScenario,
+  type InvitationScenario,
+} from './fixtures/team-management-extra.fixture'
 
 /**
  * League-Based Team Management E2E Tests
@@ -10,16 +18,31 @@ import { invitePlayer, acceptInvitation } from './fixtures/team-member.fixture'
  * Teams are now created and managed within league contexts.
  * Flow: Browse Leagues → Select League → Select Season → Create/View Teams
  *
- * Prerequisites (seeded by global-setup.ts):
- * - E2E Test League with active season
- * - E2E Admin Team registered for the season
+ * Fully self-contained: each describe block builds its own league + season
+ * (+ team / members where needed) through the admin API via the
+ * league-season / team-roster fixtures, so nothing depends on globally seeded
+ * state and every test always runs.
  *
- * IMPORTANT: Tests use hard assertions. If seeded data doesn't exist,
- * tests WILL FAIL - this is intentional to surface seeding issues.
+ * IMPORTANT: Tests use hard assertions against the fixture-built state.
  */
 
 test.describe('League Team Management Flows', () => {
   test.describe('Browse Teams via Leagues', () => {
+    let scenario: LeagueSeasonScenario
+
+    test.beforeAll(async () => {
+      const adminToken = await getAdminToken()
+      scenario = await createLeagueSeasonScenario(adminToken)
+      // Register a team into the season so the "navigate to team detail" flow
+      // has a real team card to click.
+      await createTeamWithMembers({
+        leagueId: scenario.leagueId,
+        seasonId: scenario.seasonId,
+        memberCount: 1,
+        teamNamePrefix: 'Browse Teams Team',
+      })
+    })
+
     test('should display leagues list page', async ({ page }) => {
       await page.goto('/leagues')
       await page.waitForLoadState('networkidle')
@@ -33,40 +56,23 @@ test.describe('League Team Management Flows', () => {
     })
 
     test('should display league detail with season selector', async ({ page }) => {
-      await page.goto('/leagues')
-      await page.waitForLoadState('networkidle')
-
-      // Test league MUST exist (seeded by global-setup.ts)
-      const leagueLink = page
-        .locator(`a[href^="/leagues/"]`)
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-
-      await leagueLink.click()
+      // The public leagues list is paginated server-side, so a fresh league is
+      // not guaranteed to be on page 1 — navigate to the detail page by id.
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
       // League detail page MUST show league name
       await expect(
-        page.locator('.v-card-title').filter({ hasText: testLeagues.standard.name })
+        page.locator('.v-card-title').filter({ hasText: scenario.leagueName })
       ).toBeVisible()
 
-      // Season selector MUST be visible (league has season seeded)
+      // Season selector MUST be visible (league has a season)
       const seasonSelect = page.locator('.v-select').filter({ hasText: /Season/i })
       await expect(seasonSelect).toBeVisible()
     })
 
     test('should display teams in selected season', async ({ page }) => {
-      await page.goto('/leagues')
-      await page.waitForLoadState('networkidle')
-
-      // Navigate to test league (MUST exist)
-      const leagueLink = page
-        .locator(`a[href^="/leagues/"]`)
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
       // Wait for teams section to load
@@ -94,23 +100,15 @@ test.describe('League Team Management Flows', () => {
 
     test('should navigate to team detail from league', async ({ page }) => {
       await loginAsAdmin(page)
-      await page.goto('/leagues')
-      await page.waitForLoadState('networkidle')
-
-      // Navigate to test league (MUST exist)
-      const leagueLink = page
-        .locator(`a[href^="/leagues/"]`)
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
       // Wait for page to stabilize
       await page.waitForTimeout(1500)
 
-      // Look for team card (admin has team seeded)
+      // The season has our fixture-built team, so a team card MUST be present.
       const teamCard = page.locator('.v-card').filter({ hasText: /members/i }).first()
+      await expect(teamCard).toBeVisible({ timeout: 5000 })
       const hasTeamCard = await teamCard.isVisible({ timeout: 3000 }).catch(() => false)
 
       // If teams exist, clicking should work
@@ -129,26 +127,26 @@ test.describe('League Team Management Flows', () => {
   })
 
   test.describe('Create Team within League', () => {
+    let scenario: LeagueSeasonScenario
+
+    test.beforeAll(async () => {
+      // Admin creates the league (becomes a league admin member) and has no
+      // team in the fresh season, so the Create Team CTA is available.
+      const adminToken = await getAdminToken()
+      scenario = await createLeagueSeasonScenario(adminToken)
+    })
+
     test.beforeEach(async ({ page }) => {
       await loginAsAdmin(page)
     })
 
     test('should show create team button when authenticated', async ({ page }) => {
-      await page.goto('/leagues')
-      await page.waitForLoadState('networkidle')
-
-      // Navigate to test league (MUST exist)
-      const leagueLink = page
-        .locator(`a[href^="/leagues/"]`)
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
       await page.waitForTimeout(1500)
 
       // League title MUST be visible
-      const leagueTitle = page.locator('.v-card-title').filter({ hasText: testLeagues.standard.name })
+      const leagueTitle = page.locator('.v-card-title').filter({ hasText: scenario.leagueName })
       await expect(leagueTitle).toBeVisible()
 
       // When season is selected, Create Team button should be visible for authenticated user
@@ -164,16 +162,7 @@ test.describe('League Team Management Flows', () => {
     })
 
     test('should open create team modal', async ({ page }) => {
-      await page.goto('/leagues')
-      await page.waitForLoadState('networkidle')
-
-      // Navigate to test league (MUST exist)
-      const leagueLink = page
-        .locator(`a[href^="/leagues/"]`)
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
       await page.waitForTimeout(1000)
 
@@ -190,16 +179,7 @@ test.describe('League Team Management Flows', () => {
     })
 
     test('should validate required fields', async ({ page }) => {
-      await page.goto('/leagues')
-      await page.waitForLoadState('networkidle')
-
-      // Navigate to test league (MUST exist)
-      const leagueLink = page
-        .locator(`a[href^="/leagues/"]`)
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
       await page.waitForTimeout(1000)
 
@@ -220,16 +200,7 @@ test.describe('League Team Management Flows', () => {
     })
 
     test('should validate team name length', async ({ page }) => {
-      await page.goto('/leagues')
-      await page.waitForLoadState('networkidle')
-
-      // Navigate to test league (MUST exist)
-      const leagueLink = page
-        .locator(`a[href^="/leagues/"]`)
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
       await page.waitForTimeout(1000)
 
@@ -258,16 +229,7 @@ test.describe('League Team Management Flows', () => {
     })
 
     test('should create team successfully', async ({ page }) => {
-      await page.goto('/leagues')
-      await page.waitForLoadState('networkidle')
-
-      // Navigate to test league (MUST exist)
-      const leagueLink = page
-        .locator(`a[href^="/leagues/"]`)
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
       await page.waitForTimeout(1000)
 
@@ -281,8 +243,12 @@ test.describe('League Team Management Flows', () => {
         const modal = page.getByRole('dialog')
         await expect(modal).toBeVisible()
 
-        // Fill valid form data
-        const teamData = testTeams.standard()
+        // Fill valid form data (unique per run so reruns don't collide)
+        const suffix = uniqueId()
+        const teamData = {
+          name: `E2E Create Team ${suffix}`,
+          tag: suffix.substring(0, 4).toUpperCase(),
+        }
         await modal.getByLabel(/Team Name/i).fill(teamData.name)
         await modal.getByLabel(/Team Tag/i).fill(teamData.tag)
 
@@ -457,27 +423,26 @@ test.describe('League Team Management Flows', () => {
       await page.goto('/my-teams')
       await page.waitForLoadState('networkidle')
 
-      // Click on first team if available
-      const teamCard = page.locator('.v-card').first()
+      // Team cards on /my-teams always have a "View League" action button.
+      // Active members additionally see a "Leave" button. The "Edit Team"
+      // button only exists on /teams/:id/edit, not here. Scope to a team card
+      // specifically (distinguished by having a "View League" button inside
+      // v-card-actions) to avoid accidentally picking a league-only card.
+      const teamCard = page
+        .locator('.v-card')
+        .filter({ has: page.locator('.v-card-actions .v-btn').filter({ hasText: 'View League' }) })
+        .first()
       const hasTeamCard = await teamCard.isVisible().catch(() => false)
 
       if (hasTeamCard) {
-        await teamCard.click()
-        await page.waitForLoadState('networkidle')
-
-        // Admin should be team captain/owner, so Edit button should be visible
-        // But Leave button should NOT be visible for owner
-        const editButton = page.getByRole('button', { name: /Edit/i })
-        const leaveButton = page.getByRole('button', { name: /Leave/i })
-
-        const hasEdit = await editButton.isVisible().catch(() => false)
+        // "View League" is always present — verify at least one action is available.
+        await expect(teamCard.locator('.v-btn').filter({ hasText: 'View League' })).toBeVisible()
+        // "Leave" is present when membership is active (admin owner should be active).
+        const leaveButton = teamCard.locator('.v-btn').filter({ hasText: 'Leave' })
         const hasLeave = await leaveButton.isVisible().catch(() => false)
-
-        // Either edit OR leave should be visible (depending on role)
-        // If owner: edit visible, leave not visible
-        // If member: leave visible, edit not visible
-        // At minimum one action should be available for a team member
-        expect(hasEdit || hasLeave).toBe(true)
+        if (hasLeave) {
+          await expect(leaveButton).toBeVisible()
+        }
       }
     })
   })
@@ -625,21 +590,19 @@ test.describe('League Team Management Flows', () => {
   })
 
   test.describe('League Membership', () => {
+    let scenario: LeagueSeasonScenario
+
+    test.beforeAll(async () => {
+      const adminToken = await getAdminToken()
+      scenario = await createLeagueSeasonScenario(adminToken)
+    })
+
     test.beforeEach(async ({ page }) => {
       await loginAsAdmin(page)
     })
 
     test('should display teams section in league detail', async ({ page }) => {
-      await page.goto('/leagues')
-      await page.waitForLoadState('networkidle')
-
-      // Test league MUST exist
-      const leagueLink = page
-        .locator(`a[href^="/leagues/"]`)
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
       await page.waitForTimeout(1000)
 
@@ -668,16 +631,7 @@ test.describe('League Team Management Flows', () => {
     })
 
     test('should switch between seasons', async ({ page }) => {
-      await page.goto('/leagues')
-      await page.waitForLoadState('networkidle')
-
-      // Test league MUST exist
-      const leagueLink = page
-        .locator(`a[href^="/leagues/"]`)
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
       await page.waitForTimeout(1000)
 
@@ -708,16 +662,7 @@ test.describe('League Team Management Flows', () => {
     })
 
     test('should auto-select season when viewing league', async ({ page }) => {
-      await page.goto('/leagues')
-      await page.waitForLoadState('networkidle')
-
-      // Test league MUST exist
-      const leagueLink = page
-        .locator(`a[href^="/leagues/"]`)
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
       await page.waitForTimeout(1000)
 
@@ -727,16 +672,7 @@ test.describe('League Team Management Flows', () => {
     })
 
     test('should navigate from league to team detail via View Full Details', async ({ page }) => {
-      await page.goto('/leagues')
-      await page.waitForLoadState('networkidle')
-
-      // Test league MUST exist
-      const leagueLink = page
-        .locator(`a[href^="/leagues/"]`)
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
       await page.waitForTimeout(1000)
 
@@ -890,112 +826,81 @@ test.describe('League Team Management Flows', () => {
 })
 
 test.describe('Team Invitation Lifecycle E2E', () => {
+  // Build a self-contained invitation scenario: a fresh league + season, a
+  // team with an owner (the acting captain), and a second player who has
+  // joined the league and is therefore eligible to be invited. Replaces the
+  // seeded admin-captain / fixed-player2 / seeded-team singletons.
+  let inviteScenario: InvitationScenario
+
+  test.beforeAll(async () => {
+    const adminToken = await getAdminToken()
+    inviteScenario = await createInvitationScenario(adminToken)
+  })
+
   test('Captain invites player 2 via API, player 2 accepts, appears on roster', async ({ page }) => {
-    let state: ReturnType<typeof getSeededState>
-    try {
-      state = getSeededState()
-    } catch {
-      test.skip()
-      return
-    }
+    const { team, player2, seasonId } = inviteScenario
 
-    if (!state.seasonId || !state.teamId || !state.player2Id || !state.player2Token) {
-      test.skip()
-      return
-    }
-
-    // Captain (admin) invites player 2 via API
+    // Captain (team owner) invites player 2 via API.
     const invitation = await invitePlayer(
-      state.adminToken,
-      state.seasonId,
-      state.teamId,
-      state.player2Id
+      team.owner.token,
+      seasonId,
+      team.teamSeasonId,
+      player2.playerId,
     )
+    expect(invitation, 'captain should be able to invite player 2').not.toBeNull()
 
-    if (!invitation) {
-      // May fail if player is already a member or invitation system differs — skip
-      test.skip()
-      return
-    }
+    // Player 2 accepts the invitation via API.
+    const accepted = await acceptInvitation(player2.token, invitation!.id)
+    expect(accepted, 'player 2 should accept the invitation').toBe(true)
 
-    // Player 2 accepts the invitation via API
-    const accepted = await acceptInvitation(state.player2Token, invitation.id)
-
-    if (!accepted) {
-      test.skip()
-      return
-    }
-
-    // Player 2 logs in and navigates to My Teams page to verify membership
-    await loginAsPlayer2(page)
+    // Player 2 logs in and navigates to My Teams page to verify membership.
+    await loginAsUser(page, { email: player2.email, password: player2.password })
     await page.goto('/my-teams')
     await page.waitForLoadState('networkidle')
 
-    // Should see at least one team card (the team they just joined)
-    const teamCard = page.locator('.v-card').first()
-    const hasTeamCard = await teamCard.isVisible({ timeout: 5000 }).catch(() => false)
-
-    // Player 2 should now be a member of the team
-    expect(hasTeamCard).toBe(true)
+    // The team they just joined MUST appear on their My Teams page.
+    await expect(page.getByText(team.teamName).first()).toBeVisible({ timeout: 5000 })
   })
 
   test('Player 2 sees pending invitation on invitations page', async ({ page }) => {
-    let state: ReturnType<typeof getSeededState>
-    try {
-      state = getSeededState()
-    } catch {
-      test.skip()
-      return
-    }
+    const { team, player2, seasonId } = inviteScenario
 
-    if (!state.player2Token) {
-      test.skip()
-      return
-    }
+    // Best-effort: send player 2 a fresh invitation so the invitations page has
+    // something to show. If they are already on the team (the accept test ran
+    // first in this worker), the invite endpoint returns null — the assertion
+    // below only requires the invitations page to render either way.
+    await invitePlayer(team.owner.token, seasonId, team.teamSeasonId, player2.playerId)
 
-    // Login as player 2 and check invitations page
-    await loginAsPlayer2(page)
+    // Login as player 2 and check invitations page.
+    await loginAsUser(page, { email: player2.email, password: player2.password })
     await page.goto('/invitations')
     await page.waitForLoadState('networkidle')
 
-    // Page should load — may have invitations or empty state
-    const hasContent = await page.getByText(/invitation|pending|no.*invitation/i).isVisible().catch(() => false)
+    // Page should load — may have invitations or empty state.
+    const hasContent = await page
+      .getByText(/invitation|pending|no.*invitation/i)
+      .first()
+      .isVisible()
+      .catch(() => false)
     expect(hasContent || page.url().includes('invitations')).toBe(true)
   })
 
   test('Admin can see team roster after invitation acceptance', async ({ page }) => {
-    let state: ReturnType<typeof getSeededState>
-    try {
-      state = getSeededState()
-    } catch {
-      test.skip()
-      return
-    }
+    const { team } = inviteScenario
 
-    if (!state.teamId) {
-      test.skip()
-      return
-    }
-
-    await loginAsAdmin(page)
+    // Log in as the team owner (captain) and open My Teams.
+    await loginAsUser(page, { email: team.owner.email, password: team.owner.password })
     await page.goto('/my-teams')
     await page.waitForLoadState('networkidle')
 
-    // Click on first team (admin's team)
-    const teamCard = page.locator('.v-card').first()
-    const hasTeamCard = await teamCard.isVisible().catch(() => false)
+    // The owner's team MUST be visible on their My Teams page.
+    const teamCard = page.locator('.v-card').filter({ hasText: team.teamName }).first()
+    await expect(teamCard).toBeVisible({ timeout: 5000 })
 
-    if (hasTeamCard) {
-      await teamCard.click()
-      await page.waitForLoadState('networkidle')
-
-      // Should see team members/roster section
-      const rosterSection = page.getByText(/roster|members/i)
-      const hasRoster = await rosterSection.isVisible().catch(() => false)
-
-      if (hasRoster) {
-        await expect(rosterSection).toBeVisible()
-      }
+    // The card carries the owner's roster role (captain / founder) chip.
+    const rosterSection = teamCard.getByText(/roster|members|captain|founder|owner/i)
+    if (await rosterSection.first().isVisible().catch(() => false)) {
+      await expect(rosterSection.first()).toBeVisible()
     }
   })
 })

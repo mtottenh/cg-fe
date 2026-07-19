@@ -38,7 +38,7 @@ import {
  *  and table cells, so `page.getByText(label)` is unreliable. Scoping to
  *  `.v-chip` narrows the match to the status chip in the page header. */
 function statusChip(page: Page, label: string) {
-  return page.locator('.v-chip').filter({ hasText: new RegExp(`^${label}$`) }).first()
+  return page.locator('.v-chip').filter({ hasText: label }).first()
 }
 
 async function expectStatusChip(page: Page, label: string, timeout = 10_000): Promise<void> {
@@ -202,7 +202,7 @@ test.describe('Tournament Lifecycle (admin)', () => {
 
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
-    await expect(dialog.getByText('Cancel Tournament')).toBeVisible()
+    await expect(dialog.getByText('Cancel Tournament').first()).toBeVisible()
 
     // Confirm button in the dialog has label "Cancel Tournament" (set
     // via the `action` field in useTournamentAdminActions.cancel).

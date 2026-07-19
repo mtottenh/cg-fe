@@ -48,6 +48,13 @@ export interface CreateScenarioOptions {
   checkInRequired: boolean
   /** If true, set `check_in_end` in the past so no-show processing is valid. */
   checkInEndInPast?: boolean
+  /**
+   * If true, stop after registrations are approved: no admin check-in
+   * override, no /start, no matches. For tournament-level flows like
+   * no-show processing, which operate on approved-but-not-checked-in
+   * registrations BEFORE the bracket exists. `matchId` will be ''.
+   */
+  skipStart?: boolean
 }
 
 interface ApiResult<T> {
@@ -167,6 +174,12 @@ async function createIndividualTournament(
     const now = Date.now()
     body.check_in_start = new Date(now - 60 * 60 * 1000).toISOString()
     body.check_in_end = new Date(now - 5 * 60 * 1000).toISOString()
+  } else if (opts.checkInRequired) {
+    // is_check_in_open() requires BOTH timestamps set and now inside the
+    // window — with them unset, tournament-level self check-in always 400s.
+    const now = Date.now()
+    body.check_in_start = new Date(now - 60 * 60 * 1000).toISOString()
+    body.check_in_end = new Date(now + 60 * 60 * 1000).toISOString()
   }
 
   const createResp = await fetch(`${API_URL}/v1/tournaments`, {
@@ -333,6 +346,16 @@ export async function createCheckInScenario(
   await approveRegistration(adminToken, tournamentId, p1RegId)
   await approveRegistration(adminToken, tournamentId, p2RegId)
 
+  if (opts.skipStart) {
+    return {
+      tournamentId,
+      tournamentSlug: slug ?? '',
+      matchId: '',
+      p1: { ...p1User, registrationId: p1RegId },
+      p2: { ...p2User, registrationId: p2RegId },
+    }
+  }
+
   // When check-in is required, the start endpoint only seeds checked-in
   // registrations. Admin-override both players' check-in so the bracket
   // actually generates — tests that care about check-in status assert the
@@ -368,12 +391,90 @@ export async function createCheckInScenario(
     ? { ...p2User, registrationId: p2RegId }
     : { ...p1User, registrationId: p1RegId }
 
+  // Generated matches land in `ready`; the match-level check-in endpoint
+  // only accepts requests while status === 'checking_in'. Drive the match
+  // there via the admin endpoints (ready → scheduled → checking_in).
+  await advanceMatchToCheckingIn(adminToken, tournamentId, targetMatch.id)
+
   return {
     tournamentId,
     tournamentSlug: slug ?? '',
     matchId: targetMatch.id,
     p1,
     p2,
+  }
+}
+
+/**
+ * Tournament-level self check-in (the registration's own player confirms
+ * attendance). Distinct from the MATCH-level check-in in checkInViaApi.
+ */
+export async function tournamentCheckIn(
+  token: string,
+  tournamentId: string,
+  registrationId: string,
+): Promise<void> {
+  const resp = await fetch(
+    `${API_URL}/v1/tournaments/${tournamentId}/registrations/${registrationId}/check-in`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
+  if (!resp.ok) {
+    throw new Error(`Tournament check-in failed (${resp.status}): ${await resp.text()}`)
+  }
+}
+
+/**
+ * Drive a freshly-generated match (status `ready`) into `checking_in` using
+ * the admin endpoints. The state machine has no direct ready → checking_in
+ * edge: ready → scheduled (admin schedule) → checking_in (admin transition).
+ * Tolerates matches already at/past the target state so it is rerun-safe.
+ */
+export async function advanceMatchToCheckingIn(
+  adminToken: string,
+  tournamentId: string,
+  matchId: string,
+): Promise<void> {
+  const scheduleResp = await fetch(
+    `${API_URL}/v1/admin/tournaments/${tournamentId}/matches/${matchId}/schedule`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({
+        scheduled_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        reason: 'E2E fixture: schedule match for check-in window',
+      }),
+    },
+  )
+  if (!scheduleResp.ok && scheduleResp.status !== 400) {
+    throw new Error(
+      `Admin schedule failed (${scheduleResp.status}): ${await scheduleResp.text()}`,
+    )
+  }
+
+  const transitionResp = await fetch(
+    `${API_URL}/v1/admin/tournaments/${tournamentId}/matches/${matchId}/transition`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({
+        to_status: 'checking_in',
+        override_reason: 'E2E fixture: open the check-in window',
+      }),
+    },
+  )
+  if (!transitionResp.ok && transitionResp.status !== 400) {
+    throw new Error(
+      `Admin transition to checking_in failed (${transitionResp.status}): ${await transitionResp.text()}`,
+    )
   }
 }
 

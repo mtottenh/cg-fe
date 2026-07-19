@@ -6,9 +6,11 @@
 # alike, and keeps the DB major version an explicit choice (upgrades are
 # a pg_upgrade exercise, not an apt side effect).
 #
-# Defense-in-depth:
-#   1. listen_addresses = '127.0.0.1'   — the daemon won't bind public.
-#   2. pg_hba.conf allows local socket + 127.0.0.1/32 only.
+# Defense-in-depth (socket-only — no TCP listener; see vars.yml):
+#   1. listen_addresses = ''            — the daemon binds NO TCP port,
+#                                         only the /var/run/postgresql socket.
+#   2. pg_hba.conf allows local socket + 127.0.0.1/32 only (the loopback
+#      host rules are a scram-guarded fallback if TCP is ever re-enabled).
 #   3. ufw blocks 5432 anyway (base role, default deny).
 #   4. systemd drop-in: IPAddressDeny=any + IPAddressAllow=localhost.
 
@@ -41,7 +43,7 @@
       - "postgresql-contrib-{{ postgres_version }}"
     state: present
 
-- name: Force Postgres to listen on loopback only
+- name: Restrict Postgres TCP listeners (empty = socket-only, no TCP)
   ansible.builtin.lineinfile:
     path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
     regexp: '^\s*#?\s*listen_addresses\s*='

@@ -5,8 +5,16 @@
 postgres_version: 16
 postgres_db: portal_prod
 postgres_user: portal
-# The role binds postgres to localhost only; Unix socket is preferred.
-postgres_listen_addresses: "127.0.0.1"
+# Every DB consumer on this host connects over the Unix socket
+# (portal-api / scanner / pg_dump all use host=/var/run/postgresql, peer
+# auth). Nothing uses TCP, so Postgres binds NO TCP listener at all:
+# an empty listen_addresses is strictly stronger than binding loopback —
+# it removes the 127.0.0.1:5432 surface entirely (no local non-postgres
+# process, no `ssh -L` tunnel, can reach it over TCP). To connect for
+# admin, use the socket: `sudo -u postgres psql`. Set to "127.0.0.1" only
+# if a future TCP-only client on this box needs loopback access; the
+# pg_hba loopback rules below stay as a scram-guarded fallback for that.
+postgres_listen_addresses: ""
 
 # --- portal-api -------------------------------------------------------------
 # Path to the .deb the playbook will apt-install. Set by `just deploy`,

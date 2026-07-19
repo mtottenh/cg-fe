@@ -1,0 +1,118 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Ephemeral per-run database. The API applies migrations on boot (which
+  # also seed the games catalog), so no separate migrate step is needed.
+  DATABASE_URL: postgres://portal:portal@localhost:5433/portal_e2e
+  VITE_API_URL: http://localhost:3000
+  E2E_ADMIN_EMAIL: admin@example.com
+  E2E_ADMIN_PASSWORD: AdminPassword123!
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: portal
+          POSTGRES_PASSWORD: portal
+          POSTGRES_DB: portal_e2e
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U portal -d portal_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout frontend
+        uses: actions/checkout@v4
+
+      # The backend is a separate repository (mtottenh/cg), NOT a directory of
+      # this one. For a private backend repo, set the API_REPO_TOKEN secret
+      # (PAT with repo read); public repos work with the default token.
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          repository: mtottenh/cg
+          path: api
+          token: ${{ secrets.API_REPO_TOKEN || github.token }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88"
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd web && npm ci
+
+      - name: Install Playwright browsers
+        run: cd web && npx playwright install chromium --with-deps
+
+      # Debug build: ~half the compile time of release and CI does not need
+      # release performance. The portal-app package's binary is named
+      # `portal`; portal-cli provides the admin bootstrap.
+      - name: Build API + CLI
+        run: cd api && cargo build -p portal-app -p portal-cli
+
+      - name: Start API server (migrations run on boot)
+        run: |
+          cd api
+          JWT_SECRET=e2e-ci-jwt-secret-that-is-long-enough-123 \
+          PORTAL_AUTH_RATE_BURST=10000 \
+          PORTAL_AUTH_RATE_PER_SECOND=1000 \
+          ./target/debug/portal > /tmp/api.log 2>&1 &
+          timeout 120 bash -c 'until curl -sf http://localhost:3000/health > /dev/null; do sleep 2; done'
+
+      # global-setup.ts logs in as this admin before seeding anything.
+      - name: Bootstrap e2e admin
+        run: |
+          cd api
+          ./target/debug/portal-cli bootstrap admin \
+            --username e2e_admin \
+            --email "$E2E_ADMIN_EMAIL" \
+            --password "$E2E_ADMIN_PASSWORD" \
+            --display-name "E2E Admin" \
+            --force
+
+      # Playwright's webServer config starts the Vite dev server itself.
+      - name: Run E2E tests
+        run: cd web && npx playwright test
+        env:
+          CI: "true"
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+            /tmp/api.log
+          retention-days: 7

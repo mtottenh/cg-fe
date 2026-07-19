@@ -1,7 +1,10 @@
 import { ref, onUnmounted } from 'vue'
 import { getAuthToken } from '@/api/client'
+import { wsBaseUrl } from '@/api/baseUrl'
 
-const WS_BASE = import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_URL?.replace(/^http/, 'ws') || 'ws://localhost:3000'
+// Derived from the configured API origin (VITE_WS_URL overrides) — resolved
+// lazily so `window.location` is only consulted at connect time.
+const WS_BASE = () => wsBaseUrl()
 const RECONNECT_DELAY_MS = 2_000
 const MAX_RECONNECT_ATTEMPTS = 10
 const FALLBACK_POLL_MS = 5_000
@@ -185,7 +188,7 @@ export function useMatchLobbySocket(matchId: () => string | null) {
     reconnectAttempts = 0
 
     try {
-      ws = new WebSocket(`${WS_BASE}/v1/ws/veto/${id}`)
+      ws = new WebSocket(`${WS_BASE()}/v1/ws/veto/${id}`)
 
       ws.onopen = () => {
         connected.value = true

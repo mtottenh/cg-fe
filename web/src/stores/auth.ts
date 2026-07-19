@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { api, setAuthToken } from '@/api'
+import { api, setAuthToken, ApiError } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 
@@ -28,6 +28,16 @@ interface JwtClaims {
  * admin only, not league/tournament moderators).
  */
 const SYSTEM_ADMIN_ROLES = new Set(['super_admin', 'admin'])
+
+/**
+ * True when the error is a definitive auth rejection (401/403) from the
+ * server. Only these should destroy stored tokens — a network blip or a
+ * 5xx during app boot must NOT log the user out (it would delete a
+ * perfectly valid refresh token because the API was briefly unreachable).
+ */
+function isAuthRejection(e: unknown): boolean {
+  return e instanceof ApiError && (e.status === 401 || e.status === 403)
+}
 
 /** Decode JWT payload without verification (verification happens on backend) */
 function decodeJwtPayload(token: string): JwtClaims | null {
@@ -251,10 +261,14 @@ export const useAuthStore = defineStore('auth', () => {
       }
 
       return true
-    } catch {
-      // Refresh failed — clear refresh token
-      refreshToken.value = null
-      localStorage.removeItem('refresh_token')
+    } catch (e) {
+      // Only a definitive rejection invalidates the stored refresh token.
+      // Network errors / 5xx keep it so the session survives transient
+      // failures (the next 401-triggered refresh can still succeed).
+      if (isAuthRejection(e)) {
+        refreshToken.value = null
+        localStorage.removeItem('refresh_token')
+      }
       return false
     }
   }
@@ -273,16 +287,23 @@ export const useAuthStore = defineStore('auth', () => {
         if (refreshToken.value) {
           const refreshed = await refreshAccessToken()
           if (!refreshed) {
-            logout()
+            // refreshAccessToken only clears the stored refresh token on a
+            // definitive 401/403. If it's still present the failure was
+            // transient (network/5xx) — keep the session material so the
+            // next attempt can recover instead of forcing a re-login.
+            if (!refreshToken.value) {
+              logout()
+            }
           } else {
-            // Refreshed successfully, verify + load roles. Only fetchCurrentUser
-            // failing indicates a revoked/invalid session; a role fetch hiccup
-            // is non-fatal (isAdmin just starts false and reconverges).
+            // Refreshed successfully, verify + load roles. Only an auth
+            // rejection from fetchCurrentUser indicates a revoked/invalid
+            // session; a role fetch hiccup is non-fatal (isAdmin just
+            // starts false and reconverges).
             try {
               await fetchCurrentUser()
               await fetchMyRoles().catch(() => { roles.value = [] })
-            } catch {
-              logout()
+            } catch (e) {
+              if (isAuthRejection(e)) logout()
             }
           }
         } else {
@@ -293,9 +314,12 @@ export const useAuthStore = defineStore('auth', () => {
         try {
           await fetchCurrentUser()
           await fetchMyRoles().catch(() => { roles.value = [] })
-        } catch {
-          // Token rejected by server (revoked, etc.)
-          logout()
+        } catch (e) {
+          // Only log out when the server definitively rejected the token
+          // (revoked, etc.). Network errors / 5xx during boot keep the
+          // stored tokens — the 401 middleware handles a truly dead
+          // session later.
+          if (isAuthRejection(e)) logout()
         }
       }
     }

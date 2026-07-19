@@ -42,7 +42,22 @@ export function triggerUnauthorized(): void {
   onUnauthorized()
 }
 
+// Replayable request bodies. openapi-fetch hands the SAME Request object to
+// onRequest, to fetch(), and then to onResponse — so by the time a 401
+// arrives here the body stream has already been consumed by the original
+// send (`request.bodyUsed === true`) and cannot be re-sent. Capture a copy
+// of every outgoing body up front so the 401 retry can replay it. Keyed by
+// the Request object itself (WeakMap → entries are GC'd with the request).
+const replayableBodies = new WeakMap<Request, ArrayBuffer>()
+
 export const errorMiddleware: Middleware = {
+  async onRequest({ request }) {
+    if (request.body !== null && !request.bodyUsed) {
+      replayableBodies.set(request, await request.clone().arrayBuffer())
+    }
+    return request
+  },
+
   async onResponse({ response, request }) {
     if (response.status !== 401) {
       return response
@@ -66,7 +81,8 @@ export const errorMiddleware: Middleware = {
       const retryResponse = await fetch(request.url, {
         method: request.method,
         headers: retryHeaders,
-        body: request.bodyUsed ? undefined : request.body,
+        // The original body stream is consumed; replay the captured copy.
+        body: replayableBodies.get(request),
         credentials: request.credentials,
       })
       return retryResponse

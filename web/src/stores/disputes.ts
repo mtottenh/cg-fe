@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
+import { unwrapApi, unwrapApiOptional, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 import {
   disputeStatusMap,
   disputePriorityMap,
@@ -62,17 +62,14 @@ export const useDisputesStore = defineStore('disputes', () => {
     matchId: string
   ): Promise<DisputeResponse | null> {
     return withActionState(fetchMatchDisputeState, async () => {
-      try {
-        const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}/dispute', {
-          params: { path: { tournament_id: tournamentId, match_id: matchId } },
-        }))
-        matchDispute.value = result.data
-        return matchDispute.value
-      } catch {
-        // 404 = no active dispute, that's fine
-        matchDispute.value = null
-        return null
-      }
+      // 404 = no active dispute (a valid state) → null. Any other failure
+      // (500, auth, network) must surface through the action state instead
+      // of silently rendering as "no dispute".
+      const result = await unwrapApiOptional(api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}/dispute', {
+        params: { path: { tournament_id: tournamentId, match_id: matchId } },
+      }))
+      matchDispute.value = result?.data ?? null
+      return matchDispute.value
     }, 'Failed to fetch match dispute')
   }
 

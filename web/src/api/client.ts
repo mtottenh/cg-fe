@@ -1,13 +1,13 @@
 import createClient, { type Middleware } from 'openapi-fetch'
 import type { paths } from './types'
 import { errorMiddleware } from './middleware'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+import { API_BASE_URL } from './baseUrl'
 
 // Create type-safe client
 // Note: Don't add /v1 here - the generated paths already include it from OpenAPI spec
+// API_BASE_URL may be "" (same-origin production deploy behind Caddy) — see baseUrl.ts.
 export const api = createClient<paths>({
-  baseUrl: API_URL,
+  baseUrl: API_BASE_URL,
 })
 
 // Auth middleware for token injection

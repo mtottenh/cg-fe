@@ -7,6 +7,8 @@
  * or proxy logs. This module parses that fragment.
  */
 
+import { API_BASE_URL } from '@/api/baseUrl'
+
 export interface SteamCallbackTokens {
   accessToken: string
   refreshToken: string | null
@@ -37,6 +39,6 @@ export function parseSteamCallbackFragment(hash: string): SteamCallbackTokens | 
 
 /** URL of the backend endpoint that starts the Steam OpenID flow. */
 export function steamLoginUrl(): string {
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000'
-  return `${apiUrl}/v1/auth/steam/login`
+  // May be relative (same-origin deploy) — fine for window.location navigation.
+  return `${API_BASE_URL}/v1/auth/steam/login`
 }

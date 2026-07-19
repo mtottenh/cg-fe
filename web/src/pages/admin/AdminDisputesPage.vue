@@ -160,12 +160,13 @@ const filters = ref<{
   match_id?: string
 }>({})
 
+// Values must match the backend DisputeStatus enum exactly — the server
+// now rejects unknown status filters with 400 instead of ignoring them.
 const statusOptions = [
-  { title: 'Open', value: 'open' },
-  { title: 'Assigned', value: 'assigned' },
+  { title: 'Pending', value: 'pending' },
   { title: 'Under Review', value: 'under_review' },
   { title: 'Resolved', value: 'resolved' },
-  { title: 'Closed', value: 'closed' },
+  { title: 'Cancelled', value: 'cancelled' },
 ]
 
 const priorityOptions = [

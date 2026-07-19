@@ -27,7 +27,7 @@
             </v-chip>
             <v-spacer />
             <v-btn
-              v-if="dispute.status === 'open'"
+              v-if="dispute.status === 'pending'"
               size="small"
               color="primary"
               variant="tonal"

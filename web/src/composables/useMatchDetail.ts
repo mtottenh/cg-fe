@@ -186,7 +186,12 @@ export function useMatchDetail() {
       }
     }
 
-    if (match.value && ['in_progress', 'awaiting_result', 'completed'].includes(match.value.status)) {
+    // 'disputed' is a real MatchStatus (a claim dispute sets it), so it must
+    // be included here or the dispute thread never loads for disputed matches.
+    if (
+      match.value &&
+      ['in_progress', 'awaiting_result', 'completed', 'disputed'].includes(match.value.status)
+    ) {
       tasks.push(fetchResultData())
       if (['in_progress', 'awaiting_result'].includes(match.value.status)) {
         // Backend pushes discovered demos as they upload — worth polling.
@@ -236,7 +241,13 @@ export function useMatchDetail() {
           }
         }
 
-        if (match.value && ['in_progress', 'awaiting_result', 'completed'].includes(match.value.status)) {
+        // 'disputed' is a real MatchStatus (a claim dispute sets it), so it
+        // must be included here or the dispute thread never loads for
+        // disputed matches.
+        if (
+          match.value &&
+          ['in_progress', 'awaiting_result', 'completed', 'disputed'].includes(match.value.status)
+        ) {
           const resultPromises: Promise<unknown>[] = [fetchResultData()]
           resultPromises.push(
             evidenceStore.fetchLinkedDemos(match.value.id).catch(() => []),

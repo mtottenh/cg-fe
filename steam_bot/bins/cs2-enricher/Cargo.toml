@@ -2,6 +2,7 @@
 name = "cs2-enricher"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 description = "CS2 match enricher bot — fetches full match data from the Game Coordinator"
 
 [dependencies]
@@ -21,8 +22,9 @@ rayon.workspace = true
 
 # ---------------------------------------------------------------------------
 # Debian package `portal-steam-bot` — ships BOTH long-running services
-# (cs2-poller + cs2-enricher). The metadata lives on this crate but the
-# asset paths are workspace-root-relative, so build from the workspace root:
+# (cs2-poller + cs2-enricher). cargo-deb resolves asset source paths
+# relative to THIS crate's dir (bins/cs2-enricher/), hence dist/ lives here;
+# target/release/ is special-cased to the workspace target dir. Build:
 #
 #   cargo build --release -p cs2-poller -p cs2-enricher
 #   cargo deb -p cs2-enricher --no-build

@@ -1,122 +1,121 @@
 import { test, expect } from '@playwright/test'
-import { loginAsAdmin } from './fixtures/auth.fixture'
-import { testLeagues } from './fixtures/test-data'
-import { getSeededState } from './fixtures/seeded-state'
+import { loginAsAdmin, getAdminToken } from './fixtures/auth.fixture'
+import {
+  createLeagueSeasonScenario,
+  advanceSeason,
+  type LeagueSeasonScenario,
+} from './fixtures/league-season-extra.fixture'
+import { createTeamWithMembers, type TeamRosterScenario } from './fixtures/team-roster.fixture'
 
 /**
  * League Season Lifecycle E2E Tests
  *
- * Tests cover the full league season workflow:
- * - Create season → open registration → teams register → activate → complete
+ * Fully self-contained: each describe block builds its own league + season
+ * (+ registered team where needed) through the admin API via
+ * league-season-extra.fixture.ts, so nothing depends on globally seeded state
+ * and every test always runs.
  *
- * Prerequisites (seeded by global-setup.ts):
- * - E2E Test League with at least one season
- * - Admin is authenticated
+ * Coverage:
+ * - Public league detail page: season selector + per-season status chips
+ * - Registration phase: Create Team CTA, registered team cards
+ * - Admin league management: list, search, season details modal
+ * - Season status transitions: registration → active → completed
  */
 
 test.describe('League Season Lifecycle', () => {
   test.describe('Season Browsing', () => {
+    let scenario: LeagueSeasonScenario
+
+    test.beforeAll(async () => {
+      const adminToken = await getAdminToken()
+      scenario = await createLeagueSeasonScenario(adminToken)
+    })
+
     test('should display league with seasons', async ({ page }) => {
       await loginAsAdmin(page)
+
+      // Public leagues list loads.
       await page.goto('/leagues')
       await page.waitForLoadState('networkidle')
+      await expect(page.getByRole('heading', { name: 'Leagues' })).toBeVisible()
 
-      // Navigate to test league
-      const leagueLink = page
-        .locator('a[href^="/leagues/"]')
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      // The list is paginated server-side (ordered by name, no server search),
+      // so a fresh league is not guaranteed to sit on page 1 of a long-lived
+      // dev DB — navigate to the league detail page directly by id.
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
-      // Season selector MUST be visible (league has at least one season)
+      await expect(page.getByText(scenario.leagueName)).toBeVisible()
+
+      // Season selector MUST be visible with our season auto-selected.
       const seasonSelect = page.locator('.v-select').first()
       await expect(seasonSelect).toBeVisible()
+      await expect(seasonSelect).toContainText(scenario.seasonName)
     })
 
     test('should display season status indicator', async ({ page }) => {
       await loginAsAdmin(page)
-      await page.goto('/leagues')
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
-      const leagueLink = page
-        .locator('a[href^="/leagues/"]')
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
-      await page.waitForLoadState('networkidle')
-      await page.waitForTimeout(1000)
+      // Each option in the season selector carries a status chip.
+      const seasonSelect = page.locator('.v-select').first()
+      await expect(seasonSelect).toBeVisible()
+      await seasonSelect.click()
 
-      // Should see some status-related text
-      const statusTerms = /draft|registration|active|completed|open/i
-      const hasStatus = await page.getByText(statusTerms).first().isVisible().catch(() => false)
-      expect(hasStatus).toBe(true)
+      const option = page.getByRole('option', { name: new RegExp(scenario.seasonName) })
+      await expect(option).toBeVisible()
+      await expect(option.getByText('registration', { exact: true })).toBeVisible()
     })
   })
 
   test.describe('Season Registration Phase', () => {
+    let scenario: LeagueSeasonScenario
+    let roster: TeamRosterScenario
+
+    test.beforeAll(async () => {
+      const adminToken = await getAdminToken()
+      scenario = await createLeagueSeasonScenario(adminToken)
+      // Register a team (fresh owner user) into the season via the API.
+      roster = await createTeamWithMembers({
+        leagueId: scenario.leagueId,
+        seasonId: scenario.seasonId,
+        memberCount: 0,
+        teamNamePrefix: 'Season Phase Team',
+      })
+    })
+
     test('should show team creation during registration phase', async ({ page }) => {
       await loginAsAdmin(page)
-      await page.goto('/leagues')
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
-      const leagueLink = page
-        .locator('a[href^="/leagues/"]')
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
-      await page.waitForLoadState('networkidle')
-      await page.waitForTimeout(1500)
-
-      // During registration phase, Create Team button should be available
-      const createButton = page.getByRole('button', { name: /Create Team/i })
-      const hasCreateButton = await createButton.isVisible().catch(() => false)
-
-      // Teams section or empty state should be visible
-      const hasTeamsContent =
-        hasCreateButton ||
-        (await page.getByText(/teams|no teams/i).first().isVisible().catch(() => false))
-
-      expect(hasTeamsContent).toBe(true)
+      // The admin created the league (league admin member) and has no team in
+      // the season, so the Create Team CTA MUST be available.
+      await expect(page.getByRole('button', { name: /Create Team/i }).first()).toBeVisible()
     })
 
     test('should show teams registered for the season', async ({ page }) => {
       await loginAsAdmin(page)
-      await page.goto('/leagues')
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
-      const leagueLink = page
-        .locator('a[href^="/leagues/"]')
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
-      await page.waitForLoadState('networkidle')
-      await page.waitForTimeout(1500)
-
-      // Should show either team cards or empty state. Several elements can
-      // match /no teams|be the first/i (heading + paragraph), so `.first()`
-      // avoids strict-mode silently falling through to the catch.
-      const hasTeamCards = await page
-        .locator('.v-card')
-        .filter({ hasText: /members/i })
-        .first()
-        .isVisible()
-        .catch(() => false)
-      const hasEmptyState = await page
-        .getByText(/no teams|be the first/i)
-        .first()
-        .isVisible()
-        .catch(() => false)
-
-      expect(hasTeamCards || hasEmptyState).toBe(true)
+      // The registered team MUST appear as a card with its member count chip.
+      const teamCard = page.locator('.v-card').filter({ hasText: roster.teamName }).first()
+      await expect(teamCard).toBeVisible()
+      await expect(teamCard.getByText(/members/i)).toBeVisible()
+      await expect(teamCard.getByText(`[${roster.teamTag}]`)).toBeVisible()
     })
   })
 
   test.describe('Admin Season Management', () => {
+    let scenario: LeagueSeasonScenario
+
+    test.beforeAll(async () => {
+      const adminToken = await getAdminToken()
+      scenario = await createLeagueSeasonScenario(adminToken)
+    })
+
     test('should access league management in admin panel', async ({ page }) => {
       await loginAsAdmin(page)
       await page.goto('/admin/leagues')
@@ -126,94 +125,75 @@ test.describe('League Season Lifecycle', () => {
       await expect(page.getByRole('heading', { name: /Leagues/i })).toBeVisible()
     })
 
-    test('should see seeded league in admin list', async ({ page }) => {
+    test('should see created league in admin list', async ({ page }) => {
       await loginAsAdmin(page)
       await page.goto('/admin/leagues')
       await page.waitForLoadState('networkidle')
 
-      // Wait for data to load
-      await page.waitForTimeout(2000)
-
-      // Should see league data (table, list, or cards)
-      const hasLeagueContent =
-        (await page.getByText(testLeagues.standard.name).isVisible().catch(() => false)) ||
-        (await page.locator('table tbody tr').first().isVisible().catch(() => false)) ||
-        (await page.locator('.v-card').first().isVisible().catch(() => false))
-
-      expect(hasLeagueContent).toBe(true)
+      // The admin owns the fresh league, so it MUST show up in the (client-
+      // side searchable) admin list. Search first: the per-game data tables
+      // paginate at 10 rows.
+      await page.getByRole('textbox', { name: /Search leagues/i }).fill(scenario.leagueName)
+      await expect(page.getByText(scenario.leagueName)).toBeVisible()
+      await expect(page.getByText(scenario.leagueSlug)).toBeVisible()
     })
 
     test('should display season details for admin', async ({ page }) => {
-      let state: ReturnType<typeof getSeededState>
-      try {
-        state = getSeededState()
-      } catch {
-        test.skip()
-        return
-      }
-
-      if (!state.leagueId) {
-        test.skip()
-        return
-      }
-
       await loginAsAdmin(page)
-
-      // Navigate to the league admin page
       await page.goto('/admin/leagues')
       await page.waitForLoadState('networkidle')
 
-      // Look for the test league
-      const leagueText = page.getByText(testLeagues.standard.name)
-      const hasLeague = await leagueText.isVisible().catch(() => false)
+      // Narrow the table to our league, then open "Manage Seasons & Teams".
+      await page.getByRole('textbox', { name: /Search leagues/i }).fill(scenario.leagueName)
+      const leagueRow = page.locator('tr').filter({ hasText: scenario.leagueName })
+      await expect(leagueRow).toBeVisible()
+      await leagueRow.locator('button[title="Manage Seasons & Teams"]').click()
 
-      if (hasLeague) {
-        // Click to see details
-        await leagueText.click()
-        await page.waitForLoadState('networkidle')
-
-        // Should see season information
-        const hasSeasonInfo = await page
-          .getByText(/season|E2E Test Season/i)
-          .first()
-          .isVisible()
-          .catch(() => false)
-
-        if (hasSeasonInfo) {
-          await expect(page.getByText(/season/i).first()).toBeVisible()
-        }
-      }
+      // The detail modal opens on the Seasons tab and MUST list our season.
+      const dialog = page.locator('.v-overlay--active', { hasText: scenario.leagueName })
+      await expect(dialog).toBeVisible()
+      await expect(dialog.getByRole('tab', { name: /Seasons/i })).toBeVisible()
+      await expect(dialog.getByText(scenario.seasonName)).toBeVisible()
     })
   })
 
   test.describe('Season Transition States', () => {
-    test('should show appropriate UI for current season status', async ({ page }) => {
+    let adminToken: string
+    let scenario: LeagueSeasonScenario
+
+    test.beforeAll(async () => {
+      adminToken = await getAdminToken()
+      scenario = await createLeagueSeasonScenario(adminToken) // registration
+    })
+
+    // Single test walks the whole chain so it stays valid regardless of
+    // worker scheduling (the backend only allows forward one-step moves).
+    test('should reflect season status transitions in the season selector', async ({ page }) => {
       await loginAsAdmin(page)
-      await page.goto('/leagues')
+
+      // registration → active
+      await advanceSeason(adminToken, scenario, 'active')
+      await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
-      const leagueLink = page
-        .locator('a[href^="/leagues/"]')
-        .filter({ hasText: testLeagues.standard.name })
-        .first()
-      await expect(leagueLink).toBeVisible({ timeout: 5000 })
-      await leagueLink.click()
+      const seasonSelect = page.locator('.v-select').first()
+      await expect(seasonSelect).toBeVisible()
+      await expect(seasonSelect).toContainText(scenario.seasonName)
+      await seasonSelect.click()
+      const option = page.getByRole('option', { name: new RegExp(scenario.seasonName) })
+      await expect(option).toBeVisible()
+      await expect(option.getByText('active', { exact: true })).toBeVisible()
+      await page.keyboard.press('Escape')
+
+      // active → completed
+      await advanceSeason(adminToken, scenario, 'completed')
+      await page.reload()
       await page.waitForLoadState('networkidle')
-      await page.waitForTimeout(1500)
 
-      // Depending on season status, different UI elements should be shown:
-      // - registration: Create Team button visible
-      // - active: Teams playing, no new team creation
-      // - completed: Historical view
-
-      const hasActionableContent =
-        (await page.getByRole('button', { name: /Create Team/i }).isVisible().catch(() => false)) ||
-        (await page.getByText(/active|playing|in progress/i).first().isVisible().catch(() => false)) ||
-        (await page.getByText(/completed|ended|finished/i).first().isVisible().catch(() => false)) ||
-        (await page.getByText(/registration/i).first().isVisible().catch(() => false))
-
-      // The page MUST show some indication of season state
-      expect(hasActionableContent).toBe(true)
+      await expect(seasonSelect).toBeVisible()
+      await seasonSelect.click()
+      await expect(option).toBeVisible()
+      await expect(option.getByText('completed', { exact: true })).toBeVisible()
     })
   })
 })

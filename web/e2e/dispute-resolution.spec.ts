@@ -1,6 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test'
 import { getAdminToken, loginAsAdmin } from './fixtures/auth.fixture'
-import { getSeededState } from './fixtures/seeded-state'
 import {
   adminAddDisputeMessage,
   getDisputeThread,
@@ -28,49 +27,12 @@ import {
  *   2. Admin resolves in favour of P2 (overturn flips winner + scores).
  *   3. Admin internal note is hidden from the captain thread.
  *
- * Scenario 1 consumes the seeded match (matchIds[0]); scenarios 2 and 3 are
- * fully self-contained — each builds a fresh tournament + match via
- * `createCheckInScenario` so they never race on shared DB rows.
+ * All three scenarios are fully self-contained — each builds a fresh
+ * tournament + two players + an in-progress match via
+ * `createCheckInScenario`, then a disputed result claim via the dispute
+ * fixtures, so they never race on shared DB rows and never depend on
+ * `global-setup.ts` seeding.
  */
-
-// Serial: scenario 1 mutates the shared seeded match and leaves it in a
-// terminal state; keep the file serial so it can't race with reruns.
-test.describe.configure({ mode: 'serial' })
-
-interface State {
-  adminToken: string
-  player2Token: string
-  tournamentId: string
-  matchIds: string[]
-}
-
-/**
- * Load the seeded fixture state. Returns `null` if `global-setup.ts` did
- * not produce the tokens / tournament / matches we need — individual tests
- * use this to `test.skip()` cleanly on an unseeded environment.
- */
-function loadState(): State | null {
-  let seeded: ReturnType<typeof getSeededState>
-  try {
-    seeded = getSeededState()
-  } catch {
-    return null
-  }
-  if (
-    !seeded.adminToken ||
-    !seeded.player2Token ||
-    !seeded.tournamentId ||
-    seeded.matchIds.length === 0
-  ) {
-    return null
-  }
-  return {
-    adminToken: seeded.adminToken,
-    player2Token: seeded.player2Token,
-    tournamentId: seeded.tournamentId,
-    matchIds: seeded.matchIds,
-  }
-}
 
 /**
  * Self-contained disputable match: fresh tournament + two players, both
@@ -125,44 +87,30 @@ async function buildDisputedMatch(
 test.describe('Admin Dispute Resolution', () => {
   test('resolves dispute in favour of P1 — overturn declares P1 the winner', async ({
     page,
+    request,
   }) => {
-    const state = loadState()
-    if (!state) {
-      test.skip()
-      return
-    }
-
-    const matchId = state.matchIds[0]
+    const adminToken = await getAdminToken()
     const reason = `E2E dispute for P1 win ${Date.now()}`
 
-    // --- API setup: submit P1-wins claim, P2 disputes it ------------------
-    const ctx = await seedDisputableMatch(
-      state.adminToken,
-      state.player2Token,
-      state.tournamentId,
-      matchId,
-      // Match-level scores are SERIES scores; the seeded tournament is bo1,
-      // so the claim must sum to exactly 1 (DTO range 0..=10).
-      { p1: 1, p2: 0 }
-    )
-    if (!ctx) {
-      test.skip()
-      return
-    }
+    // --- API setup: self-contained match, P1 claims 1-0, P2 disputes -----
+    // Match-level scores are SERIES scores; the generated tournament is
+    // bo1, so the claim must sum to exactly 1 (DTO range 0..=10).
+    const { scenario, ctx } = await buildDisputedMatch(request, adminToken, {
+      p1: 1,
+      p2: 0,
+    })
+    const matchId = scenario.matchId
 
     const dispute = await raiseDispute(
-      state.player2Token,
-      state.tournamentId,
+      scenario.p2.token,
+      scenario.tournamentId,
       matchId,
       ctx.p2RegistrationId,
       'wrong_score',
       reason,
       ctx.claimId
     )
-    if (!dispute) {
-      test.skip()
-      return
-    }
+    expect(dispute, 'raising the formal dispute should succeed').not.toBeNull()
 
     // --- UI: admin sees dispute in list ----------------------------------
     await loginAsAdmin(page)
@@ -181,14 +129,18 @@ test.describe('Admin Dispute Resolution', () => {
     const truncatedMatch = `${matchId.slice(0, 8)}...`
     const row = page.getByRole('row').filter({ hasText: truncatedMatch }).first()
     await expect(row).toBeVisible({ timeout: 10000 })
-    // Reason is truncated with style="max-width: 250px" but the full text
-    // is still in the DOM.
-    await expect(row).toContainText(reason)
+    // The Reason column renders the reason ENUM (`item.reason`), not the
+    // free-text description — the description is only shown in the modal.
+    await expect(row).toContainText('wrong_score')
 
     // --- UI: open detail modal, post admin reply, resolve in favour of P1 -
     await row.click()
     const modal = page.locator('.v-dialog').filter({ hasText: 'Dispute Details' })
     await expect(modal).toBeVisible()
+    // The full free-text description we raised the dispute with renders in
+    // the modal body (it also appears in the auto-generated "Dispute
+    // raised" system message, hence .first()).
+    await expect(modal.getByText(reason, { exact: false }).first()).toBeVisible()
 
     // Admin posts a non-internal reply via the modal UI. We only assert the
     // send succeeded via the snackbar / thread update — deeper UI checks
@@ -249,7 +201,9 @@ test.describe('Admin Dispute Resolution', () => {
       page.getByRole('row').filter({ hasText: truncatedMatch })
     ).toHaveCount(0, { timeout: 10000 })
 
-    await page.getByLabel('Status').click()
+    // The Status v-select is `clearable`, so getByLabel('Status') can
+    // resolve to the hidden "Clear Status" icon — target the field itself.
+    await page.locator('.v-select').filter({ hasText: 'Status' }).first().click()
     await page.getByRole('option', { name: 'Resolved' }).click()
     await page.waitForLoadState('networkidle')
     await expect(
@@ -257,8 +211,8 @@ test.describe('Admin Dispute Resolution', () => {
     ).toBeVisible({ timeout: 10000 })
 
     const updatedMatch = await getMatch(
-      state.adminToken,
-      state.tournamentId,
+      adminToken,
+      scenario.tournamentId,
       matchId
     )
     expect(updatedMatch).not.toBeNull()

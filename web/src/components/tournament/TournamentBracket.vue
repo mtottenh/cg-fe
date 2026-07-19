@@ -170,7 +170,12 @@ const bracketType = computed(() => {
   if (props.brackets.length === 0) return 'single_elimination'
   const types = props.brackets.map((b) => b.bracket_type)
   if (types.includes('losers')) return 'double_elimination'
-  return props.brackets[0]?.bracket_type || 'single_elimination'
+  // The backend serializes BracketType::SingleElim as 'single_elim'
+  // (portal-core Display impl); the single-elimination template matches
+  // 'single_elimination'. Normalize so the round grid actually renders.
+  const first = props.brackets[0]?.bracket_type
+  if (first === 'single_elim') return 'single_elimination'
+  return first || 'single_elimination'
 })
 
 const totalRounds = computed(() => {

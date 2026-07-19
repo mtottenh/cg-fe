@@ -288,8 +288,10 @@ test.describe('Player Profile', () => {
       // Should see dialog with "Add Availability" title
       await expect(page.getByText('Add Availability')).toBeVisible()
 
-      // Should see "Monday" (default day of week selection) - label may be hidden due to Vuetify floating
-      await expect(page.getByText('Monday')).toBeVisible()
+      // Should see "Monday" (default day of week selection) - label may be
+      // hidden due to Vuetify floating. .first(): when the profile already
+      // has availability rows, "Monday" also appears as a list subheader.
+      await expect(page.getByText('Monday').first()).toBeVisible()
 
       // Dialog should have Cancel and Add buttons - use exact match for Add
       await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible({ timeout: 10000 })

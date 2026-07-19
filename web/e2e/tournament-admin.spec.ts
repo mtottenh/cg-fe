@@ -500,13 +500,18 @@ test.describe('Tournament Admin Flows', () => {
     })
 
     test('should save tournament changes', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
+      // Create a fresh DRAFT tournament and edit that one. Picking the first
+      // row is order-dependent and used to grab an already-started
+      // tournament, whose participant settings are locked ("Tournament has
+      // already started") so the save legitimately fails.
+      const { getAdminToken } = await import('./fixtures/auth.fixture')
+      const { createDraftTournament } = await import('./fixtures/tournament-lifecycle.fixture')
+      const adminToken = await getAdminToken()
+      const tournament = await createDraftTournament(adminToken, {
+        name: `E2E Edit Test ${Date.now()}`,
+      })
 
-      // Navigate to first tournament
-      const firstRow = page.locator('table tbody tr').first()
-      await expect(firstRow).toBeVisible({ timeout: 10000 })
-      await firstRow.click()
+      await page.goto(`/admin/tournaments/${tournament.id}`)
       await page.waitForLoadState('networkidle')
 
       // Click edit button

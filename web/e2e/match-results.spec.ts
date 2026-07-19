@@ -152,12 +152,16 @@ test.describe('Match Navigation', () => {
     await matchesTab.click()
     await page.waitForTimeout(1000)
 
-    // Should see EITHER match content or empty state
-    const hasMatchContent =
-      (await page.getByText(/match #\d+|round \d+/i).first().isVisible().catch(() => false)) ||
-      (await page.getByText(/no match|no bracket|generate/i).first().isVisible().catch(() => false))
-
-    expect(hasMatchContent).toBe(true)
+    // Should see EITHER match content or empty state. Match cards render the
+    // match number as a bare "#1" chip, so accept that too. Auto-waiting
+    // assertion (immediate isVisible() raced the rendering); no ^$ anchors —
+    // regex getByText matches raw un-normalized text, so anchors fail
+    // against the chip's whitespace padding.
+    await expect(
+      page
+        .getByText(/match #\d+|round \d+|no match|no bracket|generate|#\d+/i)
+        .first(),
+    ).toBeVisible({ timeout: 10000 })
   })
 })
 

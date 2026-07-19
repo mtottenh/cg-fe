@@ -287,11 +287,14 @@ test.describe('Tournament Public Flows', () => {
       // User should see either:
       // 1. Registration status (if registered)
       // 2. Register button (if not registered)
+      // 3. Registration Closed (the seeded tournament is started once match
+      //    seeding completes, which closes registration)
       const isPending = await page.getByText('Awaiting Approval').isVisible().catch(() => false)
-      const isRegistered = await page.getByText('Registered').isVisible().catch(() => false)
+      const isRegistered = await page.getByText('Registered').first().isVisible().catch(() => false)
       const canRegister = await page.getByRole('button', { name: /Register/i }).isVisible().catch(() => false)
+      const isClosed = await page.getByText('Registration Closed').first().isVisible().catch(() => false)
 
-      expect(isPending || isRegistered || canRegister).toBe(true)
+      expect(isPending || isRegistered || canRegister || isClosed).toBe(true)
     })
   })
 

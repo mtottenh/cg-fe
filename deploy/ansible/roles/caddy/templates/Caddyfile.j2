@@ -46,3 +46,27 @@
         -Server
     }
 }
+
+# Demo-stats service (CS2 demo parser). The portal API's SSRF guard requires
+# CS2_DEMO_SERVICE_URL to be https + non-private, so the loopback service is
+# fronted here. Needs a DNS A record for demos.{{ portal_domain }} pointing
+# at this box.
+demos.{{ portal_domain }} {
+    encode zstd gzip
+
+    reverse_proxy 127.0.0.1:{{ demo_stats_port | default(3100) }} {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        # Demo parsing of a large .dem can take a while.
+        transport http {
+            read_timeout 300s
+            write_timeout 300s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
+}

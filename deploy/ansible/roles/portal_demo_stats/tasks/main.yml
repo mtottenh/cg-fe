@@ -10,23 +10,34 @@
 # service with Caddy (e.g. demos.<your-domain> → localhost:3100) rather
 # than pointing the API at localhost directly.
 
-- name: Assert portal_demo_stats_deb_path was provided
+- name: Check whether portal-demo-stats is already installed
+  ansible.builtin.command: dpkg-query -W -f='${Status}' portal-demo-stats
+  register: portal_demo_stats_pkg
+  changed_when: false
+  failed_when: false
+
+- name: Assert we have a deb to install (or an existing install to configure)
   ansible.builtin.assert:
     that:
-      - portal_demo_stats_deb_path is defined
-      - portal_demo_stats_deb_path | length > 0
-    fail_msg: "pass -e portal_demo_stats_deb_path=/path/to/portal-demo-stats_X.Y.Z_amd64.deb"
+      - (portal_demo_stats_deb_path | default('') | length > 0)
+        or ('install ok installed' in portal_demo_stats_pkg.stdout)
+    fail_msg: >-
+      portal-demo-stats is not installed and no deb was provided — pass
+      -e portal_demo_stats_deb_path=/path/to/portal-demo-stats_X.Y.Z_amd64.deb
+      (built in the sibling demo-stats-service repo; see `just deploy-demo-stats`).
 
 - name: Copy portal-demo-stats deb to target
   ansible.builtin.copy:
     src: "{{ portal_demo_stats_deb_path }}"
     dest: "/tmp/{{ portal_demo_stats_deb_path | basename }}"
     mode: "0644"
+  when: portal_demo_stats_deb_path | default('') | length > 0
 
-- name: apt install portal-demo-stats
+- name: Install the portal-demo-stats deb
   ansible.builtin.apt:
     deb: "/tmp/{{ portal_demo_stats_deb_path | basename }}"
     state: present
+  when: portal_demo_stats_deb_path | default('') | length > 0
   notify: restart portal-demo-stats
 
 - name: Render /etc/portal/demo-stats.env from vault

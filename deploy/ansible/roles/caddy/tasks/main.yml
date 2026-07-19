@@ -8,6 +8,12 @@
 
 - name: Install Caddy from the official repo
   block:
+    - name: /etc/apt/keyrings exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
     - name: Caddy apt key
       ansible.builtin.get_url:
         url: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
@@ -28,12 +34,15 @@
         update_cache: true
         state: present
 
+# Populated by the portal_web role (runs after this one in site.yml).
+# The official Caddy deb runs as the `caddy` user, created by the package
+# installed above.
 - name: /var/www/portal — frontend destination
   ansible.builtin.file:
     path: /var/www/portal
     state: directory
-    owner: www-data
-    group: www-data
+    owner: caddy
+    group: caddy
     mode: "0755"
 
 - name: Caddyfile

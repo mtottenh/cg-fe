@@ -1,0 +1,68 @@
+---
+# Install/upgrade the portal-scanner deb and render its env file.
+#
+# The deb ships /lib/systemd/system/portal-scanner.service and its postinst
+# creates the `portal` user (shared with portal-api); this role ships the
+# artifact and overwrites /etc/portal/scanner.env from the vault.
+#
+# The scanner polls the demos bucket, batch-registers new .dem files with
+# the portal API (PORTAL_API_KEY), and asks the demo-stats service for
+# parsed stats (CS2_DEMO_SERVICE_URL).
+
+- name: Check whether portal-scanner is already installed
+  ansible.builtin.command: dpkg-query -W -f='${Status}' portal-scanner
+  register: portal_scanner_pkg
+  changed_when: false
+  failed_when: false
+
+- name: Assert we have a deb to install (or an existing install to configure)
+  ansible.builtin.assert:
+    that:
+      - (portal_scanner_deb_path | default('') | length > 0)
+        or ('install ok installed' in portal_scanner_pkg.stdout)
+    fail_msg: >-
+      portal-scanner is not installed and no deb was provided — pass
+      -e portal_scanner_deb_path=/path/to/portal-scanner_X.Y.Z_amd64.deb
+      (or use `just deploy vX.Y.Z`).
+
+- name: Assert scanner_game_id is configured
+  ansible.builtin.assert:
+    that:
+      - scanner_game_id is defined
+      - scanner_game_id | length > 0
+      - "'CHANGE_ME' not in scanner_game_id"
+    fail_msg: >-
+      scanner_game_id must be set to the UUID of the game (CS2) that scanned
+      demos are cataloged under. Fetch it after the first API converge with:
+      sudo -u portal psql -d portal_prod -c 'SELECT id, name FROM games;'
+      then set scanner_game_id in group_vars or inventory.
+
+- name: Copy portal-scanner deb to target
+  ansible.builtin.copy:
+    src: "{{ portal_scanner_deb_path }}"
+    dest: "/tmp/{{ portal_scanner_deb_path | basename }}"
+    mode: "0644"
+  when: portal_scanner_deb_path | default('') | length > 0
+
+- name: Install the portal-scanner deb
+  ansible.builtin.apt:
+    deb: "/tmp/{{ portal_scanner_deb_path | basename }}"
+    state: present
+  when: portal_scanner_deb_path | default('') | length > 0
+  notify: restart portal-scanner
+
+- name: Render /etc/portal/scanner.env from vault
+  ansible.builtin.template:
+    src: scanner.env.j2
+    dest: /etc/portal/scanner.env
+    owner: root
+    group: portal
+    mode: "0640"
+  notify: restart portal-scanner
+
+- name: Ensure portal-scanner is running
+  ansible.builtin.systemd:
+    name: portal-scanner
+    enabled: true
+    state: started
+    daemon_reload: true

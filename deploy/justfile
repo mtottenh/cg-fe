@@ -7,11 +7,29 @@ set dotenv-load := false
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # --- config pulled from the Ansible inventory so we don't repeat ourselves
-HOST := `yq -r '.all.hosts | keys | .[0]' ansible/inventory/prod.yml 2>/dev/null || echo portal`
+HOST := `yq -r '.all.hosts[].ansible_host' ansible/inventory/prod.yml 2>/dev/null || echo portal`
 USER := "ops"
 
 default:
     @just --list
+
+# Install Galaxy roles + collections (linode.cloud, community.postgresql, ...).
+galaxy:
+    ansible-galaxy install -r ansible/requirements.yml
+    ansible-galaxy collection install -r ansible/requirements.yml
+
+# Provision a fresh Ubuntu 26.04 LTS Linode and point inventory/prod.yml at
+# it. Needs `export LINODE_TOKEN=...` (https://cloud.linode.com/profile/tokens).
+provision:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${LINODE_TOKEN:?export LINODE_TOKEN=<personal access token> first}"
+    ansible-playbook ansible/provision.yml
+
+# First converge against a freshly provisioned box: only root has an SSH key
+# until roles/base creates the ops user, so override ansible_user once.
+bootstrap-fresh:
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml --ask-vault-pass -e ansible_user=root
 
 # Idempotent full site play. Run after editing Ansible, or monthly.
 bootstrap:
@@ -38,6 +56,21 @@ deploy VERSION:
         -e portal_scanner_deb_path="$tmp/$(ls "$tmp" | grep ^portal-scanner_)"
     rm -rf "$tmp"
 
+# Build the SPA locally (npm ci && npm run build, same-origin VITE_API_URL)
+# and ship web/dist to /var/www/portal. See roles/portal_web.
+deploy-web:
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
+        --ask-vault-pass --tags portal_web
+
+# Install/refresh the demo-stats service from a locally built deb
+# (built in the sibling demo-stats-service repo).
+#
+# Usage: just deploy-demo-stats ../demo-stats-service/target/debian/portal-demo-stats_0.1.0_amd64.deb
+deploy-demo-stats DEB:
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
+        --ask-vault-pass --tags portal_demo_stats \
+        -e portal_demo_stats_deb_path={{DEB}}
+
 # Convenience: follow the live API log.
 logs:
     ssh {{USER}}@{{HOST}} -t 'journalctl -fu portal-api'
@@ -48,7 +81,7 @@ tail-errors:
 
 # systemctl status for every portal unit, plus postgres.
 status:
-    ssh {{USER}}@{{HOST}} "systemctl status --no-pager portal-api postgresql caddy portal-scanner 2>&1 | head -200"
+    ssh {{USER}}@{{HOST}} "systemctl status --no-pager portal-api postgresql caddy portal-scanner portal-demo-stats 2>&1 | head -200"
 
 # psql shell into the prod DB over SSH (no port forwarded, no password on
 # the network — socket auth on the box).

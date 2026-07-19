@@ -2,19 +2,26 @@
 # Prod inventory. One host for now — add more under `all.hosts` when you
 # split out (e.g. a dedicated DB Linode).
 #
-# ansible_host is the public IP or a DNS name; ansible_user is the
-# unprivileged account you SSH as (set up by roles/base).
+# EVERY value below marked CHANGE_ME / example.com must be set before the
+# playbook will run — site.yml's validation play rejects placeholders.
+# `just provision` creates a fresh Ubuntu 26.04 LTS Linode and fills in
+# ansible_host for you; the domain + ACME email are yours to set (plus DNS
+# A records for <portal_domain> AND demos.<portal_domain> → ansible_host).
+#
+# ansible_user is the unprivileged account you SSH as (created by
+# roles/base). The FIRST converge against a fresh box must run as root:
+#   ansible-playbook ... -e ansible_user=root
 
 all:
   hosts:
     portal-prod:
-      ansible_host: CHANGE_ME            # e.g. 45.33.x.x or portal.example.com
+      ansible_host: CHANGE_ME            # e.g. 45.33.x.x — set by `just provision`
       ansible_user: ops
       ansible_python_interpreter: /usr/bin/python3
 
   vars:
     # The domain Caddy terminates TLS for. Pointed at ansible_host via
-    # an A record elsewhere.
+    # an A record elsewhere (plus one for demos.<domain>).
     portal_domain: portal.example.com
 
     # Let's Encrypt contact. Caddy nags if this is empty.

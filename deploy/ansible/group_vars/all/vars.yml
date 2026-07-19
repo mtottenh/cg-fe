@@ -26,14 +26,49 @@ portal_refresh_token_expiry_minutes: 10080
 # frontend is served from the same origin by Caddy).
 portal_cors_origins: "https://{{ portal_domain }}"
 
+# --- portal-scanner ---------------------------------------------------------
+# Path to the .deb the playbook will apt-install. Set by `just deploy`.
+portal_scanner_deb_path: ""
+
+# UUID of the game (CS2) scanned demos are cataloged under. This is a
+# runtime DB id, so there is no sane default. After the first API converge:
+#   sudo -u portal psql -d portal_prod -c 'SELECT id, name FROM games;'
+# then set this (group_vars or -e). The portal_scanner role refuses to run
+# while it's empty.
+scanner_game_id: ""
+
+# Only scan keys under this prefix in the demos bucket ("" = whole bucket).
+scanner_s3_prefix: ""
+scanner_interval_secs: 300              # S3 scan poll interval
+scanner_processing_interval_secs: 60    # pending-demo processing interval
+
+# --- portal-demo-stats (CS2 demo parser) -------------------------------------
+# Path to the .deb (built in the sibling demo-stats-service repo). Set via
+# `just deploy-demo-stats`.
+portal_demo_stats_deb_path: ""
+
+demo_stats_port: 3100
+
+# Public https front for the demo parser. The API's SSRF guard requires an
+# https, non-private URL, so Caddy proxies demos.<domain> → 127.0.0.1:3100.
+# Requires a DNS A record for demos.{{ portal_domain }}.
+cs2_demo_service_url: "https://demos.{{ portal_domain }}"
+
 # --- Object Storage (evidence + demo bucket) --------------------------------
-linode_object_storage_region: us-east-1
+# gb-lon-1 = London, where the existing cs2-10mans demo bucket lives; keep
+# storage in the same region as the Linode (see provision.yml).
+linode_object_storage_region: gb-lon-1
 linode_object_storage_endpoint: "https://{{ linode_object_storage_region }}.linodeobjects.com"
 
 portal_evidence_bucket: portal-evidence
 portal_evidence_public_url: "https://{{ portal_evidence_bucket }}.{{ linode_object_storage_region }}.linodeobjects.com"
 
 portal_demos_bucket: portal-demos
+
+# --- Operator SSH key --------------------------------------------------------
+# Public key installed for the ops user by roles/base (and injected into
+# root by provision.yml on a fresh Linode). Set to "" to manage keys by hand.
+ops_ssh_pubkey_file: "~/.ssh/id_ed25519.pub"
 
 # --- Backups ---------------------------------------------------------------
 backup_bucket: portal-backups

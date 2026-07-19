@@ -1,6 +1,10 @@
 ---
-# Postgres installed from Ubuntu's main repo. For Postgres 16 on Ubuntu
-# 24.04 that's the default package; no PGDG needed.
+# Postgres {{ postgres_version }} from the PGDG apt repo. Ubuntu 24.04
+# shipped Postgres 16 in main, but newer releases (Ubuntu 26.04) ship a
+# newer default — pinning the major version through PGDG keeps the same
+# postgresql-16 package name working on Ubuntu 24.04/26.04 and Debian 12
+# alike, and keeps the DB major version an explicit choice (upgrades are
+# a pg_upgrade exercise, not an apt side effect).
 #
 # Defense-in-depth:
 #   1. listen_addresses = '127.0.0.1'   — the daemon won't bind public.
@@ -8,8 +12,30 @@
 #   3. ufw blocks 5432 anyway (base role, default deny).
 #   4. systemd drop-in: IPAddressDeny=any + IPAddressAllow=localhost.
 
+- name: PGDG apt repo
+  block:
+    - name: /etc/apt/keyrings exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: PGDG signing key
+      ansible.builtin.get_url:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        dest: /etc/apt/keyrings/pgdg.asc
+        mode: "0644"
+
+    - name: PGDG apt source
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/pgdg.list
+        mode: "0644"
+        content: |
+          deb [signed-by=/etc/apt/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main
+
 - name: Install Postgres {{ postgres_version }}
   ansible.builtin.apt:
+    update_cache: true
     name:
       - "postgresql-{{ postgres_version }}"
       - "postgresql-contrib-{{ postgres_version }}"
@@ -75,6 +101,7 @@
 # pg_ident.conf default ("user foo = role foo"). No password on the wire.
 # -----------------------------------------------------------------------------
 - name: Ensure portal role exists
+  become: true
   become_user: postgres
   community.postgresql.postgresql_user:
     name: "{{ postgres_user }}"
@@ -83,6 +110,7 @@
     state: present
 
 - name: Ensure portal_prod DB exists
+  become: true
   become_user: postgres
   community.postgresql.postgresql_db:
     name: "{{ postgres_db }}"

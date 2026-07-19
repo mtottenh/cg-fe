@@ -9,23 +9,34 @@
 #   - systemd daemon-reload + enable + start
 # This role just ships the artifact and overwrites the env file.
 
-- name: Assert portal_api_deb_path was provided
+- name: Check whether portal-api is already installed
+  ansible.builtin.command: dpkg-query -W -f='${Status}' portal-api
+  register: portal_api_pkg
+  changed_when: false
+  failed_when: false
+
+- name: Assert we have a deb to install (or an existing install to configure)
   ansible.builtin.assert:
     that:
-      - portal_api_deb_path is defined
-      - portal_api_deb_path | length > 0
-    fail_msg: "pass -e portal_api_deb_path=/path/to/portal-api_X.Y.Z_amd64.deb (or use `just deploy`)"
+      - (portal_api_deb_path | default('') | length > 0)
+        or ('install ok installed' in portal_api_pkg.stdout)
+    fail_msg: >-
+      portal-api is not installed and no deb was provided — pass
+      -e portal_api_deb_path=/path/to/portal-api_X.Y.Z_amd64.deb
+      (or use `just deploy vX.Y.Z`).
 
 - name: Copy portal-api deb to target
   ansible.builtin.copy:
     src: "{{ portal_api_deb_path }}"
     dest: "/tmp/{{ portal_api_deb_path | basename }}"
     mode: "0644"
+  when: portal_api_deb_path | default('') | length > 0
 
-- name: apt install portal-api
+- name: Install the portal-api deb
   ansible.builtin.apt:
     deb: "/tmp/{{ portal_api_deb_path | basename }}"
     state: present
+  when: portal_api_deb_path | default('') | length > 0
   notify: restart portal-api
 
 - name: Render /etc/portal/api.env from vault

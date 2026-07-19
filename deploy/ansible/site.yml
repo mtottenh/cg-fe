@@ -1,22 +1,91 @@
 ---
-# Top-level play. Order matters: base before postgres (user + firewall),
-# postgres before portal_api (DB must exist), caddy last (needs API
-# running to health-check the upstream).
+# Top-level playbook, three plays:
+#
+#   1. Validate  — reject placeholder inventory/vault values before touching
+#                  anything (runs under every --tags selection).
+#   2. Backup    — pg_dump BEFORE the API deploy. Migrations are forward-only
+#                  and auto-run on service start, so every deploy gets a
+#                  seconds-old restore point (restore runbook: deploy/README.md).
+#   3. Converge  — the roles. Order matters: base before postgres (user +
+#                  firewall), postgres before backups/portal_api (DB must
+#                  exist), the three portal services before caddy (upstreams
+#                  up before fronting them), portal_web after caddy (the
+#                  caddy user/docroot must exist before the SPA ships).
+
+- name: Validate configuration
+  hosts: all
+  gather_facts: false
+  become: false
+  tags: [always]
+  tasks:
+    - name: Inventory values are not placeholders
+      ansible.builtin.assert:
+        that:
+          - ansible_host is defined
+          - "'CHANGE_ME' not in ansible_host"
+          - portal_domain is defined
+          - portal_domain != 'portal.example.com'
+          - "'CHANGE_ME' not in portal_domain"
+          - caddy_acme_email is defined
+          - caddy_acme_email != 'ops@example.com'
+          - "'CHANGE_ME' not in caddy_acme_email"
+        fail_msg: >-
+          inventory/prod.yml still contains placeholder values. Set
+          ansible_host (run `just provision` to create the Linode and fill it
+          in), portal_domain, and caddy_acme_email. See "Operator checklist"
+          in deploy/README.md.
+
+    - name: Required vault values are decrypted and not placeholders
+      ansible.builtin.assert:
+        that:
+          - vault_postgres_password is defined
+          - "'CHANGE_ME' not in vault_postgres_password"
+          - vault_jwt_secret is defined
+          - vault_jwt_secret | length >= 32
+          - "'CHANGE_ME' not in vault_jwt_secret"
+          - vault_linode_access_key is defined
+          - "'CHANGE_ME' not in vault_linode_access_key"
+          - vault_linode_secret_key is defined
+          - "'CHANGE_ME' not in vault_linode_secret_key"
+          - vault_portal_scanner_api_key is defined
+          - "'CHANGE_ME' not in vault_portal_scanner_api_key"
+          - vault_steam_api_key is defined
+          - "'CHANGE_ME' not in vault_steam_api_key"
+        fail_msg: >-
+          vault.yml is missing, not decrypted, or still contains CHANGE_ME
+          placeholders. Create it with
+          `ansible-vault create ansible/group_vars/all/vault.yml`
+          using vault.example.yml as the key list ("Operator checklist" in
+          deploy/README.md documents every key).
+
+- name: Pre-deploy database backup
+  hosts: all
+  become: true
+  gather_facts: false
+  # Tagged portal_api so every `just deploy` (--tags portal_api,...) snapshots
+  # the DB before the new binary runs its migrations.
+  tags: [portal_api, backups]
+  tasks:
+    - name: Check whether pg-backup is installed yet
+      ansible.builtin.stat:
+        path: /etc/systemd/system/pg-backup.service
+      register: pg_backup_unit
+
+    - name: Snapshot the database before deploying (blocks until the dump completes)
+      ansible.builtin.systemd:
+        name: pg-backup.service
+        state: started
+      when: pg_backup_unit.stat.exists
+
+    - name: Note that no pre-deploy backup ran (first converge only)
+      ansible.builtin.debug:
+        msg: "pg-backup.service not installed yet — skipping pre-deploy backup (expected on the first converge)"
+      when: not pg_backup_unit.stat.exists
 
 - name: Converge portal host
   hosts: all
   become: true
   gather_facts: true
-
-  pre_tasks:
-    - name: Verify required vault values are decrypted
-      ansible.builtin.assert:
-        that:
-          - vault_jwt_secret is defined
-          - vault_jwt_secret | length >= 32
-          - vault_linode_access_key is defined
-          - vault_linode_secret_key is defined
-        fail_msg: "vault.yml is not decrypted or missing required keys"
 
   roles:
     - role: base
@@ -25,11 +94,20 @@
     - role: postgres
       tags: [postgres]
 
+    - role: backups
+      tags: [backups]
+
     - role: portal_api
       tags: [portal_api]
+
+    - role: portal_scanner
+      tags: [portal_scanner]
+
+    - role: portal_demo_stats
+      tags: [portal_demo_stats]
 
     - role: caddy
       tags: [caddy]
 
-    - role: backups
-      tags: [backups]
+    - role: portal_web
+      tags: [portal_web]

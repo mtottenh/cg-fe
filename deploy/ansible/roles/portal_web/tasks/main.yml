@@ -1,0 +1,74 @@
+---
+# Build the SPA and ship it to the Caddy docroot.
+#
+# Default flow (local-build-then-ship): `npm ci && npm run build` runs on
+# the CONTROLLER (operator laptop or CI), the dist/ tree is tarred up and
+# unpacked into /var/www/portal on the box. Building on a 1–2 GB Linode is
+# tight (vite + vue-tsc want ~2 GB), so the box never runs npm at all.
+#
+# Alternatives:
+#   - CI artifact: set -e portal_web_dist_tarball=/path/to/dist.tar.gz to
+#     skip the local build and ship a prebuilt tarball.
+#   - On-box build: documented in deploy/README.md (needs Node >= 20.19 and
+#     a 4 GB box or temporary swap); not automated here on purpose.
+#
+# The bundle bakes VITE_API_URL at build time. Empty (the default) means
+# same-origin — see roles/portal_web/defaults/main.yml.
+
+- name: Build the SPA locally (controller)
+  when: portal_web_dist_tarball | length == 0
+  delegate_to: localhost
+  become: false
+  block:
+    - name: Run npm ci (local)
+      ansible.builtin.command:
+        cmd: npm ci
+        chdir: "{{ portal_web_src_dir }}"
+      changed_when: true
+
+    - name: Run npm build (local, VITE_API_URL='{{ portal_web_api_url }}')
+      ansible.builtin.command:
+        cmd: npm run build
+        chdir: "{{ portal_web_src_dir }}"
+      environment:
+        VITE_API_URL: "{{ portal_web_api_url }}"
+      changed_when: true
+
+    # Plain tar (not community.general.archive): we need the archive rooted
+    # INSIDE dist/ so unarchive lands index.html at the docroot top level.
+    - name: Pack dist into a tarball  # noqa: command-instead-of-module
+      ansible.builtin.command:
+        cmd: "tar -czf {{ portal_web_local_tarball }} -C {{ portal_web_src_dir }}/dist ."
+      changed_when: true
+
+- name: Resolve which tarball to ship
+  ansible.builtin.set_fact:
+    _portal_web_tarball: >-
+      {{ portal_web_dist_tarball if portal_web_dist_tarball | length > 0
+         else portal_web_local_tarball }}
+
+- name: Docroot exists and is owned by the caddy user
+  ansible.builtin.file:
+    path: "{{ portal_web_docroot }}"
+    state: directory
+    owner: "{{ portal_web_owner }}"
+    group: "{{ portal_web_group }}"
+    mode: "0755"
+
+- name: Unpack the SPA into the docroot
+  ansible.builtin.unarchive:
+    src: "{{ _portal_web_tarball }}"
+    dest: "{{ portal_web_docroot }}"
+    owner: "{{ portal_web_owner }}"
+    group: "{{ portal_web_group }}"
+
+- name: Sanity — index.html landed
+  ansible.builtin.stat:
+    path: "{{ portal_web_docroot }}/index.html"
+  register: portal_web_index
+
+- name: Fail when the docroot is still empty
+  ansible.builtin.assert:
+    that:
+      - portal_web_index.stat.exists
+    fail_msg: "{{ portal_web_docroot }}/index.html missing after unpack — check the build/tarball"

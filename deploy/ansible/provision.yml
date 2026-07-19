@@ -1,0 +1,106 @@
+---
+# Provision a fresh Ubuntu 26.04 LTS Linode for the portal and point the
+# inventory at it.
+#
+# Why the linode.cloud Ansible collection (vs Terraform): the whole deploy
+# is already Ansible — one toolchain, one requirements.yml, no separate
+# state backend to manage. The instance resource is idempotent on `label`,
+# so re-running is safe and there's no tfstate to lose.
+#
+# Requires:
+#   - ansible-galaxy collection install -r requirements.yml
+#   - LINODE_TOKEN exported in the environment (create at
+#     https://cloud.linode.com/profile/tokens — never committed anywhere)
+#
+# Usage:
+#   export LINODE_TOKEN=...        # operator-supplied
+#   just provision                 # or: ansible-playbook ansible/provision.yml
+#
+# Afterwards (see deploy/README.md "Operator checklist"):
+#   1. point DNS A records for <portal_domain> and demos.<portal_domain>
+#      at the printed IPv4
+#   2. set portal_domain + caddy_acme_email in inventory/prod.yml
+#   3. ansible-vault create group_vars/all/vault.yml
+#   4. first converge as root: just bootstrap-fresh
+
+- name: Provision portal Linode
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    linode_label: portal-prod
+    # London — same region as the gb-lon-1 Object Storage bucket the demos
+    # already live in. (`linode-cli regions list` for alternatives; gb-lon
+    # is the newer London 2 site.)
+    linode_region: eu-west
+    # g6-standard-2 = 2 vCPU / 4 GB. Demo parsing holds an entire .dem in
+    # memory, so 4 GB is the recommended floor. g6-standard-1 (2 GB) works
+    # if demo-stats concurrency stays at 1 (see the cs210mans audit doc).
+    linode_type: g6-standard-2
+    # Ubuntu 26.04 LTS. Expected slug per Linode's linode/ubuntuXX.YY
+    # convention — could not be verified without a live token; confirm with
+    #   linode-cli images list | grep ubuntu
+    # and override with -e linode_image=... if it differs.
+    linode_image: linode/ubuntu26.04
+    # Public key injected into root's authorized_keys. roles/base later
+    # copies it to the unprivileged ops user.
+    provision_ssh_pubkey_file: "{{ ops_ssh_pubkey_file | default('~/.ssh/id_ed25519.pub') }}"
+
+  tasks:
+    - name: LINODE_TOKEN is exported
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'LINODE_TOKEN') | length > 0
+        fail_msg: >-
+          LINODE_TOKEN is not set. Create a personal access token at
+          https://cloud.linode.com/profile/tokens (scope: Linodes read/write)
+          and `export LINODE_TOKEN=...` before provisioning.
+
+    - name: SSH public key exists
+      ansible.builtin.stat:
+        path: "{{ provision_ssh_pubkey_file | expanduser }}"
+      register: pubkey
+
+    - name: Fail without an SSH public key
+      ansible.builtin.assert:
+        that:
+          - pubkey.stat.exists
+        fail_msg: >-
+          {{ provision_ssh_pubkey_file }} not found — generate one
+          (ssh-keygen -t ed25519) or pass
+          -e provision_ssh_pubkey_file=/path/to/key.pub
+
+    - name: Create (or find) the Linode instance
+      linode.cloud.instance:
+        api_token: "{{ lookup('env', 'LINODE_TOKEN') }}"
+        label: "{{ linode_label }}"
+        type: "{{ linode_type }}"
+        region: "{{ linode_region }}"
+        image: "{{ linode_image }}"
+        authorized_keys:
+          - "{{ lookup('file', provision_ssh_pubkey_file | expanduser) }}"
+        booted: true
+        state: present
+      register: portal_instance
+
+    - name: Point inventory/prod.yml at the new instance (only replaces the placeholder)
+      ansible.builtin.replace:
+        path: "{{ playbook_dir }}/inventory/prod.yml"
+        regexp: 'ansible_host: CHANGE_ME.*$'
+        replace: "ansible_host: {{ portal_instance.instance.ipv4 | first }}"
+
+    - name: Connection details
+      ansible.builtin.debug:
+        msg:
+          - "label:  {{ portal_instance.instance.label }}"
+          - "ipv4:   {{ portal_instance.instance.ipv4 | join(', ') }}"
+          - "region: {{ portal_instance.instance.region }}"
+          - "type:   {{ portal_instance.instance.type }}"
+          - "image:  {{ portal_instance.instance.image }}"
+          - ""
+          - "Next steps:"
+          - "  1. DNS A records: <portal_domain> and demos.<portal_domain> → {{ portal_instance.instance.ipv4 | first }}"
+          - "  2. Edit inventory/prod.yml: portal_domain, caddy_acme_email"
+          - "  3. ansible-vault create group_vars/all/vault.yml   (keys: see vault.example.yml)"
+          - "  4. First converge (fresh box, as root): just bootstrap-fresh"

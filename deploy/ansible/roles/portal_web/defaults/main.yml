@@ -1,0 +1,24 @@
+---
+# Where the frontend source lives relative to this repo checkout (used by
+# the default local-build mode).
+portal_web_src_dir: "{{ playbook_dir }}/../../web"
+
+# Prebuilt dist tarball (e.g. a CI artifact: `tar -czf dist.tar.gz -C web/dist .`).
+# When set, the local npm build is skipped and this tarball is shipped as-is.
+portal_web_dist_tarball: ""
+
+# Value baked into the bundle as VITE_API_URL. Empty string = same-origin:
+# the SPA is served by the same Caddy vhost that reverse-proxies /v1 to the
+# API, so relative URLs are correct and no CORS is involved. Only set an
+# absolute origin for a split-host deployment.
+portal_web_api_url: ""
+
+# Where the built SPA lands on the box (served by Caddy).
+portal_web_docroot: /var/www/portal
+
+# The official Caddy deb runs as the `caddy` user.
+portal_web_owner: caddy
+portal_web_group: caddy
+
+# Scratch tarball produced by the local build (on the controller).
+portal_web_local_tarball: /tmp/portal-web-dist.tar.gz

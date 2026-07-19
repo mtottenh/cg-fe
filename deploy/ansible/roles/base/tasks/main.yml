@@ -1,5 +1,8 @@
 ---
 # Host-level hardening. Run once, re-run safely.
+#
+# Targets Ubuntu LTS (24.04/26.04) and Debian 12 — everything here is plain
+# apt + systemd; package names below exist in both distros' repos.
 
 - name: Apt — cache & baseline packages
   ansible.builtin.apt:
@@ -14,6 +17,8 @@
       - zstd
       - awscli          # used by the backup script to push to Linode Object Storage
       - python3-psycopg2  # required by Ansible's postgresql_* modules
+      - acl             # lets Ansible become an unprivileged user (become_user: postgres)
+      - gnupg           # apt key handling for third-party repos (PGDG, Caddy)
     state: present
 
 - name: Enable unattended security upgrades
@@ -69,6 +74,16 @@
     groups: [sudo]
     shell: /bin/bash
     state: present
+
+# On a freshly provisioned Linode only root has the operator's key (the
+# provisioner injects it into root's authorized_keys). Copy it to ops so
+# the inventory's ansible_user: ops works from the second run onwards —
+# the FIRST converge against a fresh box runs with `-e ansible_user=root`.
+- name: ops — authorized SSH key
+  ansible.posix.authorized_key:
+    user: ops
+    key: "{{ lookup('file', ops_ssh_pubkey_file) }}"
+  when: ops_ssh_pubkey_file is defined and ops_ssh_pubkey_file | length > 0
 
 - name: ops — passwordless sudo
   ansible.builtin.copy:

@@ -18,4 +18,19 @@ vault_linode_access_key: "CHANGE_ME"
 vault_linode_secret_key: "CHANGE_ME"
 
 # --- Internal API key used by the scanner to call back into the API -------
+# Mint one with the portal CLI (api-keys create) or reuse a rotated key.
 vault_portal_scanner_api_key: "cgp_CHANGE_ME"
+
+# --- Steam Web API key ------------------------------------------------------
+# https://steamcommunity.com/dev/apikey — used by Steam sign-in for
+# persona/avatar enrichment. The key on the old cs210mans box is considered
+# exposed (see docs/deployment-cs210mans-audit.md) — issue a fresh one.
+vault_steam_api_key: "CHANGE_ME"
+
+# --- Optional per-service S3 credential overrides ---------------------------
+# The scanner and the demo-stats service default to the vault_linode_* pair
+# above. Uncomment to give them their own keys (tighter blast radius).
+# vault_scanner_s3_access_key: "CHANGE_ME"
+# vault_scanner_s3_secret_key: "CHANGE_ME"
+# vault_demo_stats_s3_access_key: "CHANGE_ME"
+# vault_demo_stats_s3_secret_key: "CHANGE_ME"

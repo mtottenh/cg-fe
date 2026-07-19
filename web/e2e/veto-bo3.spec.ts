@@ -7,7 +7,12 @@ import {
   primeAuthStorage,
   type CheckInScenario,
 } from './fixtures/checkin.fixture'
-import { setupVetoScenario, startVetoAndFlipCoin, performVetoAction } from './fixtures/veto.fixture'
+import {
+  setupVetoScenario,
+  startVetoAndFlipCoin,
+  performVetoAction,
+  selectSide,
+} from './fixtures/veto.fixture'
 
 /**
  * WebSocket map-veto E2E for the **bo3** format.
@@ -35,11 +40,12 @@ import { setupVetoScenario, startVetoAndFlipCoin, performVetoAction } from './fi
  *    round-trips cleanly to a recorded value, so the "side reflected on both
  *    clients + backend" assertion uses it.
  *  - In `picker_choice` mode the VetoSideSelect control renders (CT/T for the
- *    picker, a waiting chip for the opponent), which is what the UI-presence
- *    test asserts. Note: the REST POST /veto/side endpoint is currently
- *    broken in this mode — its handler authorises the *opponent* while the
- *    domain requires the *picker*, so no token can complete the write — hence
- *    this test asserts the control's *presentation/sync*, not a manual write.
+ *    picker, a waiting chip for the opponent). The side is chosen by the
+ *    OPPONENT of the team that picked the map (standard CS convention): the
+ *    REST POST /veto/side endpoint accepts the write from the opponent's token
+ *    and records the side attributed to the opponent — this test both asserts
+ *    the control's presentation/sync AND performs the write as the opponent,
+ *    then asserts the recorded side reflects live on both clients.
  *
  * UI selectors (verified in web/src/components/GameMapCard.vue + veto/*.vue):
  *   .map-card-selectable  clickable available map
@@ -59,6 +65,7 @@ interface VetoActionRecord {
   map_id: string
   side_selection?: string
   performed_by_registration_id?: string
+  side_selected_by_registration_id?: string
 }
 
 interface VetoStateData {
@@ -235,7 +242,7 @@ test.describe('Map Veto (bo3) — picks + side selection over WebSocket', () => 
     }
   })
 
-  test('after a PICK the side-select control appears and syncs its state to both clients (picker_choice)', async ({
+  test('after a PICK the opponent selects the side; it is recorded and reflected live on both clients (picker_choice)', async ({
     browser,
     request,
   }) => {
@@ -282,6 +289,31 @@ test.describe('Map Veto (bo3) — picks + side selection over WebSocket', () => 
         timeout: 15000,
       })
       await expect(pageB.getByText(/Waiting for picker to select side/i)).toBeVisible({
+        timeout: 15000,
+      })
+
+      // Now actually PERFORM the side selection. Per the CS convention the
+      // OPPONENT of the picker chooses the side: P1 picked (action 3), so P2
+      // is the opponent and its token completes the write via REST.
+      const preSide = await getVetoState(adminToken, scenario.matchId)
+      const pickAction = preSide.actions.find((a) => a.action_type === 'pick')
+      expect(pickAction, 'a pick action should exist before side selection').toBeTruthy()
+      await selectSide(scenario.p2.token, scenario.matchId, pickAction!.action_number, 'ct')
+
+      // Backend records the side, attributed to the opponent (P2), not the picker.
+      const postSide = await getVetoState(adminToken, scenario.matchId)
+      const recordedPick = postSide.actions.find(
+        (a) => a.action_number === pickAction!.action_number,
+      )
+      expect(recordedPick!.side_selection).toBe('ct')
+      expect(recordedPick!.side_selected_by_registration_id).toBe(scenario.p2.registrationId)
+
+      // The recorded side reflects live on BOTH clients over the WebSocket
+      // (no reload): the veto history timeline shows the CT chip.
+      await expect(pageA.locator('.v-timeline').getByText('CT', { exact: true })).toBeVisible({
+        timeout: 15000,
+      })
+      await expect(pageB.locator('.v-timeline').getByText('CT', { exact: true })).toBeVisible({
         timeout: 15000,
       })
     } finally {

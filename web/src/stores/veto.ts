@@ -200,9 +200,14 @@ export const useVetoStore = defineStore('veto', () => {
         // the live path points one step ahead, mislabeling the final action's
         // phase and disabling the map grid until a reload.
         current_action: sessionState.value.format?.sequence?.[newSession.current_action_number - 1] ?? null,
-        // Append action if not already present (dedupe by action_number)
+        // Merge the action by action_number: replace an existing entry (e.g. a
+        // pick that has just gained its side_selection when the opponent picks
+        // a side) or append a new one. Previously an already-present action was
+        // ignored, so a later side-selection update never reflected live.
         actions: sessionState.value.actions?.some(a => a.action_number === action.action_number)
-          ? sessionState.value.actions
+          ? sessionState.value.actions.map(a =>
+              a.action_number === action.action_number ? action : a,
+            )
           : [...(sessionState.value.actions ?? []), action],
       }
     }

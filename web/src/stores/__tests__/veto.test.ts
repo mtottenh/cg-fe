@@ -251,16 +251,20 @@ describe('Veto Store', () => {
     it('advances current_action to the next step of the format sequence (whose turn)', () => {
       const store = seededStore()
 
-      store.applyActionPerformed(makeSession({ current_action_number: 1 }), makeAction())
+      // After team 1's ban the backend sets current_action_number = 2 (the
+      // next action, 1-based). current_action is sequence[current_action_number
+      // - 1] = sequence[1] = team 2's ban — it is now their turn.
+      store.applyActionPerformed(makeSession({ current_action_number: 2 }), makeAction())
 
-      // sequence[1] is team 2's ban — it is now their turn
       expect(store.sessionState!.current_action).toEqual({ action_type: 'ban', team: 2 })
     })
 
     it('sets current_action to null when the sequence is exhausted', () => {
       const store = seededStore()
 
-      store.applyActionPerformed(makeSession({ current_action_number: 3 }), makeAction())
+      // current_action_number = 4 is one past the 3-step sequence, so
+      // sequence[4 - 1] is out of bounds → no current action.
+      store.applyActionPerformed(makeSession({ current_action_number: 4 }), makeAction())
 
       expect(store.sessionState!.current_action).toBeNull()
     })
@@ -281,6 +285,26 @@ describe('Veto Store', () => {
         makeAction({ action_number: 1, map_id: 'de_inferno' }),
       )
       expect(store.sessionState!.actions).toHaveLength(2)
+    })
+
+    it('replaces an existing action when it is updated (e.g. side_selection added by the opponent)', () => {
+      const store = seededStore()
+      const pick = makeAction({ action_number: 0, action_type: 'pick', map_id: 'de_mirage' })
+
+      store.applyActionPerformed(makeSession({ current_action_number: 1 }), pick)
+      expect(store.sessionState!.actions).toHaveLength(1)
+      expect(store.sessionState!.actions[0]!.side_selection).toBeUndefined()
+
+      // The opponent later selects a side for that pick — the same action_number
+      // arrives carrying side_selection and must replace the old entry in place.
+      const withSide = {
+        ...pick,
+        side_selection: 'ct',
+        side_selected_by_registration_id: 'reg-b',
+      }
+      store.applyActionPerformed(makeSession({ current_action_number: 1 }), withSide)
+      expect(store.sessionState!.actions).toHaveLength(1)
+      expect(store.sessionState!.actions[0]!.side_selection).toBe('ct')
     })
 
     it('ignores map updates when no sessionState is loaded but still tracks the session', () => {

@@ -349,7 +349,7 @@ export async function seedDisputableMatch(
   player2Token: string,
   tournamentId: string,
   matchId: string,
-  scores: { p1: number; p2: number } = { p1: 16, p2: 10 }
+  scores: { p1: number; p2: number } = { p1: 1, p2: 0 }
 ): Promise<DisputableMatchContext | null> {
   // 1. Fetch the match — we need both registration IDs.
   const match = await getMatch(adminToken, tournamentId, matchId)

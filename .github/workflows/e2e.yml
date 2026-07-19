@@ -77,8 +77,10 @@ jobs:
       # Debug build: ~half the compile time of release and CI does not need
       # release performance. The portal-app package's binary is named
       # `portal`; portal-cli provides the admin bootstrap.
+      # SQLX_OFFLINE: the compile-time sqlx macros must not validate against
+      # the service DB — it is empty until the API boots and runs migrations.
       - name: Build API + CLI
-        run: cd api && cargo build -p portal-app -p portal-cli
+        run: cd api && SQLX_OFFLINE=true cargo build -p portal-app -p portal-cli
 
       - name: Start API server (migrations run on boot)
         run: |

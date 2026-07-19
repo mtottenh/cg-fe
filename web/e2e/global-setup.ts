@@ -109,6 +109,8 @@ async function seedTournaments(token: string): Promise<void> {
 
   // Create test tournament with open registration
   // Using POST /v1/tournaments endpoint
+  // Pin the server-defaulted fields explicitly so the seeded contract is
+  // visible here rather than implied by DTO defaults.
   const tournamentData = {
     name: 'E2E Test Tournament',
     slug: 'e2e-test-tournament',
@@ -117,6 +119,9 @@ async function seedTournaments(token: string): Promise<void> {
     participant_type: 'individual',
     min_participants: 2,
     max_participants: 16,
+    registration_type: 'open',
+    scheduling_mode: 'live',
+    default_match_format: 'bo1',
     description: 'Tournament created for E2E testing',
   }
 
@@ -472,6 +477,8 @@ async function seedTeamTournament(token: string, leagueId: string, teamSeasonId:
   const gameId = games[0].id
 
   // Create team-based tournament
+  // NOTE: the create DTO has a single `team_size` field — the old
+  // min_team_size/max_team_size keys were silently ignored by serde.
   const tournamentData = {
     name: 'E2E Team Tournament',
     slug: 'e2e-team-tournament',
@@ -480,8 +487,10 @@ async function seedTeamTournament(token: string, leagueId: string, teamSeasonId:
     participant_type: 'team',
     min_participants: 2,
     max_participants: 8,
-    min_team_size: 1,
-    max_team_size: 5,
+    team_size: 5,
+    registration_type: 'open',
+    scheduling_mode: 'live',
+    default_match_format: 'bo1',
     league_id: leagueId,
     description: 'Team-based tournament for E2E testing',
   }
@@ -621,6 +630,9 @@ async function registerPlayerForTournament(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
+    // Required body — this was missing and hidden for months by the shared
+    // dev DB, where both players were "already registered" (409 path).
+    body: JSON.stringify({ participant_name: label.slice(0, 50) }),
   })
 
   if (response.ok) {

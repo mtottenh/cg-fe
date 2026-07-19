@@ -141,7 +141,9 @@ test.describe('Admin Dispute Resolution', () => {
       state.player2Token,
       state.tournamentId,
       matchId,
-      { p1: 16, p2: 10 }
+      // Match-level scores are SERIES scores; the seeded tournament is bo1,
+      // so the claim must sum to exactly 1 (DTO range 0..=10).
+      { p1: 1, p2: 0 }
     )
     if (!ctx) {
       test.skip()
@@ -212,8 +214,8 @@ test.describe('Admin Dispute Resolution', () => {
       .click()
 
     // Fill overturn form — inputs live inside the now-open panel.
-    await overturnPanel.getByLabel(/P1 Score/).fill('16')
-    await overturnPanel.getByLabel(/P2 Score/).fill('10')
+    await overturnPanel.getByLabel(/P1 Score/).fill('1')
+    await overturnPanel.getByLabel(/P2 Score/).fill('0')
     await overturnPanel.getByLabel(/Winner Reg ID/).fill(ctx.p1RegistrationId)
     await overturnPanel
       .getByLabel('Notes *')
@@ -240,13 +242,19 @@ test.describe('Admin Dispute Resolution', () => {
       .click()
     await expect(modal).toBeHidden({ timeout: 10000 })
 
-    // --- Verification: row chip shows Resolved + match now has P1 winner --
+    // --- Verification: resolved disputes leave the default (actionable)
+    // queue, and are reachable via the Resolved status filter -------------
     await page.waitForLoadState('networkidle')
-    const resolvedRow = page
-      .getByRole('row')
-      .filter({ hasText: truncatedMatch })
-      .first()
-    await expect(resolvedRow).toContainText('Resolved', { timeout: 10000 })
+    await expect(
+      page.getByRole('row').filter({ hasText: truncatedMatch })
+    ).toHaveCount(0, { timeout: 10000 })
+
+    await page.getByLabel('Status').click()
+    await page.getByRole('option', { name: 'Resolved' }).click()
+    await page.waitForLoadState('networkidle')
+    await expect(
+      page.getByRole('row').filter({ hasText: truncatedMatch }).first()
+    ).toBeVisible({ timeout: 10000 })
 
     const updatedMatch = await getMatch(
       state.adminToken,

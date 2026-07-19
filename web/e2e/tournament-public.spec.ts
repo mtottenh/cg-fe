@@ -181,13 +181,22 @@ test.describe('Tournament Public Flows', () => {
 
       // MUST show some registration-related content
       // Either: registration card, register button, or "already registered" status
+      // .first(): multiple cards can match, and isVisible() on a
+      // multi-match locator strict-mode-throws (caught → false negative).
+      // "Registration Closed" is a valid state — the seeded tournament is
+      // started once match seeding completes.
       const hasRegistrationCard = await page
         .locator('.v-card')
         .filter({ hasText: /Join This Tournament|Registration/ })
+        .first()
         .isVisible()
         .catch(() => false)
-      const hasRegisterButton = await page.getByRole('button', { name: /Register/i }).isVisible().catch(() => false)
-      const hasRegisteredStatus = await page.getByText(/Registered|Awaiting Approval|Pending/i).isVisible().catch(() => false)
+      const hasRegisterButton = await page.getByRole('button', { name: /Register/i }).first().isVisible().catch(() => false)
+      const hasRegisteredStatus = await page
+        .getByText(/Registered|Awaiting Approval|Pending|Registration Closed/i)
+        .first()
+        .isVisible()
+        .catch(() => false)
 
       expect(hasRegistrationCard || hasRegisterButton || hasRegisteredStatus).toBe(true)
     })

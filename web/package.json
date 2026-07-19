@@ -16,7 +16,8 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json",
     "lint": "eslint . --ext .ts,.vue",
     "lint:fix": "eslint . --ext .ts,.vue --fix",
-    "generate:api": "openapi-typescript http://localhost:3000/api-docs/openapi.json -o src/api/types.ts"
+    "generate:api": "openapi-typescript http://localhost:3000/api-docs/openapi.json -o src/api/types.ts",
+    "test:e2e:ephemeral": "./scripts/e2e-ephemeral.sh"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",

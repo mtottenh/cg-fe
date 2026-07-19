@@ -69,10 +69,12 @@ export default defineConfig({
   // Web server configuration - starts the dev server before tests
   webServer: [
     {
-      // Start the Vue dev server
-      command: 'npm run dev',
-      url: 'http://localhost:5173',
-      reuseExistingServer: !process.env.CI,
+      // Start the Vue dev server. E2E_WEB_PORT lets the ephemeral runner
+      // (scripts/e2e-ephemeral.sh) start its own instance beside a normal
+      // dev server without clobbering it.
+      command: `npm run dev -- --port ${process.env.E2E_WEB_PORT || '5173'} --strictPort`,
+      url: `http://localhost:${process.env.E2E_WEB_PORT || '5173'}`,
+      reuseExistingServer: !process.env.CI && !process.env.E2E_WEB_PORT,
       timeout: 120 * 1000,
     },
   ],

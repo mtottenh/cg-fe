@@ -118,15 +118,19 @@ test.describe('Tournament Admin Flows', () => {
       await expect(submitButton).toBeEnabled()
       await submitButton.click()
 
-      // Wait for response
-      await page.waitForLoadState('networkidle')
-
-      // MUST either navigate to detail or show success snackbar
+      // MUST either navigate to detail or show the success snackbar. Poll
+      // immediately — waiting on networkidle first ate the snackbar's 3s
+      // auto-dismiss window under parallel load, and navigation (which
+      // persists) may land after any fixed wait.
       const snackbar = page.locator('.v-snackbar')
-      const hasSuccess = await snackbar.getByText(/created|success/i).isVisible().catch(() => false)
-      const navigatedToDetail = page.url().includes('/admin/tournaments/')
-
-      expect(hasSuccess || navigatedToDetail).toBe(true)
+      await expect(async () => {
+        const hasSuccess = await snackbar
+          .getByText(/created|success/i)
+          .isVisible()
+          .catch(() => false)
+        const navigatedToDetail = /\/admin\/tournaments\/[a-f0-9-]+/.test(page.url())
+        expect(hasSuccess || navigatedToDetail).toBe(true)
+      }).toPass({ timeout: 15000 })
     })
   })
 

@@ -43,7 +43,7 @@ import { createLeague, createSeason, advanceSeason } from './league-season-extra
 import { createTeamWithMembers } from './team-roster.fixture'
 import { approveRegistration } from './tournament-lifecycle.fixture'
 import { getCs2Game } from './awards.fixture'
-import { uniqueId } from './test-data'
+import { uniqueId, CS2_MAP_POOL } from './test-data'
 import type { FormatMatch } from './tournament-formats.fixture'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
@@ -208,6 +208,7 @@ export async function createTeamSwissScenario(
       slug,
       game_id: gameId,
       format: 'swiss',
+      map_pool: CS2_MAP_POOL,
       participant_type: 'team',
       team_size: teamSize,
       // Capacity is checked as count >= max on both register and approve, and

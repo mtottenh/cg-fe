@@ -1,5 +1,5 @@
 import type { APIRequestContext } from '@playwright/test'
-import { uniqueId } from './test-data'
+import { uniqueId, CS2_MAP_POOL } from './test-data'
 
 /**
  * Match check-in / no-show API helpers.
@@ -170,6 +170,7 @@ async function createIndividualTournament(
     slug,
     game_id: games.data[0].id,
     format: 'single_elimination',
+    map_pool: CS2_MAP_POOL,
     participant_type: 'individual',
     min_participants: 2,
     max_participants: 4,

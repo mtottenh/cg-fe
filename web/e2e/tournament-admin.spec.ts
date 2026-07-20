@@ -77,8 +77,10 @@ test.describe('Tournament Admin Flows', () => {
       // Select a game first (required). Multiple selects contain "Game"
       // (the Game select itself + the Map Veto Format select's hint
       // "Select a game first..."), so pick the first to disambiguate.
+      // Choose CS2 explicitly: a tournament needs a map pool, and CS2 is the
+      // seeded game that has a map catalog (AoE4 has none and sorts first).
       await modal.locator('.v-select').filter({ hasText: 'Game' }).first().click()
-      await page.getByRole('option').first().click()
+      await page.getByRole('option', { name: /Counter-Strike 2/i }).click()
 
       // Button should still be disabled - name is still required
       await expect(submitButton).toBeDisabled()
@@ -106,8 +108,10 @@ test.describe('Tournament Admin Flows', () => {
 
       // Select game (required). Use .first() to disambiguate from the
       // Map Veto Format select that also mentions "Game" in its hint.
+      // CS2 specifically: it is the seeded game with a map catalog, and a
+      // tournament cannot be created without a map pool.
       await modal.locator('.v-select').filter({ hasText: 'Game' }).first().click()
-      await page.getByRole('option').first().click()
+      await page.getByRole('option', { name: /Counter-Strike 2/i }).click()
 
       // Fill required fields
       await modal.getByRole('textbox', { name: /Tournament Name/i }).fill(tournamentName)

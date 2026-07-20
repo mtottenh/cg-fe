@@ -35,7 +35,7 @@
           color="primary"
           variant="flat"
           :loading="saving"
-          :disabled="!formRef?.formValid"
+          :disabled="!formRef?.formValid || !formRef?.mapPoolValid"
           @click="save"
         >
           Create Tournament
@@ -104,23 +104,19 @@ function close() {
 
 async function save() {
   const form = formRef.value
-  if (!form || !form.formValid) return
+  // The map pool is part of the create payload now, so it gates submission
+  // alongside the field rules.
+  if (!form || !form.formValid || !form.mapPoolValid) return
 
   saving.value = true
   error.value = null
 
   try {
-    const created = await tournamentsStore.createTournament(form.buildCreatePayload())
-
-    // Save custom map pool if different from game default. Best-effort —
-    // tournament was created successfully either way.
-    if (created && form.mapPoolIsCustom && form.selectedMapIds.length > 0) {
-      try {
-        await tournamentsStore.setTournamentMapPool(created.id, form.selectedMapIds)
-      } catch {
-        // Non-critical — pool can be adjusted later from the tournament page.
-      }
-    }
+    // The map pool ships INSIDE the create payload and is persisted with the
+    // tournament. It used to be a best-effort PUT afterwards that only ran
+    // when the pool was customised, so keeping the default silently created
+    // a tournament with no pool at all.
+    await tournamentsStore.createTournament(form.buildCreatePayload())
 
     emit('created')
     close()

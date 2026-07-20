@@ -12,6 +12,7 @@ import { useVetoStore } from '@/stores/veto'
 import { useMatchContext } from './useMatchContext'
 import { api } from '@/api'
 import { unwrapApi } from '@/stores/helpers/apiAction'
+import { formatMapName } from '@/utils/maps'
 import type { components } from '@/api/types'
 
 type SuggestedTimeResponse = components['schemas']['SuggestedTimeResponse']
@@ -30,6 +31,8 @@ export function useMatchDetail() {
 
   // Local state
   const match = ref<TournamentMatchResponse | null>(null)
+  /** Tournament map pool ids, used when a match has no veto. */
+  const tournamentMapPool = ref<string[]>([])
   const suggestedTimes = ref<string[]>([])
   const suggestionsDetailed = ref<SuggestedTimeResponse[]>([])
 
@@ -167,6 +170,11 @@ export function useMatchDetail() {
       .sort((a, b) => (a.game_number ?? 0) - (b.game_number ?? 0))
       .map((m) => ({ id: m.map_id, name: m.map_name }))
   })
+
+  /** Maps the submitter may choose from when there was no veto. */
+  const selectableMaps = computed(() =>
+    tournamentMapPool.value.map((id) => ({ id, name: formatMapName(id) })),
+  )
 
   /** Time remaining until the scheduled start while check-in is relevant —
    * null once the start time passes (or none is set). */
@@ -323,6 +331,16 @@ export function useMatchDetail() {
           // order) — result submission and the per-map summary need them.
           if (match.value.veto_required) {
             resultPromises.push(vetoStore.getVetoSession(match.value.id).catch(() => null))
+          } else {
+            // No veto: the submitter chooses which map was played, from the
+            // tournament's pool. map_id is validated server-side, so the
+            // panel must offer real maps rather than "map_1" placeholders.
+            resultPromises.push(
+              tournamentsStore
+                .getTournamentMapPool(tournamentId)
+                .then((pool) => { tournamentMapPool.value = pool?.maps ?? [] })
+                .catch(() => { tournamentMapPool.value = [] }),
+            )
           }
           if (['in_progress', 'awaiting_result'].includes(match.value.status)) {
             resultPromises.push(
@@ -459,6 +477,7 @@ export function useMatchDetail() {
     autoConfirmCountdown,
     checkInCountdown,
     vetoPickedMaps,
+    selectableMaps,
 
     // Actions
     fetchAll,

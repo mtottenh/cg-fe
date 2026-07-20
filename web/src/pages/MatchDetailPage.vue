@@ -274,6 +274,7 @@
           :team-b-registration-id="match.participant2_registration_id || ''"
           :match-format="matchFormat"
           :maps="vetoPickedMaps"
+          :selectable-maps="selectableMaps"
           class="mb-6"
           @submitted="handleResultSubmitted"
         />
@@ -437,6 +438,7 @@ const {
   showSchedulingPanel, showCheckInPanel, isProposer, canPropose,
   showResultPanel, showConfirmationPanel, canSubmitResult,
   showWaitingForOpponent, autoConfirmCountdown, checkInCountdown, vetoPickedMaps,
+  selectableMaps,
   opponentPlayerId, suggestedTimes, userRegistrationId,
   fetchAll, fetchResultData,
   schedulingStore,

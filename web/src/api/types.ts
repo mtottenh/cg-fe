@@ -4681,6 +4681,14 @@ export interface components {
             /** @description Optional league ID to link this tournament. */
             league_id?: string | null;
             /**
+             * @description Map pool for this tournament — **required**, at least one map.
+             *
+             *     Every map ID must exist in the game's map catalog. Tournaments own an
+             *     explicit pool so map validation on result submission can fail closed.
+             *     Pass the game's default pool if you don't want to customise it.
+             */
+            map_pool: string[];
+            /**
              * Format: int32
              * @description Maximum participants allowed.
              */

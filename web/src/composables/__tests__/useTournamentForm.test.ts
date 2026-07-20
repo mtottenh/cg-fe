@@ -148,6 +148,61 @@ describe('useTournamentForm (create mode)', () => {
     expect(typeof payload.check_in_start).toBe('string')
     expect(typeof payload.check_in_end).toBe('string')
     expect(payload.settings).toEqual({ side_selection_mode: 'coin_flip' })
+    // The map pool is REQUIRED by the API and must ship inside the create
+    // body. It used to be a best-effort PUT after create that only ran for a
+    // customised pool, so keeping the game default left the tournament with
+    // no pool at all.
+    expect(Array.isArray(payload.map_pool)).toBe(true)
+  })
+
+  it('selecting a game seeds the pool from the game default, enabling submission', async () => {
+    // Mirrors the real GET /v1/games/{id} shape: a catalog plus the
+    // competitive default pool. Selecting a game must populate the tournament
+    // pool, otherwise the create button can never enable.
+    const cs2Detail = {
+      id: 'game-cs2',
+      display_name: 'Counter-Strike 2',
+      map_pool: ['de_dust2', 'de_mirage', 'de_inferno'],
+      maps: [
+        { id: 'de_dust2', display_name: 'Dust II' },
+        { id: 'de_mirage', display_name: 'Mirage' },
+        { id: 'de_inferno', display_name: 'Inferno' },
+      ],
+      map_pick_ban_formats: [],
+    }
+    vi.spyOn(useGamesStore(), 'fetchGame').mockResolvedValue(
+      cs2Detail as unknown as Awaited<ReturnType<ReturnType<typeof useGamesStore>['fetchGame']>>,
+    )
+
+    const f = setup()
+    expect(f.mapPoolValid.value).toBe(false)
+
+    f.form.game_id = 'game-cs2'
+    await nextTick()
+    await new Promise((r) => setTimeout(r, 0))
+    await nextTick()
+
+    expect(f.selectedMapIds.value).toEqual(['de_dust2', 'de_mirage', 'de_inferno'])
+    expect(f.mapPoolValid.value).toBe(true)
+  })
+
+  it('buildCreatePayload carries the selected map pool, and mapPoolValid gates an empty one', () => {
+    const f = setup()
+    f.form.game_id = 'game-abc'
+    f.form.name = 'Pool Cup'
+    f.form.slug = 'pool-cup'
+
+    f.selectedMapIds.value = ['de_dust2', 'de_inferno']
+    expect(f.mapPoolValid.value).toBe(true)
+    expect((f.buildCreatePayload() as Record<string, unknown>).map_pool).toEqual([
+      'de_dust2',
+      'de_inferno',
+    ])
+
+    // An empty pool must block submission rather than create a poolless
+    // tournament the result validator would later reject.
+    f.selectedMapIds.value = []
+    expect(f.mapPoolValid.value).toBe(false)
   })
 
   it('buildCreatePayload sets team_size=null for individual tournaments', () => {

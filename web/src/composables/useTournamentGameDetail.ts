@@ -1,6 +1,7 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import { useGamesStore, type GameDetail } from '@/stores/games'
 import { useTournamentsStore } from '@/stores/tournaments'
+import { ApiError } from '@/api'
 
 export interface VetoFormatOption {
   title: string
@@ -42,6 +43,8 @@ export function useTournamentGameDetail(opts: UseTournamentGameDetailOptions) {
 
   const gameDetail = ref<GameDetail | null>(null)
   const loadingGameDetail = ref(false)
+  /** Non-null when the game's configuration could not be loaded. */
+  const gameDetailError = ref<string | null>(null)
 
   const selectedMapIds = ref<string[]>([])
   const gameDefaultPoolIds = ref<string[]>([])
@@ -75,6 +78,7 @@ export function useTournamentGameDetail(opts: UseTournamentGameDetailOptions) {
   })
 
   function resetPool() {
+    gameDetailError.value = null
     gameDetail.value = null
     selectedMapIds.value = []
     gameDefaultPoolIds.value = []
@@ -99,8 +103,16 @@ export function useTournamentGameDetail(opts: UseTournamentGameDetailOptions) {
         selectedMapIds.value = [...gameDefaultPoolIds.value]
         originalMapPoolIds.value = [...gameDefaultPoolIds.value]
       }
-    } catch {
-      // Non-critical — the veto-format select just stays empty.
+    } catch (e) {
+      // NOT non-critical: the map pool is required to create a tournament,
+      // so a failed detail fetch leaves the form unsubmittable. Swallowing
+      // this is what hid a 404 on /v1/games/{id} (the list handed out a UUID
+      // the detail route rejected) - the picker and veto formats silently
+      // never appeared. Surface it so the cause is visible.
+      gameDetailError.value =
+        e instanceof ApiError
+          ? `Could not load game configuration: ${e.detail}`
+          : 'Could not load game configuration.'
     } finally {
       loadingGameDetail.value = false
     }
@@ -121,6 +133,7 @@ export function useTournamentGameDetail(opts: UseTournamentGameDetailOptions) {
   return {
     gameDetail,
     loadingGameDetail,
+    gameDetailError,
     vetoFormatOptions,
     selectedVetoDescription,
     selectedMapIds,

@@ -26,7 +26,7 @@
  * the corrected helpers live here.
  */
 
-import { uniqueId } from './test-data'
+import { uniqueId, CS2_MAP_POOL } from './test-data'
 import { createTestUser } from './checkin.fixture'
 import { registerPlayer, approveRegistration } from './tournament-lifecycle.fixture'
 import { startTournament, listMatches } from './tournament-seeding.fixture'
@@ -121,6 +121,7 @@ export async function createSelfScheduledScenario(
       slug,
       game_id: gameId,
       format: 'single_elimination',
+      map_pool: CS2_MAP_POOL,
       participant_type: 'individual',
       min_participants: 2,
       max_participants: 4,

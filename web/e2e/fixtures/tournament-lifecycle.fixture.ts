@@ -24,7 +24,7 @@
  *   GET  /v1/tournaments/{id}/matches                   (admin)
  */
 
-import { uniqueId } from './test-data'
+import { uniqueId, CS2_MAP_POOL } from './test-data'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -93,6 +93,7 @@ export async function createDraftTournament(
     slug: opts.slug ?? `e2e-lifecycle-${suffix}`,
     game_id: gameId,
     format: opts.format ?? 'single_elimination',
+    map_pool: CS2_MAP_POOL,
     participant_type: opts.participantType ?? 'individual',
     min_participants: opts.minParticipants ?? 2,
     max_participants: opts.maxParticipants ?? 4,

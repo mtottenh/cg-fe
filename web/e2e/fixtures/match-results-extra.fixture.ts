@@ -39,7 +39,7 @@ import {
   createDraftTournament,
   type TournamentSummary,
 } from './tournament-lifecycle.fixture'
-import { uniqueId } from './test-data'
+import { uniqueId, CS2_MAP_POOL } from './test-data'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -168,8 +168,11 @@ export async function submitResultClaim(
       participant2_score: p2GameScore > p1GameScore ? 1 : 0,
       game_results: [
         {
+          // A real map from the tournament's pool. `map_id` is validated
+          // server-side now, so the old 'map_1' placeholder is rejected -
+          // which was the entire point of the change.
           game_number: 1,
-          map_id: 'map_1',
+          map_id: CS2_MAP_POOL[0],
           participant1_score: p1GameScore,
           participant2_score: p2GameScore,
           evidence_ids: [],

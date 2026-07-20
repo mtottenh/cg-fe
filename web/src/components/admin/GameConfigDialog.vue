@@ -129,7 +129,7 @@
                 </v-col>
               </v-row>
               <p v-else-if="!mapFormVisible" class="text-center text-medium-emphasis pa-8">
-                No maps configured. Click "Add Map" to get started.
+                No maps in this game's catalog. Click "Add Map" to get started.
               </p>
 
               <!-- Map Pool Section -->
@@ -138,7 +138,8 @@
                 <MapPoolPicker
                   v-model="poolMapIds"
                   :maps="maps"
-                  label="Active Map Pool"
+                  label="Default Competitive Pool"
+                  hint="Pre-selected when a tournament is created. Organisers pick their tournament pool from the maps above."
                 >
                   <template #actions>
                     <v-btn

@@ -16,6 +16,22 @@ export function uniqueUsername(): string {
   return `testuser_${uniqueId()}`
 }
 
+/**
+ * CS2 competitive map pool, matching the game's seeded `default_map_pool`
+ * (migration 0018). `map_pool` is REQUIRED on tournament creation, so every
+ * fixture that creates a tournament must send one - import this rather than
+ * hand-rolling a list, so a pool change lands in exactly one place.
+ */
+export const CS2_MAP_POOL = [
+  'de_dust2',
+  'de_mirage',
+  'de_inferno',
+  'de_nuke',
+  'de_ancient',
+  'de_anubis',
+  'de_vertigo',
+]
+
 // Test user templates
 export const testUsers = {
   // Standard test user - use unique credentials each run

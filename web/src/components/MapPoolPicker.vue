@@ -16,6 +16,7 @@
             {{ selected.length }} / {{ maps.length }} maps
           </template>
         </v-chip>
+        <div v-if="hint" class="text-caption text-medium-emphasis mt-1">{{ hint }}</div>
       </div>
       <slot name="actions">
         <v-btn
@@ -70,9 +71,12 @@ const props = withDefaults(defineProps<{
   maps: MapItem[]
   defaultPoolIds?: string[]
   label?: string
+  /** Optional explanatory line under the header. */
+  hint?: string
 }>(), {
   defaultPoolIds: undefined,
   label: 'Map Pool',
+  hint: undefined,
 })
 
 const selected = defineModel<string[]>({ required: true })

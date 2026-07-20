@@ -14,6 +14,20 @@
       <!-- Score inputs for each game in the match -->
       <div class="scores-section mb-4">
         <div v-for="(game, index) in gamesView" :key="game.gameNumber">
+          <v-select
+            v-if="!maps?.length && selectableMaps?.length"
+            :model-value="game.mapId"
+            :items="selectableMaps"
+            item-title="name"
+            item-value="id"
+            :label="`Map for game ${game.gameNumber}`"
+            variant="outlined"
+            density="compact"
+            hide-details="auto"
+            class="mb-2"
+            :rules="[(v: string) => !!v || 'Select the map that was played']"
+            @update:model-value="(v: string) => updateGameMap(index, v)"
+          />
           <ScoreInput
             :game-number="game.gameNumber"
             :team-a-name="teamAName"
@@ -147,7 +161,10 @@ const props = defineProps<{
   teamARegistrationId: string
   teamBRegistrationId: string
   matchFormat: 'bo1' | 'bo3' | 'bo5' | 'bo7'
+  /** Maps fixed by the veto, in game order. */
   maps?: Array<{ id: string; name: string }>
+  /** Tournament pool the submitter picks from when there was no veto. */
+  selectableMaps?: Array<{ id: string; name: string }>
 }>()
 
 const emit = defineEmits<{
@@ -196,7 +213,9 @@ const games = ref<GameData[]>(
     gameNumber: i + 1,
     teamAScore: 0,
     teamBScore: 0,
-    mapId: props.maps?.[i]?.id || `map_${i + 1}`,
+    // No placeholder ids: map_id is validated server-side, so an unplayed
+    // slot stays empty until the submitter chooses a real map.
+    mapId: props.maps?.[i]?.id ?? '',
     mapName: props.maps?.[i]?.name,
   }))
 )
@@ -209,7 +228,7 @@ watch(numGames, (newNum) => {
       gameNumber: i + 1,
       teamAScore: 0,
       teamBScore: 0,
-      mapId: props.maps?.[i]?.id || `map_${i + 1}`,
+      mapId: props.maps?.[i]?.id ?? '',
       mapName: props.maps?.[i]?.name,
     }
   )
@@ -357,6 +376,13 @@ const isValidSubmission = computed(() => {
   // Must have a series winner
   if (!seriesWinner.value) return false
 
+  // Every game that was actually played needs a real map: map_id is
+  // validated against the tournament pool / veto picks server-side.
+  for (const game of games.value) {
+    const played = game.teamAScore > 0 || game.teamBScore > 0
+    if (played && !game.mapId) return false
+  }
+
   // All played games must have valid scores
   for (const game of games.value) {
     if (game.teamAScore < 0 || game.teamBScore < 0) return false
@@ -368,6 +394,13 @@ const isValidSubmission = computed(() => {
 })
 
 // Methods
+function updateGameMap(index: number, mapId: string) {
+  const game = games.value[index]
+  if (!game) return
+  game.mapId = mapId
+  game.mapName = props.selectableMaps?.find((m) => m.id === mapId)?.name
+}
+
 function updateGameScore(index: number, team: 'teamA' | 'teamB', score: number) {
   if (team === 'teamA') {
     games.value[index]!.teamAScore = score

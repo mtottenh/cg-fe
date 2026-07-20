@@ -1,5 +1,5 @@
 import { createTestUser } from './checkin.fixture'
-import { uniqueId } from './test-data'
+import { uniqueId, CS2_MAP_POOL } from './test-data'
 
 /**
  * Tournament seeding / registration-approval API helpers.
@@ -127,6 +127,7 @@ export async function createApprovalTournament(
     slug,
     game_id: games.data[0].id,
     format: 'single_elimination',
+    map_pool: CS2_MAP_POOL,
     participant_type: 'individual',
     min_participants: opts.minParticipants ?? 4,
     max_participants: opts.maxParticipants ?? 8,

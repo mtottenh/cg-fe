@@ -242,11 +242,20 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
       check_in_start: form.check_in_required ? formatDateTimeForApi(form.check_in_start) : null,
       check_in_end: form.check_in_required ? formatDateTimeForApi(form.check_in_end) : null,
       rules_url: form.rules_url || null,
+      // Required by the API: the tournament's map pool, a subset of the
+      // game's global pool. Pre-seeded from the game default by
+      // useTournamentGameDetail, so the common case is "keep the defaults".
+      // Previously this was a best-effort PUT after create, which silently
+      // left tournaments with no pool whenever the default was kept.
+      map_pool: gameDetailBundle.selectedMapIds.value,
       settings: {
         side_selection_mode: form.side_selection_mode,
       },
     } as CreateTournamentRequest
   }
+
+  /** A tournament cannot be created without at least one map. */
+  const mapPoolValid = computed(() => gameDetailBundle.selectedMapIds.value.length > 0)
 
   /**
    * Only-changed-fields PATCH body. Matches the previous TournamentEditModal
@@ -303,9 +312,11 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
     // Map pool / game detail passthrough
     gameDetail: gameDetailBundle.gameDetail,
     loadingGameDetail: gameDetailBundle.loadingGameDetail,
+    gameDetailError: gameDetailBundle.gameDetailError,
     vetoFormatOptions: gameDetailBundle.vetoFormatOptions,
     selectedVetoDescription: gameDetailBundle.selectedVetoDescription,
     selectedMapIds: gameDetailBundle.selectedMapIds,
+    mapPoolValid,
     gameDefaultPoolIds: gameDetailBundle.gameDefaultPoolIds,
     mapPoolIsCustom: gameDetailBundle.mapPoolIsCustom,
     mapPoolChangedFromOriginal: gameDetailBundle.mapPoolChangedFromOriginal,

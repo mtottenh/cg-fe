@@ -7,7 +7,7 @@
 import { writeFileSync, mkdirSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
-import { testUsers } from './fixtures/test-data'
+import { testUsers, CS2_MAP_POOL } from './fixtures/test-data'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -116,6 +116,7 @@ async function seedTournaments(token: string): Promise<void> {
     slug: 'e2e-test-tournament',
     game_id: gameId,
     format: 'single_elimination',
+    map_pool: CS2_MAP_POOL,
     participant_type: 'individual',
     min_participants: 2,
     max_participants: 16,
@@ -485,6 +486,7 @@ async function seedTeamTournament(token: string, leagueId: string, teamSeasonId:
     slug: 'e2e-team-tournament',
     game_id: gameId,
     format: 'single_elimination',
+    map_pool: CS2_MAP_POOL,
     participant_type: 'team',
     min_participants: 2,
     max_participants: 8,

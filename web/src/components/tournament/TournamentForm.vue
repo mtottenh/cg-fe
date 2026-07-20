@@ -286,14 +286,54 @@
       </v-col>
     </v-row>
 
-    <!-- Map Pool Picker (both modes, when game detail + maps available) -->
+    <!-- The pool is required, so a failed config load blocks creation.
+         Say why instead of leaving a dead submit button. -->
+    <v-alert
+      v-if="gameDetailError"
+      type="error"
+      variant="tonal"
+      density="compact"
+      class="mt-4"
+    >
+      {{ gameDetailError }}
+    </v-alert>
+
+    <!-- A game with no map catalog cannot back a tournament: the pool is
+         required, and results/vetoes are validated against it. Say so
+         plainly instead of leaving a permanently disabled submit button. -->
+    <v-alert
+      v-if="gameDetail && (!gameDetail.maps || gameDetail.maps.length === 0)"
+      type="warning"
+      variant="tonal"
+      density="compact"
+      class="mt-4"
+    >
+      <strong>{{ gameDetail.display_name }}</strong> has no maps configured, so a
+      tournament cannot be created for it yet. Add maps under Admin &rarr; Games
+      &rarr; Configure, then come back.
+    </v-alert>
+
+    <!-- Map Pool Picker (both modes, when game detail + maps available).
+         The pool is required: it is what result submissions and vetoes are
+         validated against. Pre-seeded with the game's competitive default. -->
     <template v-if="gameDetail && gameDetail.maps && gameDetail.maps.length > 0">
       <v-divider class="my-4" />
       <MapPoolPicker
         v-model="selectedMapIds"
         :maps="gameDetail.maps"
         :default-pool-ids="gameDefaultPoolIds"
+        label="Tournament Map Pool"
+        hint="A subset of the game's map pool. Matches can only be played and reported on these maps."
       />
+      <v-alert
+        v-if="!mapPoolValid"
+        type="warning"
+        variant="tonal"
+        density="compact"
+        class="mt-2"
+      >
+        Select at least one map - a tournament cannot be created without a map pool.
+      </v-alert>
     </template>
 
     <v-divider class="my-4" />
@@ -480,9 +520,11 @@ const {
   buildUpdatePatch,
   gameDetail,
   loadingGameDetail,
+  gameDetailError,
   vetoFormatOptions,
   selectedVetoDescription,
   selectedMapIds,
+  mapPoolValid,
   gameDefaultPoolIds,
   mapPoolIsCustom,
   mapPoolChangedFromOriginal,
@@ -541,6 +583,7 @@ defineExpose({
   buildCreatePayload,
   buildUpdatePatch,
   selectedMapIds,
+  mapPoolValid,
   mapPoolIsCustom,
   mapPoolChangedFromOriginal,
   reset,

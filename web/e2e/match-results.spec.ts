@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page, type Locator } from '@playwright/test'
 import { loginAsAdmin, getAdminToken } from './fixtures/auth.fixture'
 import { primeAuthStorage, getMatch } from './fixtures/checkin.fixture'
 import { type TournamentSummary } from './fixtures/tournament-lifecycle.fixture'
@@ -11,6 +11,21 @@ import {
   disputeResultClaim,
   type ResultScenario,
 } from './fixtures/match-results-extra.fixture'
+
+/**
+ * Choose the map for a game when the panel asks for one.
+ *
+ * A match without a veto has no predetermined map, so the submitter picks it
+ * from the tournament pool: `map_id` is validated server-side, and defaulting
+ * it would record a plausible-but-wrong map. No-op when a veto already fixed
+ * the maps.
+ */
+async function selectMapIfRequired(page: Page, panel: Locator, gameNumber = 1): Promise<void> {
+  const mapSelect = panel.locator('.v-select').filter({ hasText: `Map for game ${gameNumber}` })
+  if (!(await mapSelect.isVisible().catch(() => false))) return
+  await mapSelect.click()
+  await page.getByRole('option').first().click()
+}
 
 /**
  * Match Result Submission Tests
@@ -116,6 +131,7 @@ test.describe('Match Result Submission (Phase 1)', () => {
       const scoreInputs = panel.locator('input[type="number"]')
       await scoreInputs.first().fill('16')
       await scoreInputs.nth(1).fill('10')
+      await selectMapIfRequired(page, panel)
 
       // Series winner alert appears with the 1-0 series score, and the
       // submit button unlocks. (Scores are typed but never submitted, so
@@ -303,6 +319,7 @@ test.describe('Result Submission E2E', () => {
     const scoreInputs = panel.locator('input[type="number"]')
     await scoreInputs.first().fill('16')
     await scoreInputs.nth(1).fill('10')
+    await selectMapIfRequired(page, panel)
 
     const submitResponse = page.waitForResponse(
       (res) =>

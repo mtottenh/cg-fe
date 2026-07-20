@@ -2,7 +2,7 @@
   <v-card>
     <v-card-title class="text-subtitle-1 font-weight-medium">
       <v-icon start size="small">mdi-gamepad-variant</v-icon>
-      CS2 — Public Matchmaking
+      CS2 - Public Matchmaking
     </v-card-title>
     <v-divider />
 

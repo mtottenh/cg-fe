@@ -56,7 +56,7 @@
 
     <v-card-text v-else class="text-center text-medium-emphasis pa-6" data-testid="trophy-empty">
       <v-icon size="40" color="grey-lighten-1" class="mb-2">mdi-trophy-outline</v-icon>
-      <p class="text-body-2">No trophies yet — place on an award podium to earn one.</p>
+      <p class="text-body-2">No trophies yet - place on an award podium to earn one.</p>
     </v-card-text>
   </v-card>
 </template>

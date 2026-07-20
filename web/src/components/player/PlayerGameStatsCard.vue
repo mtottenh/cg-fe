@@ -3,7 +3,7 @@
     <v-card v-for="profile in profiles" :key="profile.id" class="mb-4">
       <v-card-title class="text-subtitle-1 font-weight-medium">
         <v-icon start size="small">mdi-trophy-outline</v-icon>
-        {{ gameName(profile.game_id) }} — Tournament Stats
+        {{ gameName(profile.game_id) }} - Tournament Stats
       </v-card-title>
       <v-divider />
 

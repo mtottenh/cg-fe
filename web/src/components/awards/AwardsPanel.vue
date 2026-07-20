@@ -27,8 +27,8 @@
         <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-trophy-outline</v-icon>
         <h3 class="text-h6 mb-2">No Awards Yet</h3>
         <p class="text-grey">
-          Organizers can create stat awards — from templates like "Headshot Machine"
-          or fully custom — and they'll show up here with live standings.
+          Organizers can create stat awards - from templates like "Headshot Machine"
+          or fully custom - and they'll show up here with live standings.
         </p>
       </div>
 

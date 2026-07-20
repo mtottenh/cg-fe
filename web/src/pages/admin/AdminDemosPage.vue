@@ -19,7 +19,7 @@
               <v-tooltip activator="parent" location="bottom" max-width="320">
                 When enabled, demos are automatically linked to tournament
                 matches by Steam-ID overlap when their stats arrive. Turn off
-                if auto-linking is misbehaving — demos then only link via
+                if auto-linking is misbehaving - demos then only link via
                 evidence uploads or manual linking.
               </v-tooltip>
             </span>
@@ -229,7 +229,7 @@
               {{ item.metadata.team1_name }} {{ item.metadata.team1_score }}-{{ item.metadata.team2_score }} {{ item.metadata.team2_name }}
             </div>
           </template>
-          <span v-else class="text-grey text-caption">—</span>
+          <span v-else class="text-grey text-caption">-</span>
         </template>
 
         <template v-slot:item.file_size_bytes="{ item }">

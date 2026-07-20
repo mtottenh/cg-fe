@@ -337,7 +337,7 @@ function demoMeta(demo: DiscoveredEvidenceResponse): DemoMetadata | null {
 
 function demoDisplayName(demo: DiscoveredEvidenceResponse): string {
   const meta = demoMeta(demo)
-  if (meta) return `${meta.map_name} — ${meta.team1_name} vs ${meta.team2_name}`
+  if (meta) return `${meta.map_name} - ${meta.team1_name} vs ${meta.team2_name}`
   return demo.name
 }
 

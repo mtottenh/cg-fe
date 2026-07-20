@@ -14,7 +14,7 @@
       <!-- Display claimed scores -->
       <v-card variant="outlined" class="pa-4 mb-4">
         <div class="text-center">
-          <div class="d-flex justify-center align-center gap-4 mb-2">
+          <div class="d-flex justify-center align-center ga-4 mb-2">
             <div class="text-center">
               <div class="text-h5 font-weight-bold" :class="team1WinsClass">
                 {{ teamAName }}
@@ -23,7 +23,7 @@
                 {{ claim.claimed_participant1_score }}
               </div>
             </div>
-            <div class="text-h4 text-grey">-</div>
+            <div class="text-h4 text-medium-emphasis">-</div>
             <div class="text-center">
               <div class="text-h5 font-weight-bold" :class="team2WinsClass">
                 {{ teamBName }}
@@ -39,7 +39,7 @@
         <div v-if="claim.game_results && claim.game_results.length > 0" class="mt-4">
           <v-divider class="mb-3" />
           <div
-            v-for="game in claim.game_results"
+            v-for="game in gameRows"
             :key="game.game_number"
             class="py-2"
           >
@@ -53,25 +53,22 @@
             </div>
             <!-- Linked demo details -->
             <div
-              v-if="gameDemoMap.get(game.game_number)"
+              v-if="game.demo"
               class="d-flex align-center ga-2 mt-1 ml-8"
             >
               <v-icon size="x-small" color="info">mdi-file-video</v-icon>
-              <span
-                v-if="gameDemoMap.get(game.game_number)!.demo.metadata"
-                class="text-caption text-grey"
-              >
-                {{ gameDemoMap.get(game.game_number)!.demo.metadata!.map_name }} &mdash;
-                {{ gameDemoMap.get(game.game_number)!.demo.metadata!.team1_name }}
-                {{ gameDemoMap.get(game.game_number)!.demo.metadata!.team1_score }}
-                : {{ gameDemoMap.get(game.game_number)!.demo.metadata!.team2_score }}
-                {{ gameDemoMap.get(game.game_number)!.demo.metadata!.team2_name }}
+              <span v-if="game.demoMeta" class="text-caption text-medium-emphasis">
+                {{ game.demoMeta.map_name }} &mdash;
+                {{ game.demoMeta.team1_name }}
+                {{ game.demoMeta.team1_score }}
+                : {{ game.demoMeta.team2_score }}
+                {{ game.demoMeta.team2_name }}
               </span>
-              <span v-else class="text-caption text-grey">
-                {{ gameDemoMap.get(game.game_number)!.demo.file_name }}
+              <span v-else class="text-caption text-medium-emphasis">
+                {{ game.demo.file_name }}
               </span>
               <v-chip
-                v-if="gameDemoMap.get(game.game_number)!.link.validated"
+                v-if="game.demoValidated"
                 size="x-small"
                 color="success"
                 variant="tonal"
@@ -107,12 +104,12 @@
       <!-- Notes if any -->
       <div v-if="claim.submitter_notes" class="mb-4">
         <p class="text-subtitle-2 mb-1">Notes from submitter:</p>
-        <p class="text-body-2 text-grey">{{ claim.submitter_notes }}</p>
+        <p class="text-body-2 text-medium-emphasis">{{ claim.submitter_notes }}</p>
       </div>
 
       <v-divider class="my-4" />
 
-      <p class="text-body-2 text-grey">
+      <p class="text-body-2 text-medium-emphasis">
         Do you confirm this result? If you believe it's incorrect, you can dispute it with evidence.
       </p>
     </v-card-text>
@@ -186,6 +183,20 @@ const gameDemoMap = computed(() => {
   }
   return map
 })
+
+// Per-game rows joined once with their demo — the template needs no repeated
+// Map lookups and no non-null assertions.
+const gameRows = computed(() =>
+  (props.claim.game_results ?? []).map((game) => {
+    const linked = gameDemoMap.value.get(game.game_number) ?? null
+    return {
+      ...game,
+      demo: linked?.demo ?? null,
+      demoMeta: linked?.demo.metadata ?? null,
+      demoValidated: linked?.link.validated ?? false,
+    }
+  })
+)
 
 // Computed
 const team1Wins = computed(

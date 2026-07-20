@@ -1,4 +1,4 @@
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTournamentsStore, type TournamentMatchResponse } from '@/stores/tournaments'
@@ -8,6 +8,7 @@ import { useMatchResultsStore, getTimeUntilAutoConfirm } from '@/stores/matchRes
 import { useEvidenceStore } from '@/stores/evidence'
 import { useResultReviewsStore } from '@/stores/resultReviews'
 import { useDisputesStore } from '@/stores/disputes'
+import { useVetoStore } from '@/stores/veto'
 import { useMatchContext } from './useMatchContext'
 import { api } from '@/api'
 import { unwrapApi } from '@/stores/helpers/apiAction'
@@ -25,6 +26,7 @@ export function useMatchDetail() {
   const evidenceStore = useEvidenceStore()
   const resultReviewsStore = useResultReviewsStore()
   const disputesStore = useDisputesStore()
+  const vetoStore = useVetoStore()
 
   // Local state
   const match = ref<TournamentMatchResponse | null>(null)
@@ -121,8 +123,65 @@ export function useMatchDetail() {
     )
   })
 
+  // Tick once per second while any live countdown is on screen so displayed
+  // countdowns actually count down instead of freezing between polls.
+  const nowTick = ref(Date.now())
+  let countdownTimer: ReturnType<typeof setInterval> | null = null
+  const needsTicker = computed(() => {
+    if (currentResult.value?.auto_confirm_at) return true
+    const status = match.value?.status
+    if ((status === 'scheduled' || status === 'checking_in') && match.value?.scheduled_at) {
+      return true
+    }
+    return false
+  })
+  watch(
+    needsTicker,
+    (needed) => {
+      if (countdownTimer) {
+        clearInterval(countdownTimer)
+        countdownTimer = null
+      }
+      if (needed) {
+        countdownTimer = setInterval(() => {
+          nowTick.value = Date.now()
+        }, 1_000)
+      }
+    },
+    { immediate: true },
+  )
+
   const autoConfirmCountdown = computed(() => {
+    void nowTick.value
     return getTimeUntilAutoConfirm(currentResult.value?.auto_confirm_at)
+  })
+
+  /** Maps selected by the veto (picks + decider) in game order — feeds the
+   * result submission panel and the per-map results summary. Empty when the
+   * match had no veto. */
+  const vetoPickedMaps = computed(() => {
+    const maps = vetoStore.sessionState?.maps
+    if (!maps) return []
+    return maps
+      .filter((m) => (m.status === 'picked' || m.status === 'decider') && m.game_number != null)
+      .sort((a, b) => (a.game_number ?? 0) - (b.game_number ?? 0))
+      .map((m) => ({ id: m.map_id, name: m.map_name }))
+  })
+
+  /** Time remaining until the scheduled start while check-in is relevant —
+   * null once the start time passes (or none is set). */
+  const checkInCountdown = computed(() => {
+    void nowTick.value
+    const at = match.value?.scheduled_at
+    if (!at) return null
+    const diff = new Date(at).getTime() - Date.now()
+    if (diff <= 0) return null
+    const hours = Math.floor(diff / 3_600_000)
+    const minutes = Math.floor((diff % 3_600_000) / 60_000)
+    const seconds = Math.floor((diff % 60_000) / 1_000)
+    if (hours > 0) return `${hours}h ${minutes}m`
+    if (minutes > 0) return `${minutes}m ${seconds}s`
+    return `${seconds}s`
   })
 
   // Fetch suggestions from backend
@@ -168,10 +227,13 @@ export function useMatchDetail() {
   async function pollMatch() {
     const tournament = tournamentsStore.currentTournament
     if (!tournament || !match.value) return
+    const gen = fetchGen
     const tournamentId = tournament.id
     const matchId = match.value.id
 
     const refreshed = await tournamentsStore.fetchMatch(tournamentId, matchId).catch(() => null)
+    // A newer fetchAll started while we were in flight — its data wins.
+    if (gen !== fetchGen) return
     if (refreshed) match.value = refreshed
 
     const tasks: Promise<unknown>[] = []
@@ -208,15 +270,19 @@ export function useMatchDetail() {
   async function fetchAll() {
     const tournamentSlug = route.params.tournamentSlug as string
     const matchId = route.params.matchId as string
+    const gen = ++fetchGen
 
     loading.value = true
     try {
       await tournamentsStore.fetchTournamentBySlug(tournamentSlug)
+      if (gen !== fetchGen) return
 
       if (tournamentsStore.currentTournament) {
         const tournamentId = tournamentsStore.currentTournament.id
 
-        match.value = await tournamentsStore.fetchMatch(tournamentId, matchId)
+        const fetched = await tournamentsStore.fetchMatch(tournamentId, matchId)
+        if (gen !== fetchGen) return
+        match.value = fetched
 
         // Fetch registrations to resolve userRegistrationId for result submission
         if (authStore.playerId && tournamentsStore.currentTournament) {
@@ -253,6 +319,11 @@ export function useMatchDetail() {
             evidenceStore.fetchLinkedDemos(match.value.id).catch(() => []),
             evidenceStore.fetchEvidence(match.value.id).catch(() => []),
           )
+          // Veto session carries the picked maps (real ids + names + game
+          // order) — result submission and the per-map summary need them.
+          if (match.value.veto_required) {
+            resultPromises.push(vetoStore.getVetoSession(match.value.id).catch(() => null))
+          }
           if (['in_progress', 'awaiting_result'].includes(match.value.status)) {
             resultPromises.push(
               evidenceStore.discoverDemos(match.value.id).catch(() => []),
@@ -289,8 +360,15 @@ export function useMatchDetail() {
 
   // Polling
   const isPolling = ref(false)
+  // Route-change / stale-response guard: bumped by each fetchAll; in-flight
+  // work from an older generation must not write state.
+  let fetchGen = 0
+  // Set on unmount so a fetchAll that resolves after navigation can't
+  // resurrect the poll interval via its `finally` block.
+  let disposed = false
 
   function startPolling() {
+    if (disposed) return
     stopPolling()
     pollInterval.value = setInterval(async () => {
       if (document.visibilityState === 'hidden') return
@@ -334,7 +412,13 @@ export function useMatchDetail() {
 
   // Cleanup
   onUnmounted(() => {
+    disposed = true
+    fetchGen++
     stopPolling()
+    if (countdownTimer) {
+      clearInterval(countdownTimer)
+      countdownTimer = null
+    }
     document.removeEventListener('visibilitychange', onVisibilityChange)
     schedulingStore.clear()
     resultsStore.clear()
@@ -373,6 +457,8 @@ export function useMatchDetail() {
     canSubmitResult,
     showWaitingForOpponent,
     autoConfirmCountdown,
+    checkInCountdown,
+    vetoPickedMaps,
 
     // Actions
     fetchAll,

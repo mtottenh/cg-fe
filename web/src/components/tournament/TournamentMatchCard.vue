@@ -23,18 +23,26 @@
         >
           <div class="participant-info">
             <v-avatar size="24" rounded="sm" class="mr-2">
-              <v-img v-if="match.participant1_logo_url" :src="match.participant1_logo_url" />
+              <v-img alt="" v-if="match.participant1_logo_url" :src="match.participant1_logo_url" />
               <v-icon v-else size="16">mdi-account</v-icon>
             </v-avatar>
+            <v-icon
+              v-if="isWinner(match.participant1_registration_id)"
+              size="x-small"
+              color="success"
+              class="mr-1"
+              aria-label="Winner"
+            >mdi-trophy</v-icon>
             <span class="participant-name text-truncate">
               {{ match.participant1_name || 'TBD' }}
+              <v-tooltip activator="parent" location="top">{{ match.participant1_name || 'TBD' }}</v-tooltip>
             </span>
             <v-chip v-if="match.participant1_seed" size="x-small" variant="text" class="ml-1">
               #{{ match.participant1_seed }}
             </v-chip>
           </div>
           <span class="score" :class="{ 'winning': isWinner(match.participant1_registration_id) }">
-            {{ match.status === 'completed' ? match.participant1_score : '-' }}
+            {{ showScores ? match.participant1_score : '-' }}
           </span>
         </div>
 
@@ -44,25 +52,33 @@
         >
           <div class="participant-info">
             <v-avatar size="24" rounded="sm" class="mr-2">
-              <v-img v-if="match.participant2_logo_url" :src="match.participant2_logo_url" />
+              <v-img alt="" v-if="match.participant2_logo_url" :src="match.participant2_logo_url" />
               <v-icon v-else size="16">mdi-account</v-icon>
             </v-avatar>
+            <v-icon
+              v-if="isWinner(match.participant2_registration_id)"
+              size="x-small"
+              color="success"
+              class="mr-1"
+              aria-label="Winner"
+            >mdi-trophy</v-icon>
             <span class="participant-name text-truncate">
               {{ match.participant2_name || 'TBD' }}
+              <v-tooltip activator="parent" location="top">{{ match.participant2_name || 'TBD' }}</v-tooltip>
             </span>
             <v-chip v-if="match.participant2_seed" size="x-small" variant="text" class="ml-1">
               #{{ match.participant2_seed }}
             </v-chip>
           </div>
           <span class="score" :class="{ 'winning': isWinner(match.participant2_registration_id) }">
-            {{ match.status === 'completed' ? match.participant2_score : '-' }}
+            {{ showScores ? match.participant2_score : '-' }}
           </span>
         </div>
       </div>
 
       <!-- Footer info -->
       <div v-if="!compact && (match.scheduled_at || match.match_format)" class="match-footer mt-2">
-        <div class="d-flex justify-space-between text-caption text-grey">
+        <div class="d-flex justify-space-between text-caption text-medium-emphasis">
           <span v-if="match.match_format">{{ formatMatchFormat(match.match_format) }}</span>
           <span v-if="match.scheduled_at">{{ formatDateTime(match.scheduled_at) }}</span>
         </div>
@@ -119,6 +135,11 @@ const statusColor = computed(() => {
       return 'grey'
   }
 })
+
+// A live Bo3 at 1-0 should show 1-0 on the card, not "- / -".
+const showScores = computed(() =>
+  ['in_progress', 'awaiting_result', 'completed', 'disputed'].includes(props.match.status)
+)
 
 const statusVariant = computed(() => {
   return props.match.status === 'in_progress' ? 'flat' : 'tonal'

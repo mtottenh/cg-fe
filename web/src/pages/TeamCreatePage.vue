@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-row justify="center">
       <v-col cols="12" sm="8" md="6">
         <v-btn variant="text" to="/leagues" class="mb-4">

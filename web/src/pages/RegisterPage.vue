@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-row justify="center">
       <v-col cols="12" sm="8" md="6" lg="4">
         <v-card class="pa-6">
@@ -9,11 +9,16 @@
             {{ error }}
           </v-alert>
 
-          <v-alert v-if="success" type="success" class="mb-4">
-            Registration successful! You can now use your account.
-          </v-alert>
+          <template v-if="success">
+            <v-alert type="success" class="mb-4">
+              Registration successful! Sign in to get started.
+            </v-alert>
+            <v-btn color="primary" size="large" block to="/login">
+              Sign In
+            </v-btn>
+          </template>
 
-          <v-form v-if="!success" @submit.prevent="handleSubmit">
+          <v-form v-if="!success" ref="formRef" v-model="formValid" @submit.prevent="handleSubmit">
             <v-text-field
               v-model="form.username"
               label="Username"
@@ -56,6 +61,7 @@
               size="large"
               block
               :loading="loading"
+              :disabled="!formValid"
             >
               Create Account
             </v-btn>
@@ -68,6 +74,7 @@
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
+import type { VForm } from 'vuetify/components'
 import { useAuthStore } from '@/stores/auth'
 import { useFormRules } from '@/composables/useFormRules'
 
@@ -80,6 +87,8 @@ const form = reactive({
   display_name: '',
 })
 
+const formRef = ref<VForm | null>(null)
+const formValid = ref(false)
 const showPassword = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -88,6 +97,9 @@ const success = ref(false)
 const rules = useFormRules()
 
 async function handleSubmit() {
+  const validation = await formRef.value?.validate()
+  if (!validation?.valid) return
+
   loading.value = true
   error.value = null
   try {
@@ -98,7 +110,7 @@ async function handleSubmit() {
       display_name: form.display_name || form.username,
     })
     success.value = true
-  } catch (e) {
+  } catch {
     error.value = authStore.error || 'Registration failed'
   } finally {
     loading.value = false

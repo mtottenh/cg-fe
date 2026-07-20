@@ -3,7 +3,7 @@
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Create Ban</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -150,6 +150,7 @@ import { useBansStore, type BanType, type CreateBanRequest } from '@/stores/bans
 import { useFormRules } from '@/composables/useFormRules'
 import UserSearchAutocomplete from '@/components/admin/UserSearchAutocomplete.vue'
 import LeagueSearchAutocomplete from '@/components/admin/LeagueSearchAutocomplete.vue'
+import { banTypeMap, getStatusColor, getStatusIcon } from '@/utils/statusMaps'
 import type { components } from '@/api/types'
 
 type PlayerSummary = components['schemas']['PlayerSearchResponse']
@@ -206,39 +207,8 @@ const isFormComplete = computed(() => {
 
 const rules = useFormRules()
 
-function getBanTypeIcon(type: string): string {
-  switch (type) {
-    case 'platform':
-      return 'mdi-block-helper'
-    case 'matchmaking':
-      return 'mdi-controller-off'
-    case 'chat':
-      return 'mdi-message-off'
-    case 'league':
-      return 'mdi-trophy-broken'
-    case 'tournament':
-      return 'mdi-tournament'
-    default:
-      return 'mdi-gavel'
-  }
-}
-
-function getBanTypeColor(type: string): string {
-  switch (type) {
-    case 'platform':
-      return 'error'
-    case 'matchmaking':
-      return 'warning'
-    case 'chat':
-      return 'info'
-    case 'league':
-      return 'purple'
-    case 'tournament':
-      return 'orange'
-    default:
-      return 'grey'
-  }
-}
+const getBanTypeIcon = (type: string) => getStatusIcon(banTypeMap, type)
+const getBanTypeColor = (type: string) => getStatusColor(banTypeMap, type)
 
 function calculateDurationSeconds(): number | undefined {
   if (durationType.value === 'permanent') {

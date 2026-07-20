@@ -12,6 +12,7 @@ import {
   startVetoAndFlipCoin,
   performVetoAction,
   selectSide,
+  actOnMapViaUi,
 } from './fixtures/veto.fixture'
 
 /**
@@ -149,9 +150,7 @@ async function actOnTurnUi(
   expectPicked: number,
 ): Promise<void> {
   await expect(actingPage.getByText('Your turn!')).toBeVisible({ timeout: 15000 })
-  const card = actingPage.locator('.map-card-selectable').first()
-  await expect(card).toBeVisible({ timeout: 10000 })
-  await card.click()
+  await actOnMapViaUi(actingPage)
 
   for (const page of [actingPage, waitingPage]) {
     await expect(page.locator('.map-card-banned')).toHaveCount(expectBanned, { timeout: 15000 })
@@ -273,7 +272,7 @@ test.describe('Map Veto (bo3) — picks + side selection over WebSocket', () => 
       // P1 makes the first PICK via the UI.
       await expect(pageA.getByText('Your turn!')).toBeVisible({ timeout: 15000 })
       await expect(pageA.getByText(/Pick a map/i)).toBeVisible({ timeout: 15000 })
-      await pageA.locator('.map-card-selectable').first().click()
+      await actOnMapViaUi(pageA)
       await expect(pageA.locator('.map-card-picked')).toHaveCount(1, { timeout: 15000 })
       await expect(pageB.locator('.map-card-picked')).toHaveCount(1, { timeout: 15000 })
 
@@ -350,7 +349,7 @@ test.describe('Map Veto (bo3) — picks + side selection over WebSocket', () => 
       await actOnTurnUi(pageA, pageB, 1, 0)
       await actOnTurnUi(pageB, pageA, 2, 0)
       await expect(pageA.getByText('Your turn!')).toBeVisible({ timeout: 15000 })
-      await pageA.locator('.map-card-selectable').first().click()
+      await actOnMapViaUi(pageA)
       await expect(pageA.locator('.map-card-picked')).toHaveCount(1, { timeout: 15000 })
       await expect(pageB.locator('.map-card-picked')).toHaveCount(1, { timeout: 15000 })
 

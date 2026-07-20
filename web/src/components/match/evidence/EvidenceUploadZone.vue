@@ -9,8 +9,8 @@
   >
     <v-icon size="48" :color="disabled ? 'grey-lighten-1' : 'grey'">mdi-cloud-upload</v-icon>
     <p class="mt-2">Drag & drop {{ acceptLabel }} here</p>
-    <p class="text-caption text-grey">or click to browse</p>
-    <p v-if="maxSize" class="text-caption text-grey mt-1">Max size: {{ formatFileSize(maxSize) }}</p>
+    <p class="text-caption text-medium-emphasis">or click to browse</p>
+    <p v-if="maxSize" class="text-caption text-medium-emphasis mt-1">Max size: {{ formatFileSize(maxSize) }}</p>
 
     <input
       ref="fileInput"

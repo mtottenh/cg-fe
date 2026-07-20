@@ -1,7 +1,7 @@
 <template>
   <v-menu>
     <template v-slot:activator="{ props: menuProps }">
-      <v-btn icon size="small" variant="text" v-bind="menuProps">
+      <v-btn aria-label="Tournament actions" icon size="small" variant="text" v-bind="menuProps">
         <v-icon>mdi-dots-vertical</v-icon>
       </v-btn>
     </template>

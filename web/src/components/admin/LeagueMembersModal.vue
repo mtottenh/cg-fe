@@ -1,5 +1,6 @@
 <template>
   <v-dialog
+    :fullscreen="smAndDown"
     v-model="open"
     max-width="900"
     persistent
@@ -7,7 +8,7 @@
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Manage Members: {{ league?.league_name }}</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -50,7 +51,7 @@
               <template v-slot:item.username="{ item }">
                 <div>
                   <div class="font-weight-medium">{{ item.username }}</div>
-                  <div class="text-caption text-grey">{{ item.email }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ item.email }}</div>
                 </div>
               </template>
 
@@ -70,12 +71,12 @@
 
               <template v-slot:item.actions="{ item }">
                 <v-menu>
-                  <template v-slot:activator="{ props }">
-                    <v-btn
+                  <template v-slot:activator="{ props: activatorProps }">
+                    <v-btn aria-label="Change role"
                       icon
                       size="small"
                       variant="text"
-                      v-bind="props"
+                      v-bind="activatorProps"
                       :disabled="item.membership_type === 'owner'"
                       title="Change Role"
                     >
@@ -95,7 +96,7 @@
                   </v-list>
                 </v-menu>
 
-                <v-btn
+                <v-btn aria-label="Remove member"
                   icon
                   size="small"
                   variant="text"
@@ -112,7 +113,7 @@
               <template v-slot:no-data>
                 <div class="text-center pa-8">
                   <v-icon size="48" color="grey-lighten-1">mdi-account-group-outline</v-icon>
-                  <p class="text-grey mt-2">No members found</p>
+                  <p class="text-medium-emphasis mt-2">No members found</p>
                 </div>
               </template>
             </v-data-table>
@@ -161,7 +162,7 @@
               </template>
 
               <template v-slot:item.actions="{ item }">
-                <v-btn
+                <v-btn aria-label="Cancel invitation"
                   icon
                   size="small"
                   variant="text"
@@ -177,7 +178,7 @@
               <template v-slot:no-data>
                 <div class="text-center pa-8">
                   <v-icon size="48" color="grey-lighten-1">mdi-email-outline</v-icon>
-                  <p class="text-grey mt-2">No pending invitations</p>
+                  <p class="text-medium-emphasis mt-2">No pending invitations</p>
                 </div>
               </template>
             </v-data-table>
@@ -218,7 +219,7 @@
               </template>
 
               <template v-slot:item.actions="{ item }">
-                <v-btn
+                <v-btn aria-label="Approve application"
                   icon
                   size="small"
                   variant="text"
@@ -229,7 +230,7 @@
                 >
                   <v-icon>mdi-check-circle</v-icon>
                 </v-btn>
-                <v-btn
+                <v-btn aria-label="Reject application"
                   icon
                   size="small"
                   variant="text"
@@ -245,7 +246,7 @@
               <template v-slot:no-data>
                 <div class="text-center pa-8">
                   <v-icon size="48" color="grey-lighten-1">mdi-clipboard-account-outline</v-icon>
-                  <p class="text-grey mt-2">No pending applications</p>
+                  <p class="text-medium-emphasis mt-2">No pending applications</p>
                 </div>
               </template>
             </v-data-table>
@@ -276,12 +277,17 @@
 </template>
 
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import { ref, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useLeaguesStore, type UserLeagueMembership, type LeagueMemberResponse, type LeagueInvitationResponse } from '@/stores/leagues'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatDate } from '@/utils/formatters'
 import InviteUserModal from './InviteUserModal.vue'
+import { leagueRoleMap, getStatusColor, formatRole } from '@/utils/statusMaps'
+
+// Long scrolling forms in a small floating dialog are unusable on phones.
+const { smAndDown } = useDisplay()
 
 const props = defineProps<{  league: UserLeagueMembership | null
 }>()
@@ -345,18 +351,7 @@ const availableRoles = [
   { value: 'member', label: 'Member' },
 ]
 
-function formatRole(role: string): string {
-  return role.charAt(0).toUpperCase() + role.slice(1)
-}
-
-function getRoleColor(role: string): string {
-  switch (role) {
-    case 'owner': return 'purple'
-    case 'admin': return 'primary'
-    case 'moderator': return 'info'
-    default: return 'grey'
-  }
-}
+const getRoleColor = (role: string) => getStatusColor(leagueRoleMap, role)
 
 // Watch for dialog opening
 watch(open, async (isOpen) => {

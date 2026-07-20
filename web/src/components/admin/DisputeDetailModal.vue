@@ -1,5 +1,6 @@
 <template>
   <v-dialog
+    :fullscreen="smAndDown"
     v-model="open"
     max-width="900"
     persistent
@@ -8,7 +9,7 @@
     <v-card v-if="dispute">
       <v-card-title class="d-flex align-center justify-space-between">
         <span>Dispute Details</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -18,7 +19,7 @@
       <v-card-text class="pa-4">
         <!-- Status & Priority Banner -->
         <v-alert type="info" variant="tonal" class="mb-4" density="compact">
-          <div class="d-flex align-center gap-2">
+          <div class="d-flex align-center ga-2">
             <v-chip :color="getDisputeStatusColor(dispute.status)" size="small">
               {{ getDisputeStatusLabel(dispute.status) }}
             </v-chip>
@@ -46,27 +47,27 @@
             <v-table density="compact">
               <tbody>
                 <tr>
-                  <td class="text-grey" width="180">Match ID</td>
+                  <td class="text-medium-emphasis" width="180">Match ID</td>
                   <td><code>{{ dispute.match_id }}</code></td>
                 </tr>
                 <tr v-if="dispute.original_participant1_score != null">
-                  <td class="text-grey">Original Score</td>
+                  <td class="text-medium-emphasis">Original Score</td>
                   <td>{{ dispute.original_participant1_score }} - {{ dispute.original_participant2_score }}</td>
                 </tr>
                 <tr v-if="dispute.original_winner_registration_id">
-                  <td class="text-grey">Original Winner</td>
+                  <td class="text-medium-emphasis">Original Winner</td>
                   <td><code>{{ dispute.original_winner_registration_id }}</code></td>
                 </tr>
                 <tr>
-                  <td class="text-grey">Raised By</td>
+                  <td class="text-medium-emphasis">Raised By</td>
                   <td><code>{{ dispute.disputed_by_user_id }}</code></td>
                 </tr>
                 <tr>
-                  <td class="text-grey">Created</td>
+                  <td class="text-medium-emphasis">Created</td>
                   <td>{{ formatDateTime(dispute.created_at) }}</td>
                 </tr>
                 <tr v-if="dispute.result_claim_id">
-                  <td class="text-grey">Result Claim</td>
+                  <td class="text-medium-emphasis">Result Claim</td>
                   <td><code>{{ dispute.result_claim_id }}</code></td>
                 </tr>
               </tbody>
@@ -98,29 +99,29 @@
             <v-table density="compact">
               <tbody>
                 <tr>
-                  <td class="text-grey" width="180">Type</td>
+                  <td class="text-medium-emphasis" width="180">Type</td>
                   <td>
                     <v-chip size="small" color="success">{{ formatResolutionType(dispute.resolution.resolution_type) }}</v-chip>
                   </td>
                 </tr>
                 <tr v-if="dispute.resolution.new_participant1_score != null">
-                  <td class="text-grey">New Score</td>
+                  <td class="text-medium-emphasis">New Score</td>
                   <td>{{ dispute.resolution.new_participant1_score }} - {{ dispute.resolution.new_participant2_score }}</td>
                 </tr>
                 <tr v-if="dispute.resolution.new_winner_registration_id">
-                  <td class="text-grey">New Winner</td>
+                  <td class="text-medium-emphasis">New Winner</td>
                   <td><code>{{ dispute.resolution.new_winner_registration_id }}</code></td>
                 </tr>
                 <tr>
-                  <td class="text-grey">Notes</td>
+                  <td class="text-medium-emphasis">Notes</td>
                   <td>{{ dispute.resolution.notes }}</td>
                 </tr>
                 <tr v-if="dispute.resolved_by_user_id">
-                  <td class="text-grey">Resolved By</td>
+                  <td class="text-medium-emphasis">Resolved By</td>
                   <td><code>{{ dispute.resolved_by_user_id }}</code></td>
                 </tr>
                 <tr v-if="dispute.resolved_at">
-                  <td class="text-grey">Resolved At</td>
+                  <td class="text-medium-emphasis">Resolved At</td>
                   <td>{{ formatDateTime(dispute.resolved_at) }}</td>
                 </tr>
               </tbody>
@@ -132,11 +133,11 @@
         <div class="mb-4">
           <div class="text-subtitle-1 mb-2">Message Thread ({{ messages.length }})</div>
 
-          <div v-if="messages.length === 0" class="text-center pa-4 text-grey">
+          <div v-if="messages.length === 0" class="text-center pa-4 text-medium-emphasis">
             No messages yet
           </div>
 
-          <div v-else class="d-flex flex-column gap-2">
+          <div v-else class="d-flex flex-column ga-2">
             <v-card
               v-for="msg in messages"
               :key="msg.id"
@@ -145,7 +146,7 @@
               density="compact"
             >
               <v-card-text class="pa-3">
-                <div class="d-flex align-center gap-2 mb-1">
+                <div class="d-flex align-center ga-2 mb-1">
                   <v-chip size="x-small" :color="msg.author_type === 'admin' ? 'primary' : 'grey'">
                     {{ msg.author_type }}
                   </v-chip>
@@ -153,7 +154,7 @@
                     Internal
                   </v-chip>
                   <v-spacer />
-                  <span class="text-caption text-grey">{{ formatDateTime(msg.created_at) }}</span>
+                  <span class="text-caption text-medium-emphasis">{{ formatDateTime(msg.created_at) }}</span>
                 </div>
                 <div class="text-body-2" style="white-space: pre-wrap">{{ msg.message }}</div>
               </v-card-text>
@@ -167,6 +168,7 @@
             <div class="text-subtitle-2 mb-2">Add Message</div>
             <v-textarea
               v-model="newMessage"
+              aria-label="Add message"
               variant="outlined"
               density="compact"
               rows="3"
@@ -368,17 +370,21 @@
     <v-card v-else-if="store.fetchDisputeState.loading">
       <v-card-text class="text-center pa-8">
         <v-progress-circular indeterminate color="primary" />
-        <p class="mt-4 text-grey">Loading dispute...</p>
+        <p class="mt-4 text-medium-emphasis">Loading dispute...</p>
       </v-card-text>
     </v-card>
   </v-dialog>
 </template>
 
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import { ref, watch, computed } from 'vue'
 import { useDisputesStore, getDisputeStatusColor, getDisputeStatusLabel, getDisputePriorityColor, getDisputePriorityLabel } from '@/stores/disputes'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatDateTime } from '@/utils/formatters'
+
+// Long scrolling forms in a small floating dialog are unusable on phones.
+const { smAndDown } = useDisplay()
 
 const props = defineProps<{  disputeId: string | null
 }>()

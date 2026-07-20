@@ -5,7 +5,7 @@
         <v-icon start>mdi-map-marker-multiple</v-icon>
         Map Veto
       </div>
-      <div v-if="hasSession" class="d-flex align-center gap-2">
+      <div v-if="hasSession" class="d-flex align-center ga-2">
         <v-chip v-if="timeRemaining !== null && timeRemaining > 0" :color="timeRemaining <= 10 ? 'error' : 'warning'" size="small">
           <v-icon start size="small">mdi-timer-outline</v-icon>
           {{ timeRemaining }}s
@@ -22,7 +22,7 @@
       <!-- Loading state -->
       <div v-if="loading" class="text-center pa-4">
         <v-progress-circular indeterminate size="32" />
-        <p class="text-caption text-grey mt-2">Loading veto session...</p>
+        <p class="text-caption text-medium-emphasis mt-2">Loading veto session...</p>
       </div>
 
       <!-- No session yet -->
@@ -46,7 +46,10 @@
           <strong>Your turn!</strong> {{ turnActionLabel }}
         </template>
         <template v-else>
-          Waiting for opponent to {{ turnActionLabel.toLowerCase() }}...
+          <!-- Named team: correct for spectators too, and tells participants
+               exactly who is on the clock. -->
+          Waiting for <strong>{{ currentTurnName ?? 'opponent' }}</strong> to
+          {{ turnActionLabel.toLowerCase() }}...
         </template>
       </v-alert>
 
@@ -78,6 +81,7 @@
         :match-id="matchId"
         :actions-needing-side="mapsNeedingSideSelect"
         :user-registration-id="userRegistrationId"
+        :maps="maps"
       />
 
       <!-- Action Timeline -->
@@ -137,6 +141,15 @@ const {
 } = injectMatchLobby()
 
 const sideSelectionMode = computed(() => session.value?.side_selection_mode ?? 'knife')
+
+/** Name of the team currently on the clock (null when unknown). */
+const currentTurnName = computed(() => {
+  const turnReg = session.value?.current_team_turn
+  if (!turnReg) return null
+  if (turnReg === props.participant1RegistrationId) return props.participant1Name
+  if (turnReg === props.participant2RegistrationId) return props.participant2Name
+  return null
+})
 
 const phaseColor = computed(() => {
   const colors: Record<VetoPhase, string> = {

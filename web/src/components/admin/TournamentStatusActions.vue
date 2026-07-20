@@ -1,5 +1,5 @@
 <template>
-  <div class="d-flex gap-2">
+  <div class="d-flex ga-2">
     <v-btn variant="tonal" prepend-icon="mdi-open-in-new" @click="$emit('view-public')">
       View Public
     </v-btn>

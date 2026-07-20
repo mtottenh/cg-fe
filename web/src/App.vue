@@ -35,7 +35,7 @@ const snackbar = createSnackbar()
 provide(SnackbarKey, snackbar)
 
 const ready = computed(() => authStore.initialized)
-const isAuthenticated = computed(() => authStore.isAuthenticated || authStore.isDevMode)
+const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 const layoutComponent = computed(() => {
   // Admin routes supply their own layout via the `/admin` parent route

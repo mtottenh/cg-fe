@@ -71,6 +71,7 @@ const props = withDefaults(defineProps<{
   defaultPoolIds?: string[]
   label?: string
 }>(), {
+  defaultPoolIds: undefined,
   label: 'Map Pool',
 })
 

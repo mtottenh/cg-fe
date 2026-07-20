@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-btn variant="text" @click="goBack" class="mb-4">
       <v-icon start>mdi-arrow-left</v-icon>
       Back
@@ -18,14 +18,14 @@
             <v-card-item>
               <template v-slot:prepend>
                 <v-avatar color="primary" size="64" rounded="lg">
-                  <v-img v-if="team.logo_url" :src="team.logo_url" />
+                  <v-img alt="" v-if="team.logo_url" :src="team.logo_url" />
                   <span v-else class="text-h5">{{ team.tag.substring(0, 2) }}</span>
                 </v-avatar>
               </template>
               <v-card-title class="text-h4">{{ team.name }}</v-card-title>
               <v-card-subtitle class="team-tag text-h6">[{{ team.tag }}]</v-card-subtitle>
               <template v-slot:append>
-                <div class="d-flex gap-2">
+                <div class="d-flex ga-2">
                   <v-btn
                     v-if="isCaptain"
                     color="primary"
@@ -61,7 +61,7 @@
             </v-card-text>
             <v-divider />
             <v-card-text>
-              <div class="d-flex align-center gap-4 text-caption text-medium-emphasis">
+              <div class="d-flex align-center ga-4 text-caption text-medium-emphasis">
                 <span>
                   <v-icon size="small" class="mr-1">mdi-calendar</v-icon>
                   Created {{ formatDate(team.created_at) }}
@@ -90,10 +90,17 @@
               >
                 <template v-slot:prepend>
                   <v-avatar color="grey" size="36">
-                    <span>??</span>
+                    <v-img
+                      v-if="invitation.player_avatar_url"
+                      :src="invitation.player_avatar_url"
+                      :alt="invitation.player_display_name ?? 'Invited player'"
+                    />
+                    <v-icon v-else>mdi-account</v-icon>
                   </v-avatar>
                 </template>
-                <v-list-item-title>{{ invitation.player_id }}</v-list-item-title>
+                <v-list-item-title>
+                  {{ invitation.player_display_name || 'Unknown player' }}
+                </v-list-item-title>
                 <v-list-item-subtitle>
                   <v-chip size="x-small" :color="getRoleColor(invitation.role)">
                     {{ invitation.role }}
@@ -103,7 +110,7 @@
                   </span>
                 </v-list-item-subtitle>
                 <template v-slot:append>
-                  <v-btn
+                  <v-btn aria-label="Cancel invitation"
                     icon
                     variant="text"
                     color="error"
@@ -141,7 +148,7 @@
               >
                 <template v-slot:prepend>
                   <v-avatar color="secondary" size="36" class="cursor-pointer" @click="goToPlayer(member.player_id)">
-                    <v-img v-if="member.avatar_url" :src="member.avatar_url" />
+                    <v-img alt="" v-if="member.avatar_url" :src="member.avatar_url" />
                     <span v-else>{{ member.display_name.substring(0, 2).toUpperCase() }}</span>
                   </v-avatar>
                 </template>
@@ -156,7 +163,7 @@
                 <template v-slot:append v-if="isCaptain && !isCurrentUser(member.player_id)">
                   <v-menu>
                     <template v-slot:activator="{ props }">
-                      <v-btn icon variant="text" size="small" v-bind="props">
+                      <v-btn aria-label="Member actions" icon variant="text" size="small" v-bind="props">
                         <v-icon>mdi-dots-vertical</v-icon>
                       </v-btn>
                     </template>
@@ -187,8 +194,8 @@
               </v-list-item>
             </v-list>
             <v-card-text v-else-if="!loadingMembers && !teamSeasonId" class="text-center text-medium-emphasis">
-              <p class="mb-2">No season context available</p>
-              <p class="text-caption">Navigate from a league to view roster</p>
+              <p class="mb-2">This team is not registered in any season yet</p>
+              <p class="text-caption">The roster appears once the team joins a league season.</p>
             </v-card-text>
             <v-card-text v-else-if="!loadingMembers" class="text-center text-medium-emphasis">
               No members in this roster
@@ -226,18 +233,7 @@
     </v-dialog>
 
     <!-- Confirm Dialog -->
-    <ConfirmDialog
-      :open="confirmDialog.state.open"
-      :title="confirmDialog.state.title"
-      :message="confirmDialog.state.message"
-      :action-label="confirmDialog.state.actionLabel"
-      :color="confirmDialog.state.color"
-      :loading="confirmDialog.state.loading"
-      :error="confirmDialog.state.dialogError"
-      @clear-error="confirmDialog.clearError()"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
-    />
+    <ConfirmDialogHost :dialog="confirmDialog" />
 
     <!-- Success Snackbar -->
     <v-snackbar v-model="showSuccess" color="success" :timeout="3000">
@@ -251,10 +247,12 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useLeagueTeamsStore, type LeagueTeamMemberWithPlayer } from '@/stores/leagueTeams'
+import { useLeagueSeasonsStore } from '@/stores/leagueSeasons'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamContext } from '@/composables/useTeamContext'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import { teamRoleMap, teamStatusMap, getStatusColor as mapStatusColor } from '@/utils/statusMaps'
 import type { components } from '@/api/types'
 
 type LeagueTeamResponse = components['schemas']['LeagueTeamResponse']
@@ -300,6 +298,27 @@ const canApplyToTeam = computed(() => {
   return true
 })
 
+/**
+ * Resolve this team's team_season_id from its league when the URL carries no
+ * ?season= and the viewer is not a member — makes bare /teams/{id} deep
+ * links work. Checks the most recent seasons first (max 3 requests).
+ */
+async function resolveSeasonFromLeague(leagueId: string): Promise<string | null> {
+  const seasonsStore = useLeagueSeasonsStore()
+  const seasons = await seasonsStore.fetchSeasons(leagueId).catch(() => [])
+  const ranked = [...seasons].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  )
+  // Active seasons are the most likely home for the roster being looked at.
+  ranked.sort((a, b) => Number(b.status === 'in_progress') - Number(a.status === 'in_progress'))
+  for (const season of ranked.slice(0, 3)) {
+    const seasonTeams = await teamsStore.fetchTeamsInSeason(season.id).catch(() => [])
+    const entry = seasonTeams.find((t) => t.team_id === teamId.value)
+    if (entry?.team_season_id) return entry.team_season_id
+  }
+  return null
+}
+
 onMounted(async () => {
   try {
     // Fetch team details
@@ -315,6 +334,12 @@ onMounted(async () => {
           teamSeasonId.value = myMembership.team_season_id
         }
       }
+    }
+
+    // Deep link without ?season= and not a member: resolve the team's
+    // season from its league so /teams/{id} works standalone.
+    if (!teamSeasonId.value && team.value) {
+      teamSeasonId.value = await resolveSeasonFromLeague(team.value.league_id)
     }
 
     // Fetch members if we have a team_season_id
@@ -362,7 +387,7 @@ async function handlePromoteToCaptain(playerId: string) {
     showSuccess.value = true
     // Refresh members to update roles
     await teamsStore.fetchMembers(teamSeasonId.value)
-  } catch (e) {
+  } catch {
     error.value = teamsStore.error || 'Failed to promote member'
   }
 }
@@ -402,7 +427,7 @@ async function handleCancelInvitation(invitationId: string) {
     await teamsStore.cancelInvitation(invitationId)
     successMessage.value = 'Invitation cancelled'
     showSuccess.value = true
-  } catch (e) {
+  } catch {
     error.value = teamsStore.error || 'Failed to cancel invitation'
   } finally {
     cancellingInvitation.value = null
@@ -426,7 +451,7 @@ async function handleApplyToTeam() {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -444,26 +469,8 @@ function formatRelativeTime(dateStr: string): string {
   return `${diffDays} days ago`
 }
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'active': return 'success'
-    case 'inactive': return 'grey'
-    case 'disbanded': return 'error'
-    default: return 'grey'
-  }
-}
-
-function getRoleColor(role: string): string {
-  const colors: Record<string, string> = {
-    captain: 'primary',
-    officer: 'secondary',
-    player: 'info',
-    substitute: 'warning',
-    coach: 'success',
-    manager: 'accent',
-  }
-  return colors[role] || 'grey'
-}
+const getStatusColor = (status: string) => mapStatusColor(teamStatusMap, status)
+const getRoleColor = (role: string) => mapStatusColor(teamRoleMap, role)
 </script>
 
 <style scoped>

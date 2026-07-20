@@ -228,7 +228,7 @@ router.beforeEach(async (to, _from, next) => {
     await authStore.initialize()
   }
 
-  const isAuthenticated = authStore.isAuthenticated || authStore.isDevMode
+  const isAuthenticated = authStore.isAuthenticated
 
   // Redirect authenticated users away from guest-only pages (login, register)
   if (to.meta.guest && isAuthenticated) {

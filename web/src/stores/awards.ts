@@ -99,6 +99,9 @@ export const useAwardsStore = defineStore('awards', () => {
             params: { path: { season_id: scopeId } },
           }))
       awards.value = result.data
+      // New scope, new award set — drop standings fetched for the old scope
+      // so "for the currently viewed scope" (above) is enforced, not assumed.
+      standings.value = {}
       return awards.value
     }, 'Failed to fetch awards')
   }

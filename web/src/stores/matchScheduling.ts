@@ -58,12 +58,14 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
     tournamentId: string,
     matchId: string,
     proposedTimes: string[],
+    notes?: string,
   ): Promise<ScheduleProposalResponse> {
     return withActionState(proposeScheduleState, async () => {
       const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/propose', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
         body: {
           proposed_times: proposedTimes,
+          ...(notes ? { notes } : {}),
         },
       }))
       activeProposal.value = result.data
@@ -89,12 +91,13 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
   async function rejectProposal(
     tournamentId: string,
     matchId: string,
-    request: RejectScheduleProposalRequest
+    request: RejectScheduleProposalRequest,
+    reason?: string,
   ): Promise<ScheduleProposalResponse> {
     return withActionState(rejectProposalState, async () => {
       const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/reject', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
-        body: request,
+        body: { ...request, ...(reason ? { reason } : {}) },
       }))
       // Clear active proposal after rejection
       activeProposal.value = null
@@ -107,6 +110,7 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
     matchId: string,
     originalProposalId: string,
     proposedTimes: string[],
+    notes?: string,
   ): Promise<ScheduleProposalResponse> {
     return withActionState(counterProposeState, async () => {
       const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/counter', {
@@ -114,6 +118,7 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
         body: {
           original_proposal_id: originalProposalId,
           proposed_times: proposedTimes,
+          ...(notes ? { notes } : {}),
         },
       }))
       activeProposal.value = result.data

@@ -24,7 +24,7 @@
             <div class="step-title" :class="{ 'font-weight-bold': isStepCurrent(step) }">
               {{ step.label }}
             </div>
-            <div v-if="getStepTimestamp(step)" class="text-caption text-grey">
+            <div v-if="getStepTimestamp(step)" class="text-caption text-medium-emphasis">
               {{ formatDateTime(getStepTimestamp(step)!) }}
             </div>
           </div>

@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <div class="d-flex justify-space-between align-center mb-6">
       <h1 class="text-h3">Players</h1>
       <v-chip color="info" variant="tonal" size="small">
@@ -72,7 +72,7 @@
 
         <!-- Active Filters Display -->
         <div v-if="hasActiveFilters" class="mt-3 d-flex align-center flex-wrap ga-2">
-          <span class="text-caption text-grey mr-2">Active filters:</span>
+          <span class="text-caption text-medium-emphasis mr-2">Active filters:</span>
           <v-chip
             v-if="search"
             size="small"
@@ -117,117 +117,114 @@
       </v-card-text>
     </v-card>
 
-    <!-- Loading State (initial load only) -->
-    <v-card v-if="playersStore.fetchPlayersState.loading && playersStore.players.length === 0" class="pa-8 text-center">
-      <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading players...</p>
-    </v-card>
+    <ErrorAlert
+      :error="playersStore.fetchPlayersState.error"
+      retryable
+      @clear="playersStore.fetchPlayersState.error = null"
+      @retry="fetchPlayers"
+    />
 
-    <!-- Players Table -->
-    <v-card v-else>
-      <v-overlay
-        :model-value="playersStore.fetchPlayersState.loading && playersStore.players.length > 0"
-        contained
-        class="align-center justify-center"
-        scrim="rgba(0,0,0,0.3)"
-      >
-        <v-progress-circular indeterminate color="primary" />
-      </v-overlay>
+    <RefetchOverlay
+      :loading="playersStore.fetchPlayersState.loading"
+      :has-content="playersStore.players.length > 0"
+      message="Loading players..."
+    >
+      <v-card>
+      <div class="table-scroll">
+        <v-data-table
+          :headers="headers"
+          :items="playersStore.players"
+          :items-per-page="playersStore.pagination.per_page"
+          class="elevation-0"
+        >
+          <template v-slot:item.avatar_url="{ item }">
+            <v-avatar size="36" color="secondary">
+              <v-img alt="" v-if="item.avatar_url" :src="item.avatar_url" />
+              <span v-else class="text-body-2">{{ item.display_name.substring(0, 2).toUpperCase() }}</span>
+            </v-avatar>
+          </template>
 
-      <v-data-table
-        :headers="headers"
-        :items="playersStore.players"
-        :items-per-page="playersStore.pagination.per_page"
-        class="elevation-0"
-      >
-        <template v-slot:item.avatar_url="{ item }">
-          <v-avatar size="36" color="secondary">
-            <v-img v-if="item.avatar_url" :src="item.avatar_url" />
-            <span v-else class="text-body-2">{{ item.display_name.substring(0, 2).toUpperCase() }}</span>
-          </v-avatar>
-        </template>
+          <template v-slot:item.display_name="{ item }">
+            <router-link :to="`/players/${item.id}`" class="text-decoration-none font-weight-medium">
+              {{ item.display_name }}
+            </router-link>
+          </template>
 
-        <template v-slot:item.display_name="{ item }">
-          <router-link :to="`/players/${item.id}`" class="text-decoration-none font-weight-medium">
-            {{ item.display_name }}
-          </router-link>
-        </template>
+          <template v-slot:item.country_code="{ item }">
+            <span v-if="item.country_code" class="text-uppercase font-weight-medium">
+              {{ item.country_code }}
+            </span>
+            <span v-else class="text-medium-emphasis">&mdash;</span>
+          </template>
 
-        <template v-slot:item.country_code="{ item }">
-          <span v-if="item.country_code" class="text-uppercase font-weight-medium">
-            {{ item.country_code }}
-          </span>
-          <span v-else class="text-grey">&mdash;</span>
-        </template>
+          <template v-slot:item.looking_for_team="{ item }">
+            <v-chip v-if="item.looking_for_team" size="small" color="success" variant="tonal">
+              LFT
+            </v-chip>
+          </template>
 
-        <template v-slot:item.looking_for_team="{ item }">
-          <v-chip v-if="item.looking_for_team" size="small" color="success" variant="tonal">
-            LFT
-          </v-chip>
-        </template>
-
-        <template v-slot:item.elo_current="{ item }">
-          <span
-            v-if="getDisplayStat(item, 'elo_current')"
-            :style="getDisplayStatColor(item, 'elo_current') ? { color: getDisplayStatColor(item, 'elo_current') } : {}"
-            class="font-weight-bold"
-          >
-            {{ getDisplayStat(item, 'elo_current') }}
-          </span>
-          <span v-else class="text-grey">&mdash;</span>
-        </template>
-
-        <template v-slot:item.elo_peak="{ item }">
-          <span v-if="getDisplayStat(item, 'elo_peak')" class="font-weight-bold">
-            {{ getDisplayStat(item, 'elo_peak') }}
-          </span>
-          <span v-else class="text-grey">&mdash;</span>
-        </template>
-
-        <template v-slot:item.win_rate="{ item }">
-          <span v-if="getDisplayStat(item, 'win_rate')">
-            {{ getDisplayStat(item, 'win_rate') }}
-          </span>
-          <span v-else class="text-grey">&mdash;</span>
-        </template>
-
-        <template v-slot:no-data>
-          <div class="text-center pa-8">
-            <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-search-outline</v-icon>
-            <p class="text-grey">
-              {{ hasActiveFilters ? 'No players found matching your filters' : 'No players found' }}
-            </p>
-            <v-btn
-              v-if="hasActiveFilters"
-              variant="text"
-              color="primary"
-              class="mt-2"
-              @click="clearAllFilters"
+          <template v-slot:item.elo_current="{ item }">
+            <span
+              v-if="getDisplayStat(item, 'elo_current')"
+              :style="getDisplayStatColor(item, 'elo_current') ? { color: getDisplayStatColor(item, 'elo_current') } : {}"
+              class="font-weight-bold"
             >
-              Clear filters
-            </v-btn>
-          </div>
-        </template>
+              {{ getDisplayStat(item, 'elo_current') }}
+            </span>
+            <span v-else class="text-medium-emphasis">&mdash;</span>
+          </template>
 
-        <template v-slot:bottom>
-          <div class="d-flex justify-center pa-4">
-            <v-pagination
-              v-model="currentPage"
-              :length="playersStore.pagination.total_pages"
-              :total-visible="7"
-              @update:model-value="goToPage"
-            />
-          </div>
-          <div class="text-center text-caption text-grey pb-2">
-            Showing {{ playersStore.players.length }} of {{ playersStore.pagination.total_items }} players
-          </div>
-        </template>
-      </v-data-table>
-    </v-card>
+          <template v-slot:item.elo_peak="{ item }">
+            <span v-if="getDisplayStat(item, 'elo_peak')" class="font-weight-bold">
+              {{ getDisplayStat(item, 'elo_peak') }}
+            </span>
+            <span v-else class="text-medium-emphasis">&mdash;</span>
+          </template>
 
-    <v-alert v-if="playersStore.fetchPlayersState.error" type="error" class="mt-4" closable>
-      {{ playersStore.fetchPlayersState.error }}
-    </v-alert>
+          <template v-slot:item.win_rate="{ item }">
+            <span v-if="getDisplayStat(item, 'win_rate')">
+              {{ getDisplayStat(item, 'win_rate') }}
+            </span>
+            <span v-else class="text-medium-emphasis">&mdash;</span>
+          </template>
+
+          <template v-slot:no-data>
+            <EmptyState
+              icon="mdi-account-search-outline"
+              :title="hasActiveFilters ? 'No players found matching your filters' : 'No players found'"
+              variant="text"
+            >
+              <template #action>
+                <v-btn
+                  v-if="hasActiveFilters"
+                  variant="text"
+                  color="primary"
+                  class="mt-2"
+                  @click="clearAllFilters"
+                >
+                  Clear filters
+                </v-btn>
+              </template>
+            </EmptyState>
+          </template>
+
+          <template v-slot:bottom>
+            <div class="d-flex justify-center pa-4">
+              <v-pagination
+                v-model="currentPage"
+                :length="playersStore.pagination.total_pages"
+                :total-visible="7"
+                @update:model-value="goToPage"
+              />
+            </div>
+            <div class="text-center text-caption text-medium-emphasis pb-2">
+              Showing {{ playersStore.players.length }} of {{ playersStore.pagination.total_items }} players
+            </div>
+          </template>
+        </v-data-table>
+      </div>
+      </v-card>
+    </RefetchOverlay>
   </v-container>
 </template>
 
@@ -236,6 +233,9 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { watchDebounced } from '@vueuse/core'
 import { usePlayersStore, type PlayerSearchResult } from '@/stores/players'
 import { useGamesStore } from '@/stores/games'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import RefetchOverlay from '@/components/RefetchOverlay.vue'
 
 const playersStore = usePlayersStore()
 const gamesStore = useGamesStore()
@@ -324,3 +324,10 @@ onMounted(() => {
   fetchPlayers()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

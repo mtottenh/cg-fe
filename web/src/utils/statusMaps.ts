@@ -30,8 +30,9 @@ export const registrationStatusMap: StatusMap = {
   active: { color: 'primary', label: 'Active' },
   eliminated: { color: 'grey', label: 'Eliminated' },
   disqualified: { color: 'error', label: 'Disqualified' },
-  withdrawn: { color: 'grey-darken-1', label: 'Withdrawn' },
+  withdrawn: { color: 'grey', label: 'Withdrawn' },
   no_show: { color: 'grey', label: 'No Show' },
+  rejected: { color: 'error', label: 'Rejected' },
 }
 
 export const resultClaimStatusMap: StatusMap = {
@@ -39,7 +40,7 @@ export const resultClaimStatusMap: StatusMap = {
   confirmed: { color: 'success', label: 'Confirmed' },
   disputed: { color: 'error', label: 'Disputed' },
   expired: { color: 'grey', label: 'Expired' },
-  superseded: { color: 'grey-darken-1', label: 'Superseded' },
+  superseded: { color: 'grey', label: 'Superseded' },
 }
 
 export const proposalStatusMap: StatusMap = {
@@ -63,7 +64,7 @@ export const demoCategoryMap: StatusMap = {
   pug: { color: 'blue', label: 'PUG', icon: 'mdi-account-group' },
   league: { color: 'purple', label: 'League', icon: 'mdi-trophy' },
   scrim: { color: 'teal', label: 'Scrim', icon: 'mdi-sword-cross' },
-  ignored: { color: 'grey-darken-1', label: 'Ignored', icon: 'mdi-eye-off' },
+  ignored: { color: 'grey', label: 'Ignored', icon: 'mdi-eye-off' },
 }
 
 export const disputeStatusMap: StatusMap = {
@@ -81,10 +82,85 @@ export const disputePriorityMap: StatusMap = {
   critical: { color: 'error', label: 'Critical' },
 }
 
+export const teamRoleMap: StatusMap = {
+  captain: { color: 'primary', label: 'Captain' },
+  founder: { color: 'purple', label: 'Founder' },
+  officer: { color: 'secondary', label: 'Officer' },
+  coach: { color: 'success', label: 'Coach' },
+  manager: { color: 'secondary', label: 'Manager' },
+  player: { color: 'info', label: 'Player' },
+  substitute: { color: 'warning', label: 'Substitute' },
+}
+
+export const leagueRoleMap: StatusMap = {
+  owner: { color: 'purple', label: 'Owner' },
+  admin: { color: 'primary', label: 'Admin' },
+  moderator: { color: 'info', label: 'Moderator' },
+  member: { color: 'grey', label: 'Member' },
+}
+
+export const teamStatusMap: StatusMap = {
+  active: { color: 'success', label: 'Active' },
+  inactive: { color: 'grey', label: 'Inactive' },
+  pending: { color: 'warning', label: 'Pending' },
+  disbanded: { color: 'error', label: 'Disbanded' },
+  left: { color: 'error', label: 'Left' },
+  suspended: { color: 'error', label: 'Suspended' },
+}
+
+export const teamInvitationStatusMap: StatusMap = {
+  pending: { color: 'warning', label: 'Pending' },
+  accepted: { color: 'success', label: 'Accepted' },
+  declined: { color: 'error', label: 'Declined' },
+  cancelled: { color: 'grey', label: 'Cancelled' },
+  expired: { color: 'grey', label: 'Expired' },
+}
+
+export const seasonStatusMap: StatusMap = {
+  draft: { color: 'grey', label: 'Draft' },
+  registration_open: { color: 'info', label: 'Registration Open' },
+  registration_closed: { color: 'warning', label: 'Registration Closed' },
+  in_progress: { color: 'primary', label: 'In Progress' },
+  completed: { color: 'success', label: 'Completed' },
+  cancelled: { color: 'error', label: 'Cancelled' },
+}
+
+export const banTypeMap: StatusMap = {
+  platform: { color: 'error', label: 'Platform', icon: 'mdi-block-helper' },
+  matchmaking: { color: 'warning', label: 'Matchmaking', icon: 'mdi-controller-off' },
+  chat: { color: 'info', label: 'Chat', icon: 'mdi-message-off' },
+  league: { color: 'purple', label: 'League', icon: 'mdi-trophy-broken' },
+  tournament: { color: 'orange', label: 'Tournament', icon: 'mdi-tournament' },
+}
+
+export const banStatusMap: StatusMap = {
+  active: { color: 'error', label: 'Active' },
+  lifted: { color: 'success', label: 'Lifted' },
+  expired: { color: 'grey', label: 'Expired' },
+}
+
+export const permissionCategoryMap: StatusMap = {
+  platform: { color: 'purple', label: 'Platform' },
+  team: { color: 'blue', label: 'Team' },
+  league: { color: 'green', label: 'League' },
+  tournament: { color: 'orange', label: 'Tournament' },
+  admin: { color: 'error', label: 'Admin' },
+}
+
+export const leagueAccessTypeMap: StatusMap = {
+  open: { color: 'success', label: 'Open', icon: 'mdi-lock-open-variant' },
+  application: { color: 'warning', label: 'Application', icon: 'mdi-file-document-edit' },
+  invite_only: { color: 'grey', label: 'Invite Only', icon: 'mdi-lock' },
+}
+
 export const resultReviewStatusMap: StatusMap = {
   pending: { color: 'warning', label: 'Pending', icon: 'mdi-clock-alert' },
   approved: { color: 'success', label: 'Approved', icon: 'mdi-check' },
   rejected: { color: 'error', label: 'Rejected', icon: 'mdi-close' },
+}
+
+export function formatRole(role: string): string {
+  return role.charAt(0).toUpperCase() + role.slice(1)
 }
 
 export function getStatusColor(map: StatusMap, status: string): string {

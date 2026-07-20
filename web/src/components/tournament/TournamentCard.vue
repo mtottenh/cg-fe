@@ -8,7 +8,7 @@
   >
     <!-- Banner/Logo -->
     <div class="tournament-banner">
-      <v-img
+      <v-img :alt="`${tournament.name} logo`"
         v-if="tournament.logo_url"
         :src="tournament.logo_url"
         height="120"
@@ -34,10 +34,10 @@
       <!-- Game Badge -->
       <div class="d-flex align-center mb-2">
         <v-avatar size="20" rounded="sm" class="mr-2">
-          <v-img v-if="game?.icon_url" :src="game.icon_url" />
+          <v-img alt="" v-if="game?.icon_url" :src="game.icon_url" />
           <v-icon v-else size="14">mdi-gamepad-variant</v-icon>
         </v-avatar>
-        <span class="text-caption text-grey">{{ game?.display_name || 'Unknown Game' }}</span>
+        <span class="text-caption text-medium-emphasis">{{ game?.display_name || 'Unknown Game' }}</span>
       </div>
 
       <!-- Tournament Name -->
@@ -46,7 +46,7 @@
       </h3>
 
       <!-- Info Row -->
-      <div class="d-flex flex-wrap gap-2 mb-2">
+      <div class="d-flex flex-wrap ga-2 mb-2">
         <v-chip size="x-small" variant="tonal">
           {{ formatLabel }}
         </v-chip>
@@ -60,11 +60,11 @@
       </div>
 
       <!-- Start Date -->
-      <div v-if="tournament.starts_at" class="d-flex align-center text-caption text-grey">
+      <div v-if="tournament.starts_at" class="d-flex align-center text-caption text-medium-emphasis">
         <v-icon size="14" class="mr-1">mdi-calendar</v-icon>
         {{ formatStartDate }}
       </div>
-      <div v-else class="text-caption text-grey">
+      <div v-else class="text-caption text-medium-emphasis">
         Start date TBD
       </div>
     </v-card-text>

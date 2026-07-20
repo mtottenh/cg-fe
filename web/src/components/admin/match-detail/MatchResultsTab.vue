@@ -8,7 +8,7 @@
           <v-table density="compact">
             <tbody>
               <tr>
-                <td class="text-grey" width="180">Status</td>
+                <td class="text-medium-emphasis" width="180">Status</td>
                 <td>
                   <v-chip :color="getResultStatusColor(currentResult.status)" size="small">
                     {{ getResultStatusLabel(currentResult.status) }}
@@ -16,23 +16,23 @@
                 </td>
               </tr>
               <tr>
-                <td class="text-grey">Score</td>
+                <td class="text-medium-emphasis">Score</td>
                 <td>{{ currentResult.claimed_participant1_score }} - {{ currentResult.claimed_participant2_score }}</td>
               </tr>
               <tr>
-                <td class="text-grey">Submitted By</td>
+                <td class="text-medium-emphasis">Submitted By</td>
                 <td><code>{{ currentResult.submitted_by_user_id }}</code></td>
               </tr>
               <tr v-if="currentResult.submitter_notes">
-                <td class="text-grey">Notes</td>
+                <td class="text-medium-emphasis">Notes</td>
                 <td>{{ currentResult.submitter_notes }}</td>
               </tr>
               <tr v-if="currentResult.auto_confirm_at">
-                <td class="text-grey">Auto-confirm</td>
+                <td class="text-medium-emphasis">Auto-confirm</td>
                 <td>{{ formatDateTime(currentResult.auto_confirm_at) }}</td>
               </tr>
               <tr>
-                <td class="text-grey">Created</td>
+                <td class="text-medium-emphasis">Created</td>
                 <td>{{ formatDateTime(currentResult.created_at) }}</td>
               </tr>
             </tbody>
@@ -64,7 +64,7 @@
           <!-- Evidence & Demo IDs -->
           <div v-if="currentResult.evidence_ids.length > 0 || currentResult.demo_link_ids.length > 0" class="mt-3">
             <div class="text-subtitle-2 mb-1">Attached Evidence</div>
-            <div class="d-flex flex-wrap gap-1">
+            <div class="d-flex flex-wrap ga-1">
               <v-chip v-for="eid in currentResult.evidence_ids" :key="eid" size="small" prepend-icon="mdi-file">
                 {{ eid.slice(0, 8) }}...
               </v-chip>
@@ -77,7 +77,7 @@
       </v-card>
     </div>
 
-    <div v-else-if="!matchResultsStore.fetchCurrentResultState.loading" class="text-center pa-4 text-grey">
+    <div v-else-if="!matchResultsStore.fetchCurrentResultState.loading" class="text-center pa-4 text-medium-emphasis">
       No result claim for this match
     </div>
 
@@ -93,13 +93,13 @@
         >
           <v-card variant="tonal" density="compact">
             <v-card-text class="pa-3">
-              <div class="d-flex align-center gap-2 mb-1">
+              <div class="d-flex align-center ga-2 mb-1">
                 <v-chip :color="getResultStatusColor(claim.status)" size="x-small">{{ getResultStatusLabel(claim.status) }}</v-chip>
-                <span class="text-caption text-grey">{{ formatDateTime(claim.created_at) }}</span>
+                <span class="text-caption text-medium-emphasis">{{ formatDateTime(claim.created_at) }}</span>
               </div>
               <div class="text-body-2">
                 Score: {{ claim.claimed_participant1_score }} - {{ claim.claimed_participant2_score }}
-                <span v-if="claim.was_auto_confirmed" class="text-caption text-grey ml-2">(auto-confirmed)</span>
+                <span v-if="claim.was_auto_confirmed" class="text-caption text-medium-emphasis ml-2">(auto-confirmed)</span>
               </div>
             </v-card-text>
           </v-card>

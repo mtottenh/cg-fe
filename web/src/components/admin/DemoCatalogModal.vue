@@ -5,7 +5,7 @@
         <v-icon class="mr-2">mdi-plus-circle</v-icon>
         Catalog Demo
         <v-spacer />
-        <v-btn icon variant="text" size="small" @click="close">
+        <v-btn aria-label="Close" icon variant="text" size="small" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -83,7 +83,7 @@
             persistent-hint
             hint="Format: s3://bucket/key or bucket/key (one per line, max 500)"
           />
-          <div v-if="parsedBatchCount > 0" class="text-caption text-grey mt-1">
+          <div v-if="parsedBatchCount > 0" class="text-caption text-medium-emphasis mt-1">
             {{ parsedBatchCount }} entries parsed
           </div>
         </template>

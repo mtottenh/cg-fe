@@ -65,7 +65,11 @@ type UserRoleAssignment = components['schemas']['UserRoleAssignmentResponse']
 export const useAuthStore = defineStore('auth', () => {
   // Get token and player_id from localStorage, null if not present
   const token = ref<string | null>(localStorage.getItem('token'))
-  const refreshToken = ref<string | null>(localStorage.getItem('refresh_token'))
+  // In-memory only. The durable copy is the httpOnly cookie the backend sets;
+  // persisting it to localStorage would hand any XSS a long-lived session.
+  const refreshToken = ref<string | null>(null)
+  // Migration: purge the copy older builds persisted.
+  localStorage.removeItem('refresh_token')
   const playerId = ref<string | null>(localStorage.getItem('player_id'))
   const user = ref<User | null>(null)
   const player = ref<Player | null>(null)
@@ -79,15 +83,21 @@ export const useAuthStore = defineStore('auth', () => {
   // Initialization gate — true once initialize() has run
   const initialized = ref(false)
 
+  // Ticks every 30s so time-dependent computeds (token expiry) actually
+  // re-evaluate — a computed comparing against Date.now() alone caches until
+  // `token` changes, letting router guards trust an expired token.
+  const authClock = ref(Date.now())
+  setInterval(() => {
+    authClock.value = Date.now()
+  }, 30_000)
+
   // User is authenticated if they have a valid, non-expired token
   const isAuthenticated = computed(() => {
     const t = token.value
     if (!t || t.length === 0) return false
-    if (t === 'dev-token') return false
-
     const claims = decodeJwtPayload(t)
     if (claims?.exp) {
-      const now = Math.floor(Date.now() / 1000)
+      const now = Math.floor(authClock.value / 1000)
       if (claims.exp < now - 30) return false
     }
 
@@ -100,8 +110,6 @@ export const useAuthStore = defineStore('auth', () => {
     return roles.value.some(r => SYSTEM_ADMIN_ROLES.has(r.role.name))
   })
 
-  // Check if running in dev mode (dev-token set)
-  const isDevMode = computed(() => token.value === 'dev-token')
 
   // Per-action states
   const loginState = createActionState()
@@ -126,10 +134,10 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.setItem('token', data.access_token)
       setAuthToken(data.access_token)
 
-      // Store the refresh token
+      // Keep the refresh token in memory; the httpOnly cookie is the
+      // durable copy.
       if (data.refresh_token) {
         refreshToken.value = data.refresh_token
-        localStorage.setItem('refresh_token', data.refresh_token)
       }
 
       if (data.player_id) {
@@ -158,10 +166,10 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.setItem('token', data.access_token)
       setAuthToken(data.access_token)
 
-      // Store the refresh token
+      // Keep the refresh token in memory; the httpOnly cookie is the
+      // durable copy.
       if (data.refresh_token) {
         refreshToken.value = data.refresh_token
-        localStorage.setItem('refresh_token', data.refresh_token)
       }
 
       // Store user and player
@@ -193,7 +201,6 @@ export const useAuthStore = defineStore('auth', () => {
 
       if (newRefreshToken) {
         refreshToken.value = newRefreshToken
-        localStorage.setItem('refresh_token', newRefreshToken)
       }
 
       // Password login gets player_id from the response body; here it
@@ -235,16 +242,30 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Attempt to refresh the access token using the stored refresh token.
+   * Attempt to refresh the access token.
+   *
+   * Prefers the in-memory refresh token; when absent (page reload), the
+   * httpOnly refresh cookie set by the backend carries the session — the
+   * request goes with `credentials: 'include'` and an empty body, and the
+   * backend falls back to the cookie. The refresh token is deliberately
+   * never persisted to localStorage (XSS hardening).
+   *
    * Returns true if successful, false if the refresh token is invalid/expired.
    */
+  // True when the most recent refresh attempt was definitively rejected
+  // (401/403) — as opposed to failing transiently. Lets initialize() decide
+  // between logout and keep-and-retry without widening the boolean API the
+  // 401 middleware consumes.
+  const refreshRejected = ref(false)
+
   async function refreshAccessToken(): Promise<boolean> {
     const rt = refreshToken.value
-    if (!rt) return false
+    refreshRejected.value = false
 
     try {
       const result = await unwrapApi(api.POST('/v1/auth/refresh', {
-        body: { refresh_token: rt },
+        body: rt ? { refresh_token: rt } : {},
+        credentials: 'include',
       }))
 
       const data = result.data
@@ -254,20 +275,19 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.setItem('token', data.access_token)
       setAuthToken(data.access_token)
 
-      // Update refresh token (rotation)
+      // Update refresh token (rotation) — memory only
       if (data.refresh_token) {
         refreshToken.value = data.refresh_token
-        localStorage.setItem('refresh_token', data.refresh_token)
       }
 
       return true
     } catch (e) {
-      // Only a definitive rejection invalidates the stored refresh token.
-      // Network errors / 5xx keep it so the session survives transient
-      // failures (the next 401-triggered refresh can still succeed).
+      // Only a definitive rejection invalidates the refresh token. Network
+      // errors / 5xx keep it so the session survives transient failures
+      // (the next 401-triggered refresh can still succeed).
       if (isAuthRejection(e)) {
         refreshToken.value = null
-        localStorage.removeItem('refresh_token')
+        refreshRejected.value = true
       }
       return false
     }
@@ -283,31 +303,28 @@ export const useAuthStore = defineStore('auth', () => {
 
     if (token.value) {
       if (!isAuthenticated.value) {
-        // Token exists but is expired — try to refresh before logging out
-        if (refreshToken.value) {
-          const refreshed = await refreshAccessToken()
-          if (!refreshed) {
-            // refreshAccessToken only clears the stored refresh token on a
-            // definitive 401/403. If it's still present the failure was
-            // transient (network/5xx) — keep the session material so the
-            // next attempt can recover instead of forcing a re-login.
-            if (!refreshToken.value) {
-              logout()
-            }
-          } else {
-            // Refreshed successfully, verify + load roles. Only an auth
-            // rejection from fetchCurrentUser indicates a revoked/invalid
-            // session; a role fetch hiccup is non-fatal (isAdmin just
-            // starts false and reconverges).
-            try {
-              await fetchCurrentUser()
-              await fetchMyRoles().catch(() => { roles.value = [] })
-            } catch (e) {
-              if (isAuthRejection(e)) logout()
-            }
+        // Token exists but is expired — try to refresh before logging out.
+        // Even with no in-memory refresh token (fresh page load), the
+        // httpOnly refresh cookie can carry the session.
+        const refreshed = await refreshAccessToken()
+        if (!refreshed) {
+          // Definitive 401/403 → the session is dead. A transient failure
+          // (network/5xx) keeps the session material so the next attempt
+          // can recover instead of forcing a re-login.
+          if (refreshRejected.value) {
+            logout()
           }
         } else {
-          logout()
+          // Refreshed successfully, verify + load roles. Only an auth
+          // rejection from fetchCurrentUser indicates a revoked/invalid
+          // session; a role fetch hiccup is non-fatal (isAdmin just
+          // starts false and reconverges).
+          try {
+            await fetchCurrentUser()
+            await fetchMyRoles().catch(() => { roles.value = [] })
+          } catch (e) {
+            if (isAuthRejection(e)) logout()
+          }
         }
       } else {
         // Token looks valid, verify with server + load roles for isAdmin
@@ -333,9 +350,6 @@ export const useAuthStore = defineStore('auth', () => {
     setAuthToken(newToken)
   }
 
-  function enableDevMode() {
-    setToken('dev-token')
-  }
 
   function logout() {
     token.value = null
@@ -345,7 +359,6 @@ export const useAuthStore = defineStore('auth', () => {
     player.value = null
     roles.value = []
     localStorage.removeItem('token')
-    localStorage.removeItem('refresh_token')
     localStorage.removeItem('player_id')
     setAuthToken(null)
   }
@@ -362,7 +375,6 @@ export const useAuthStore = defineStore('auth', () => {
     initialized,
     isAuthenticated,
     isAdmin,
-    isDevMode,
     initialize,
     login,
     loginWithTokens,
@@ -371,7 +383,6 @@ export const useAuthStore = defineStore('auth', () => {
     fetchMyRoles,
     refreshAccessToken,
     setToken,
-    enableDevMode,
     logout,
     // Per-action states
     loginState,

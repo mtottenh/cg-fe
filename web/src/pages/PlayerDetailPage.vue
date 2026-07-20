@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-btn variant="text" to="/players" class="mb-4">
       <v-icon start>mdi-arrow-left</v-icon>
       Back to Players
@@ -41,9 +41,9 @@
                 Looking for Team
               </v-chip>
             </div>
-            <div class="d-flex align-center gap-2 mt-1">
+            <div class="d-flex align-center ga-2 mt-1">
               <span v-if="player.country_code" class="text-body-2 text-medium-emphasis">
-                {{ player.country_code }}
+                {{ countryName(player.country_code) }}
               </span>
               <span class="text-body-2 text-medium-emphasis">
                 Member since {{ formatDate(player.created_at) }}
@@ -85,7 +85,7 @@
               >
                 <template v-slot:prepend>
                   <v-avatar color="primary" size="36">
-                    <v-img v-if="membership.team_logo_url" :src="membership.team_logo_url" />
+                    <v-img alt="" v-if="membership.team_logo_url" :src="membership.team_logo_url" />
                     <span v-else>{{ (membership.team_tag || '??').substring(0, 2) }}</span>
                   </v-avatar>
                 </template>
@@ -198,6 +198,7 @@ import { storeToRefs } from 'pinia'
 import { usePlayersStore } from '@/stores/players'
 import { useAuthStore } from '@/stores/auth'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
+import { teamRoleMap, getStatusColor } from '@/utils/statusMaps'
 import PlayerGameStatsCard from '@/components/player/PlayerGameStatsCard.vue'
 import PublicMmStatsCard from '@/components/player/PublicMmStatsCard.vue'
 import TrophyCase from '@/components/player/TrophyCase.vue'
@@ -214,7 +215,7 @@ const { currentPlayer: player } = storeToRefs(playersStore)
 const { viewedPlayerTeams: playerLeagueTeams } = storeToRefs(leagueTeamsStore)
 const playerId = computed(() => route.params.id as string)
 
-const isLoggedIn = computed(() => authStore.isAuthenticated || authStore.isDevMode)
+const isLoggedIn = computed(() => authStore.isAuthenticated)
 const isOwnProfile = computed(() => {
   return authStore.playerId === playerId.value
 })
@@ -261,7 +262,7 @@ onMounted(async () => {
       playersStore.fetchPlayer(playerId.value),
       leagueTeamsStore.fetchPlayerLeagueTeams(playerId.value),
     ])
-  } catch (e) {
+  } catch {
     error.value = playersStore.error || 'Failed to load player'
   } finally {
     loading.value = false
@@ -279,7 +280,7 @@ async function openInviteDialog() {
   loadingMyTeams.value = true
   try {
     await leagueTeamsStore.fetchMyTeams()
-  } catch (e) {
+  } catch {
     inviteError.value = 'Failed to load your teams'
   } finally {
     loadingMyTeams.value = false
@@ -306,32 +307,31 @@ async function sendInvite() {
     successMessage.value = `Invitation sent to ${player.value?.display_name}!`
     showSuccess.value = true
     closeInviteDialog()
-  } catch (e) {
+  } catch {
     inviteError.value = 'Failed to send invitation'
   } finally {
     inviting.value = false
   }
 }
 
+const countryDisplay = new Intl.DisplayNames(undefined, { type: 'region' })
+function countryName(code: string): string {
+  try {
+    return countryDisplay.of(code.toUpperCase()) ?? code
+  } catch {
+    return code
+  }
+}
+
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   })
 }
 
-function getRoleColor(role: string): string {
-  const colors: Record<string, string> = {
-    captain: 'primary',
-    officer: 'secondary',
-    player: 'info',
-    substitute: 'warning',
-    coach: 'success',
-    manager: 'accent',
-  }
-  return colors[role] || 'grey'
-}
+const getRoleColor = (role: string) => getStatusColor(teamRoleMap, role)
 </script>
 
 <style scoped>

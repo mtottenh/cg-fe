@@ -8,7 +8,7 @@
     <v-card v-if="review">
       <v-card-title class="d-flex align-center justify-space-between">
         <span>Result Review</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -18,7 +18,7 @@
       <v-card-text class="pa-4">
         <!-- Status Banner -->
         <v-alert :type="review.status === 'pending' ? 'warning' : review.status === 'approved' ? 'success' : 'error'" variant="tonal" class="mb-4" density="compact">
-          <div class="d-flex align-center gap-2">
+          <div class="d-flex align-center ga-2">
             <v-chip :color="getReviewStatusColor(review.status)" size="small">
               {{ getReviewStatusLabel(review.status) }}
             </v-chip>
@@ -40,19 +40,19 @@
             <v-table density="compact">
               <tbody>
                 <tr>
-                  <td class="text-grey" width="180">Match ID</td>
+                  <td class="text-medium-emphasis" width="180">Match ID</td>
                   <td><code>{{ review.match_id }}</code></td>
                 </tr>
                 <tr>
-                  <td class="text-grey">Result Claim ID</td>
+                  <td class="text-medium-emphasis">Result Claim ID</td>
                   <td><code>{{ review.result_claim_id }}</code></td>
                 </tr>
                 <tr v-if="review.demo_link_id">
-                  <td class="text-grey">Demo Link</td>
+                  <td class="text-medium-emphasis">Demo Link</td>
                   <td><code>{{ review.demo_link_id }}</code></td>
                 </tr>
                 <tr>
-                  <td class="text-grey">Created</td>
+                  <td class="text-medium-emphasis">Created</td>
                   <td>{{ formatDateTime(review.created_at) }}</td>
                 </tr>
               </tbody>
@@ -66,11 +66,11 @@
           <v-card-text>
             <v-row>
               <v-col cols="6">
-                <div class="text-caption text-grey">Claimed Score</div>
+                <div class="text-caption text-medium-emphasis">Claimed Score</div>
                 <div class="text-h6">{{ review.validation_result.claimed_score.join(' - ') }}</div>
               </v-col>
               <v-col cols="6">
-                <div class="text-caption text-grey">Extracted Score</div>
+                <div class="text-caption text-medium-emphasis">Extracted Score</div>
                 <div class="text-h6">
                   {{ review.validation_result.extracted_score ? review.validation_result.extracted_score.join(' - ') : 'N/A' }}
                 </div>
@@ -79,19 +79,19 @@
 
             <v-row class="mt-2">
               <v-col cols="4">
-                <div class="text-caption text-grey">Confidence</div>
+                <div class="text-caption text-medium-emphasis">Confidence</div>
                 <v-chip :color="review.validation_result.confidence >= 0.8 ? 'success' : review.validation_result.confidence >= 0.5 ? 'warning' : 'error'" size="small">
                   {{ (review.validation_result.confidence * 100).toFixed(0) }}%
                 </v-chip>
               </v-col>
               <v-col cols="4">
-                <div class="text-caption text-grey">Valid</div>
+                <div class="text-caption text-medium-emphasis">Valid</div>
                 <v-icon :color="review.validation_result.is_valid ? 'success' : 'error'">
                   {{ review.validation_result.is_valid ? 'mdi-check-circle' : 'mdi-close-circle' }}
                 </v-icon>
               </v-col>
               <v-col cols="4">
-                <div class="text-caption text-grey">Map Match</div>
+                <div class="text-caption text-medium-emphasis">Map Match</div>
                 <v-icon :color="review.validation_result.map_match ? 'success' : 'warning'">
                   {{ review.validation_result.map_match ? 'mdi-check-circle' : 'mdi-alert' }}
                 </v-icon>
@@ -149,26 +149,26 @@
           <v-card-text>
             <v-row>
               <v-col cols="6">
-                <div class="d-flex align-center gap-2">
+                <div class="d-flex align-center ga-2">
                   <v-icon :color="review.captain1_acknowledged ? 'success' : 'grey'">
                     {{ review.captain1_acknowledged ? 'mdi-check-circle' : 'mdi-circle-outline' }}
                   </v-icon>
                   <div>
                     <div class="text-body-2">Captain 1</div>
-                    <div v-if="review.captain1_acknowledged_at" class="text-caption text-grey">
+                    <div v-if="review.captain1_acknowledged_at" class="text-caption text-medium-emphasis">
                       {{ formatDateTime(review.captain1_acknowledged_at) }}
                     </div>
                   </div>
                 </div>
               </v-col>
               <v-col cols="6">
-                <div class="d-flex align-center gap-2">
+                <div class="d-flex align-center ga-2">
                   <v-icon :color="review.captain2_acknowledged ? 'success' : 'grey'">
                     {{ review.captain2_acknowledged ? 'mdi-check-circle' : 'mdi-circle-outline' }}
                   </v-icon>
                   <div>
                     <div class="text-body-2">Captain 2</div>
-                    <div v-if="review.captain2_acknowledged_at" class="text-caption text-grey">
+                    <div v-if="review.captain2_acknowledged_at" class="text-caption text-medium-emphasis">
                       {{ formatDateTime(review.captain2_acknowledged_at) }}
                     </div>
                   </div>
@@ -184,15 +184,15 @@
             <v-table density="compact">
               <tbody>
                 <tr>
-                  <td class="text-grey" width="180">Reviewed By</td>
+                  <td class="text-medium-emphasis" width="180">Reviewed By</td>
                   <td><code>{{ review.reviewed_by_user_id }}</code></td>
                 </tr>
                 <tr>
-                  <td class="text-grey">Reviewed At</td>
+                  <td class="text-medium-emphasis">Reviewed At</td>
                   <td>{{ formatDateTime(review.reviewed_at) }}</td>
                 </tr>
                 <tr v-if="review.admin_notes">
-                  <td class="text-grey">Notes</td>
+                  <td class="text-medium-emphasis">Notes</td>
                   <td>{{ review.admin_notes }}</td>
                 </tr>
               </tbody>
@@ -211,7 +211,7 @@
             label="Notes (optional)"
             placeholder="Add notes explaining your decision..."
           />
-          <div class="d-flex gap-2 mt-2">
+          <div class="d-flex ga-2 mt-2">
             <v-btn
               color="success"
               prepend-icon="mdi-check"
@@ -237,7 +237,7 @@
     <v-card v-else-if="store.fetchReviewState.loading">
       <v-card-text class="text-center pa-8">
         <v-progress-circular indeterminate color="primary" />
-        <p class="mt-4 text-grey">Loading review...</p>
+        <p class="mt-4 text-medium-emphasis">Loading review...</p>
       </v-card-text>
     </v-card>
   </v-dialog>

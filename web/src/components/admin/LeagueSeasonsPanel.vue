@@ -26,7 +26,7 @@
       <template v-slot:item.name="{ item }">
         <div>
           <div class="font-weight-medium">{{ item.name }}</div>
-          <div class="text-caption text-grey">{{ item.slug }}</div>
+          <div class="text-caption text-medium-emphasis">{{ item.slug }}</div>
         </div>
       </template>
 
@@ -66,7 +66,7 @@
       </template>
 
       <template v-slot:item.actions="{ item }">
-        <v-btn
+        <v-btn aria-label="Edit season"
           icon
           size="small"
           variant="text"
@@ -75,7 +75,7 @@
         >
           <v-icon>mdi-pencil</v-icon>
         </v-btn>
-        <v-btn
+        <v-btn aria-label="View teams"
           icon
           size="small"
           variant="text"
@@ -89,7 +89,7 @@
       <template v-slot:no-data>
         <div class="text-center pa-8">
           <v-icon size="48" color="grey-lighten-1">mdi-calendar-blank</v-icon>
-          <p class="text-grey mt-2">No seasons yet</p>
+          <p class="text-medium-emphasis mt-2">No seasons yet</p>
           <v-btn
             color="primary"
             variant="tonal"
@@ -108,6 +108,7 @@
 <script setup lang="ts">
 import { formatDate } from '@/utils/formatters'
 import type { LeagueSeasonResponse } from '@/stores/leagueSeasons'
+import { seasonStatusMap, getStatusColor as mapStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 type LeagueSeason = LeagueSeasonResponse
 
@@ -133,20 +134,7 @@ const headers = [
   { title: 'Actions', key: 'actions', width: '100px', sortable: false, align: 'center' as const },
 ]
 
-function formatStatus(status: string): string {
-  return status.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ')
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'draft': return 'grey'
-    case 'registration_open': return 'info'
-    case 'registration_closed': return 'warning'
-    case 'in_progress': return 'success'
-    case 'completed': return 'primary'
-    case 'cancelled': return 'error'
-    default: return 'grey'
-  }
-}
+const formatStatus = (status: string) => getStatusLabel(seasonStatusMap, status)
+const getStatusColor = (status: string) => mapStatusColor(seasonStatusMap, status)
 
 </script>

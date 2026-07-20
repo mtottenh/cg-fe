@@ -1,9 +1,10 @@
 <template>
-  <v-dialog v-model="open" max-width="600" persistent>
+  <v-dialog
+    :fullscreen="smAndDown" v-model="open" max-width="600" persistent>
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Create New League</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -25,11 +26,11 @@
                 density="comfortable"
                 prepend-inner-icon="mdi-gamepad-variant"
               >
-                <template v-slot:item="{ item, props }">
-                  <v-list-item v-bind="props">
+                <template v-slot:item="{ item, props: itemProps }">
+                  <v-list-item v-bind="itemProps">
                     <template v-slot:prepend>
                       <v-avatar size="24" rounded="sm">
-                        <v-img v-if="item.raw.icon_url" :src="item.raw.icon_url" />
+                        <v-img alt="" v-if="item.raw.icon_url" :src="item.raw.icon_url" />
                         <v-icon v-else size="16">mdi-gamepad-variant</v-icon>
                       </v-avatar>
                     </template>
@@ -94,8 +95,8 @@
                 variant="outlined"
                 density="comfortable"
               >
-                <template v-slot:item="{ item, props }">
-                  <v-list-item v-bind="props">
+                <template v-slot:item="{ item, props: itemProps }">
+                  <v-list-item v-bind="itemProps">
                     <v-list-item-subtitle>{{ item.raw.description }}</v-list-item-subtitle>
                   </v-list-item>
                 </template>
@@ -189,6 +190,7 @@
 </template>
 
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import { ref, computed, watch } from 'vue'
 import { useLeaguesStore } from '@/stores/leagues'
 import type { GameSummary } from '@/stores/games'
@@ -198,6 +200,9 @@ import {
   buildEligibilitySettings,
   type LeagueAccessType,
 } from '@/composables/useLeagueEligibility'
+
+// Long scrolling forms in a small floating dialog are unusable on phones.
+const { smAndDown } = useDisplay()
 
 // Store for creating leagues
 const leaguesStore = useLeaguesStore()

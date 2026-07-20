@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-row align="center" class="mb-6">
       <v-col>
         <h1 class="text-h3">Teams</h1>

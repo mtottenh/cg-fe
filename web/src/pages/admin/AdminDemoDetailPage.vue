@@ -2,7 +2,7 @@
   <div>
     <!-- Header -->
     <div class="d-flex align-center mb-6">
-      <v-btn icon variant="text" @click="router.push({ name: 'admin-demos' })" class="mr-2">
+      <v-btn aria-label="Back to demos" icon variant="text" @click="router.push({ name: 'admin-demos' })" class="mr-2">
         <v-icon>mdi-arrow-left</v-icon>
       </v-btn>
       <div class="flex-grow-1">
@@ -49,10 +49,17 @@
       </div>
     </div>
 
+    <ErrorAlert
+      :error="fetchDemoState.error"
+      retryable
+      @clear="fetchDemoState.error = null"
+      @retry="fetchData"
+    />
+
     <!-- Loading -->
     <v-card v-if="fetchDemoState.loading && !currentDemo" class="pa-8 text-center">
       <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading demo...</p>
+      <p class="text-medium-emphasis mt-4">Loading demo...</p>
     </v-card>
 
     <template v-else-if="currentDemo">
@@ -66,35 +73,35 @@
               <v-table density="comfortable">
                 <tbody>
                   <tr>
-                    <td class="text-grey" style="width: 180px;">File Name</td>
+                    <td class="text-medium-emphasis" style="width: 180px;">File Name</td>
                     <td>{{ currentDemo.file_name }}</td>
                   </tr>
                   <tr>
-                    <td class="text-grey">File Size</td>
+                    <td class="text-medium-emphasis">File Size</td>
                     <td>{{ formatFileSize(currentDemo.file_size_bytes) }}</td>
                   </tr>
                   <tr>
-                    <td class="text-grey">S3 Location</td>
+                    <td class="text-medium-emphasis">S3 Location</td>
                     <td class="text-caption">{{ currentDemo.s3_bucket }}/{{ currentDemo.s3_key }}</td>
                   </tr>
                   <tr>
-                    <td class="text-grey">Discovered</td>
+                    <td class="text-medium-emphasis">Discovered</td>
                     <td>{{ formatDateTime(currentDemo.discovered_at) }}</td>
                   </tr>
                   <tr>
-                    <td class="text-grey">Created</td>
+                    <td class="text-medium-emphasis">Created</td>
                     <td>{{ formatDateTime(currentDemo.created_at) }}</td>
                   </tr>
                   <tr>
-                    <td class="text-grey">Updated</td>
+                    <td class="text-medium-emphasis">Updated</td>
                     <td>{{ formatDateTime(currentDemo.updated_at) }}</td>
                   </tr>
                   <tr v-if="currentDemo.stats_fetched_at">
-                    <td class="text-grey">Stats Fetched</td>
+                    <td class="text-medium-emphasis">Stats Fetched</td>
                     <td>{{ formatDateTime(currentDemo.stats_fetched_at) }}</td>
                   </tr>
                   <tr v-if="currentDemo.stats_fetch_error">
-                    <td class="text-grey">Stats Error</td>
+                    <td class="text-medium-emphasis">Stats Error</td>
                     <td class="text-error">{{ currentDemo.stats_fetch_error }}</td>
                   </tr>
                 </tbody>
@@ -108,26 +115,26 @@
             <v-card-text>
               <v-row>
                 <v-col cols="12" md="4">
-                  <div class="text-caption text-grey">Map</div>
+                  <div class="text-caption text-medium-emphasis">Map</div>
                   <div class="text-body-1 font-weight-medium">{{ currentDemo.metadata.map_name }}</div>
                 </v-col>
                 <v-col cols="12" md="4">
-                  <div class="text-caption text-grey">Score</div>
+                  <div class="text-caption text-medium-emphasis">Score</div>
                   <div class="text-body-1 font-weight-medium">
                     {{ currentDemo.metadata.team1_name }} {{ currentDemo.metadata.team1_score }} - {{ currentDemo.metadata.team2_score }} {{ currentDemo.metadata.team2_name }}
                   </div>
                 </v-col>
                 <v-col cols="12" md="2">
-                  <div class="text-caption text-grey">Rounds</div>
+                  <div class="text-caption text-medium-emphasis">Rounds</div>
                   <div class="text-body-1">{{ currentDemo.metadata.total_rounds }}</div>
                 </v-col>
                 <v-col v-if="currentDemo.metadata.duration_seconds" cols="12" md="2">
-                  <div class="text-caption text-grey">Duration</div>
+                  <div class="text-caption text-medium-emphasis">Duration</div>
                   <div class="text-body-1">{{ formatDuration(currentDemo.metadata.duration_seconds) }}</div>
                 </v-col>
               </v-row>
               <div v-if="currentDemo.metadata.match_date" class="mt-2">
-                <span class="text-caption text-grey">Match Date:</span>
+                <span class="text-caption text-medium-emphasis">Match Date:</span>
                 <span class="text-body-2 ml-1">{{ formatDateTime(currentDemo.metadata.match_date) }}</span>
               </div>
             </v-card-text>
@@ -144,38 +151,39 @@
             </v-card-text>
             <v-card-text v-else-if="players.length === 0" class="text-center pa-4">
               <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-account-off</v-icon>
-              <p class="text-grey">
+              <p class="text-medium-emphasis">
                 {{ currentDemo.status === 'pending' || currentDemo.status === 'processing' ? 'Stats not yet processed' : 'No player data available' }}
               </p>
             </v-card-text>
-            <v-data-table
-              v-else
-              :headers="playerHeaders"
-              :items="players"
-              :items-per-page="-1"
-              density="compact"
-              class="elevation-0"
-            >
-              <template v-slot:item.player_name="{ item }">
-                <div>
-                  <span class="font-weight-medium">{{ item.player_name }}</span>
-                  <span v-if="item.team_name" class="text-caption text-grey ml-1">({{ item.team_name }})</span>
-                </div>
-              </template>
-              <template v-slot:item.stats.kills="{ item }">
-                {{ item.stats.kills }}/{{ item.stats.deaths }}/{{ item.stats.assists }}
-              </template>
-              <template v-slot:item.stats.adr="{ item }">
-                {{ item.stats.adr.toFixed(1) }}
-              </template>
-              <template v-slot:item.stats.kd_ratio="{ item }">
-                {{ item.stats.kd_ratio.toFixed(2) }}
-              </template>
-              <template v-slot:item.stats.hs_percentage="{ item }">
-                {{ (item.stats.hs_percentage * 100).toFixed(0) }}%
-              </template>
-              <template v-slot:bottom />
-            </v-data-table>
+            <div v-else class="table-scroll">
+              <v-data-table
+                :headers="playerHeaders"
+                :items="players"
+                :items-per-page="-1"
+                density="compact"
+                class="elevation-0"
+              >
+                <template v-slot:item.player_name="{ item }">
+                  <div>
+                    <span class="font-weight-medium">{{ item.player_name }}</span>
+                    <span v-if="item.team_name" class="text-caption text-medium-emphasis ml-1">({{ item.team_name }})</span>
+                  </div>
+                </template>
+                <template v-slot:item.stats.kills="{ item }">
+                  {{ item.stats.kills }}/{{ item.stats.deaths }}/{{ item.stats.assists }}
+                </template>
+                <template v-slot:item.stats.adr="{ item }">
+                  {{ item.stats.adr.toFixed(1) }}
+                </template>
+                <template v-slot:item.stats.kd_ratio="{ item }">
+                  {{ item.stats.kd_ratio.toFixed(2) }}
+                </template>
+                <template v-slot:item.stats.hs_percentage="{ item }">
+                  {{ (item.stats.hs_percentage * 100).toFixed(0) }}%
+                </template>
+                <template v-slot:bottom />
+              </v-data-table>
+            </div>
           </v-card>
 
           <!-- Match Links -->
@@ -198,7 +206,7 @@
             </v-card-text>
             <v-card-text v-else-if="links.length === 0" class="text-center pa-4">
               <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-link-off</v-icon>
-              <p class="text-grey">No match links</p>
+              <p class="text-medium-emphasis">No match links</p>
             </v-card-text>
             <v-list v-else density="compact">
               <v-list-item v-for="link in links" :key="link.id">
@@ -225,7 +233,7 @@
                   Linked {{ formatRelativeTime(link.linked_at) }}
                 </v-list-item-subtitle>
                 <template v-slot:append>
-                  <v-btn
+                  <v-btn aria-label="Unlink match"
                     icon
                     variant="text"
                     size="small"
@@ -291,11 +299,11 @@
             <v-card-title class="text-subtitle-1">Association</v-card-title>
             <v-card-text>
               <div class="mb-2">
-                <div class="text-caption text-grey">League</div>
+                <div class="text-caption text-medium-emphasis">League</div>
                 <div class="text-body-2">{{ currentDemo.league_id ?? 'None' }}</div>
               </div>
               <div class="mb-3">
-                <div class="text-caption text-grey">Tournament</div>
+                <div class="text-caption text-medium-emphasis">Tournament</div>
                 <div class="text-body-2">{{ currentDemo.tournament_id ?? 'None' }}</div>
               </div>
             </v-card-text>
@@ -307,6 +315,7 @@
             <v-card-text>
               <v-textarea
                 v-model="notesText"
+                aria-label="Admin notes"
                 variant="outlined"
                 density="compact"
                 rows="3"
@@ -330,22 +339,8 @@
       </v-row>
     </template>
 
-    <!-- Error -->
-    <v-alert v-if="fetchDemoState.error" type="error" class="mt-4" closable>
-      {{ fetchDemoState.error }}
-    </v-alert>
-
     <!-- Confirm Dialog -->
-    <ConfirmDialog
-      :open="confirmDialogState.state.open"
-      :title="confirmDialogState.state.title"
-      :message="confirmDialogState.state.message"
-      :action-label="confirmDialogState.state.actionLabel"
-      :color="confirmDialogState.state.color"
-      :loading="confirmDialogState.state.loading"
-      @confirm="confirmDialogState.execute"
-      @cancel="confirmDialogState.cancel"
-    />
+    <ConfirmDialogHost :dialog="confirmDialogState" />
 
     <!-- Link to Match Modal -->
     <DemoLinkMatchModal
@@ -367,7 +362,8 @@ import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { formatDateTime, formatRelativeTime, formatFileSize } from '@/utils/formatters'
 import { demoStatusMap, demoCategoryMap, getStatusColor, getStatusLabel, getStatusIcon } from '@/utils/statusMaps'
 import DemoLinkMatchModal from '@/components/admin/DemoLinkMatchModal.vue'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -526,3 +522,10 @@ function formatDuration(seconds: number): string {
 
 onMounted(fetchData)
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

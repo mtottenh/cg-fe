@@ -34,7 +34,7 @@
 
     <!-- Suggested Demos -->
     <div v-if="evidenceStore.discoveredDemos.length > 0" class="mb-4">
-      <div class="text-caption text-grey mb-2">Suggested Demos</div>
+      <div class="text-caption text-medium-emphasis mb-2">Suggested Demos</div>
       <v-card
         v-for="demo in evidenceStore.discoveredDemos"
         :key="demo.external_id"
@@ -53,12 +53,12 @@
                 {{ Math.round(demo.relevance_score * 100) }}%
               </v-chip>
             </div>
-            <div v-if="demoMeta(demo)" class="text-caption text-grey">
+            <div v-if="demoMeta(demo)" class="text-caption text-medium-emphasis">
               {{ demoMeta(demo)!.map_name }} &mdash;
               {{ demoMeta(demo)!.team1_name }} {{ demoMeta(demo)!.team1_score }}
               : {{ demoMeta(demo)!.team2_score }} {{ demoMeta(demo)!.team2_name }}
             </div>
-            <div class="text-caption text-grey-darken-1">{{ demo.name }}</div>
+            <div class="text-caption text-medium-emphasis">{{ demo.name }}</div>
           </div>
           <div class="d-flex align-center ga-1">
             <!-- Game number selector for series -->
@@ -72,7 +72,7 @@
               hide-details
               style="width: 100px"
             />
-            <v-btn
+            <v-btn aria-label="Link demo"
               icon
               size="small"
               color="success"
@@ -175,12 +175,12 @@
                 {{ demo.category }}
               </v-chip>
             </div>
-            <div v-if="demo.metadata" class="text-caption text-grey">
+            <div v-if="demo.metadata" class="text-caption text-medium-emphasis">
               {{ demo.metadata.team1_name }} {{ demo.metadata.team1_score }}
               : {{ demo.metadata.team2_score }} {{ demo.metadata.team2_name }}
             </div>
-            <div class="text-caption text-grey-darken-1">{{ demo.file_name }}</div>
-            <div v-if="demo.file_size_bytes" class="text-caption text-grey-darken-1">
+            <div class="text-caption text-medium-emphasis">{{ demo.file_name }}</div>
+            <div v-if="demo.file_size_bytes" class="text-caption text-medium-emphasis">
               {{ formatFileSize(demo.file_size_bytes) }}
             </div>
           </div>
@@ -195,7 +195,7 @@
               hide-details
               style="width: 100px"
             />
-            <v-btn
+            <v-btn aria-label="Link demo"
               icon
               size="small"
               color="success"
@@ -217,7 +217,7 @@
           density="comfortable"
           @update:model-value="goToBrowsePage"
         />
-        <span class="text-caption text-grey mt-1">
+        <span class="text-caption text-medium-emphasis mt-1">
           {{ evidenceStore.browseTotal }} demos found
         </span>
       </div>
@@ -234,7 +234,7 @@
 
     <!-- Linked Demos -->
     <div v-if="evidenceStore.linkedDemos.length > 0">
-      <div class="text-caption text-grey mb-2">Linked Demos</div>
+      <div class="text-caption text-medium-emphasis mb-2">Linked Demos</div>
       <v-card
         v-for="item in evidenceStore.linkedDemos"
         :key="item.link.id"
@@ -260,13 +260,13 @@
                 Validated
               </v-chip>
             </div>
-            <div v-if="item.demo.metadata" class="text-caption text-grey">
+            <div v-if="item.demo.metadata" class="text-caption text-medium-emphasis">
               {{ item.demo.metadata.team1_name }} {{ item.demo.metadata.team1_score }}
               : {{ item.demo.metadata.team2_score }} {{ item.demo.metadata.team2_name }}
               &mdash; {{ item.demo.metadata.total_rounds }} rounds
             </div>
           </div>
-          <v-btn
+          <v-btn aria-label="Unlink demo"
             icon
             size="small"
             color="error"

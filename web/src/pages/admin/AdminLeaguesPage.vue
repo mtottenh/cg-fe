@@ -11,6 +11,8 @@
       </v-btn>
     </div>
 
+    <ErrorAlert :error="error" retryable @clear="clearError" @retry="fetchData" />
+
     <v-card class="mb-4">
       <v-card-title class="d-flex align-center">
         <v-text-field
@@ -40,14 +42,14 @@
     <!-- Loading State -->
     <v-card v-if="loading" class="pa-8 text-center">
       <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading leagues...</p>
+      <p class="text-medium-emphasis mt-4">Loading leagues...</p>
     </v-card>
 
     <!-- Empty State -->
     <v-card v-else-if="adminLeagues.length === 0" class="pa-8 text-center">
       <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-trophy-outline</v-icon>
       <h3 class="text-h6 mb-2">No Leagues Found</h3>
-      <p class="text-grey mb-4">
+      <p class="text-medium-emphasis mb-4">
         You don't have admin access to any leagues yet.
         Create your first league to get started.
       </p>
@@ -67,7 +69,7 @@
           <v-expansion-panel-title>
             <div class="d-flex align-center">
               <v-avatar size="32" rounded="sm" class="mr-3">
-                <v-img v-if="group.game?.icon_url" :src="group.game.icon_url" />
+                <v-img alt="" v-if="group.game?.icon_url" :src="group.game.icon_url" />
                 <v-icon v-else>mdi-gamepad-variant</v-icon>
               </v-avatar>
               <span class="text-subtitle-1 font-weight-medium">
@@ -80,85 +82,83 @@
           </v-expansion-panel-title>
 
           <v-expansion-panel-text>
-            <v-data-table
-              :headers="headers"
-              :items="group.leagues"
-              :items-per-page="10"
-              class="elevation-0"
-              density="comfortable"
-            >
-              <template v-slot:item.league_logo_url="{ item }">
-                <v-avatar size="32" rounded="sm">
-                  <v-img v-if="item.league_logo_url" :src="item.league_logo_url" />
-                  <v-icon v-else>mdi-trophy</v-icon>
-                </v-avatar>
-              </template>
+            <div class="table-scroll">
+              <v-data-table
+                :headers="headers"
+                :items="group.leagues"
+                :items-per-page="10"
+                class="elevation-0"
+                density="comfortable"
+              >
+                <template v-slot:item.league_logo_url="{ item }">
+                  <v-avatar size="32" rounded="sm">
+                    <v-img alt="" v-if="item.league_logo_url" :src="item.league_logo_url" />
+                    <v-icon v-else>mdi-trophy</v-icon>
+                  </v-avatar>
+                </template>
 
-              <template v-slot:item.league_name="{ item }">
-                <div>
-                  <div class="font-weight-medium">{{ item.league_name }}</div>
-                  <div class="text-caption text-grey">{{ item.league_slug }}</div>
-                </div>
-              </template>
+                <template v-slot:item.league_name="{ item }">
+                  <div>
+                    <div class="font-weight-medium">{{ item.league_name }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ item.league_slug }}</div>
+                  </div>
+                </template>
 
-              <template v-slot:item.membership_type="{ item }">
-                <v-chip
-                  :color="getRoleColor(item.membership_type)"
-                  size="small"
-                  variant="flat"
-                >
-                  {{ formatRole(item.membership_type) }}
-                </v-chip>
-              </template>
+                <template v-slot:item.membership_type="{ item }">
+                  <v-chip
+                    :color="getRoleColor(item.membership_type)"
+                    size="small"
+                    variant="flat"
+                  >
+                    {{ formatRole(item.membership_type) }}
+                  </v-chip>
+                </template>
 
-              <template v-slot:item.joined_at="{ item }">
-                {{ formatDate(item.joined_at) }}
-              </template>
+                <template v-slot:item.joined_at="{ item }">
+                  {{ formatDate(item.joined_at) }}
+                </template>
 
-              <template v-slot:item.actions="{ item }">
-                <v-btn
-                  icon
-                  size="small"
-                  variant="text"
-                  @click="openEditModal(item)"
-                  title="Edit Settings"
-                >
-                  <v-icon>mdi-pencil</v-icon>
-                </v-btn>
-                <v-btn
-                  icon
-                  size="small"
-                  variant="text"
-                  @click="openMembersModal(item)"
-                  title="Manage Members"
-                >
-                  <v-icon>mdi-account-group</v-icon>
-                </v-btn>
-                <v-btn
-                  icon
-                  size="small"
-                  variant="text"
-                  @click="openDetailModal(item)"
-                  title="Manage Seasons & Teams"
-                >
-                  <v-icon>mdi-clipboard-list</v-icon>
-                </v-btn>
-              </template>
+                <template v-slot:item.actions="{ item }">
+                  <v-btn aria-label="Edit settings"
+                    icon
+                    size="small"
+                    variant="text"
+                    @click="openEditModal(item)"
+                    title="Edit Settings"
+                  >
+                    <v-icon>mdi-pencil</v-icon>
+                  </v-btn>
+                  <v-btn aria-label="Manage members"
+                    icon
+                    size="small"
+                    variant="text"
+                    @click="openMembersModal(item)"
+                    title="Manage Members"
+                  >
+                    <v-icon>mdi-account-group</v-icon>
+                  </v-btn>
+                  <v-btn aria-label="Manage seasons and teams"
+                    icon
+                    size="small"
+                    variant="text"
+                    @click="openDetailModal(item)"
+                    title="Manage Seasons & Teams"
+                  >
+                    <v-icon>mdi-clipboard-list</v-icon>
+                  </v-btn>
+                </template>
 
-              <template v-slot:no-data>
-                <div class="text-center pa-4">
-                  <p class="text-grey">No leagues in this game</p>
-                </div>
-              </template>
-            </v-data-table>
+                <template v-slot:no-data>
+                  <div class="text-center pa-4">
+                    <p class="text-medium-emphasis">No leagues in this game</p>
+                  </div>
+                </template>
+              </v-data-table>
+            </div>
           </v-expansion-panel-text>
         </v-expansion-panel>
       </v-expansion-panels>
     </template>
-
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="error = null">
-      {{ error }}
-    </v-alert>
 
     <!-- Modals -->
     <LeagueCreateModal
@@ -197,6 +197,8 @@ import LeagueMembersModal from '@/components/admin/LeagueMembersModal.vue'
 import LeagueDetailModal from '@/components/admin/LeagueDetailModal.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatDate } from '@/utils/formatters'
+import { leagueRoleMap, getStatusColor, formatRole } from '@/utils/statusMaps'
+import ErrorAlert from '@/components/ErrorAlert.vue'
 
 // Stores
 const gamesStore = useGamesStore()
@@ -228,6 +230,11 @@ const snackbar = useSnackbar()
 // Computed: loading from either store
 const loading = computed(() => gamesStore.loading || leaguesStore.loading)
 const error = computed(() => gamesStore.error || leaguesStore.error)
+
+function clearError() {
+  gamesStore.error = null
+  leaguesStore.error = null
+}
 
 // Table headers
 const headers = [
@@ -294,18 +301,7 @@ const filteredGroups = computed(() => {
 })
 
 // Helpers
-function formatRole(role: string): string {
-  return role.charAt(0).toUpperCase() + role.slice(1)
-}
-
-function getRoleColor(role: string): string {
-  switch (role) {
-    case 'owner': return 'purple'
-    case 'admin': return 'primary'
-    case 'moderator': return 'info'
-    default: return 'grey'
-  }
-}
+const getRoleColor = (role: string) => getStatusColor(leagueRoleMap, role)
 
 // API calls - now using stores
 async function fetchData() {
@@ -363,3 +359,10 @@ onMounted(() => {
   fetchData()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

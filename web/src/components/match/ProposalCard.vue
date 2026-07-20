@@ -11,7 +11,7 @@
             <div class="text-subtitle-2">
               {{ isProposer ? 'Your Proposal' : 'Proposal from opponent' }}
             </div>
-            <div class="text-caption text-grey">
+            <div class="text-caption text-medium-emphasis">
               Sent {{ formatDateTime(proposal.created_at) }}
             </div>
           </div>
@@ -65,7 +65,7 @@
             class="mb-1"
           />
         </v-radio-group>
-        <div v-else class="d-flex flex-wrap gap-2">
+        <div v-else class="d-flex flex-wrap ga-2">
           <v-chip
             v-for="time in proposal.proposed_times"
             :key="time"
@@ -78,10 +78,21 @@
         </div>
       </div>
 
+      <!-- Rejection reason (why the opponent declined) -->
+      <v-alert
+        v-if="proposal.status === 'rejected' && proposal.rejection_reason"
+        type="error"
+        variant="tonal"
+        density="compact"
+        class="mb-4"
+      >
+        <strong>Rejected:</strong> {{ proposal.rejection_reason }}
+      </v-alert>
+
       <!-- Notes -->
       <div v-if="proposal.notes" class="mb-4">
         <div class="text-subtitle-2 mb-1">Notes</div>
-        <div class="text-body-2 text-grey-darken-1 pa-2 bg-grey-lighten-4 rounded">
+        <div class="text-body-2 text-medium-emphasis pa-2 bg-surface-variant rounded">
           {{ proposal.notes }}
         </div>
       </div>
@@ -91,7 +102,7 @@
         <!-- Responder Actions -->
         <template v-if="!isProposer">
           <v-divider class="mb-4" />
-          <div class="d-flex gap-2 flex-wrap">
+          <div class="d-flex ga-2 flex-wrap">
             <v-btn
               color="success"
               :loading="loading"
@@ -149,17 +160,37 @@
       </template>
     </v-card-text>
 
-    <!-- Reject Dialog -->
-    <ConfirmDialog
-      :open="confirmDialog.state.open"
-      :title="confirmDialog.state.title"
-      :message="confirmDialog.state.message"
-      :action-label="confirmDialog.state.actionLabel"
-      :color="confirmDialog.state.color"
-      :loading="confirmDialog.state.loading"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
-    />
+    <!-- Reject Dialog: collects an optional reason so the opponent gets
+         context instead of a bare rejection restarting the negotiation. -->
+    <v-dialog v-model="rejectDialogOpen" max-width="480">
+      <v-card>
+        <v-card-title>Reject Proposal</v-card-title>
+        <v-card-text>
+          <p class="mb-3">Are you sure you want to reject this proposal?</p>
+          <v-textarea
+            v-model="rejectReason"
+            label="Reason (optional)"
+            placeholder="e.g. None of these times work for us — weekday evenings are better"
+            rows="2"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="rejectDialogOpen = false">Cancel</v-btn>
+          <v-btn
+            color="error"
+            variant="flat"
+            :loading="loading"
+            @click="confirmReject"
+          >
+            Reject
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-card>
 </template>
 
@@ -167,8 +198,6 @@
 import { ref, computed } from 'vue'
 import type { ScheduleProposalResponse } from '@/stores/matchScheduling'
 import { formatDateTime } from '@/utils/formatters'
-import { useConfirmDialog } from '@/composables/useConfirmDialog'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import {
   getProposalStatusColor,
   getProposalStatusLabel,
@@ -190,7 +219,8 @@ const emit = defineEmits<{
 }>()
 
 const selectedTime = ref<string | null>(null)
-const confirmDialog = useConfirmDialog()
+const rejectDialogOpen = ref(false)
+const rejectReason = ref('')
 
 const isExpired = computed(() => isProposalExpired(props.proposal))
 const timeUntilExpiration = computed(() => getTimeUntilExpiration(props.proposal))
@@ -211,14 +241,12 @@ function handleAccept() {
 }
 
 function openRejectDialog() {
-  confirmDialog.confirm({
-    title: 'Reject Proposal',
-    message: 'Are you sure you want to reject this proposal?',
-    action: 'Reject',
-    color: 'error',
-    handler: async () => {
-      emit('reject')
-    },
-  })
+  rejectReason.value = ''
+  rejectDialogOpen.value = true
+}
+
+function confirmReject() {
+  emit('reject', rejectReason.value.trim() || undefined)
+  rejectDialogOpen.value = false
 }
 </script>

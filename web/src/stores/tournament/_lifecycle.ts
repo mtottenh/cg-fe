@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, createLatestGuard } from '@/stores/helpers'
 import { updateById } from '@/utils/collections'
 
 type TournamentResponse = components['schemas']['TournamentResponse']
@@ -71,23 +71,29 @@ export function createLifecycleSlice(refreshers: {
     }, 'Failed to fetch tournaments')
   }
 
+  // Shared guard: both fetchers write `currentTournament`, so a slow response
+  // from either must not clobber a newer one after a route change.
+  const beginCurrentTournamentFetch = createLatestGuard()
+
   async function fetchTournament(id: string): Promise<TournamentResponse> {
     return withActionState(fetchTournamentState, async () => {
+      const isCurrent = beginCurrentTournamentFetch()
       const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}', {
         params: { path: { tournament_id: id } },
       }))
-      currentTournament.value = result.data
-      return currentTournament.value
+      if (isCurrent()) currentTournament.value = result.data
+      return result.data
     }, 'Failed to fetch tournament')
   }
 
   async function fetchTournamentBySlug(slug: string): Promise<TournamentResponse> {
     return withActionState(fetchTournamentBySlugState, async () => {
+      const isCurrent = beginCurrentTournamentFetch()
       const result = await unwrapApi(api.GET('/v1/tournaments/by-slug/{slug}', {
         params: { path: { slug } },
       }))
-      currentTournament.value = result.data
-      return currentTournament.value
+      if (isCurrent()) currentTournament.value = result.data
+      return result.data
     }, 'Failed to fetch tournament')
   }
 

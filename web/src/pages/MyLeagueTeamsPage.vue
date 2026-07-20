@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-row align="center" class="mb-6">
       <v-col>
         <h1 class="text-h3">My Teams</h1>
@@ -13,9 +13,12 @@
       </v-col>
     </v-row>
 
-    <v-alert v-if="leagueTeamsStore.error" type="error" class="mb-4" closable>
-      {{ leagueTeamsStore.error }}
-    </v-alert>
+    <ErrorAlert
+      :error="leagueTeamsStore.error"
+      retryable
+      @clear="leagueTeamsStore.error = null"
+      @retry="fetchData"
+    />
 
     <v-progress-linear v-if="leagueTeamsStore.loading" indeterminate class="mb-4" />
 
@@ -31,7 +34,7 @@
             <v-card-item>
               <template v-slot:prepend>
                 <v-avatar color="warning" size="48" rounded="lg">
-                  <v-img v-if="membership.league_logo_url" :src="membership.league_logo_url" />
+                  <v-img alt="" v-if="membership.league_logo_url" :src="membership.league_logo_url" />
                   <v-icon v-else>mdi-trophy</v-icon>
                 </v-avatar>
               </template>
@@ -82,7 +85,7 @@
               <v-card-item>
                 <template v-slot:prepend>
                   <v-avatar color="primary" size="48">
-                    <v-img v-if="membership.team_logo_url" :src="membership.team_logo_url" />
+                    <v-img alt="" v-if="membership.team_logo_url" :src="membership.team_logo_url" />
                     <span v-else class="text-h6">{{ membership.team_tag?.substring(0, 2) || '??' }}</span>
                   </v-avatar>
                 </template>
@@ -140,19 +143,19 @@
     </template>
 
     <!-- Empty state -->
-    <v-row v-else-if="!leagueTeamsStore.loading">
-      <v-col cols="12" class="text-center py-12">
-        <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-group-outline</v-icon>
-        <h3 class="text-h5 text-medium-emphasis mb-2">You're Not on Any Teams Yet</h3>
-        <p class="text-body-2 text-medium-emphasis mb-4">
-          Join a league and create or join a team to get started!
-        </p>
-        <v-btn color="primary" to="/leagues">
+    <EmptyState
+      v-else-if="!leagueTeamsStore.loading"
+      icon="mdi-account-group-outline"
+      title="You're Not on Any Teams Yet"
+      subtitle="Join a league and create or join a team to get started!"
+    >
+      <template #action>
+        <v-btn color="primary" class="mt-4" to="/leagues">
           <v-icon start>mdi-trophy</v-icon>
           Browse Leagues
         </v-btn>
-      </v-col>
-    </v-row>
+      </template>
+    </EmptyState>
 
     <!-- Pending invitations banner -->
     <v-banner
@@ -171,18 +174,7 @@
     </v-banner>
 
     <!-- Leave team confirmation dialog -->
-    <ConfirmDialog
-      :open="confirmDialog.state.open"
-      :title="confirmDialog.state.title"
-      :message="confirmDialog.state.message"
-      :action-label="confirmDialog.state.actionLabel"
-      :color="confirmDialog.state.color"
-      :loading="confirmDialog.state.loading"
-      :error="confirmDialog.state.dialogError"
-      @clear-error="confirmDialog.clearError()"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
-    />
+    <ConfirmDialogHost :dialog="confirmDialog" />
 
   </v-container>
 </template>
@@ -193,7 +185,10 @@ import { useLeagueTeamsStore, type PlayerLeagueTeamMembershipResponse } from '@/
 import { useLeaguesStore } from '@/stores/leagues'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import { teamRoleMap, teamStatusMap, getStatusColor as mapStatusColor, getStatusLabel, formatRole } from '@/utils/statusMaps'
 
 const leagueTeamsStore = useLeagueTeamsStore()
 const leaguesStore = useLeaguesStore()
@@ -236,44 +231,13 @@ const leaguesWithoutTeams = computed(() => {
 })
 
 function formatJoinDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+  return new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 // Helpers
-function formatRole(role: string): string {
-  return role.charAt(0).toUpperCase() + role.slice(1)
-}
-
-function getRoleColor(role: string): string {
-  switch (role) {
-    case 'captain':
-    case 'founder':
-      return 'primary'
-    case 'player':
-      return 'success'
-    case 'substitute':
-      return 'info'
-    default:
-      return 'grey'
-  }
-}
-
-function formatStatus(status: string): string {
-  return status.charAt(0).toUpperCase() + status.slice(1)
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'active':
-      return 'success'
-    case 'inactive':
-      return 'grey'
-    case 'left':
-      return 'error'
-    default:
-      return 'grey'
-  }
-}
+const getRoleColor = (role: string) => mapStatusColor(teamRoleMap, role)
+const formatStatus = (status: string) => getStatusLabel(teamStatusMap, status)
+const getStatusColor = (status: string) => mapStatusColor(teamStatusMap, status)
 
 // Actions
 function confirmLeaveTeam(membership: PlayerLeagueTeamMembershipResponse) {
@@ -289,11 +253,17 @@ function confirmLeaveTeam(membership: PlayerLeagueTeamMembershipResponse) {
   })
 }
 
-onMounted(async () => {
-  await Promise.all([
-    leagueTeamsStore.fetchMyTeams(),
-    leagueTeamsStore.fetchMyInvitations(),
-    leaguesStore.fetchMyLeagues(),
-  ])
-})
+async function fetchData() {
+  try {
+    await Promise.all([
+      leagueTeamsStore.fetchMyTeams(),
+      leagueTeamsStore.fetchMyInvitations(),
+      leaguesStore.fetchMyLeagues(),
+    ])
+  } catch {
+    // Errors are captured in stores
+  }
+}
+
+onMounted(() => { fetchData() })
 </script>

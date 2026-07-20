@@ -8,12 +8,12 @@
       <v-card-title class="d-flex justify-space-between align-center">
         <div class="d-flex align-center">
           <v-avatar size="32" rounded="sm" class="mr-3">
-            <v-img v-if="league?.league_logo_url" :src="league.league_logo_url" />
+            <v-img alt="" v-if="league?.league_logo_url" :src="league.league_logo_url" />
             <v-icon v-else>mdi-trophy</v-icon>
           </v-avatar>
           <span>{{ league?.league_name }}</span>
         </div>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>

@@ -14,7 +14,7 @@
     <v-card-text class="pa-0">
       <!-- Message list -->
       <div ref="messageContainer" class="chat-messages pa-3" @scroll="handleScroll">
-        <div v-if="filteredMessages.length === 0" class="text-center text-caption text-grey pa-4">
+        <div v-if="filteredMessages.length === 0" class="text-center text-caption text-medium-emphasis pa-4">
           No messages yet. Say something!
         </div>
         <div
@@ -22,7 +22,7 @@
           :key="msg.id"
           class="chat-message mb-2"
         >
-          <div class="d-flex align-center gap-1">
+          <div class="d-flex align-center ga-1">
             <v-chip
               v-if="msg.chat_type === 'team'"
               size="x-small"
@@ -33,7 +33,7 @@
               Team
             </v-chip>
             <span class="text-body-2 font-weight-medium">{{ msg.author.username }}</span>
-            <span class="text-caption text-grey ml-auto">{{ formatTime(msg.timestamp) }}</span>
+            <span class="text-caption text-medium-emphasis ml-auto">{{ formatTime(msg.timestamp) }}</span>
           </div>
           <div class="text-body-2 ml-1">{{ msg.content }}</div>
         </div>
@@ -44,6 +44,7 @@
       <div class="pa-3">
         <v-text-field
           v-model="inputText"
+          :aria-label="activeChatType === 'team' ? 'Message your team' : 'Message everyone'"
           :placeholder="activeChatType === 'team' ? 'Message your team...' : 'Message everyone...'"
           variant="outlined"
           density="compact"
@@ -53,7 +54,7 @@
           @keydown.enter.prevent="handleSend"
         >
           <template #append-inner>
-            <v-btn
+            <v-btn aria-label="Send message"
               icon
               size="small"
               variant="text"

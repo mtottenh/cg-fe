@@ -1,6 +1,6 @@
 <template>
   <v-app-bar color="surface" elevation="0" border="b">
-    <v-app-bar-nav-icon v-if="showNav" @click="$emit('toggle-nav')" />
+    <v-app-bar-nav-icon aria-label="Toggle navigation menu" v-if="showNav" @click="$emit('toggle-nav')" />
 
     <v-app-bar-title>
       <router-link :to="titleTo" class="text-decoration-none text-white">

@@ -1,14 +1,22 @@
 <template>
-  <div>
+  <v-container>
     <!-- Loading State -->
-    <v-progress-linear v-if="loading" indeterminate class="mb-4" />
+    <v-skeleton-loader v-if="loading && !league" type="article" class="mb-4" />
+    <v-progress-linear v-else-if="loading" indeterminate class="mb-4" />
 
     <!-- Error State -->
-    <v-alert v-if="error" type="error" class="mb-4" closable @click:close="clearError">
-      {{ error }}
-    </v-alert>
+    <ErrorAlert :error="error" retryable @clear="clearError" @retry="fetchAll" />
 
     <template v-if="league">
+      <!-- Breadcrumb -->
+      <v-breadcrumbs
+        :items="[
+          { title: 'Leagues', to: { name: 'leagues' } },
+          { title: league.name, disabled: true },
+        ]"
+        class="pa-0 mb-4"
+      />
+
       <!-- League Header -->
       <v-row class="mb-6">
         <v-col cols="12">
@@ -16,7 +24,7 @@
             <v-card-item>
               <template v-slot:prepend>
                 <v-avatar size="80" rounded="lg" color="primary">
-                  <v-img v-if="league.logo_url" :src="league.logo_url" />
+                  <v-img alt="" v-if="league.logo_url" :src="league.logo_url" />
                   <v-icon v-else size="40">mdi-trophy</v-icon>
                 </v-avatar>
               </template>
@@ -138,7 +146,6 @@
             label="Select Season"
             prepend-inner-icon="mdi-calendar"
             :loading="loadingSeasons"
-            @update:model-value="onSeasonChange"
           >
             <template v-slot:item="{ item, props }">
               <v-list-item v-bind="props">
@@ -151,7 +158,7 @@
             </template>
           </v-select>
         </v-col>
-        <v-col cols="12" sm="6" md="8" class="d-flex align-center justify-end gap-2">
+        <v-col cols="12" sm="6" md="8" class="d-flex align-center justify-end ga-2">
           <v-btn
             v-if="canCreateTournament"
             color="primary"
@@ -195,12 +202,12 @@
         </v-col>
       </v-row>
 
-      <v-row v-else-if="!loadingTournaments && selectedSeasonId" class="mb-6">
-        <v-col cols="12" class="text-center py-8">
-          <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-tournament</v-icon>
-          <p class="text-body-2 text-medium-emphasis">No tournaments for this season yet.</p>
-        </v-col>
-      </v-row>
+      <EmptyState
+        v-else-if="!loadingTournaments && selectedSeasonId"
+        icon="mdi-tournament"
+        title="No tournaments for this season yet."
+        class="mb-6"
+      />
 
       <!-- Season Awards -->
       <template v-if="selectedSeasonId">
@@ -244,7 +251,7 @@
             <v-card-item>
               <template v-slot:prepend>
                 <v-avatar color="secondary" size="48" rounded="lg">
-                  <v-img v-if="team.team_logo_url" :src="team.team_logo_url" />
+                  <v-img alt="" v-if="team.team_logo_url" :src="team.team_logo_url" />
                   <span v-else class="text-body-2 font-weight-bold">{{ team.team_tag }}</span>
                 </v-avatar>
               </template>
@@ -264,41 +271,39 @@
       </v-row>
 
       <!-- Empty Teams State -->
-      <v-row v-else-if="!loadingTeams && selectedSeasonId">
-        <v-col cols="12" class="text-center py-12">
-          <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-shield-outline</v-icon>
-          <h3 class="text-h5 text-medium-emphasis mb-2">No Teams Yet</h3>
-          <p class="text-body-2 text-medium-emphasis mb-4">
-            Be the first to create a team for this season!
-          </p>
+      <EmptyState
+        v-else-if="!loadingTeams && selectedSeasonId"
+        icon="mdi-shield-outline"
+        title="No Teams Yet"
+        subtitle="Be the first to create a team for this season!"
+      >
+        <template #action>
           <v-btn
             v-if="isLeagueMember"
             color="primary"
             prepend-icon="mdi-plus"
+            class="mt-4"
             @click="showCreateTeamModal = true"
           >
             Create Team
           </v-btn>
-          <v-btn v-else-if="!isAuthenticated" color="primary" to="/login">
+          <v-btn v-else-if="!isAuthenticated" color="primary" class="mt-4" to="/login">
             Sign In to Join League
           </v-btn>
-        </v-col>
-      </v-row>
+        </template>
+      </EmptyState>
 
       <!-- No Season Selected -->
-      <v-row v-else-if="!loadingSeasons && seasons.length === 0">
-        <v-col cols="12" class="text-center py-12">
-          <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-calendar-remove</v-icon>
-          <h3 class="text-h5 text-medium-emphasis mb-2">No Seasons Available</h3>
-          <p class="text-body-2 text-medium-emphasis">
-            This league doesn't have any seasons yet.
-          </p>
-        </v-col>
-      </v-row>
+      <EmptyState
+        v-else-if="!loadingSeasons && seasons.length === 0"
+        icon="mdi-calendar-remove"
+        title="No Seasons Available"
+        subtitle="This league doesn't have any seasons yet."
+      />
     </template>
 
     <!-- Create Team Modal -->
-    <v-dialog v-model="showCreateTeamModal" max-width="500">
+    <v-dialog v-model="showCreateTeamModal" max-width="500" persistent>
       <v-card>
         <v-card-title>Create Team</v-card-title>
         <v-card-text>
@@ -352,7 +357,7 @@
     />
 
     <!-- Apply to League Dialog -->
-    <v-dialog v-model="showApplyDialog" max-width="450">
+    <v-dialog v-model="showApplyDialog" max-width="450" persistent>
       <v-card>
         <v-card-title>Apply to {{ league?.name }}</v-card-title>
         <v-card-text>
@@ -387,14 +392,14 @@
         <v-card-item>
           <template v-slot:prepend>
             <v-avatar color="secondary" size="56" rounded="lg">
-              <v-img v-if="selectedTeam.team_logo_url" :src="selectedTeam.team_logo_url" />
+              <v-img alt="" v-if="selectedTeam.team_logo_url" :src="selectedTeam.team_logo_url" />
               <span v-else class="text-body-1 font-weight-bold">{{ selectedTeam.team_tag }}</span>
             </v-avatar>
           </template>
           <v-card-title>{{ selectedTeam.team_name }}</v-card-title>
           <v-card-subtitle>[{{ selectedTeam.team_tag }}]</v-card-subtitle>
           <template v-slot:append>
-            <v-btn icon variant="text" @click="showTeamDetailModal = false">
+            <v-btn aria-label="Close" icon variant="text" @click="showTeamDetailModal = false">
               <v-icon>mdi-close</v-icon>
             </v-btn>
           </template>
@@ -411,7 +416,7 @@
             <v-list-item v-for="member in teamMembers" :key="member.player_id">
               <template v-slot:prepend>
                 <v-avatar size="32">
-                  <v-img v-if="member.avatar_url" :src="member.avatar_url" />
+                  <v-img alt="" v-if="member.avatar_url" :src="member.avatar_url" />
                   <v-icon v-else>mdi-account</v-icon>
                 </v-avatar>
               </template>
@@ -439,24 +444,13 @@
       </v-card>
     </v-dialog>
 
-    <ConfirmDialog
-      :open="confirmDialog.state.open"
-      :title="confirmDialog.state.title"
-      :message="confirmDialog.state.message"
-      :action-label="confirmDialog.state.actionLabel"
-      :color="confirmDialog.state.color"
-      :loading="confirmDialog.state.loading"
-      :error="confirmDialog.state.dialogError"
-      @clear-error="confirmDialog.clearError()"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
-    />
-  </div>
+    <ConfirmDialogHost :dialog="confirmDialog" />
+  </v-container>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useLeagueDetail } from '@/composables/useLeagueDetail'
 import { useAuthStore } from '@/stores/auth'
 import { useGamesStore } from '@/stores/games'
@@ -467,12 +461,16 @@ import TournamentCreateModal from '@/components/admin/TournamentCreateModal.vue'
 import TournamentCard from '@/components/tournament/TournamentCard.vue'
 import AwardsPanel from '@/components/awards/AwardsPanel.vue'
 import StatsLeaderboard from '@/components/awards/StatsLeaderboard.vue'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
 import type { TournamentSummaryResponse } from '@/stores/tournaments'
 import type { LeagueSettings } from '@/api/overrides'
+import { seasonStatusMap, leagueAccessTypeMap, getStatusColor, getStatusLabel, getStatusIcon } from '@/utils/statusMaps'
 
 const router = useRouter()
+const route = useRoute()
 
 const {
   league, seasons, teams, tournaments, gameName, hasTeamInSeason,
@@ -539,32 +537,9 @@ const entryRequirementsList = computed((): string[] => {
 })
 
 // Access type display helpers
-const accessTypeLabel = computed(() => {
-  switch (league.value?.access_type) {
-    case 'open': return 'Open'
-    case 'application': return 'Application'
-    case 'invite_only': return 'Invite Only'
-    default: return league.value?.access_type || ''
-  }
-})
-
-const accessTypeColor = computed(() => {
-  switch (league.value?.access_type) {
-    case 'open': return 'success'
-    case 'application': return 'warning'
-    case 'invite_only': return 'grey'
-    default: return 'grey'
-  }
-})
-
-const accessTypeIcon = computed(() => {
-  switch (league.value?.access_type) {
-    case 'open': return 'mdi-lock-open-variant'
-    case 'application': return 'mdi-file-document-edit'
-    case 'invite_only': return 'mdi-lock'
-    default: return 'mdi-help-circle'
-  }
-})
+const accessTypeLabel = computed(() => getStatusLabel(leagueAccessTypeMap, league.value?.access_type ?? ''))
+const accessTypeColor = computed(() => getStatusColor(leagueAccessTypeMap, league.value?.access_type ?? ''))
+const accessTypeIcon = computed(() => getStatusIcon(leagueAccessTypeMap, league.value?.access_type ?? ''))
 
 // Join/Apply handlers
 async function handleJoinLeague() {
@@ -599,19 +574,29 @@ function handleLeaveLeague() {
   })
 }
 
-// Template helpers
-function onSeasonChange() {
-  // Teams will be loaded by the composable watcher
-}
+const getSeasonStatusColor = (status: string) => getStatusColor(seasonStatusMap, status)
 
-function getSeasonStatusColor(status: string): string {
-  switch (status) {
-    case 'active': return 'success'
-    case 'upcoming': return 'info'
-    case 'completed': return 'grey'
-    default: return 'grey'
-  }
-}
+// Season is URL-addressable (?season=<id>) — a shared league link opens on
+// the same season the sender was viewing.
+watch(selectedSeasonId, (seasonId) => {
+  const current = (route.query.season as string | undefined) ?? null
+  if (current === (seasonId ?? null)) return
+  router.replace({ query: { ...route.query, season: seasonId ?? undefined } })
+})
+
+watch(
+  () => [route.query.season, loadingSeasons.value] as const,
+  ([querySeason, stillLoading]) => {
+    if (stillLoading) return
+    if (typeof querySeason !== 'string') return
+    if (querySeason === selectedSeasonId.value) return
+    // Only accept season ids that belong to this league.
+    if (seasons.value.some((s) => s.id === querySeason)) {
+      selectedSeasonId.value = querySeason
+    }
+  },
+  { immediate: true },
+)
 
 function openTournament(tournament: TournamentSummaryResponse) {
   router.push({ name: 'tournament-detail', params: { slug: tournament.slug } })

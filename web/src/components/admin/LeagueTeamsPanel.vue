@@ -44,7 +44,7 @@
     >
       <template v-slot:item.team_logo_url="{ item }">
         <v-avatar size="32" rounded="sm">
-          <v-img v-if="item.team_logo_url" :src="item.team_logo_url" />
+          <v-img :alt="item.team_name ?? ''" v-if="item.team_logo_url" :src="item.team_logo_url" />
           <v-icon v-else>mdi-shield</v-icon>
         </v-avatar>
       </template>
@@ -52,7 +52,7 @@
       <template v-slot:item.team_name="{ item }">
         <div>
           <div class="font-weight-medium">{{ item.team_name }}</div>
-          <div class="text-caption text-grey">[{{ item.team_tag }}]</div>
+          <div class="text-caption text-medium-emphasis">[{{ item.team_tag }}]</div>
         </div>
       </template>
 
@@ -76,7 +76,7 @@
             rounded
             style="max-width: 60px"
           />
-          <span class="ml-2 text-caption text-grey">
+          <span class="ml-2 text-caption text-medium-emphasis">
             / {{ item.team_size_max || '?' }}
           </span>
         </div>
@@ -93,7 +93,7 @@
       </template>
 
       <template v-slot:item.actions="{ item }">
-        <v-btn
+        <v-btn aria-label="Manage team"
           icon
           size="small"
           variant="text"
@@ -107,7 +107,7 @@
       <template v-slot:no-data>
         <div class="text-center pa-8">
           <v-icon size="48" color="grey-lighten-1">mdi-account-group-outline</v-icon>
-          <p class="text-grey mt-2">No teams registered for this season</p>
+          <p class="text-medium-emphasis mt-2">No teams registered for this season</p>
           <v-btn
             color="primary"
             variant="tonal"
@@ -126,6 +126,7 @@
 <script setup lang="ts">
 import type { LeagueSeasonResponse } from '@/stores/leagueSeasons'
 import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
+import { teamStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 type LeagueSeason = LeagueSeasonResponse
 type LeagueTeamSummary = LeagueTeamSummaryResponse
@@ -154,19 +155,8 @@ const headers = [
   { title: 'Actions', key: 'actions', width: '80px', sortable: false, align: 'center' as const },
 ]
 
-function formatStatus(status: string): string {
-  return status.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ')
-}
-
-function getTeamStatusColor(status: string): string {
-  switch (status) {
-    case 'active': return 'success'
-    case 'inactive': return 'grey'
-    case 'disbanded': return 'error'
-    case 'pending': return 'warning'
-    default: return 'grey'
-  }
-}
+const formatStatus = (status: string) => getStatusLabel(teamStatusMap, status)
+const getTeamStatusColor = (status: string) => getStatusColor(teamStatusMap, status)
 
 function getRosterFillPercent(team: LeagueTeamSummary): number {
   if (!team.team_size_max) return 0

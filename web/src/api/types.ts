@@ -921,6 +921,8 @@ export interface paths {
          * Refresh an access token using a refresh token.
          * @description Validates the refresh token, revokes it (rotation), and issues a new access + refresh token pair.
          *     Does NOT require an Authorization header — the refresh token itself is the credential.
+         *     The token is read from the request body when present, otherwise from the
+         *     `refresh_token` httpOnly cookie set by login/refresh.
          */
         post: operations["refresh"];
         delete?: never;
@@ -4412,6 +4414,8 @@ export interface components {
         };
         /** @description Request to counter-propose new times. */
         CounterProposeRequest: {
+            /** @description Optional message to the opponent about the counter-proposal. */
+            notes?: string | null;
             /** @description ID of the original proposal. */
             original_proposal_id: string;
             /** @description New proposed time slots (1-5 options). */
@@ -5739,6 +5743,8 @@ export interface components {
                 invitation_type: string;
                 invited_by?: string | null;
                 message?: string | null;
+                player_avatar_url?: string | null;
+                player_display_name?: string | null;
                 player_id: string;
                 /** Format: date-time */
                 responded_at?: string | null;
@@ -5960,6 +5966,8 @@ export interface components {
                 proposed_by_user_id: string;
                 /** @description Proposed time slots (1-5 options). */
                 proposed_times: string[];
+                /** @description Reason provided by the responder when the proposal was rejected. */
+                rejection_reason?: string | null;
                 /**
                  * Format: date-time
                  * @description When the proposal was responded to.
@@ -6347,6 +6355,11 @@ export interface components {
                  * @description When the claim was confirmed.
                  */
                 confirmed_at?: string | null;
+                /**
+                 * @description Display name of the player who confirmed the claim (enriched by
+                 *     history/list handlers).
+                 */
+                confirmed_by_display_name?: string | null;
                 /** @description Registration ID of who confirmed. */
                 confirmed_by_registration_id?: string | null;
                 /** @description User ID of who confirmed. */
@@ -6368,6 +6381,11 @@ export interface components {
                 match_id: string;
                 /** @description Current claim status. */
                 status: string;
+                /**
+                 * @description Display name of the player who submitted the claim (enriched by
+                 *     history/list handlers; absent when the player could not be resolved).
+                 */
+                submitted_by_display_name?: string | null;
                 /** @description Registration ID of who submitted the claim. */
                 submitted_by_registration_id: string;
                 /** @description User ID of who submitted the claim. */
@@ -6610,6 +6628,8 @@ export interface components {
                 proposed_by_user_id: string;
                 /** @description Proposed time slots (1-5 options). */
                 proposed_times: string[];
+                /** @description Reason provided by the responder when the proposal was rejected. */
+                rejection_reason?: string | null;
                 /**
                  * Format: date-time
                  * @description When the proposal was responded to.
@@ -6828,6 +6848,7 @@ export interface components {
                 rules_url?: string | null;
                 scheduling_mode: string;
                 season_id?: string | null;
+                settings: unknown;
                 slug: string;
                 /** Format: date-time */
                 started_at?: string | null;
@@ -7491,6 +7512,8 @@ export interface components {
                 invitation_type: string;
                 invited_by?: string | null;
                 message?: string | null;
+                player_avatar_url?: string | null;
+                player_display_name?: string | null;
                 player_id: string;
                 /** Format: date-time */
                 responded_at?: string | null;
@@ -7936,6 +7959,11 @@ export interface components {
                  * @description When the claim was confirmed.
                  */
                 confirmed_at?: string | null;
+                /**
+                 * @description Display name of the player who confirmed the claim (enriched by
+                 *     history/list handlers).
+                 */
+                confirmed_by_display_name?: string | null;
                 /** @description Registration ID of who confirmed. */
                 confirmed_by_registration_id?: string | null;
                 /** @description User ID of who confirmed. */
@@ -7957,6 +7985,11 @@ export interface components {
                 match_id: string;
                 /** @description Current claim status. */
                 status: string;
+                /**
+                 * @description Display name of the player who submitted the claim (enriched by
+                 *     history/list handlers; absent when the player could not be resolved).
+                 */
+                submitted_by_display_name?: string | null;
                 /** @description Registration ID of who submitted the claim. */
                 submitted_by_registration_id: string;
                 /** @description User ID of who submitted the claim. */
@@ -8064,6 +8097,8 @@ export interface components {
                 proposed_by_user_id: string;
                 /** @description Proposed time slots (1-5 options). */
                 proposed_times: string[];
+                /** @description Reason provided by the responder when the proposal was rejected. */
+                rejection_reason?: string | null;
                 /**
                  * Format: date-time
                  * @description When the proposal was responded to.
@@ -9797,6 +9832,8 @@ export interface components {
             invitation_type: string;
             invited_by?: string | null;
             message?: string | null;
+            player_avatar_url?: string | null;
+            player_display_name?: string | null;
             player_id: string;
             /** Format: date-time */
             responded_at?: string | null;
@@ -10985,6 +11022,8 @@ export interface components {
         };
         /** @description Request to propose match times. */
         ProposeScheduleRequest: {
+            /** @description Optional message to the opponent about the proposal. */
+            notes?: string | null;
             /** @description Proposed time slots (1-5 options). */
             proposed_times: string[];
         };
@@ -11174,8 +11213,13 @@ export interface components {
         };
         /** @description Request body for refreshing an access token. */
         RefreshTokenRequest: {
-            /** @description The refresh token issued during login or previous refresh. */
-            refresh_token: string;
+            /**
+             * @description The refresh token issued during login or previous refresh.
+             *
+             *     Optional: when omitted, the server falls back to the
+             *     `refresh_token` httpOnly cookie set by login/refresh.
+             */
+            refresh_token?: string | null;
         };
         /** @description Request to register a player for an individual tournament. */
         RegisterPlayerRequest: {
@@ -11248,6 +11292,8 @@ export interface components {
         RejectScheduleProposalRequest: {
             /** @description ID of the proposal to reject. */
             proposal_id: string;
+            /** @description Optional reason for the rejection, shown to the proposer. */
+            reason?: string | null;
         };
         /** @description Request to resolve a dispute by adjusting scores. */
         ResolveAdjustedRequest: {
@@ -11327,6 +11373,11 @@ export interface components {
              * @description When the claim was confirmed.
              */
             confirmed_at?: string | null;
+            /**
+             * @description Display name of the player who confirmed the claim (enriched by
+             *     history/list handlers).
+             */
+            confirmed_by_display_name?: string | null;
             /** @description Registration ID of who confirmed. */
             confirmed_by_registration_id?: string | null;
             /** @description User ID of who confirmed. */
@@ -11348,6 +11399,11 @@ export interface components {
             match_id: string;
             /** @description Current claim status. */
             status: string;
+            /**
+             * @description Display name of the player who submitted the claim (enriched by
+             *     history/list handlers; absent when the player could not be resolved).
+             */
+            submitted_by_display_name?: string | null;
             /** @description Registration ID of who submitted the claim. */
             submitted_by_registration_id: string;
             /** @description User ID of who submitted the claim. */
@@ -11598,6 +11654,8 @@ export interface components {
             proposed_by_user_id: string;
             /** @description Proposed time slots (1-5 options). */
             proposed_times: string[];
+            /** @description Reason provided by the responder when the proposal was rejected. */
+            rejection_reason?: string | null;
             /**
              * Format: date-time
              * @description When the proposal was responded to.
@@ -12084,6 +12142,7 @@ export interface components {
             rules_url?: string | null;
             scheduling_mode: string;
             season_id?: string | null;
+            settings: unknown;
             slug: string;
             /** Format: date-time */
             started_at?: string | null;

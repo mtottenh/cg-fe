@@ -32,7 +32,7 @@
               </td>
               <td v-if="detailed">{{ formatDateTime(dl.link.linked_at) }}</td>
               <td v-if="editable">
-                <v-btn icon variant="text" size="small" color="error" @click="emit('unlink', dl.link.demo_id)">
+                <v-btn aria-label="Unlink demo" icon variant="text" size="small" color="error" @click="emit('unlink', dl.link.demo_id)">
                   <v-icon size="small">mdi-link-off</v-icon>
                 </v-btn>
               </td>
@@ -73,7 +73,7 @@
               </td>
               <td v-if="detailed">{{ formatDateTime(ev.created_at) }}</td>
               <td v-if="matchId">
-                <v-btn
+                <v-btn aria-label="View evidence"
                   icon
                   variant="text"
                   size="small"
@@ -93,7 +93,7 @@
       <div v-if="linkedDemos.length === 0 && evidence.length === 0 && showEmptyState" class="text-center pa-8">
         <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-file-video-outline</v-icon>
         <h3 class="text-h6 mb-2">No Evidence Linked</h3>
-        <p class="text-grey">No demos or evidence records have been linked to this match.</p>
+        <p class="text-medium-emphasis">No demos or evidence records have been linked to this match.</p>
       </div>
     </template>
   </div>

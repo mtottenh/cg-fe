@@ -35,6 +35,8 @@
       </div>
     </div>
 
+    <ErrorAlert :error="error" retryable @clear="demosStore.error = null" @retry="loadDemos()" />
+
     <!-- Pipeline Status Cards -->
     <v-row v-if="statusCounts" class="mb-4">
       <v-col v-for="s in pipelineStats" :key="s.label" cols="6" md>
@@ -42,7 +44,7 @@
           <v-card-text class="text-center pa-3">
             <v-icon :color="s.color" size="24" class="mb-1">{{ s.icon }}</v-icon>
             <div class="text-h5 font-weight-bold">{{ s.count }}</div>
-            <div class="text-caption text-grey">{{ s.label }}</div>
+            <div class="text-caption text-medium-emphasis">{{ s.label }}</div>
           </v-card-text>
         </v-card>
       </v-col>
@@ -123,7 +125,7 @@
 
         <!-- Active Filters -->
         <div v-if="hasActiveFilters" class="mt-3 d-flex align-center flex-wrap ga-2">
-          <span class="text-caption text-grey mr-2">Active filters:</span>
+          <span class="text-caption text-medium-emphasis mr-2">Active filters:</span>
           <v-chip v-if="filters.status" size="small" closable @click:close="filters.status = undefined; loadDemos()">
             Status: {{ getStatusLabel(demoStatusMap, filters.status) }}
           </v-chip>
@@ -165,7 +167,7 @@
     <!-- Loading State -->
     <v-card v-if="loading && demos.length === 0" class="pa-8 text-center">
       <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading demos...</p>
+      <p class="text-medium-emphasis mt-4">Loading demos...</p>
     </v-card>
 
     <!-- Demos Table -->
@@ -179,130 +181,119 @@
         <v-progress-circular indeterminate color="primary" />
       </v-overlay>
 
-      <v-data-table
-        v-model="selectedRows"
-        :headers="headers"
-        :items="demos"
-        :items-per-page="pageSize"
-        item-value="id"
-        show-select
-        class="elevation-0"
-      >
-        <template v-slot:item.file_name="{ item }">
-          <div class="d-flex align-center">
-            <v-icon size="small" class="mr-2" color="grey">mdi-file-video</v-icon>
-            <router-link
-              :to="{ name: 'admin-demo-detail', params: { id: item.id } }"
-              class="text-primary text-decoration-none font-weight-medium"
-            >
-              {{ truncateFilename(item.file_name) }}
-            </router-link>
-            <v-icon v-if="item.is_hidden" size="x-small" color="grey" class="ml-1" title="Hidden">mdi-eye-off</v-icon>
-          </div>
-        </template>
-
-        <template v-slot:item.status="{ item }">
-          <v-chip
-            :color="getStatusColor(demoStatusMap, item.status)"
-            size="small"
-            variant="flat"
-          >
-            <v-icon start size="14">{{ getStatusIcon(demoStatusMap, item.status) }}</v-icon>
-            {{ getStatusLabel(demoStatusMap, item.status) }}
-          </v-chip>
-        </template>
-
-        <template v-slot:item.category="{ item }">
-          <v-chip
-            :color="getStatusColor(demoCategoryMap, item.category)"
-            size="small"
-            variant="tonal"
-          >
-            {{ getStatusLabel(demoCategoryMap, item.category) }}
-          </v-chip>
-        </template>
-
-        <template v-slot:item.metadata="{ item }">
-          <template v-if="item.metadata">
-            <div class="text-body-2">{{ item.metadata.map_name }}</div>
-            <div class="text-caption text-grey">
-              {{ item.metadata.team1_name }} {{ item.metadata.team1_score }}-{{ item.metadata.team2_score }} {{ item.metadata.team2_name }}
+      <div class="table-scroll">
+        <v-data-table
+          v-model="selectedRows"
+          :headers="headers"
+          :items="demos"
+          :items-per-page="pageSize"
+          item-value="id"
+          show-select
+          class="elevation-0"
+        >
+          <template v-slot:item.file_name="{ item }">
+            <div class="d-flex align-center">
+              <v-icon size="small" class="mr-2" color="grey">mdi-file-video</v-icon>
+              <router-link
+                :to="{ name: 'admin-demo-detail', params: { id: item.id } }"
+                class="text-primary text-decoration-none font-weight-medium"
+              >
+                {{ truncateFilename(item.file_name) }}
+              </router-link>
+              <v-icon v-if="item.is_hidden" size="x-small" color="grey" class="ml-1" title="Hidden">mdi-eye-off</v-icon>
             </div>
           </template>
-          <span v-else class="text-grey text-caption">-</span>
-        </template>
 
-        <template v-slot:item.file_size_bytes="{ item }">
-          <span class="text-caption">{{ formatFileSize(item.file_size_bytes) }}</span>
-        </template>
+          <template v-slot:item.status="{ item }">
+            <v-chip
+              :color="getStatusColor(demoStatusMap, item.status)"
+              size="small"
+              variant="flat"
+            >
+              <v-icon start size="14">{{ getStatusIcon(demoStatusMap, item.status) }}</v-icon>
+              {{ getStatusLabel(demoStatusMap, item.status) }}
+            </v-chip>
+          </template>
 
-        <template v-slot:item.discovered_at="{ item }">
-          <span class="text-caption">{{ formatRelativeTime(item.discovered_at) }}</span>
-        </template>
+          <template v-slot:item.category="{ item }">
+            <v-chip
+              :color="getStatusColor(demoCategoryMap, item.category)"
+              size="small"
+              variant="tonal"
+            >
+              {{ getStatusLabel(demoCategoryMap, item.category) }}
+            </v-chip>
+          </template>
 
-        <template v-slot:item.actions="{ item }">
-          <v-btn
-            icon
-            variant="text"
-            size="small"
-            :to="{ name: 'admin-demo-detail', params: { id: item.id } }"
-          >
-            <v-icon size="18">mdi-eye</v-icon>
-          </v-btn>
-          <v-btn
-            icon
-            variant="text"
-            size="small"
-            color="error"
-            @click="confirmDelete(item)"
-          >
-            <v-icon size="18">mdi-delete</v-icon>
-          </v-btn>
-        </template>
+          <template v-slot:item.metadata="{ item }">
+            <template v-if="item.metadata">
+              <div class="text-body-2">{{ item.metadata.map_name }}</div>
+              <div class="text-caption text-medium-emphasis">
+                {{ item.metadata.team1_name }} {{ item.metadata.team1_score }}-{{ item.metadata.team2_score }} {{ item.metadata.team2_name }}
+              </div>
+            </template>
+            <span v-else class="text-medium-emphasis text-caption">-</span>
+          </template>
 
-        <template v-slot:no-data>
-          <div class="text-center pa-8">
-            <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-file-video-outline</v-icon>
-            <p class="text-grey">
-              {{ hasActiveFilters ? 'No demos found matching your filters' : 'No demos cataloged yet' }}
-            </p>
-            <v-btn v-if="hasActiveFilters" variant="text" color="primary" class="mt-2" @click="clearAllFilters">
-              Clear filters
+          <template v-slot:item.file_size_bytes="{ item }">
+            <span class="text-caption">{{ formatFileSize(item.file_size_bytes) }}</span>
+          </template>
+
+          <template v-slot:item.discovered_at="{ item }">
+            <span class="text-caption">{{ formatRelativeTime(item.discovered_at) }}</span>
+          </template>
+
+          <template v-slot:item.actions="{ item }">
+            <v-btn aria-label="View demo details"
+              icon
+              variant="text"
+              size="small"
+              :to="{ name: 'admin-demo-detail', params: { id: item.id } }"
+            >
+              <v-icon size="18">mdi-eye</v-icon>
             </v-btn>
-          </div>
-        </template>
+            <v-btn aria-label="Delete demo"
+              icon
+              variant="text"
+              size="small"
+              color="error"
+              @click="confirmDelete(item)"
+            >
+              <v-icon size="18">mdi-delete</v-icon>
+            </v-btn>
+          </template>
 
-        <template v-slot:bottom>
-          <div class="d-flex justify-center pa-4">
-            <v-pagination
-              v-model="currentPage"
-              :length="totalPages"
-              :total-visible="7"
-              @update:model-value="goToPage"
-            />
-          </div>
-          <div class="text-center text-caption text-grey pb-2">
-            Showing {{ demos.length }} of {{ total }} demos
-          </div>
-        </template>
-      </v-data-table>
+          <template v-slot:no-data>
+            <div class="text-center pa-8">
+              <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-file-video-outline</v-icon>
+              <p class="text-medium-emphasis">
+                {{ hasActiveFilters ? 'No demos found matching your filters' : 'No demos cataloged yet' }}
+              </p>
+              <v-btn v-if="hasActiveFilters" variant="text" color="primary" class="mt-2" @click="clearAllFilters">
+                Clear filters
+              </v-btn>
+            </div>
+          </template>
+
+          <template v-slot:bottom>
+            <div class="d-flex justify-center pa-4">
+              <v-pagination
+                v-model="currentPage"
+                :length="totalPages"
+                :total-visible="7"
+                @update:model-value="goToPage"
+              />
+            </div>
+            <div class="text-center text-caption text-medium-emphasis pb-2">
+              Showing {{ demos.length }} of {{ total }} demos
+            </div>
+          </template>
+        </v-data-table>
+      </div>
     </v-card>
 
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="demosStore.error = null">
-      {{ error }}
-    </v-alert>
-
     <!-- Confirm Delete Dialog -->
-    <ConfirmDialog
-      :open="confirmDialog.state.open"
-      :title="confirmDialog.state.title"
-      :message="confirmDialog.state.message"
-      :action-label="confirmDialog.state.actionLabel"
-      :color="confirmDialog.state.color"
-      :loading="confirmDialog.state.loading"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
-    />
+    <ConfirmDialogHost :dialog="confirmDialog" />
 
     <!-- Catalog Modal -->
     <DemoCatalogModal v-model="catalogModalOpen" @cataloged="onDemoCataloged" />
@@ -320,7 +311,8 @@ import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { formatRelativeTime, formatFileSize } from '@/utils/formatters'
 import { demoStatusMap, demoCategoryMap, getStatusColor, getStatusLabel, getStatusIcon } from '@/utils/statusMaps'
 import DemoCatalogModal from '@/components/admin/DemoCatalogModal.vue'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
 
 const demosStore = useDemosStore()
 const { demos, total, loading, error, statusCounts, autoLinkEnabled } = storeToRefs(demosStore)
@@ -508,3 +500,10 @@ onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval)
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

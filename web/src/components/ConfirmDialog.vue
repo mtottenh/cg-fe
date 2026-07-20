@@ -1,5 +1,5 @@
 <template>
-  <v-dialog :model-value="isOpen" max-width="400" persistent @update:model-value="onDialogUpdate">
+  <v-dialog :model-value="open" max-width="400" persistent @update:model-value="onDialogUpdate">
     <v-card>
       <v-card-title>{{ title }}</v-card-title>
       <v-card-text>{{ message }}</v-card-text>
@@ -9,15 +9,15 @@
       <v-card-actions>
         <v-spacer />
         <v-btn variant="text" @click="handleCancel">
-          {{ cancelText || 'Cancel' }}
+          {{ cancelLabel }}
         </v-btn>
         <v-btn
-          :color="confirmColor || color || 'primary'"
+          :color="color"
           variant="flat"
           :loading="loading"
-          @click="handleConfirm"
+          @click="$emit('confirm')"
         >
-          {{ confirmText || actionLabel || 'Confirm' }}
+          {{ actionLabel }}
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -25,47 +25,33 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-
-const props = withDefaults(defineProps<{
-  // v-model API (simple usage)
-  modelValue?: boolean
-  confirmText?: string
-  cancelText?: string
-  confirmColor?: string
-  // useConfirmDialog() API
-  open?: boolean
+// Single controlled API, driven by useConfirmDialog() — prefer rendering via
+// <ConfirmDialogHost :dialog="confirmDialog" /> instead of binding by hand.
+withDefaults(defineProps<{
+  open: boolean
+  title: string
+  message: string
   actionLabel?: string
+  cancelLabel?: string
   color?: string
   loading?: boolean
   error?: string | null
-  // shared
-  title: string
-  message: string
 }>(), {
-  modelValue: undefined,
-  open: false,
+  actionLabel: 'Confirm',
+  cancelLabel: 'Cancel',
+  color: 'primary',
   loading: false,
+  error: null,
 })
 
 const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
   confirm: []
   cancel: []
   'clear-error': []
 }>()
 
-// Support both v-model and direct open prop
-const isOpen = computed(() => props.modelValue ?? props.open)
-
-function handleConfirm() {
-  emit('confirm')
-  emit('update:modelValue', false)
-}
-
 function handleCancel() {
   emit('cancel')
-  emit('update:modelValue', false)
 }
 
 function onDialogUpdate(value: boolean) {

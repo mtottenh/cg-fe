@@ -8,7 +8,7 @@
     >
       <template v-slot:item.participant_logo_url="{ item }">
         <v-avatar size="32" rounded="sm">
-          <v-img v-if="item.participant_logo_url" :src="item.participant_logo_url" />
+          <v-img :alt="item.participant_name ?? ''" v-if="item.participant_logo_url" :src="item.participant_logo_url" />
           <v-icon v-else>mdi-account</v-icon>
         </v-avatar>
       </template>
@@ -37,7 +37,7 @@
       </template>
 
       <template v-slot:item.actions="{ item }">
-        <div class="d-flex gap-1">
+        <div class="d-flex ga-1">
           <!-- Pending: Approve / Reject -->
           <template v-if="item.status === 'pending'">
             <v-btn
@@ -99,13 +99,13 @@
           </template>
 
           <!-- Terminal states: No actions -->
-          <span v-else class="text-grey text-caption">-</span>
+          <span v-else class="text-medium-emphasis text-caption">-</span>
         </div>
       </template>
 
       <template v-slot:no-data>
         <div class="text-center pa-4">
-          <p class="text-grey">No registrations yet</p>
+          <p class="text-medium-emphasis">No registrations yet</p>
         </div>
       </template>
     </v-data-table>
@@ -115,6 +115,7 @@
 <script setup lang="ts">
 import type { TournamentRegistrationResponse } from '@/stores/tournaments'
 import { formatDateTime } from '@/utils/formatters'
+import { registrationStatusMap, getStatusColor as mapStatusColor } from '@/utils/statusMaps'
 
 defineProps<{
   registrations: TournamentRegistrationResponse[]
@@ -140,14 +141,5 @@ const headers = [
   { title: 'Actions', key: 'actions', width: '200px', sortable: false },
 ]
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'pending': return 'warning'
-    case 'approved': return 'success'
-    case 'checked_in': return 'primary'
-    case 'rejected': return 'error'
-    case 'withdrawn': return 'grey'
-    default: return 'grey'
-  }
-}
+const getStatusColor = (status: string) => mapStatusColor(registrationStatusMap, status)
 </script>

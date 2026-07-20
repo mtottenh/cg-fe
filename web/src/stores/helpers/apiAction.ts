@@ -57,6 +57,29 @@ export interface ActionState {
 }
 
 /**
+ * Latest-wins guard for fetch→assign store actions. Without it every
+ * "fetch → write `currentX`" action is last-write-wins: a slow response for
+ * entity A can overwrite the already-rendered entity B after a rapid route
+ * change.
+ *
+ * Usage — one guard per piece of state, `begin()` per fetch:
+ *   const beginCurrentFetch = createLatestGuard()
+ *   async function fetchThing(id: string) {
+ *     const isCurrent = beginCurrentFetch()
+ *     const result = await unwrapApi(...)
+ *     if (isCurrent()) current.value = result.data
+ *     return result.data
+ *   }
+ */
+export function createLatestGuard(): () => () => boolean {
+  let generation = 0
+  return function begin() {
+    const id = ++generation
+    return () => id === generation
+  }
+}
+
+/**
  * Creates a per-action loading/error state pair.
  *
  * Returns a `reactive({...})` so consumers read `state.loading` / `state.error`
@@ -104,6 +127,13 @@ export function aggregateActionStates(states: ActionState[]): {
   return { loading, error }
 }
 
+// Overlap bookkeeping: the same action can be invoked concurrently (a poll
+// tick racing a user-triggered refetch). `loading` is reference-counted so
+// the first completion doesn't clear the spinner while the second is still
+// in flight, and only the latest invocation is allowed to write `error`.
+const inflightCounts = new WeakMap<ActionState, number>()
+const latestInvocation = new WeakMap<ActionState, number>()
+
 /**
  * Executes a store action with automatic loading/error state management.
  */
@@ -112,18 +142,21 @@ export async function withActionState<T>(
   action: () => Promise<T>,
   fallbackMessage: string
 ): Promise<T> {
+  inflightCounts.set(state, (inflightCounts.get(state) ?? 0) + 1)
+  const invocationId = (latestInvocation.get(state) ?? 0) + 1
+  latestInvocation.set(state, invocationId)
   state.loading = true
   state.error = null
   try {
     return await action()
   } catch (e: unknown) {
-    if (e instanceof ApiError) {
-      state.error = e.detail
-    } else {
-      state.error = fallbackMessage
+    if (latestInvocation.get(state) === invocationId) {
+      state.error = e instanceof ApiError ? e.detail : fallbackMessage
     }
     throw e
   } finally {
-    state.loading = false
+    const remaining = (inflightCounts.get(state) ?? 1) - 1
+    inflightCounts.set(state, remaining)
+    if (remaining <= 0) state.loading = false
   }
 }

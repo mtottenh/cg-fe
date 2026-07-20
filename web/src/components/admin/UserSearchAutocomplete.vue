@@ -20,7 +20,7 @@
       <v-list-item v-bind="itemProps" :title="undefined">
         <template v-slot:prepend>
           <v-avatar size="32" class="mr-2">
-            <v-img v-if="item.raw.avatar_url" :src="item.raw.avatar_url" />
+            <v-img alt="" v-if="item.raw.avatar_url" :src="item.raw.avatar_url" />
             <v-icon v-else>mdi-account</v-icon>
           </v-avatar>
         </template>
@@ -35,7 +35,7 @@
     <template v-slot:selection="{ item }">
       <div class="d-flex align-center">
         <v-avatar size="24" class="mr-2">
-          <v-img v-if="item.raw.avatar_url" :src="item.raw.avatar_url" />
+          <v-img alt="" v-if="item.raw.avatar_url" :src="item.raw.avatar_url" />
           <v-icon v-else size="16">mdi-account</v-icon>
         </v-avatar>
         <span>{{ item.raw.display_name }}</span>

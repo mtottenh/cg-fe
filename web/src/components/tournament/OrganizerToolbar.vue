@@ -6,7 +6,7 @@
     </v-card-title>
     <v-divider />
     <v-card-text>
-      <div class="d-flex flex-wrap gap-2">
+      <div class="d-flex flex-wrap ga-2">
         <!-- Status-based action buttons -->
         <v-btn v-if="canPublish" color="primary" prepend-icon="mdi-eye"
           :loading="tournamentsStore.publishState.loading" @click="handlePublish">
@@ -59,18 +59,7 @@
     </v-card-text>
 
     <!-- Cancel Confirmation Dialog -->
-    <ConfirmDialog
-      :open="confirmDialog.state.open"
-      :title="confirmDialog.state.title"
-      :message="confirmDialog.state.message"
-      :action-label="confirmDialog.state.actionLabel"
-      :color="confirmDialog.state.color"
-      :loading="confirmDialog.state.loading"
-      :error="confirmDialog.state.dialogError"
-      @clear-error="confirmDialog.clearError()"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
-    />
+    <ConfirmDialogHost :dialog="confirmDialog" />
   </v-card>
 </template>
 
@@ -79,7 +68,7 @@ import { computed } from 'vue'
 import { useTournamentsStore, type TournamentResponse } from '@/stores/tournaments'
 import { useTournamentContext } from '@/composables/useTournamentContext'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import type { Ref } from 'vue'
 
 const props = defineProps<{

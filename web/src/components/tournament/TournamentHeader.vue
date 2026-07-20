@@ -2,7 +2,7 @@
   <v-card variant="outlined">
     <!-- Banner -->
     <div class="tournament-banner">
-      <v-img
+      <v-img :alt="`${tournament.name} banner`"
         v-if="tournament.banner_url"
         :src="tournament.banner_url"
         height="200"
@@ -30,7 +30,7 @@
         <v-col cols="auto">
           <!-- Logo -->
           <v-avatar size="80" rounded="lg">
-            <v-img v-if="tournament.logo_url" :src="tournament.logo_url" />
+            <v-img :alt="`${tournament.name} logo`" v-if="tournament.logo_url" :src="tournament.logo_url" />
             <v-icon v-else size="48">mdi-tournament</v-icon>
           </v-avatar>
         </v-col>
@@ -39,17 +39,17 @@
           <!-- Game Badge -->
           <div v-if="game" class="d-flex align-center mb-2">
             <v-avatar size="24" rounded="sm" class="mr-2">
-              <v-img v-if="game.icon_url" :src="game.icon_url" />
+              <v-img alt="" v-if="game.icon_url" :src="game.icon_url" />
               <v-icon v-else size="16">mdi-gamepad-variant</v-icon>
             </v-avatar>
-            <span class="text-subtitle-2 text-grey">{{ game.display_name }}</span>
+            <span class="text-subtitle-2 text-medium-emphasis">{{ game.display_name }}</span>
           </div>
 
           <!-- Title -->
           <h1 class="text-h4 font-weight-bold mb-2">{{ tournament.name }}</h1>
 
           <!-- Quick Info -->
-          <div class="d-flex flex-wrap gap-3 align-center">
+          <div class="d-flex flex-wrap ga-3 align-center">
             <v-chip variant="tonal">
               <v-icon start size="small">mdi-tournament</v-icon>
               {{ formatLabel }}
@@ -74,7 +74,7 @@
 
         <v-col cols="auto" class="d-none d-md-flex">
           <!-- Share Button -->
-          <v-btn icon variant="tonal" @click="share">
+          <v-btn aria-label="Share tournament" icon variant="tonal" @click="share">
             <v-icon>mdi-share-variant</v-icon>
           </v-btn>
         </v-col>

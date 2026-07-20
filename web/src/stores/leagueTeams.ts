@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, createLatestGuard } from '@/stores/helpers'
 
 // Use generated types
 type LeagueTeamResponse = components['schemas']['LeagueTeamResponse']
@@ -92,13 +92,17 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     }, 'Failed to fetch teams')
   }
 
+  // Latest-wins guard for `currentTeam` across rapid route changes.
+  const beginCurrentTeamFetch = createLatestGuard()
+
   async function fetchTeam(teamId: string): Promise<LeagueTeamResponse> {
     return withActionState(fetchTeamState, async () => {
+      const isCurrent = beginCurrentTeamFetch()
       const result = await unwrapApi(api.GET('/v1/league-teams/{team_id}', {
         params: { path: { team_id: teamId } },
       }))
-      currentTeam.value = result.data
-      return currentTeam.value
+      if (isCurrent()) currentTeam.value = result.data
+      return result.data
     }, 'Failed to fetch team')
   }
 

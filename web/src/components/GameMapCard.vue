@@ -11,7 +11,7 @@
     :disabled="disabled"
     @click="selectable && !disabled && $emit('select')"
   >
-    <v-img
+    <v-img alt=""
       v-if="imageUrl"
       :src="imageUrl"
       height="80"

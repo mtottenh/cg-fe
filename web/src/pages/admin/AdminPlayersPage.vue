@@ -7,6 +7,8 @@
       </v-chip>
     </div>
 
+    <ErrorAlert :error="error" retryable @clear="error = null" @retry="fetchPlayers()" />
+
     <!-- Search and Filters -->
     <v-card class="mb-4">
       <v-card-text>
@@ -76,7 +78,7 @@
 
         <!-- Active Filters Display -->
         <div v-if="hasActiveFilters" class="mt-3 d-flex align-center flex-wrap ga-2">
-          <span class="text-caption text-grey mr-2">Active filters:</span>
+          <span class="text-caption text-medium-emphasis mr-2">Active filters:</span>
           <v-chip
             v-if="search"
             size="small"
@@ -125,7 +127,7 @@
     <!-- Loading State (initial load only) -->
     <v-card v-if="loading && players.length === 0" class="pa-8 text-center">
       <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading players...</p>
+      <p class="text-medium-emphasis mt-4">Loading players...</p>
     </v-card>
 
     <!-- Players Table -->
@@ -140,98 +142,96 @@
         <v-progress-circular indeterminate color="primary" />
       </v-overlay>
 
-      <v-data-table
-        :headers="headers"
-        :items="players"
-        :items-per-page="pagination.per_page"
-        class="elevation-0"
-      >
-        <template v-slot:item.avatar_url="{ item }">
-          <v-avatar size="36">
-            <v-img v-if="item.avatar_url" :src="item.avatar_url" />
-            <v-icon v-else>mdi-account</v-icon>
-          </v-avatar>
-        </template>
+      <div class="table-scroll">
+        <v-data-table
+          :headers="headers"
+          :items="players"
+          :items-per-page="pagination.per_page"
+          class="elevation-0"
+        >
+          <template v-slot:item.avatar_url="{ item }">
+            <v-avatar size="36">
+              <v-img alt="" v-if="item.avatar_url" :src="item.avatar_url" />
+              <v-icon v-else>mdi-account</v-icon>
+            </v-avatar>
+          </template>
 
-        <template v-slot:item.display_name="{ item }">
-          <div>
-            <div class="font-weight-medium">{{ item.display_name }}</div>
-            <div class="text-caption text-grey">ID: {{ item.id.substring(0, 8) }}...</div>
-          </div>
-        </template>
+          <template v-slot:item.display_name="{ item }">
+            <div>
+              <div class="font-weight-medium">{{ item.display_name }}</div>
+              <div class="text-caption text-medium-emphasis">ID: {{ item.id.substring(0, 8) }}...</div>
+            </div>
+          </template>
 
-        <template v-slot:item.country_code="{ item }">
-          <span v-if="item.country_code" class="text-uppercase font-weight-medium">
-            {{ item.country_code }}
-          </span>
-          <span v-else class="text-grey">-</span>
-        </template>
+          <template v-slot:item.country_code="{ item }">
+            <span v-if="item.country_code" class="text-uppercase font-weight-medium">
+              {{ item.country_code }}
+            </span>
+            <span v-else class="text-medium-emphasis">-</span>
+          </template>
 
-        <template v-slot:item.actions="{ item }">
-          <v-btn
-            icon
-            size="small"
-            variant="text"
-            @click="openPlayerDetail(item)"
-            title="View Details"
-          >
-            <v-icon>mdi-eye</v-icon>
-          </v-btn>
-          <v-btn
-            icon
-            size="small"
-            variant="text"
-            :to="`/players/${item.id}`"
-            title="Public Profile"
-          >
-            <v-icon>mdi-open-in-new</v-icon>
-          </v-btn>
-        </template>
-
-        <template v-slot:no-data>
-          <div class="text-center pa-8">
-            <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-search</v-icon>
-            <p class="text-grey">
-              {{ hasActiveFilters ? 'No players found matching your filters' : 'No players found' }}
-            </p>
-            <v-btn
-              v-if="hasActiveFilters"
+          <template v-slot:item.actions="{ item }">
+            <v-btn aria-label="View player details"
+              icon
+              size="small"
               variant="text"
-              color="primary"
-              class="mt-2"
-              @click="clearAllFilters"
+              @click="openPlayerDetail(item)"
+              title="View Details"
             >
-              Clear filters
+              <v-icon>mdi-eye</v-icon>
             </v-btn>
-          </div>
-        </template>
+            <v-btn aria-label="Public profile"
+              icon
+              size="small"
+              variant="text"
+              :to="`/players/${item.id}`"
+              title="Public Profile"
+            >
+              <v-icon>mdi-open-in-new</v-icon>
+            </v-btn>
+          </template>
 
-        <template v-slot:bottom>
-          <div class="d-flex justify-center pa-4">
-            <v-pagination
-              v-model="currentPage"
-              :length="pagination.total_pages"
-              :total-visible="7"
-              @update:model-value="goToPage"
-            />
-          </div>
-          <div class="text-center text-caption text-grey pb-2">
-            Showing {{ players.length }} of {{ pagination.total_items }} players
-          </div>
-        </template>
-      </v-data-table>
+          <template v-slot:no-data>
+            <div class="text-center pa-8">
+              <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-search</v-icon>
+              <p class="text-medium-emphasis">
+                {{ hasActiveFilters ? 'No players found matching your filters' : 'No players found' }}
+              </p>
+              <v-btn
+                v-if="hasActiveFilters"
+                variant="text"
+                color="primary"
+                class="mt-2"
+                @click="clearAllFilters"
+              >
+                Clear filters
+              </v-btn>
+            </div>
+          </template>
+
+          <template v-slot:bottom>
+            <div class="d-flex justify-center pa-4">
+              <v-pagination
+                v-model="currentPage"
+                :length="pagination.total_pages"
+                :total-visible="7"
+                @update:model-value="goToPage"
+              />
+            </div>
+            <div class="text-center text-caption text-medium-emphasis pb-2">
+              Showing {{ players.length }} of {{ pagination.total_items }} players
+            </div>
+          </template>
+        </v-data-table>
+      </div>
     </v-card>
-
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="error = null">
-      {{ error }}
-    </v-alert>
 
     <!-- Player Detail Modal -->
     <v-dialog v-model="detailModalOpen" max-width="700">
       <v-card v-if="selectedPlayer">
         <v-card-title class="d-flex justify-space-between align-center">
           <span>Player Details</span>
-          <v-btn icon variant="text" @click="detailModalOpen = false">
+          <v-btn aria-label="Close" icon variant="text" @click="detailModalOpen = false">
             <v-icon>mdi-close</v-icon>
           </v-btn>
         </v-card-title>
@@ -247,12 +247,12 @@
             <!-- Profile Header -->
             <div class="d-flex align-center mb-4">
               <v-avatar size="80" class="mr-4">
-                <v-img v-if="playerDetail.avatar_url" :src="playerDetail.avatar_url" />
+                <v-img alt="" v-if="playerDetail.avatar_url" :src="playerDetail.avatar_url" />
                 <v-icon v-else size="48">mdi-account</v-icon>
               </v-avatar>
               <div>
                 <h3 class="text-h5">{{ playerDetail.display_name }}</h3>
-                <div class="text-caption text-grey">{{ playerDetail.id }}</div>
+                <div class="text-caption text-medium-emphasis">{{ playerDetail.id }}</div>
                 <v-chip
                   v-if="playerDetail.country_code"
                   size="small"
@@ -298,7 +298,7 @@
               <v-list-item v-for="team in playerTeams" :key="team.team_id">
                 <template v-slot:prepend>
                   <v-avatar size="32">
-                    <v-img v-if="team.team_logo_url" :src="team.team_logo_url" />
+                    <v-img alt="" v-if="team.team_logo_url" :src="team.team_logo_url" />
                     <v-icon v-else size="20">mdi-account-group</v-icon>
                   </v-avatar>
                 </template>
@@ -311,7 +311,7 @@
                 </v-list-item-subtitle>
               </v-list-item>
             </v-list>
-            <p v-else class="text-grey text-center pa-4">No team memberships</p>
+            <p v-else class="text-medium-emphasis text-center pa-4">No team memberships</p>
           </template>
         </v-card-text>
 
@@ -339,6 +339,8 @@ import { watchDebounced } from '@vueuse/core'
 import { api, ApiError } from '@/api'
 import { useGamesStore } from '@/stores/games'
 import { formatDate } from '@/utils/formatters'
+import { teamRoleMap, getStatusColor } from '@/utils/statusMaps'
+import ErrorAlert from '@/components/ErrorAlert.vue'
 import type { components } from '@/api/types'
 
 type PlayerSummary = components['schemas']['PlayerSearchResponse']
@@ -394,19 +396,7 @@ const headers = [
 ]
 
 // Helpers
-function getRoleColor(role: string): string {
-  switch (role) {
-    case 'captain':
-    case 'founder':
-      return 'primary'
-    case 'player':
-      return 'success'
-    case 'substitute':
-      return 'info'
-    default:
-      return 'grey'
-  }
-}
+const getRoleColor = (role: string) => getStatusColor(teamRoleMap, role)
 
 function clearAllFilters() {
   search.value = ''
@@ -528,3 +518,10 @@ onMounted(async () => {
   fetchPlayers()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

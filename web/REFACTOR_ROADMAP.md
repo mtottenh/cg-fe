@@ -72,6 +72,7 @@ Legend: 🔴 Critical · 🟡 Important · 🟢 Nice-to-have · ✅ Done
 
 - ⚠️ **67 pre-existing `vue-tsc` errors on `master`.** `npm run build` runs `vue-tsc -b && vite build`, but the incremental cache can mask them locally. Most are OpenAPI ↔ store drift (e.g. `LeagueInvitationResponse.data`, `CreateStageRequest` missing from generated types, `matchCheckIn` body shape, `forfeitMatch` needing `registration_id`, `autoSeed` needing a body). Fixing requires `npm run generate:api` against a live backend + reconciling store code. Create a separate ticket; do not conflate with this refactor.
 - ℹ️ **ActionState reactive migration (W6.2) reduced the error count from 67 → 18**, because most of the "drift" errors were actually nested-ref mistypes (`Ref<boolean>` passed where `boolean` expected).
+- ✅ **RESOLVED (2026-07-20):** the remaining vue-tsc backlog is gone — `npm run typecheck` and `npm run build` are clean at 0 errors. Types are regenerated from the backend spec (now dumpable offline via `cargo run -p portal-api --bin openapi-dump` in `../api`), and the drifted store/DTO call sites were reconciled during the audit-fix pass.
 
 ---
 

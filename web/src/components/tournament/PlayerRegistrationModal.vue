@@ -9,7 +9,7 @@
       <v-divider />
 
       <v-card-text>
-        <p class="text-body-2 text-grey mb-4">
+        <p class="text-body-2 text-medium-emphasis mb-4">
           You're registering for <strong>{{ tournament.name }}</strong>
         </p>
 

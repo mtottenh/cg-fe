@@ -7,7 +7,7 @@
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Invite Player to Team</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -35,11 +35,11 @@
                 return-object
                 @update:search="searchPlayers"
               >
-                <template v-slot:item="{ item, props }">
-                  <v-list-item v-bind="props">
+                <template v-slot:item="{ item, props: itemProps }">
+                  <v-list-item v-bind="itemProps">
                     <template v-slot:prepend>
                       <v-avatar size="32">
-                        <v-img v-if="item.raw.avatar_url" :src="item.raw.avatar_url" />
+                        <v-img alt="" v-if="item.raw.avatar_url" :src="item.raw.avatar_url" />
                         <v-icon v-else>mdi-account</v-icon>
                       </v-avatar>
                     </template>

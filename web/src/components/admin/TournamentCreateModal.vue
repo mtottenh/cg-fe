@@ -1,5 +1,6 @@
 <template>
   <v-dialog
+    :fullscreen="smAndDown"
     v-model="open"
     max-width="800"
     persistent
@@ -8,7 +9,7 @@
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Create New Tournament</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -49,10 +50,14 @@
 </template>
 
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import { ref, watch, useTemplateRef } from 'vue'
 import { useTournamentsStore } from '@/stores/tournaments'
 import type { GameSummary } from '@/stores/games'
 import TournamentForm from '@/components/tournament/TournamentForm.vue'
+
+// Long scrolling forms in a small floating dialog are unusable on phones.
+const { smAndDown } = useDisplay()
 
 interface LeagueSummary {
   id: string

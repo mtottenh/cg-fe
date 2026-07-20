@@ -21,7 +21,6 @@ vi.mock('@/api', () => ({
       this.detail = detail
     }
   },
-  handleApiError: vi.fn(),
 }))
 
 import { useAuthStore } from '../auth'
@@ -108,7 +107,8 @@ describe('Auth Store — loginWithTokens (Steam)', () => {
     expect(store.isAuthenticated).toBe(true)
 
     expect(localStorageMock.setItem).toHaveBeenCalledWith('token', jwt)
-    expect(localStorageMock.setItem).toHaveBeenCalledWith('refresh_token', 'refresh-abc')
+    // Refresh token is memory-only — never persisted (XSS hardening).
+    expect(localStorageMock.setItem).not.toHaveBeenCalledWith('refresh_token', expect.anything())
     expect(localStorageMock.setItem).toHaveBeenCalledWith('player_id', 'player-1')
     expect(setAuthToken).toHaveBeenCalledWith(jwt)
 

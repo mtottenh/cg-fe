@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, createLatestGuard } from '@/stores/helpers'
 import { replaceById } from '@/utils/collections'
 
 // Use generated types
@@ -64,23 +64,28 @@ export const useLeaguesStore = defineStore('leagues', () => {
     }, 'Failed to fetch leagues')
   }
 
+  // Shared guard: both fetchers write `currentLeague` — latest wins.
+  const beginCurrentLeagueFetch = createLatestGuard()
+
   async function fetchLeague(leagueId: string): Promise<LeagueResponse> {
     return withActionState(fetchLeagueState, async () => {
+      const isCurrent = beginCurrentLeagueFetch()
       const result = await unwrapApi(api.GET('/v1/leagues/{league_id}', {
         params: { path: { league_id: leagueId } },
       }))
-      currentLeague.value = result.data
-      return currentLeague.value
+      if (isCurrent()) currentLeague.value = result.data
+      return result.data
     }, 'Failed to fetch league')
   }
 
   async function fetchLeagueBySlug(slug: string): Promise<LeagueResponse> {
     return withActionState(fetchLeagueBySlugState, async () => {
+      const isCurrent = beginCurrentLeagueFetch()
       const result = await unwrapApi(api.GET('/v1/leagues/by-slug/{slug}', {
         params: { path: { slug } },
       }))
-      currentLeague.value = result.data
-      return currentLeague.value
+      if (isCurrent()) currentLeague.value = result.data
+      return result.data
     }, 'Failed to fetch league')
   }
 

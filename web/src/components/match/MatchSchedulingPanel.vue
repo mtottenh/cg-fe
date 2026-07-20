@@ -31,11 +31,11 @@
 
         <!-- Calendar overlay mode -->
         <AvailabilityCalendarOverlay
-          v-if="viewMode === 'calendar' && opponentPlayerId && tournamentId && matchId"
+          v-if="viewMode === 'calendar' && opponentPlayerId"
           v-model="proposedTimes"
           :opponent-player-id="opponentPlayerId"
-          :tournament-id="tournamentId"
-          :match-id="matchId"
+          :tournament-id="tournament.id"
+          :match-id="match.id"
           class="mb-4"
         />
 
@@ -43,6 +43,7 @@
         <ScheduleTimePicker
           v-else
           v-model="proposedTimes"
+          v-model:valid="pickerValid"
           :suggested-times="suggestedTimes"
         />
 
@@ -116,6 +117,7 @@
 
           <ScheduleTimePicker
             v-model="counterTimes"
+            v-model:valid="counterPickerValid"
             :suggested-times="suggestedTimes"
           />
 
@@ -165,14 +167,10 @@ const props = withDefaults(
     loading?: boolean
     suggestedTimes?: string[]
     opponentPlayerId?: string | null
-    tournamentId?: string
-    matchId?: string
   }>(),
   {
     suggestedTimes: () => [],
     opponentPlayerId: null,
-    tournamentId: '',
-    matchId: '',
   }
 )
 
@@ -193,18 +191,25 @@ const emit = defineEmits<{
 // Proposal form state
 const proposedTimes = ref<string[]>(['', ''])
 const notes = ref('')
+const pickerValid = ref(false)
 
 // Counter-proposal dialog state
 const counterDialogOpen = ref(false)
 const counterTimes = ref<string[]>(['', ''])
 const counterNotes = ref('')
+const counterPickerValid = ref(false)
 
+// The calendar overlay only offers valid cells (error-proof by construction);
+// the manual picker must additionally pass its field rules — a past datetime
+// shows a red error and must NOT leave the submit button enabled.
 const hasValidTime = computed(() => {
-  return proposedTimes.value.some((t) => t !== '')
+  const nonEmpty = proposedTimes.value.some((t) => t !== '')
+  if (viewMode.value === 'calendar') return nonEmpty
+  return nonEmpty && pickerValid.value
 })
 
 const hasValidCounterTime = computed(() => {
-  return counterTimes.value.some((t) => t !== '')
+  return counterTimes.value.some((t) => t !== '') && counterPickerValid.value
 })
 
 function submitProposal() {

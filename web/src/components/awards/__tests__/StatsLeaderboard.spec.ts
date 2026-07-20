@@ -71,7 +71,7 @@ describe('StatsLeaderboard', () => {
     expect(mockGet).toHaveBeenCalledWith('/v1/tournaments/{tournament_id}/stats-leaderboard', {
       params: {
         path: { tournament_id: 'tourn-1' },
-        query: { sort: 'kills', min_rounds: undefined, min_demos: undefined, limit: undefined },
+        query: { sort: 'kills', min_rounds: undefined, min_demos: undefined, limit: 100 },
       },
     })
 

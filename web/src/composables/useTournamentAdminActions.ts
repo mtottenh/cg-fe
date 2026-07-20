@@ -97,16 +97,34 @@ export function useTournamentAdminActions(
       feedbackOptions('Tournament started successfully'))
   }
 
-  async function complete() {
+  function complete() {
     if (!tournament.value) return
-    await feedback.run(() => store.completeTournament(tournament.value!.id),
-      feedbackOptions('Tournament completed successfully'))
+    confirmDialog.confirm({
+      title: 'Complete Tournament',
+      message: 'Mark this tournament as completed? Remaining matches will no longer be playable.',
+      action: 'Complete',
+      color: 'warning',
+      handler: async () => {
+        if (!tournament.value) return
+        await feedback.run(() => store.completeTournament(tournament.value!.id),
+          { ...feedbackOptions('Tournament completed successfully'), rethrow: true })
+      },
+    })
   }
 
-  async function finalize() {
+  function finalize() {
     if (!tournament.value) return
-    await feedback.run(() => store.finalizeTournament(tournament.value!.id),
-      feedbackOptions('Tournament finalized successfully'))
+    confirmDialog.confirm({
+      title: 'Finalize Tournament',
+      message: 'Finalize this tournament? Results become official and can no longer be changed.',
+      action: 'Finalize',
+      color: 'warning',
+      handler: async () => {
+        if (!tournament.value) return
+        await feedback.run(() => store.finalizeTournament(tournament.value!.id),
+          { ...feedbackOptions('Tournament finalized successfully'), rethrow: true })
+      },
+    })
   }
 
   function cancel() {
@@ -124,16 +142,34 @@ export function useTournamentAdminActions(
     })
   }
 
-  async function advanceRound() {
+  function advanceRound() {
     if (!tournament.value) return
-    await feedback.run(() => store.generateNextRound(tournament.value!.id),
-      feedbackOptions('Next round generated successfully'))
+    confirmDialog.confirm({
+      title: 'Generate Next Round',
+      message: 'Generate the next round of matches? Pairings are created from current results and are hard to undo.',
+      action: 'Generate Round',
+      color: 'warning',
+      handler: async () => {
+        if (!tournament.value) return
+        await feedback.run(() => store.generateNextRound(tournament.value!.id),
+          { ...feedbackOptions('Next round generated successfully'), rethrow: true })
+      },
+    })
   }
 
-  async function processNoShows() {
+  function processNoShows() {
     if (!tournament.value) return
-    await feedback.run(() => store.processNoShows(tournament.value!.id),
-      feedbackOptions('No-shows processed'))
+    confirmDialog.confirm({
+      title: 'Process No-Shows',
+      message: 'Forfeit every participant who has not checked in? Affected matches are decided immediately.',
+      action: 'Process No-Shows',
+      color: 'error',
+      handler: async () => {
+        if (!tournament.value) return
+        await feedback.run(() => store.processNoShows(tournament.value!.id),
+          { ...feedbackOptions('No-shows processed'), rethrow: true })
+      },
+    })
   }
 
   return {

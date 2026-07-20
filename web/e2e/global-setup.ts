@@ -362,7 +362,8 @@ async function openSeasonRegistration(token: string, seasonId: string): Promise<
   }
 }
 
-async function activateSeason(token: string, _leagueId: string, seasonId: string): Promise<void> {
+// Kept for seed scenarios that need an in-progress season.
+async function _activateSeason(token: string, _leagueId: string, seasonId: string): Promise<void> {
   console.log('Activating season...')
   // NOTE: Season update is at /v1/league-seasons/{season_id}
   const response = await fetch(`${API_URL}/v1/league-seasons/${seasonId}`, {

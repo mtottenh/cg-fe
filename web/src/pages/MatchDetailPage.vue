@@ -1,10 +1,9 @@
 <template>
   <v-container>
+    <ErrorAlert :error="combinedError" retryable @clear="clearError" @retry="fetchAll" />
+
     <!-- Loading State -->
-    <div v-if="loading && !match" class="text-center pa-8">
-      <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading match...</p>
-    </div>
+    <v-skeleton-loader v-if="loading && !match" type="article" class="mb-4" />
 
     <!-- Content -->
     <template v-else-if="match && tournament">
@@ -16,12 +15,13 @@
         <v-card-text>
           <v-row align="center">
             <!-- Participant 1 -->
-            <v-col cols="5" class="text-center">
+            <v-col cols="12" sm="5" class="text-center">
               <v-avatar size="64" rounded="lg" class="mb-2">
-                <v-img v-if="match.participant1_logo_url" :src="match.participant1_logo_url" />
+                <v-img :alt="match.participant1_name ?? 'Participant 1'" v-if="match.participant1_logo_url" :src="match.participant1_logo_url" />
                 <v-icon v-else size="32">mdi-account</v-icon>
               </v-avatar>
               <h3 class="text-h6" :class="{ 'font-weight-bold text-success': isWinner(match.participant1_registration_id) }">
+                <v-icon v-if="isWinner(match.participant1_registration_id)" size="small" color="success" aria-label="Winner">mdi-trophy</v-icon>
                 {{ match.participant1_name || 'TBD' }}
               </h3>
               <v-chip v-if="match.participant1_seed" size="small" variant="tonal" class="mt-1">
@@ -30,7 +30,7 @@
             </v-col>
 
             <!-- Score / Status -->
-            <v-col cols="2" class="text-center">
+            <v-col cols="12" sm="2" class="text-center">
               <template v-if="match.status === 'completed'">
                 <div class="text-h3 font-weight-bold">
                   {{ match.participant1_score }} - {{ match.participant2_score }}
@@ -49,7 +49,7 @@
                 </v-chip>
               </template>
               <template v-else>
-                <div class="text-h4 text-grey">VS</div>
+                <div class="text-h4 text-medium-emphasis">VS</div>
                 <v-chip :color="getMatchStatusColor(match.status)" size="small" class="mt-2">
                   {{ getMatchStatusLabel(match.status) }}
                 </v-chip>
@@ -57,12 +57,13 @@
             </v-col>
 
             <!-- Participant 2 -->
-            <v-col cols="5" class="text-center">
+            <v-col cols="12" sm="5" class="text-center">
               <v-avatar size="64" rounded="lg" class="mb-2">
-                <v-img v-if="match.participant2_logo_url" :src="match.participant2_logo_url" />
+                <v-img :alt="match.participant2_name ?? 'Participant 2'" v-if="match.participant2_logo_url" :src="match.participant2_logo_url" />
                 <v-icon v-else size="32">mdi-account</v-icon>
               </v-avatar>
               <h3 class="text-h6" :class="{ 'font-weight-bold text-success': isWinner(match.participant2_registration_id) }">
+                <v-icon v-if="isWinner(match.participant2_registration_id)" size="small" color="success" aria-label="Winner">mdi-trophy</v-icon>
                 {{ match.participant2_name || 'TBD' }}
               </h3>
               <v-chip v-if="match.participant2_seed" size="small" variant="tonal" class="mt-1">
@@ -71,9 +72,16 @@
             </v-col>
           </v-row>
 
+          <!-- Per-map results: the primary artifact of a finished series. -->
+          <MapResultsSummary
+            v-if="match.status === 'completed' && currentResult"
+            :claim="currentResult"
+            :maps="vetoPickedMaps"
+          />
+
           <!-- Match Info -->
           <v-divider class="my-4" />
-          <div class="d-flex justify-center gap-4 flex-wrap">
+          <div class="d-flex justify-center ga-4 flex-wrap">
             <v-chip variant="tonal">
               <v-icon start size="small">mdi-tournament</v-icon>
               Match #{{ match.match_number }}
@@ -108,8 +116,6 @@
         :loading="schedulingLoading"
         :suggested-times="suggestedTimes"
         :opponent-player-id="opponentPlayerId"
-        :tournament-id="tournament.id"
-        :match-id="match.id"
         class="mb-6"
         @propose="handlePropose"
         @accept="handleAccept"
@@ -127,6 +133,24 @@
           <p class="mb-4">
             Both participants need to check in before the match can begin.
           </p>
+          <!-- Deadline + consequence: players need to know by WHEN and what
+               happens if they miss it. -->
+          <v-alert
+            v-if="match.scheduled_at"
+            type="info"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+          >
+            <template v-if="checkInCountdown">
+              Match starts in <strong>{{ checkInCountdown }}</strong>
+              ({{ formatDateTime(match.scheduled_at) }}).
+            </template>
+            <template v-else>
+              Match start time: {{ formatDateTime(match.scheduled_at) }}.
+            </template>
+            Teams that fail to check in can be forfeited as a no-show.
+          </v-alert>
           <!-- Per-participant check-in status -->
           <div class="d-flex align-center mb-2">
             <v-icon
@@ -249,6 +273,7 @@
           :team-a-registration-id="match.participant1_registration_id || ''"
           :team-b-registration-id="match.participant2_registration_id || ''"
           :match-format="matchFormat"
+          :maps="vetoPickedMaps"
           class="mb-6"
           @submitted="handleResultSubmitted"
         />
@@ -337,7 +362,7 @@
               <div class="d-flex justify-space-between align-center">
                 <div>
                   <strong>{{ getProposalStatusLabel(proposal.status) }}</strong>
-                  <div class="text-caption text-grey">
+                  <div class="text-caption text-medium-emphasis">
                     {{ formatDateTime(proposal.created_at) }}
                   </div>
                 </div>
@@ -352,32 +377,21 @@
     </template>
 
     <!-- Not Found -->
-    <v-card v-else-if="!loading" class="pa-8 text-center" variant="outlined">
-      <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-alert-circle</v-icon>
-      <h3 class="text-h6 mb-2">Match Not Found</h3>
-      <p class="text-grey mb-4">The match you're looking for doesn't exist.</p>
-      <v-btn color="primary" :to="{ name: 'tournaments' }">
-        Browse Tournaments
-      </v-btn>
-    </v-card>
-
-    <v-alert v-if="combinedError" type="error" class="mt-4" closable @click:close="clearError">
-      {{ combinedError }}
-    </v-alert>
+    <EmptyState
+      v-else-if="!loading"
+      icon="mdi-alert-circle"
+      title="Match Not Found"
+      subtitle="The match you're looking for doesn't exist."
+    >
+      <template #action>
+        <v-btn color="primary" class="mt-4" :to="{ name: 'tournaments' }">
+          Browse Tournaments
+        </v-btn>
+      </template>
+    </EmptyState>
 
     <!-- Confirm Dialog -->
-    <ConfirmDialog
-      :open="confirmDialog.state.open"
-      :title="confirmDialog.state.title"
-      :message="confirmDialog.state.message"
-      :action-label="confirmDialog.state.actionLabel"
-      :color="confirmDialog.state.color"
-      :loading="confirmDialog.state.loading"
-      :error="confirmDialog.state.dialogError"
-      @clear-error="confirmDialog.clearError()"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
-    />
+    <ConfirmDialogHost :dialog="confirmDialog" />
 
   </v-container>
 </template>
@@ -395,12 +409,15 @@ import MatchSchedulingPanel from '@/components/match/MatchSchedulingPanel.vue'
 import ResultSubmissionPanel from '@/components/match/results/ResultSubmissionPanel.vue'
 import ResultConfirmationPanel from '@/components/match/results/ResultConfirmationPanel.vue'
 import ResultHistoryTimeline from '@/components/match/results/ResultHistoryTimeline.vue'
+import MapResultsSummary from '@/components/match/results/MapResultsSummary.vue'
 import EvidenceDisplay from '@/components/match/evidence/EvidenceDisplay.vue'
 import VetoPanel from '@/components/match/veto/VetoPanel.vue'
 import LobbyChatPanel from '@/components/match/LobbyChatPanel.vue'
 import LobbyPresenceBar from '@/components/match/LobbyPresenceBar.vue'
 import DisputeThreadPanel from '@/components/match/DisputeThreadPanel.vue'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import { useDisputesStore } from '@/stores/disputes'
 import ResultReviewAlert from '@/components/match/results/ResultReviewAlert.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
@@ -419,7 +436,7 @@ const {
   loading, schedulingLoading, error: combinedError, clearError,
   showSchedulingPanel, showCheckInPanel, isProposer, canPropose,
   showResultPanel, showConfirmationPanel, canSubmitResult,
-  showWaitingForOpponent, autoConfirmCountdown,
+  showWaitingForOpponent, autoConfirmCountdown, checkInCountdown, vetoPickedMaps,
   opponentPlayerId, suggestedTimes, userRegistrationId,
   fetchAll, fetchResultData,
   schedulingStore,
@@ -536,10 +553,10 @@ function handleForfeit() {
 }
 
 // Thin event handlers
-async function handlePropose(times: string[]) {
+async function handlePropose(times: string[], notes?: string) {
   if (!tournament.value || !match.value) return
   await feedback.run(
-    () => schedulingStore.proposeSchedule(tournament.value!.id, match.value!.id, times),
+    () => schedulingStore.proposeSchedule(tournament.value!.id, match.value!.id, times, notes),
     {
       success: 'Schedule proposal sent!',
       failureFallback: 'Failed to send proposal',
@@ -566,13 +583,13 @@ async function handleAccept(selectedTime: string) {
   )
 }
 
-async function handleReject(_reason?: string) {
+async function handleReject(reason?: string) {
   if (!tournament.value || !match.value || !activeProposal.value) return
   const proposalId = activeProposal.value.id
   await feedback.run(
     () => schedulingStore.rejectProposal(tournament.value!.id, match.value!.id, {
       proposal_id: proposalId,
-    }),
+    }, reason),
     {
       // Info-level result; useActionFeedback always shows 'success' as success color,
       // but the original code used 'info'. Snackbar color doesn't carry semantic
@@ -585,11 +602,11 @@ async function handleReject(_reason?: string) {
   )
 }
 
-async function handleCounter(times: string[]) {
+async function handleCounter(times: string[], notes?: string) {
   if (!tournament.value || !match.value || !activeProposal.value) return
   const proposalId = activeProposal.value.id
   await feedback.run(
-    () => schedulingStore.counterPropose(tournament.value!.id, match.value!.id, proposalId, times),
+    () => schedulingStore.counterPropose(tournament.value!.id, match.value!.id, proposalId, times, notes),
     {
       success: 'Counter-proposal sent!',
       failureFallback: 'Failed to send counter-proposal',
@@ -617,7 +634,10 @@ async function handleResultDisputed() {
 // Lifecycle
 watch(
   () => [route.params.tournamentSlug, route.params.matchId],
-  () => { fetchAll() }
+  ([slug, matchId]) => {
+    // Params empty out while navigating away — don't fire a spurious fetch.
+    if (slug && matchId) fetchAll()
+  }
 )
 
 onMounted(() => { fetchAll() })

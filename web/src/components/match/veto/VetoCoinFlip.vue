@@ -55,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import type { CoinFlipResultMessage } from '@/composables/useMatchLobbySocket'
 
 const props = defineProps<{
@@ -69,19 +69,41 @@ const flipping = ref(false)
 const result = ref<CoinFlipResultMessage | null>(null)
 const resultIsP2 = ref(false)
 
-watch(() => props.coinFlipResult, (msg) => {
-  if (!msg) return
-  // Start animation
-  flipping.value = true
+let animationTimer: ReturnType<typeof setTimeout> | null = null
 
-  // After animation (2s), show result
-  setTimeout(() => {
-    flipping.value = false
-    result.value = msg
-    // Determine which face to show based on winner
-    // If winner is participant2, show the back face
-    resultIsP2.value = msg.winner_name === props.participant2Name
+function showResult(msg: CoinFlipResultMessage) {
+  flipping.value = false
+  result.value = msg
+  // If winner is participant2, show the back face
+  resultIsP2.value = msg.winner_name === props.participant2Name
+}
+
+// `immediate` matters: a late joiner (rejoin/refresh mid-phase) mounts with
+// the result already present — without it no animation ever fires and the
+// component would be stuck on the waiting state.
+watch(() => props.coinFlipResult, (msg, prev) => {
+  if (animationTimer) {
+    clearTimeout(animationTimer)
+    animationTimer = null
+  }
+  if (!msg) return
+  if (prev === undefined) {
+    // Initial run for an already-known result: skip the animation.
+    showResult(msg)
+    return
+  }
+  flipping.value = true
+  animationTimer = setTimeout(() => {
+    animationTimer = null
+    showResult(msg)
   }, 2000)
+}, { immediate: true })
+
+onUnmounted(() => {
+  if (animationTimer) {
+    clearTimeout(animationTimer)
+    animationTimer = null
+  }
 })
 </script>
 

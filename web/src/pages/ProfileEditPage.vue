@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-btn variant="text" to="/profile" class="mb-4">
       <v-icon start>mdi-arrow-left</v-icon>
       Back to Profile
@@ -185,6 +185,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { usePlayersStore, type SocialLinks } from '@/stores/players'
 import { useFormRules } from '@/composables/useFormRules'
+import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
 import ImageUpload from '@/components/ImageUpload.vue'
 import SocialLinksEditor from '@/components/SocialLinksEditor.vue'
 import SteamTrackingCard from '@/components/SteamTrackingCard.vue'
@@ -246,6 +247,8 @@ const hasSocialChanges = computed(() => {
   return JSON.stringify(form.social_links) !== JSON.stringify(originalForm.value.social_links)
 })
 
+useUnsavedChanges(() => hasBasicChanges.value || hasSocialChanges.value)
+
 // Common countries
 const countries = [
   { code: 'US', name: 'United States' },
@@ -297,7 +300,7 @@ onMounted(async () => {
     if (player.value) {
       populateForm()
     }
-  } catch (e) {
+  } catch {
     error.value = playersStore.error || 'Failed to load profile'
   } finally {
     loading.value = false
@@ -355,7 +358,7 @@ async function saveBasicInfo() {
     })
     successMessage.value = 'Profile updated successfully'
     populateForm()
-  } catch (e) {
+  } catch {
     error.value = playersStore.error || 'Failed to update profile'
   } finally {
     saving.value = false
@@ -375,7 +378,7 @@ async function saveSocialLinks() {
     })
     successMessage.value = 'Social links updated successfully'
     populateForm()
-  } catch (e) {
+  } catch {
     error.value = playersStore.error || 'Failed to update social links'
   } finally {
     savingSocial.value = false

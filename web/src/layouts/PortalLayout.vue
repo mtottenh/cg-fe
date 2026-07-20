@@ -2,19 +2,16 @@
   <v-app>
     <AppHeader title="Gaming Portal" show-nav @toggle-nav="drawer = !drawer">
       <template #append>
-        <v-chip v-if="authStore.isDevMode" color="warning" size="small" class="mr-2">
-          DEV
-        </v-chip>
         <CaptainActionsBell />
-        <v-btn v-if="authStore.isAdmin" variant="text" to="/admin" icon>
+        <v-btn aria-label="Admin Panel" v-if="authStore.isAdmin" variant="text" to="/admin" icon>
           <v-icon>mdi-shield-crown</v-icon>
           <v-tooltip activator="parent" location="bottom">Admin Panel</v-tooltip>
         </v-btn>
-        <v-btn variant="text" to="/profile" icon>
+        <v-btn aria-label="Profile" variant="text" to="/profile" icon>
           <v-icon>mdi-account</v-icon>
           <v-tooltip activator="parent" location="bottom">Profile</v-tooltip>
         </v-btn>
-        <v-btn variant="text" @click="handleLogout" icon>
+        <v-btn aria-label="Logout" variant="text" @click="handleLogout" icon>
           <v-icon>mdi-logout</v-icon>
           <v-tooltip activator="parent" location="bottom">Logout</v-tooltip>
         </v-btn>

@@ -1,5 +1,12 @@
 <template>
-  <div>
+  <v-container>
+    <ErrorAlert
+      :error="gamesStore.error"
+      retryable
+      @clear="gamesStore.error = null"
+      @retry="gamesStore.fetchGames()"
+    />
+
     <!-- Authenticated User View -->
     <template v-if="authStore.isAuthenticated">
       <!-- Welcome Header -->
@@ -35,7 +42,7 @@
               hover
             >
               <v-avatar size="64" class="mb-2" rounded="lg">
-                <v-img v-if="game.icon_url" :src="game.icon_url" />
+                <v-img alt="" v-if="game.icon_url" :src="game.icon_url" />
                 <v-icon v-else size="32">mdi-gamepad-variant</v-icon>
               </v-avatar>
               <div class="text-subtitle-2 font-weight-medium">{{ game.display_name }}</div>
@@ -250,7 +257,7 @@
           <v-col v-for="game in activeGames" :key="game.id" cols="6" sm="4" md="3" lg="2">
             <v-card class="game-card text-center pa-4" hover @click="promptLogin">
               <v-avatar size="64" class="mb-2" rounded="lg">
-                <v-img v-if="game.icon_url" :src="game.icon_url" />
+                <v-img alt="" v-if="game.icon_url" :src="game.icon_url" />
                 <v-icon v-else size="32">mdi-gamepad-variant</v-icon>
               </v-avatar>
               <div class="text-subtitle-2 font-weight-medium">{{ game.display_name }}</div>
@@ -298,7 +305,7 @@
         <v-btn color="primary" variant="text" to="/login">Sign In</v-btn>
       </template>
     </v-snackbar>
-  </div>
+  </v-container>
 </template>
 
 <script setup lang="ts">
@@ -312,6 +319,7 @@ import { api } from '@/api'
 import { unwrapApi } from '@/stores/helpers'
 import type { components } from '@/api/types'
 import CaptainActionsWidget from '@/components/CaptainActionsWidget.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
 
 type TournamentMatchResponse = components['schemas']['TournamentMatchResponse']
 type TournamentRegistrationResponse = components['schemas']['TournamentRegistrationResponse']

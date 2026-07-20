@@ -1,5 +1,5 @@
 import { computed, inject, provide, ref, watch, onUnmounted, type InjectionKey, type Ref } from 'vue'
-import { useVetoStore, type MapStatusResponse, type VetoSessionResponse, type VetoActionResponse } from '@/stores/veto'
+import { useVetoStore, type MapStatusResponse } from '@/stores/veto'
 import {
   useMatchLobbySocket,
   type ChatMessage,
@@ -57,7 +57,7 @@ export function useMatchLobby(
 
       // Populate veto session from lobby state (no REST call needed)
       if (msg.lobby_state.session) {
-        vetoStore.applySessionUpdate(msg.lobby_state.session as VetoSessionResponse)
+        vetoStore.applySessionUpdate(msg.lobby_state.session)
       }
     },
 
@@ -80,21 +80,18 @@ export function useMatchLobby(
     },
 
     veto_state_update(msg: VetoStateUpdateMessage) {
-      vetoStore.applySessionUpdate(msg.session as VetoSessionResponse)
+      vetoStore.applySessionUpdate(msg.session)
     },
 
     veto_action_performed(msg: VetoActionPerformedMessage) {
-      vetoStore.applyActionPerformed(
-        msg.session as VetoSessionResponse,
-        msg.action as VetoActionResponse,
-      )
+      vetoStore.applyActionPerformed(msg.session, msg.action)
       if (msg.is_complete) {
         stopCountdown()
       }
     },
 
     veto_complete(msg: VetoCompleteMessage) {
-      vetoStore.applyVetoComplete(msg.session as VetoSessionResponse)
+      vetoStore.applyVetoComplete(msg.session)
       stopCountdown()
     },
 
@@ -233,6 +230,10 @@ export function useMatchLobby(
   // ── Initialize ──
   async function initialize() {
     if (!matchId.value) return
+    // Drop any previous match's session before fetching — getVetoSession 404s
+    // for not-yet-started vetoes, and without this the old match's state
+    // would keep rendering in the new lobby.
+    vetoStore.clear()
     try {
       // Fetch initial state via REST (WS auth_success will update it too)
       await vetoStore.getVetoSession(matchId.value)
@@ -264,6 +265,7 @@ export function useMatchLobby(
   onUnmounted(() => {
     stopCountdown()
     socket.disconnect()
+    vetoStore.clear()
   })
 
   return {

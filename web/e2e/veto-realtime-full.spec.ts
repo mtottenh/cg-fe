@@ -4,6 +4,7 @@ import {
   setupVetoScenario,
   getVetoSession,
   performVetoAction,
+  actOnMapViaUi,
 } from './fixtures/veto.fixture'
 import {
   getMatch,
@@ -137,9 +138,7 @@ test.describe('Map Veto Real-time (full sequence, late-join, spectator)', () => 
           await acting.reload()
           await acting.waitForLoadState('networkidle')
           await expect(acting.getByText('Your turn!')).toBeVisible({ timeout: 15000 })
-          const lastCard = acting.locator('.map-card-selectable').first()
-          await expect(lastCard).toBeVisible({ timeout: 15000 })
-          await lastCard.click()
+          await actOnMapViaUi(acting)
 
           // The backend auto-chains the decider and broadcasts VetoComplete.
           await expect(other.getByText('Veto complete!')).toBeVisible({ timeout: 15000 })
@@ -149,9 +148,7 @@ test.describe('Map Veto Real-time (full sequence, late-join, spectator)', () => 
           break
         }
 
-        const card = acting.locator('.map-card-selectable').first()
-        await expect(card).toBeVisible({ timeout: 15000 })
-        await card.click()
+        await actOnMapViaUi(acting)
 
         const expected = i + 1
         // The ban lands on BOTH boards live — no reload. The clicking page
@@ -164,7 +161,7 @@ test.describe('Map Veto Real-time (full sequence, late-join, spectator)', () => 
         })
         // Turn flips live to the other client.
         await expect(other.getByText('Your turn!')).toBeVisible({ timeout: 15000 })
-        await expect(acting.getByText(/Waiting for opponent/i)).toBeVisible({
+        await expect(acting.getByText(/Waiting for/i).first()).toBeVisible({
           timeout: 15000,
         })
       }

@@ -7,11 +7,11 @@
   >
     <v-card v-if="match">
       <v-card-title class="d-flex align-center justify-space-between">
-        <div class="d-flex align-center gap-2">
+        <div class="d-flex align-center ga-2">
           <v-chip size="small" variant="tonal">#{{ match.match_number }}</v-chip>
           <span>Match Detail</span>
         </div>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -60,7 +60,7 @@
     <v-card v-else>
       <v-card-text class="text-center pa-8">
         <v-progress-circular indeterminate color="primary" />
-        <p class="mt-4 text-grey">Loading match...</p>
+        <p class="mt-4 text-medium-emphasis">Loading match...</p>
       </v-card-text>
     </v-card>
   </v-dialog>

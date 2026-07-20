@@ -30,7 +30,7 @@
     <template v-slot:no-data>
       <slot name="no-data" :search-query="searchQuery" :loading="loading" :min-query-length="minQueryLength">
         <v-list-item>
-          <v-list-item-title class="text-grey">
+          <v-list-item-title class="text-medium-emphasis">
             <template v-if="loading">Searching...</template>
             <template v-else-if="searchQuery && searchQuery.length >= minQueryLength">{{ noResultsText }}</template>
             <template v-else>{{ promptText }}</template>

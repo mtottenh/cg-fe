@@ -3,7 +3,7 @@
     <v-card-title class="text-subtitle-1 d-flex align-center">
       <v-icon start size="small">mdi-paperclip</v-icon>
       Attach Evidence
-      <span class="text-caption text-grey ml-2">(recommended)</span>
+      <span class="text-caption text-medium-emphasis ml-2">(recommended)</span>
     </v-card-title>
 
     <v-card-text>
@@ -106,7 +106,7 @@
             />
             <div v-if="item.error" class="text-caption text-error">{{ item.error }}</div>
           </div>
-          <v-btn icon variant="text" size="x-small" @click="uploader.removeUpload(item.localId)">
+          <v-btn aria-label="Remove upload" icon variant="text" size="x-small" @click="uploader.removeUpload(item.localId)">
             <v-icon size="small">mdi-close</v-icon>
           </v-btn>
         </div>

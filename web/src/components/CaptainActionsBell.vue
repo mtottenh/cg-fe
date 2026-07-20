@@ -1,7 +1,7 @@
 <template>
   <v-menu location="bottom end" :close-on-content-click="true" max-height="400" min-width="340">
     <template v-slot:activator="{ props: menuProps }">
-      <v-btn variant="text" icon v-bind="menuProps">
+      <v-btn aria-label="Captain actions" variant="text" icon v-bind="menuProps">
         <v-badge
           v-if="actionCount > 0"
           :content="actionCount"

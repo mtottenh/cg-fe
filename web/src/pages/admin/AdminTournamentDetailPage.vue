@@ -3,12 +3,12 @@
     <!-- Header -->
     <div class="d-flex justify-space-between align-center mb-6">
       <div class="d-flex align-center">
-        <v-btn icon variant="text" class="mr-2" @click="goBack">
+        <v-btn aria-label="Back" icon variant="text" class="mr-2" @click="goBack">
           <v-icon>mdi-arrow-left</v-icon>
         </v-btn>
         <div v-if="tournament">
           <h1 class="text-h4">{{ tournament.name }}</h1>
-          <div class="text-subtitle-1 text-grey d-flex align-center">
+          <div class="text-subtitle-1 text-medium-emphasis d-flex align-center">
             <TournamentStatusChip :status="tournament.status" class="mr-2" />
             <span>{{ formatTournamentFormat(tournament.format) }}</span>
             <span class="mx-2">|</span>
@@ -24,10 +24,12 @@
       />
     </div>
 
+    <ErrorAlert :error="error" retryable @clear="clearError" @retry="fetchData" />
+
     <!-- Loading State -->
     <v-card v-if="loading" class="pa-8 text-center">
       <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading tournament...</p>
+      <p class="text-medium-emphasis mt-4">Loading tournament...</p>
     </v-card>
 
     <!-- Content -->
@@ -38,7 +40,7 @@
           <v-card>
             <v-card-text class="text-center">
               <div class="text-h4 font-weight-bold">{{ registrationCount }}</div>
-              <div class="text-grey">Registrations</div>
+              <div class="text-medium-emphasis">Registrations</div>
             </v-card-text>
           </v-card>
         </v-col>
@@ -46,7 +48,7 @@
           <v-card>
             <v-card-text class="text-center">
               <div class="text-h4 font-weight-bold">{{ tournament.max_participants }}</div>
-              <div class="text-grey">Max Participants</div>
+              <div class="text-medium-emphasis">Max Participants</div>
             </v-card-text>
           </v-card>
         </v-col>
@@ -54,7 +56,7 @@
           <v-card>
             <v-card-text class="text-center">
               <div class="text-h4 font-weight-bold">{{ matchCount }}</div>
-              <div class="text-grey">Matches</div>
+              <div class="text-medium-emphasis">Matches</div>
             </v-card-text>
           </v-card>
         </v-col>
@@ -62,7 +64,7 @@
           <v-card>
             <v-card-text class="text-center">
               <div class="text-h4 font-weight-bold">{{ formatDate(tournament.starts_at) || 'TBD' }}</div>
-              <div class="text-grey">Start Date</div>
+              <div class="text-medium-emphasis">Start Date</div>
             </v-card-text>
           </v-card>
         </v-col>
@@ -92,47 +94,51 @@
                   <v-table density="comfortable">
                     <tbody>
                       <tr>
-                        <td class="text-grey" width="200">Format</td>
+                        <td class="text-medium-emphasis" width="200">Format</td>
                         <td>{{ formatTournamentFormat(tournament.format) }}</td>
                       </tr>
                       <tr>
-                        <td class="text-grey">Participant Type</td>
+                        <td class="text-medium-emphasis">Participant Type</td>
                         <td>{{ formatParticipantType(tournament.participant_type, tournament.team_size) }}</td>
                       </tr>
                       <tr>
-                        <td class="text-grey">Match Format</td>
+                        <td class="text-medium-emphasis">Match Format</td>
                         <td>{{ formatMatchFormat(tournament.default_match_format) }}</td>
                       </tr>
                       <tr>
-                        <td class="text-grey">Scheduling Mode</td>
+                        <td class="text-medium-emphasis">Scheduling Mode</td>
                         <td>{{ formatSchedulingMode(tournament.scheduling_mode) }}</td>
                       </tr>
                       <tr>
-                        <td class="text-grey">Registration Type</td>
+                        <td class="text-medium-emphasis">Registration Type</td>
                         <td>{{ tournament.registration_type }}</td>
                       </tr>
                       <tr>
-                        <td class="text-grey">Registration Opens</td>
+                        <td class="text-medium-emphasis">Registration Opens</td>
                         <td>{{ formatDateTime(tournament.registration_start) || 'Not set' }}</td>
                       </tr>
                       <tr>
-                        <td class="text-grey">Registration Closes</td>
+                        <td class="text-medium-emphasis">Registration Closes</td>
                         <td>{{ formatDateTime(tournament.registration_end) || 'Not set' }}</td>
                       </tr>
                       <tr>
-                        <td class="text-grey">Tournament Starts</td>
+                        <td class="text-medium-emphasis">Tournament Starts</td>
                         <td>{{ formatDateTime(tournament.starts_at) || 'Not set' }}</td>
                       </tr>
                       <tr v-if="tournament.check_in_required">
-                        <td class="text-grey">Check-in</td>
+                        <td class="text-medium-emphasis">Check-in</td>
                         <td>
                           {{ formatDateTime(tournament.check_in_start) }} - {{ formatDateTime(tournament.check_in_end) }}
                         </td>
                       </tr>
                       <tr v-if="tournament.rules_url">
-                        <td class="text-grey">Rules</td>
+                        <td class="text-medium-emphasis">Rules</td>
                         <td>
-                          <a :href="tournament.rules_url" target="_blank">{{ tournament.rules_url }}</a>
+                          <a
+                            :href="isHttpUrl(tournament.rules_url) ? tournament.rules_url : undefined"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >{{ tournament.rules_url }}</a>
                         </td>
                       </tr>
                     </tbody>
@@ -184,50 +190,19 @@
 
           <!-- Bracket Tab -->
           <v-tabs-window-item value="bracket">
-            <v-card-text>
-              <!-- Swiss Round Advancement -->
-              <div v-if="isSwissFormat && tournament?.status === 'in_progress'" class="mb-4 d-flex align-center gap-3">
-                <span v-if="swissBracket" class="text-subtitle-1">
-                  Round {{ swissBracket.current_round }} of {{ swissBracket.total_rounds }}
-                </span>
-                <v-btn
-                  v-if="canAdvanceRound"
-                  color="primary"
-                  prepend-icon="mdi-skip-next"
-                  :loading="tournamentsStore.generateNextRoundState.loading"
-                  @click="advanceRound"
-                >
-                  Generate Next Round
-                </v-btn>
-                <v-chip v-else color="info" variant="tonal">
-                  {{ allCurrentRoundMatchesCompleted ? 'Final round' : 'Complete all matches to advance' }}
-                </v-chip>
-              </div>
-
-              <div v-if="brackets.length === 0" class="text-center pa-8">
-                <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-tournament</v-icon>
-                <h3 class="text-h6 mb-2">No Bracket Generated</h3>
-                <p class="text-grey">
-                  The bracket will be generated when the tournament starts.
-                </p>
-              </div>
-              <div v-else>
-                <TournamentBracket :brackets="brackets" :matches="matches" />
-              </div>
-            </v-card-text>
+            <BracketTab @advance-round="tournamentActions.advanceRound" />
           </v-tabs-window-item>
 
           <!-- Seeding Tab -->
           <v-tabs-window-item value="seeding">
             <SeedingTab
-              :seeding-list="seedingList"
+              :seeding="seeding"
               :auto-seed-loading="tournamentsStore.autoSeedState.loading"
               :save-seeding-loading="tournamentsStore.manualSeedState.loading"
               :clear-seeding-loading="tournamentsStore.clearSeedingState.loading"
               @auto-seed="handleAutoSeed"
               @save="handleSaveSeeding"
               @clear="handleClearSeeding"
-              @move="moveSeed"
             />
           </v-tabs-window-item>
 
@@ -246,38 +221,10 @@
           </v-tabs-window-item>
           <!-- Stages Tab -->
           <v-tabs-window-item value="stages">
-            <v-card-text>
-              <div class="d-flex justify-end mb-4">
-                <v-btn
-                  color="primary"
-                  prepend-icon="mdi-plus"
-                  :disabled="!['draft', 'published', 'registration', 'scheduled'].includes(tournament?.status || '')"
-                  @click="stageCreateModalOpen = true"
-                >
-                  Add Stage
-                </v-btn>
-              </div>
-
-              <v-list v-if="stages.length > 0" lines="two">
-                <v-list-item v-for="stage in sortedStages" :key="stage.id">
-                  <template v-slot:prepend>
-                    <v-avatar color="primary" variant="tonal">
-                      {{ stage.stage_order }}
-                    </v-avatar>
-                  </template>
-                  <v-list-item-title>{{ stage.name }}</v-list-item-title>
-                  <v-list-item-subtitle>
-                    Format: {{ stage.format || 'Default' }}
-                    <span v-if="stage.match_format"> | Match: {{ formatMatchFormat(stage.match_format) }}</span>
-                  </v-list-item-subtitle>
-                </v-list-item>
-              </v-list>
-              <div v-else class="text-center pa-8">
-                <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-layers</v-icon>
-                <h3 class="text-h6 mb-2">No Stages</h3>
-                <p class="text-grey">Add stages for multi-phase tournaments (e.g., group stage + playoffs).</p>
-              </div>
-            </v-card-text>
+            <StagesTab
+              :tournament-id="tournament.id"
+              :tournament-status="tournament.status"
+            />
           </v-tabs-window-item>
 
           <!-- Awards Tab -->
@@ -293,10 +240,6 @@
       </v-card>
     </template>
 
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="clearError">
-      {{ error }}
-    </v-alert>
-
 
     <!-- Edit Modal -->
     <TournamentEditModal
@@ -306,16 +249,7 @@
     />
 
     <!-- Cancel Confirmation Dialog (shared between page + useTournamentAdminActions) -->
-    <ConfirmDialog
-      :open="tournamentActions.confirmDialog.state.open"
-      :title="tournamentActions.confirmDialog.state.title"
-      :message="tournamentActions.confirmDialog.state.message"
-      :action-label="tournamentActions.confirmDialog.state.actionLabel"
-      :color="tournamentActions.confirmDialog.state.color"
-      :loading="tournamentActions.confirmDialog.state.loading"
-      @confirm="tournamentActions.confirmDialog.execute"
-      @cancel="tournamentActions.confirmDialog.cancel"
-    />
+    <ConfirmDialogHost :dialog="tournamentActions.confirmDialog" />
 
     <!-- Match Detail Modal -->
     <AdminMatchDetailModal
@@ -324,42 +258,6 @@
       :tournament-id="(route.params.id as string)"
       @updated="fetchData"
     />
-
-    <!-- Stage Create Modal -->
-    <v-dialog v-model="stageCreateModalOpen" max-width="500">
-      <v-card>
-        <v-card-title>Add Stage</v-card-title>
-        <v-card-text>
-          <v-text-field v-model="newStage.name" label="Stage Name" class="mb-2" />
-          <v-text-field v-model.number="newStage.stage_order" label="Stage Order" type="number" class="mb-2" />
-          <v-select
-            v-model="newStage.format"
-            :items="['single_elimination', 'double_elimination', 'round_robin', 'swiss', 'groups_and_playoffs']"
-            label="Format (optional)"
-            clearable
-            class="mb-2"
-          />
-          <v-select
-            v-model="newStage.match_format"
-            :items="['bo1', 'bo3', 'bo5', 'bo7']"
-            label="Match Format (optional)"
-            clearable
-          />
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="stageCreateModalOpen = false">Cancel</v-btn>
-          <v-btn
-            color="primary"
-            :loading="tournamentsStore.createStageState.loading"
-            :disabled="!newStage.name"
-            @click="handleCreateStage"
-          >
-            Create
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
 
     <!-- Registration Action Modal -->
     <RegistrationReasonModal
@@ -387,19 +285,21 @@ import { formatMatchFormat } from '@/utils/matchStatus'
 import TournamentStatusChip from '@/components/admin/TournamentStatusChip.vue'
 import TournamentStatusActions from '@/components/admin/TournamentStatusActions.vue'
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
-import TournamentBracket from '@/components/tournament/TournamentBracket.vue'
 import RegistrationReasonModal from '@/components/admin/RegistrationReasonModal.vue'
 import AdminMatchDetailModal from '@/components/admin/AdminMatchDetailModal.vue'
 import RegistrationsTab from '@/components/admin/tournament-detail/RegistrationsTab.vue'
 import MatchesTab from '@/components/admin/tournament-detail/MatchesTab.vue'
 import SeedingTab from '@/components/admin/tournament-detail/SeedingTab.vue'
+import StagesTab from '@/components/admin/tournament-detail/StagesTab.vue'
+import BracketTab from '@/components/admin/tournament-detail/BracketTab.vue'
 import AwardsTab from '@/components/admin/tournament-detail/AwardsTab.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useTournamentAdminActions } from '@/composables/useTournamentAdminActions'
-import { useSwissBracketProgress } from '@/composables/useSwissBracketProgress'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
 import { formatDate, formatDateTime } from '@/utils/formatters'
+import { isHttpUrl } from '@/utils/urls'
 import type { TournamentRegistrationResponse } from '@/stores/tournaments'
 
 const route = useRoute()
@@ -413,8 +313,6 @@ const editModalOpen = ref(false)
 const snackbar = useSnackbar()
 
 const feedback = useActionFeedback()
-const stageCreateModalOpen = ref(false)
-const newStage = ref({ name: '', stage_order: 1, format: null as string | null, match_format: null as string | null })
 
 // Match transition state
 const matchTransitionLoadingId = ref<string | null>(null)
@@ -434,22 +332,11 @@ const selectedRegistration = ref<TournamentRegistrationResponse | null>(null)
 const {
   loading, error,
   currentTournament: tournament,
-  registrations, matches, brackets, stages,
+  registrations, matches, seeding,
 } = storeToRefs(tournamentsStore)
-
-const sortedStages = computed(() =>
-  [...stages.value].sort((a, b) => a.stage_order - b.stage_order)
-)
 
 const registrationCount = computed(() => registrations.value.length)
 const matchCount = computed(() => matches.value.length)
-
-const {
-  isSwissFormat,
-  swissBracket,
-  allCurrentRoundMatchesCompleted,
-  canAdvanceRound,
-} = useSwissBracketProgress(tournament)
 
 const canEditSeeding = computed(() =>
   tournament.value && ['registration', 'scheduled'].includes(tournament.value.status)
@@ -479,12 +366,30 @@ async function handleMatchTransition(matchId: string, toStatus: string) {
   }
 }
 
-async function handleBulkStartMatches() {
+function handleBulkStartMatches() {
+  if (!tournament.value) return
+  const eligible = matches.value.filter((m) => ['pending', 'ready', 'scheduled'].includes(m.status))
+  if (eligible.length === 0) {
+    snackbar.show('No matches are eligible to start', 'info')
+    return
+  }
+  // Preview what will happen before force-marching the state machine.
+  tournamentActions.confirmDialog.confirm({
+    title: 'Bulk Start Matches',
+    message: `Force ${eligible.length} match(es) (pending/ready/scheduled) straight to in-progress? Check-in and veto steps are skipped.`,
+    action: `Start ${eligible.length} Match(es)`,
+    color: 'warning',
+    handler: async () => {
+      await runBulkStartMatches(eligible)
+    },
+  })
+}
+
+async function runBulkStartMatches(eligible: typeof matches.value) {
   if (!tournament.value) return
   bulkStartLoading.value = true
   try {
     const tournamentId = tournament.value.id
-    const eligible = matches.value.filter((m) => ['pending', 'ready', 'scheduled'].includes(m.status))
     const reason = 'Bulk admin action'
 
     // Walk each match through its remaining state-machine steps in sequence,
@@ -536,11 +441,6 @@ function viewPublic() {
     window.open(`/tournaments/${tournament.value.slug}`, '_blank')
   }
 }
-
-// Lifecycle actions (publish / open-close-registration / start / complete /
-// finalize / cancel / advance / processNoShows) live in useTournamentAdminActions
-// above. The bracket tab still references advanceRound directly:
-const advanceRound = tournamentActions.advanceRound
 
 function openEditModal() {
   editModalOpen.value = true
@@ -606,36 +506,15 @@ async function handleReasonConfirm(reason: string) {
   }
 }
 
-// Seeding handlers
-import type { SeededParticipantResponse } from '@/stores/tournaments'
-
-const seedingList = ref<SeededParticipantResponse[]>([])
-
-// Sync seeding list from store
-watch(() => tournamentsStore.seeding, (newSeeding) => {
-  seedingList.value = [...newSeeding]
-}, { immediate: true })
-
-function moveSeed(index: number, direction: -1 | 1) {
-  const target = index + direction
-  if (target < 0 || target >= seedingList.value.length) return
-  const temp = seedingList.value[index]!
-  seedingList.value[index] = seedingList.value[target]!
-  seedingList.value[target] = temp
-}
-
+// Seeding handlers (list ordering lives in SeedingTab; `save` emits the final order)
 async function handleAutoSeed() {
   if (!tournament.value) return
   await feedback.run(() => tournamentsStore.autoSeed(tournament.value!.id),
     { success: 'Seeding generated automatically', errorSource: tournamentsStore })
 }
 
-async function handleSaveSeeding() {
+async function handleSaveSeeding(seeds: Array<{ registration_id: string; seed: number }>) {
   if (!tournament.value) return
-  const seeds = seedingList.value.map((s, i) => ({
-    registration_id: s.registration_id,
-    seed: i + 1,
-  }))
   await feedback.run(() => tournamentsStore.manualSeed(tournament.value!.id, seeds),
     { success: 'Seeding saved', errorSource: tournamentsStore })
 }
@@ -645,25 +524,6 @@ async function handleClearSeeding() {
   await feedback.run(() => tournamentsStore.clearSeeding(tournament.value!.id),
     { success: 'Seeding cleared', errorSource: tournamentsStore })
 }
-
-// Stage handler
-async function handleCreateStage() {
-  if (!tournament.value || !newStage.value.name) return
-  const result = await feedback.run(
-    () => tournamentsStore.createStage(tournament.value!.id, {
-      name: newStage.value.name,
-      stage_order: newStage.value.stage_order,
-      format: newStage.value.format ?? '',
-      match_format: newStage.value.match_format,
-    }),
-    { success: 'Stage created', errorSource: tournamentsStore },
-  )
-  if (result !== null) {
-    stageCreateModalOpen.value = false
-    newStage.value = { name: '', stage_order: stages.value.length + 1, format: null, match_format: null }
-  }
-}
-
 
 // Admin check-in handler
 async function handleAdminCheckIn(registration: TournamentRegistrationResponse) {

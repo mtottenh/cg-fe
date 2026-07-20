@@ -12,6 +12,7 @@ let wrapper: VueWrapper | null = null
 function mountDialog(props: Record<string, unknown> = {}) {
   wrapper = mount(ConfirmDialog, {
     props: {
+      open: true,
       title: 'Confirm it',
       message: 'Are you sure?',
       ...props,
@@ -38,8 +39,8 @@ function findButton(label: string): HTMLElement | null {
 }
 
 describe('ConfirmDialog', () => {
-  it('emits confirm + update:modelValue=false when the confirm button is clicked', async () => {
-    const w = mountDialog({ modelValue: true, confirmText: 'Yes' })
+  it('emits confirm when the confirm button is clicked', async () => {
+    const w = mountDialog({ actionLabel: 'Yes' })
     await flushPromises()
 
     const btn = findButton('Yes')
@@ -48,12 +49,10 @@ describe('ConfirmDialog', () => {
     await flushPromises()
 
     expect(w.emitted('confirm')).toHaveLength(1)
-    const updates = w.emitted('update:modelValue') ?? []
-    expect(updates[updates.length - 1]).toEqual([false])
   })
 
-  it('emits cancel + update:modelValue=false when cancel is clicked', async () => {
-    const w = mountDialog({ modelValue: true, cancelText: 'No thanks' })
+  it('emits cancel when cancel is clicked', async () => {
+    const w = mountDialog({ cancelLabel: 'No thanks' })
     await flushPromises()
 
     const btn = findButton('No thanks')
@@ -62,19 +61,17 @@ describe('ConfirmDialog', () => {
     await flushPromises()
 
     expect(w.emitted('cancel')).toHaveLength(1)
-    const updates = w.emitted('update:modelValue') ?? []
-    expect(updates[updates.length - 1]).toEqual([false])
   })
 
-  it('renders with the imperative `open` prop and supports actionLabel', async () => {
-    mountDialog({ open: true, actionLabel: 'Delete', color: 'error' })
+  it('supports actionLabel + color', async () => {
+    mountDialog({ actionLabel: 'Delete', color: 'error' })
     await flushPromises()
 
     expect(findButton('Delete')).toBeTruthy()
   })
 
   it('renders inline error and emits clear-error when dismissed', async () => {
-    const w = mountDialog({ open: true, error: 'Something went wrong' })
+    const w = mountDialog({ error: 'Something went wrong' })
     await flushPromises()
 
     const alert = document.querySelector('.v-alert')
@@ -90,15 +87,15 @@ describe('ConfirmDialog', () => {
     expect(w.emitted('clear-error')).toHaveLength(1)
   })
 
-  it('does not render the dialog when neither modelValue nor open is true', async () => {
-    mountDialog({ modelValue: false })
+  it('does not render the dialog when open is false', async () => {
+    mountDialog({ open: false })
     await flushPromises()
     // v-dialog only creates its content when the model is true.
     expect(document.querySelector('.v-card')).toBeNull()
   })
 
   it('onDialogUpdate(false) triggers cancel (outside click / esc)', async () => {
-    const w = mountDialog({ modelValue: true })
+    const w = mountDialog()
     await flushPromises()
 
     const dialog = w.findComponent({ name: 'VDialog' })

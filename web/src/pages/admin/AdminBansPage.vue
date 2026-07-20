@@ -11,6 +11,8 @@
       </v-btn>
     </div>
 
+    <ErrorAlert :error="error" retryable @clear="clearError" @retry="fetchBans()" />
+
     <!-- Filters -->
     <v-card class="mb-4">
       <v-card-text>
@@ -67,7 +69,7 @@
 
         <!-- Active Filters Display -->
         <div v-if="hasActiveFilters" class="mt-3 d-flex align-center flex-wrap ga-2">
-          <span class="text-caption text-grey mr-2">Active filters:</span>
+          <span class="text-caption text-medium-emphasis mr-2">Active filters:</span>
           <v-chip
             v-if="selectedUserFilter"
             size="small"
@@ -107,7 +109,7 @@
     <!-- Loading State -->
     <v-card v-if="loading && bans.length === 0" class="pa-8 text-center">
       <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading bans...</p>
+      <p class="text-medium-emphasis mt-4">Loading bans...</p>
     </v-card>
 
     <!-- Bans Table -->
@@ -121,127 +123,116 @@
         <v-progress-circular indeterminate color="primary" />
       </v-overlay>
 
-      <v-data-table
-        :headers="headers"
-        :items="bans"
-        :items-per-page="pagination.per_page"
-        class="elevation-0"
-      >
-        <template v-slot:item.user_id="{ item }">
-          <div class="text-caption font-weight-medium">
-            {{ item.user_id.substring(0, 8) }}...
-          </div>
-        </template>
+      <div class="table-scroll">
+        <v-data-table
+          :headers="headers"
+          :items="bans"
+          :items-per-page="pagination.per_page"
+          class="elevation-0"
+        >
+          <template v-slot:item.user_id="{ item }">
+            <div class="text-caption font-weight-medium">
+              {{ item.user_id.substring(0, 8) }}...
+            </div>
+          </template>
 
-        <template v-slot:item.ban_type="{ item }">
-          <v-chip
-            :color="getBanTypeColor(item.ban_type)"
-            size="small"
-            variant="flat"
-          >
-            <v-icon start size="small">{{ getBanTypeIcon(item.ban_type) }}</v-icon>
-            {{ formatBanType(item.ban_type) }}
-          </v-chip>
-        </template>
-
-        <template v-slot:item.reason="{ item }">
-          <div class="text-truncate" style="max-width: 200px" :title="item.reason">
-            {{ item.reason }}
-          </div>
-        </template>
-
-        <template v-slot:item.status="{ item }">
-          <v-chip
-            :color="getStatusColor(item)"
-            size="small"
-            variant="tonal"
-          >
-            {{ getStatusText(item) }}
-          </v-chip>
-        </template>
-
-        <template v-slot:item.duration="{ item }">
-          <span v-if="item.is_permanent" class="font-weight-medium text-error">Permanent</span>
-          <span v-else-if="item.ends_at">{{ formatRelativeTime(item.ends_at) }}</span>
-          <span v-else class="text-grey">-</span>
-        </template>
-
-        <template v-slot:item.starts_at="{ item }">
-          <div class="text-caption">{{ formatDate(item.starts_at) }}</div>
-        </template>
-
-        <template v-slot:item.actions="{ item }">
-          <v-btn
-            icon
-            size="small"
-            variant="text"
-            @click="viewBanDetail(item)"
-            title="View Details"
-          >
-            <v-icon>mdi-eye</v-icon>
-          </v-btn>
-          <v-btn
-            v-if="item.is_active"
-            icon
-            size="small"
-            variant="text"
-            color="success"
-            @click="confirmLiftBan(item)"
-            title="Lift Ban"
-          >
-            <v-icon>mdi-hand-back-right</v-icon>
-          </v-btn>
-        </template>
-
-        <template v-slot:no-data>
-          <div class="text-center pa-8">
-            <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-gavel</v-icon>
-            <p class="text-grey">
-              {{ hasActiveFilters ? 'No bans found matching your filters' : 'No bans recorded yet' }}
-            </p>
-            <v-btn
-              v-if="hasActiveFilters"
-              variant="text"
-              color="primary"
-              class="mt-2"
-              @click="clearAllFilters"
+          <template v-slot:item.ban_type="{ item }">
+            <v-chip
+              :color="getBanTypeColor(item.ban_type)"
+              size="small"
+              variant="flat"
             >
-              Clear filters
-            </v-btn>
-          </div>
-        </template>
+              <v-icon start size="small">{{ getBanTypeIcon(item.ban_type) }}</v-icon>
+              {{ formatBanType(item.ban_type) }}
+            </v-chip>
+          </template>
 
-        <template v-slot:bottom>
-          <div class="d-flex justify-center pa-4">
-            <v-pagination
-              v-model="currentPage"
-              :length="pagination.total_pages"
-              :total-visible="7"
-              @update:model-value="goToPage"
-            />
-          </div>
-          <div class="text-center text-caption text-grey pb-2">
-            Showing {{ bans.length }} of {{ pagination.total_items }} bans
-          </div>
-        </template>
-      </v-data-table>
+          <template v-slot:item.reason="{ item }">
+            <div class="text-truncate" style="max-width: 200px" :title="item.reason">
+              {{ item.reason }}
+            </div>
+          </template>
+
+          <template v-slot:item.status="{ item }">
+            <v-chip
+              :color="getStatusColor(item)"
+              size="small"
+              variant="tonal"
+            >
+              {{ getStatusText(item) }}
+            </v-chip>
+          </template>
+
+          <template v-slot:item.duration="{ item }">
+            <span v-if="item.is_permanent" class="font-weight-medium text-error">Permanent</span>
+            <span v-else-if="item.ends_at">{{ formatRelativeTime(item.ends_at) }}</span>
+            <span v-else class="text-medium-emphasis">-</span>
+          </template>
+
+          <template v-slot:item.starts_at="{ item }">
+            <div class="text-caption">{{ formatDate(item.starts_at) }}</div>
+          </template>
+
+          <template v-slot:item.actions="{ item }">
+            <v-btn aria-label="View ban details"
+              icon
+              size="small"
+              variant="text"
+              @click="viewBanDetail(item)"
+              title="View Details"
+            >
+              <v-icon>mdi-eye</v-icon>
+            </v-btn>
+            <v-btn aria-label="Lift ban"
+              v-if="item.is_active"
+              icon
+              size="small"
+              variant="text"
+              color="success"
+              @click="confirmLiftBan(item)"
+              title="Lift Ban"
+            >
+              <v-icon>mdi-hand-back-right</v-icon>
+            </v-btn>
+          </template>
+
+          <template v-slot:no-data>
+            <div class="text-center pa-8">
+              <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-gavel</v-icon>
+              <p class="text-medium-emphasis">
+                {{ hasActiveFilters ? 'No bans found matching your filters' : 'No bans recorded yet' }}
+              </p>
+              <v-btn
+                v-if="hasActiveFilters"
+                variant="text"
+                color="primary"
+                class="mt-2"
+                @click="clearAllFilters"
+              >
+                Clear filters
+              </v-btn>
+            </div>
+          </template>
+
+          <template v-slot:bottom>
+            <div class="d-flex justify-center pa-4">
+              <v-pagination
+                v-model="currentPage"
+                :length="pagination.total_pages"
+                :total-visible="7"
+                @update:model-value="goToPage"
+              />
+            </div>
+            <div class="text-center text-caption text-medium-emphasis pb-2">
+              Showing {{ bans.length }} of {{ pagination.total_items }} bans
+            </div>
+          </template>
+        </v-data-table>
+      </div>
     </v-card>
 
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="clearError">
-      {{ error }}
-    </v-alert>
-
     <!-- Quick Lift Dialog -->
-    <ConfirmDialog
-      :open="confirmDialog.state.open"
-      :title="confirmDialog.state.title"
-      :message="confirmDialog.state.message"
-      :action-label="confirmDialog.state.actionLabel"
-      :color="confirmDialog.state.color"
-      :loading="confirmDialog.state.loading"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
-    />
+    <ConfirmDialogHost :dialog="confirmDialog" />
 
     <!-- Modals -->
     <BanCreateModal
@@ -266,8 +257,10 @@ import BanCreateModal from '@/components/admin/BanCreateModal.vue'
 import BanDetailModal from '@/components/admin/BanDetailModal.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
 import { formatDate } from '@/utils/formatters'
+import { banTypeMap, banStatusMap, getStatusColor as mapStatusColor, getStatusLabel, getStatusIcon } from '@/utils/statusMaps'
 import type { components } from '@/api/types'
 
 type PlayerSummary = components['schemas']['PlayerSearchResponse']
@@ -410,51 +403,23 @@ function onBanUpdated() {
 
 
 // Formatters
-function formatBanType(type: string): string {
-  const labels: Record<string, string> = {
-    platform: 'Platform',
-    matchmaking: 'Matchmaking',
-    chat: 'Chat',
-    league: 'League',
-    tournament: 'Tournament',
-  }
-  return labels[type] || type
-}
+const formatBanType = (type: string) => getStatusLabel(banTypeMap, type)
+const getBanTypeColor = (type: string) => mapStatusColor(banTypeMap, type)
+const getBanTypeIcon = (type: string) => getStatusIcon(banTypeMap, type)
 
-function getBanTypeColor(type: string): string {
-  const colors: Record<string, string> = {
-    platform: 'error',
-    matchmaking: 'warning',
-    chat: 'info',
-    league: 'purple',
-    tournament: 'orange',
-  }
-  return colors[type] || 'grey'
-}
-
-function getBanTypeIcon(type: string): string {
-  const icons: Record<string, string> = {
-    platform: 'mdi-block-helper',
-    matchmaking: 'mdi-controller-off',
-    chat: 'mdi-message-off',
-    league: 'mdi-trophy-broken',
-    tournament: 'mdi-tournament',
-  }
-  return icons[type] || 'mdi-gavel'
+function getBanStatusKey(ban: BanResponse): string {
+  if (ban.lifted_at) return 'lifted'
+  if (!ban.is_active && ban.ends_at) return 'expired'
+  if (ban.is_active) return 'active'
+  return 'unknown'
 }
 
 function getStatusText(ban: BanResponse): string {
-  if (ban.lifted_at) return 'Lifted'
-  if (!ban.is_active && ban.ends_at) return 'Expired'
-  if (ban.is_active) return 'Active'
-  return 'Unknown'
+  const key = getBanStatusKey(ban)
+  return key === 'unknown' ? 'Unknown' : getStatusLabel(banStatusMap, key)
 }
 
-function getStatusColor(ban: BanResponse): string {
-  if (ban.is_active) return 'error'
-  if (ban.lifted_at) return 'success'
-  return 'grey' // expired
-}
+const getStatusColor = (ban: BanResponse) => mapStatusColor(banStatusMap, getBanStatusKey(ban))
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr)
@@ -477,3 +442,10 @@ onMounted(() => {
   fetchBans()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

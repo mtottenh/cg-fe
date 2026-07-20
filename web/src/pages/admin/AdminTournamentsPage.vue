@@ -7,6 +7,8 @@
       </v-btn>
     </div>
 
+    <ErrorAlert :error="error" retryable @clear="clearError" @retry="fetchData" />
+
     <!-- Filters -->
     <v-card class="mb-4">
       <v-card-text>
@@ -39,7 +41,7 @@
                 <v-list-item v-bind="itemProps">
                   <template v-slot:prepend>
                     <v-avatar size="24" rounded="sm">
-                      <v-img v-if="item.raw.icon_url" :src="item.raw.icon_url" />
+                      <v-img alt="" v-if="item.raw.icon_url" :src="item.raw.icon_url" />
                       <v-icon v-else size="16">mdi-gamepad-variant</v-icon>
                     </v-avatar>
                   </template>
@@ -100,14 +102,14 @@
     <!-- Loading State -->
     <v-card v-if="loading && tournaments.length === 0" class="pa-8 text-center">
       <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading tournaments...</p>
+      <p class="text-medium-emphasis mt-4">Loading tournaments...</p>
     </v-card>
 
     <!-- Empty State -->
     <v-card v-else-if="filteredTournaments.length === 0" class="pa-8 text-center">
       <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-tournament</v-icon>
       <h3 class="text-h6 mb-2">No Tournaments Found</h3>
-      <p class="text-grey mb-4">
+      <p class="text-medium-emphasis mb-4">
         {{ tournaments.length === 0 ? 'Create your first tournament to get started.' : 'No tournaments match your filters.' }}
       </p>
       <v-btn v-if="tournaments.length === 0" color="primary" prepend-icon="mdi-plus" @click="createModalOpen = true">
@@ -120,82 +122,80 @@
 
     <!-- Tournaments Table -->
     <v-card v-else>
-      <v-data-table
-        :headers="headers"
-        :items="filteredTournaments"
-        :items-per-page="20"
-        :loading="loading"
-        class="elevation-0"
-        density="comfortable"
-        hover
-        @click:row="(_e: Event, { item }: { item: TournamentSummaryResponse }) => openTournament(item)"
-      >
-        <template v-slot:item.logo_url="{ item }">
-          <v-avatar size="36" rounded="sm">
-            <v-img v-if="item.logo_url" :src="item.logo_url" />
-            <v-icon v-else>mdi-tournament</v-icon>
-          </v-avatar>
-        </template>
-
-        <template v-slot:item.name="{ item }">
-          <div>
-            <div class="font-weight-medium">{{ item.name }}</div>
-            <div class="text-caption text-grey">{{ item.slug }}</div>
-          </div>
-        </template>
-
-        <template v-slot:item.game_id="{ item }">
-          <div class="d-flex align-center">
-            <v-avatar size="20" rounded="sm" class="mr-2">
-              <v-img v-if="getGame(item.game_id)?.icon_url" :src="getGame(item.game_id)?.icon_url ?? undefined" />
-              <v-icon v-else size="14">mdi-gamepad-variant</v-icon>
+      <div class="table-scroll">
+        <v-data-table
+          :headers="headers"
+          :items="filteredTournaments"
+          :items-per-page="20"
+          :loading="loading"
+          class="elevation-0"
+          density="comfortable"
+          hover
+          @click:row="(_e: Event, { item }: { item: TournamentSummaryResponse }) => openTournament(item)"
+        >
+          <template v-slot:item.logo_url="{ item }">
+            <v-avatar size="36" rounded="sm">
+              <v-img alt="" v-if="item.logo_url" :src="item.logo_url" />
+              <v-icon v-else>mdi-tournament</v-icon>
             </v-avatar>
-            <span>{{ getGame(item.game_id)?.display_name || 'Unknown' }}</span>
-          </div>
-        </template>
+          </template>
 
-        <template v-slot:item.format="{ item }">
-          <v-chip size="small" variant="tonal">
-            {{ formatTournamentFormat(item.format) }}
-          </v-chip>
-        </template>
+          <template v-slot:item.name="{ item }">
+            <div>
+              <div class="font-weight-medium">{{ item.name }}</div>
+              <div class="text-caption text-medium-emphasis">{{ item.slug }}</div>
+            </div>
+          </template>
 
-        <template v-slot:item.participant_type="{ item }">
-          <v-icon size="small" class="mr-1">
-            {{ item.participant_type === 'team' ? 'mdi-account-group' : 'mdi-account' }}
-          </v-icon>
-          {{ formatParticipantType(item.participant_type) }}
-        </template>
+          <template v-slot:item.game_id="{ item }">
+            <div class="d-flex align-center">
+              <v-avatar size="20" rounded="sm" class="mr-2">
+                <v-img alt="" v-if="getGame(item.game_id)?.icon_url" :src="getGame(item.game_id)?.icon_url ?? undefined" />
+                <v-icon v-else size="14">mdi-gamepad-variant</v-icon>
+              </v-avatar>
+              <span>{{ getGame(item.game_id)?.display_name || 'Unknown' }}</span>
+            </div>
+          </template>
 
-        <template v-slot:item.max_participants="{ item }">
-          {{ item.max_participants }}
-        </template>
+          <template v-slot:item.format="{ item }">
+            <v-chip size="small" variant="tonal">
+              {{ formatTournamentFormat(item.format) }}
+            </v-chip>
+          </template>
 
-        <template v-slot:item.starts_at="{ item }">
-          {{ item.starts_at ? formatShortDateTime(item.starts_at) : 'TBD' }}
-        </template>
+          <template v-slot:item.participant_type="{ item }">
+            <v-icon size="small" class="mr-1">
+              {{ item.participant_type === 'team' ? 'mdi-account-group' : 'mdi-account' }}
+            </v-icon>
+            {{ formatParticipantType(item.participant_type) }}
+          </template>
 
-        <template v-slot:item.status="{ item }">
-          <TournamentStatusChip :status="item.status" />
-        </template>
+          <template v-slot:item.max_participants="{ item }">
+            {{ item.max_participants }}
+          </template>
 
-        <template v-slot:item.actions="{ item }">
-          <div @click.stop>
-            <TournamentActionsMenu :tournament="item" @action="(action) => handleAction(item, action)" />
-          </div>
-        </template>
+          <template v-slot:item.starts_at="{ item }">
+            {{ item.starts_at ? formatShortDateTime(item.starts_at) : 'TBD' }}
+          </template>
 
-        <template v-slot:no-data>
-          <div class="text-center pa-4">
-            <p class="text-grey">No tournaments found</p>
-          </div>
-        </template>
-      </v-data-table>
+          <template v-slot:item.status="{ item }">
+            <TournamentStatusChip :status="item.status" />
+          </template>
+
+          <template v-slot:item.actions="{ item }">
+            <div @click.stop>
+              <TournamentActionsMenu :tournament="item" @action="(action) => handleAction(item, action)" />
+            </div>
+          </template>
+
+          <template v-slot:no-data>
+            <div class="text-center pa-4">
+              <p class="text-medium-emphasis">No tournaments found</p>
+            </div>
+          </template>
+        </v-data-table>
+      </div>
     </v-card>
-
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="clearError">
-      {{ error }}
-    </v-alert>
 
     <!-- Modals -->
     <TournamentCreateModal
@@ -213,18 +213,7 @@
     />
 
     <!-- Confirm Dialog -->
-    <ConfirmDialog
-      :open="confirmDialog.state.open"
-      :title="confirmDialog.state.title"
-      :message="confirmDialog.state.message"
-      :action-label="confirmDialog.state.actionLabel"
-      :color="confirmDialog.state.color"
-      :loading="confirmDialog.state.loading"
-      :error="confirmDialog.state.dialogError"
-      @clear-error="confirmDialog.clearError()"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
-    />
+    <ConfirmDialogHost :dialog="confirmDialog" />
   </div>
 </template>
 
@@ -240,7 +229,8 @@ import TournamentStatusChip from '@/components/admin/TournamentStatusChip.vue'
 import TournamentActionsMenu from '@/components/admin/TournamentActionsMenu.vue'
 import TournamentCreateModal from '@/components/admin/TournamentCreateModal.vue'
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useActionFeedback } from '@/composables/useActionFeedback'
@@ -549,3 +539,10 @@ onMounted(() => {
   fetchData()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

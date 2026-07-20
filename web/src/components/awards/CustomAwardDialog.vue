@@ -5,7 +5,7 @@
         <v-icon class="mr-2">mdi-trophy-award</v-icon>
         Custom Award
         <v-spacer />
-        <v-btn icon variant="text" size="small" @click="close">
+        <v-btn aria-label="Close" icon variant="text" size="small" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -48,7 +48,7 @@
         <div class="mb-4">
           <v-label class="mb-1 text-caption">Accent Color</v-label>
           <div class="d-flex ga-2 flex-wrap">
-            <v-btn
+            <v-btn :aria-label="`Select color ${color}`"
               v-for="color in AWARD_COLORS"
               :key="color"
               :style="{ backgroundColor: color }"

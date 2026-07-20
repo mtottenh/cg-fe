@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login, register, loginAsAdmin, clearAuthState } from './fixtures/auth.fixture'
+import { login, register, clearAuthState } from './fixtures/auth.fixture'
 import { testUsers } from './fixtures/test-data'
 
 test.describe('Authentication', () => {

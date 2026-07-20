@@ -85,6 +85,11 @@ export const errorMiddleware: Middleware = {
         body: replayableBodies.get(request),
         credentials: request.credentials,
       })
+      // Token revoked between refresh and retry (or clock skew): the app is
+      // effectively logged out — don't leave it half-authenticated.
+      if (retryResponse.status === 401) {
+        triggerUnauthorized()
+      }
       return retryResponse
     }
 

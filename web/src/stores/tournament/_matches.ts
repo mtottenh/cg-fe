@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, createLatestGuard } from '@/stores/helpers'
 import { replaceById } from '@/utils/collections'
 
 type TournamentMatchResponse = components['schemas']['TournamentMatchResponse']
@@ -13,6 +13,10 @@ type TournamentBracketResponse = components['schemas']['TournamentBracketRespons
 export function createMatchesSlice() {
   const matches = ref<TournamentMatchResponse[]>([])
   const brackets = ref<TournamentBracketResponse[]>([])
+  // Which tournament `matches` belongs to — the list must not survive a
+  // tournament switch (a deep link into tournament B after visiting A would
+  // otherwise read A's cached list).
+  const matchesTournamentId = ref<string | null>(null)
 
   const fetchMatchesState = createActionState()
   const fetchMatchState = createActionState()
@@ -28,25 +32,35 @@ export function createMatchesSlice() {
   const forfeitMatchState = createActionState()
   const fetchBracketStandingsState = createActionState()
 
+  // Latest-wins guard for the matches list across rapid tournament switches.
+  const beginMatchesFetch = createLatestGuard()
+
   async function fetchMatches(tournamentId: string): Promise<TournamentMatchResponse[]> {
     return withActionState(fetchMatchesState, async () => {
+      const isCurrent = beginMatchesFetch()
       const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/matches', {
         params: { path: { tournament_id: tournamentId } },
       }))
-      matches.value = result.data
-      return matches.value
+      if (isCurrent()) {
+        matches.value = result.data
+        matchesTournamentId.value = tournamentId
+      }
+      return result.data
     }, 'Failed to fetch matches')
   }
 
   async function fetchMatch(tournamentId: string, matchId: string): Promise<TournamentMatchResponse> {
     return withActionState(fetchMatchState, async () => {
-      // Backend endpoint doesn't exist yet — use list + filter as workaround.
-      if (matches.value.length === 0) {
-        await fetchMatches(tournamentId)
+      // Always hit the network: this feeds the match-detail poll loop, so a
+      // cached read would hide opponent check-ins and status transitions.
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}', {
+        params: { path: { tournament_id: tournamentId, match_id: matchId } },
+      }))
+      // Keep the cached list coherent when it belongs to this tournament.
+      if (matchesTournamentId.value === tournamentId && matches.value.length > 0) {
+        replaceById(matches.value, result.data)
       }
-      const match = matches.value.find((m) => m.id === matchId)
-      if (!match) throw new Error('Match not found')
-      return match
+      return result.data
     }, 'Failed to fetch match')
   }
 
@@ -195,6 +209,7 @@ export function createMatchesSlice() {
   function clear() {
     matches.value = []
     brackets.value = []
+    matchesTournamentId.value = null
   }
 
   return {

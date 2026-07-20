@@ -1,13 +1,15 @@
 <template>
   <v-container>
+    <ErrorAlert :error="error" retryable @clear="clearError" @retry="fetchData" />
+
     <!-- Loading State -->
-    <div v-if="loading && !tournament" class="text-center pa-8">
-      <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading tournament...</p>
-    </div>
+    <v-skeleton-loader v-if="loading && !tournament" type="article" class="mb-4" />
 
     <!-- Content -->
     <template v-else-if="tournament">
+      <!-- Breadcrumb: the league → tournament chain is navigable upward -->
+      <v-breadcrumbs :items="breadcrumbs" class="pa-0 mb-4" />
+
       <!-- Header -->
       <TournamentHeader :tournament="tournament" :game="game" class="mb-6" />
 
@@ -65,12 +67,14 @@
                     </div>
                   </div>
 
-                  <!-- Rules -->
-                  <div v-if="tournament.rules_url" class="mb-6">
+                  <!-- Rules (creator-supplied URL — only http/https ever
+                       reaches the DOM) -->
+                  <div v-if="isHttpUrl(tournament.rules_url)" class="mb-6">
                     <h3 class="text-h6 mb-3">Rules</h3>
                     <v-btn
-                      :href="tournament.rules_url"
+                      :href="tournament.rules_url ?? undefined"
                       target="_blank"
+                      rel="noopener noreferrer"
                       variant="outlined"
                       prepend-icon="mdi-file-document"
                     >
@@ -160,71 +164,73 @@
           <!-- Participants Tab -->
           <v-tabs-window-item value="participants">
             <v-card-text>
-              <v-data-table
-                :headers="participantHeaders"
-                :items="registrations"
-                :loading="loading"
-                density="comfortable"
-              >
-                <template v-slot:item.participant_logo_url="{ item }">
-                  <v-avatar size="32" rounded="sm">
-                    <v-img v-if="item.participant_logo_url" :src="item.participant_logo_url" />
-                    <v-icon v-else>mdi-account</v-icon>
-                  </v-avatar>
-                </template>
+              <div class="table-scroll">
+                <v-data-table
+                  :headers="participantHeaders"
+                  :items="registrations"
+                  :loading="loading"
+                  density="comfortable"
+                >
+                  <template v-slot:item.participant_logo_url="{ item }">
+                    <v-avatar size="32" rounded="sm">
+                      <v-img alt="" v-if="item.participant_logo_url" :src="item.participant_logo_url" />
+                      <v-icon v-else>mdi-account</v-icon>
+                    </v-avatar>
+                  </template>
 
-                <template v-slot:item.participant_name="{ item }">
-                  <div class="font-weight-medium">{{ item.participant_name }}</div>
-                </template>
+                  <template v-slot:item.participant_name="{ item }">
+                    <div class="font-weight-medium">{{ item.participant_name }}</div>
+                  </template>
 
-                <template v-slot:item.status="{ item }">
-                  <v-chip size="small" variant="tonal" :color="registrationStatusColor(item.status)">
-                    {{ registrationStatusLabel(item.status) }}
-                  </v-chip>
-                </template>
+                  <template v-slot:item.status="{ item }">
+                    <v-chip size="small" variant="tonal" :color="registrationStatusColor(item.status)">
+                      {{ registrationStatusLabel(item.status) }}
+                    </v-chip>
+                  </template>
 
-                <template v-slot:item.seed="{ item }">
-                  <v-chip v-if="item.seed" size="small" variant="tonal">
-                    #{{ item.seed }}
-                  </v-chip>
-                  <span v-else class="text-grey">-</span>
-                </template>
+                  <template v-slot:item.seed="{ item }">
+                    <v-chip v-if="item.seed" size="small" variant="tonal">
+                      #{{ item.seed }}
+                    </v-chip>
+                    <span v-else class="text-medium-emphasis">-</span>
+                  </template>
 
-                <template v-slot:item.checked_in="{ item }">
-                  <v-icon v-if="item.checked_in" color="success" size="small">mdi-check-circle</v-icon>
-                </template>
+                  <template v-slot:item.checked_in="{ item }">
+                    <v-icon v-if="item.checked_in" color="success" size="small">mdi-check-circle</v-icon>
+                  </template>
 
-                <template v-if="isOrganizer" v-slot:item.actions="{ item }">
-                  <div v-if="item.status === 'pending'" class="d-flex gap-1">
-                    <v-btn
-                      size="small"
-                      color="success"
-                      variant="tonal"
-                      :loading="regActionLoadingId === item.id"
-                      :disabled="regActionLoadingId !== null && regActionLoadingId !== item.id"
-                      @click="handleApproveRegistration(item)"
-                    >
-                      Approve
-                    </v-btn>
-                    <v-btn
-                      size="small"
-                      color="error"
-                      variant="tonal"
-                      :disabled="regActionLoadingId !== null"
-                      @click="handleRejectRegistration(item)"
-                    >
-                      Reject
-                    </v-btn>
-                  </div>
-                  <span v-else class="text-grey text-caption">-</span>
-                </template>
+                  <template v-if="isOrganizer" v-slot:item.actions="{ item }">
+                    <div v-if="item.status === 'pending'" class="d-flex ga-1">
+                      <v-btn
+                        size="small"
+                        color="success"
+                        variant="tonal"
+                        :loading="regActionLoadingId === item.id"
+                        :disabled="regActionLoadingId !== null && regActionLoadingId !== item.id"
+                        @click="handleApproveRegistration(item)"
+                      >
+                        Approve
+                      </v-btn>
+                      <v-btn
+                        size="small"
+                        color="error"
+                        variant="tonal"
+                        :disabled="regActionLoadingId !== null"
+                        @click="handleRejectRegistration(item)"
+                      >
+                        Reject
+                      </v-btn>
+                    </div>
+                    <span v-else class="text-medium-emphasis text-caption">-</span>
+                  </template>
 
-                <template v-slot:no-data>
-                  <div class="text-center pa-4">
-                    <p class="text-grey">No participants registered yet</p>
-                  </div>
-                </template>
-              </v-data-table>
+                  <template v-slot:no-data>
+                    <div class="text-center pa-4">
+                      <p class="text-medium-emphasis">No participants registered yet</p>
+                    </div>
+                  </template>
+                </v-data-table>
+              </div>
             </v-card-text>
           </v-tabs-window-item>
 
@@ -234,6 +240,7 @@
               <TournamentBracket
                 :brackets="brackets"
                 :matches="matches"
+                :highlight-registration-id="myRegistration?.id"
                 @match-click="openMatch"
               />
             </v-card-text>
@@ -257,11 +264,13 @@
                 </v-col>
               </v-row>
 
-              <div v-if="matches.length === 0" class="text-center pa-8">
-                <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-sword-cross</v-icon>
-                <h3 class="text-h6 mb-2">No Matches Yet</h3>
-                <p class="text-grey">Matches will appear here once the tournament starts.</p>
-              </div>
+              <EmptyState
+                v-if="matches.length === 0"
+                icon="mdi-sword-cross"
+                title="No Matches Yet"
+                subtitle="Matches will appear here once the tournament starts."
+                variant="text"
+              />
             </v-card-text>
           </v-tabs-window-item>
 
@@ -283,18 +292,18 @@
     </template>
 
     <!-- Not Found -->
-    <v-card v-else-if="!loading" class="pa-8 text-center" variant="outlined">
-      <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-alert-circle</v-icon>
-      <h3 class="text-h6 mb-2">Tournament Not Found</h3>
-      <p class="text-grey mb-4">The tournament you're looking for doesn't exist or has been removed.</p>
-      <v-btn color="primary" :to="{ name: 'tournaments' }">
-        Browse Tournaments
-      </v-btn>
-    </v-card>
-
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="clearError">
-      {{ error }}
-    </v-alert>
+    <EmptyState
+      v-else-if="!loading"
+      icon="mdi-alert-circle"
+      title="Tournament Not Found"
+      subtitle="The tournament you're looking for doesn't exist or has been removed."
+    >
+      <template #action>
+        <v-btn color="primary" class="mt-4" :to="{ name: 'tournaments' }">
+          Browse Tournaments
+        </v-btn>
+      </template>
+    </EmptyState>
 
     <!-- Registration Modals -->
     <TeamRegistrationModal
@@ -319,6 +328,7 @@
       @saved="fetchData"
     />
   </v-container>
+  <ConfirmDialogHost :dialog="confirmDialog" />
 </template>
 
 <script setup lang="ts">
@@ -349,7 +359,12 @@ import PlayerRegistrationModal from '@/components/tournament/PlayerRegistrationM
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { useActionFeedback } from '@/composables/useActionFeedback'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import { formatDateTime } from '@/utils/formatters'
+import { isHttpUrl } from '@/utils/urls'
 import { registrationStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 const route = useRoute()
@@ -373,8 +388,40 @@ const {
 } = useTournamentContext(tournament)
 
 // State
-const activeTab = ref('overview')
+const breadcrumbs = computed(() => {
+  const items: Array<{ title: string; to?: object; disabled?: boolean }> = [
+    { title: 'Tournaments', to: { name: 'tournaments' } },
+  ]
+  if (tournament.value?.league_id) {
+    items.unshift({
+      title: 'League',
+      to: { name: 'league-detail', params: { id: tournament.value.league_id } },
+    })
+  }
+  items.push({ title: tournament.value?.name ?? 'Tournament', disabled: true })
+  return items
+})
+
+// Tab is URL-addressable (?tab=bracket) so views can be deep-linked and
+// survive refresh — same pattern as LeaguesPage's filter sync.
+const VALID_TABS = ['overview', 'participants', 'bracket', 'matches', 'awards', 'stats']
+const initialTab = typeof route.query.tab === 'string' && VALID_TABS.includes(route.query.tab)
+  ? route.query.tab
+  : 'overview'
+const activeTab = ref(initialTab)
+
+watch(activeTab, (tab) => {
+  const current = route.query.tab ?? 'overview'
+  if (current === tab) return
+  router.replace({ query: { ...route.query, tab: tab === 'overview' ? undefined : tab } })
+})
+
+watch(() => route.query.tab, (tab) => {
+  const next = typeof tab === 'string' && VALID_TABS.includes(tab) ? tab : 'overview'
+  if (next !== activeTab.value) activeTab.value = next
+})
 const feedback = useActionFeedback()
+const confirmDialog = useConfirmDialog()
 const showTeamRegistrationModal = ref(false)
 const showPlayerRegistrationModal = ref(false)
 const editModalOpen = ref(false)
@@ -508,17 +555,26 @@ async function handlePlayerRegister(participantName: string) {
   )
 }
 
-async function handleWithdraw() {
+function handleWithdraw() {
   if (!tournament.value || !myRegistration.value) return
-  await feedback.run(
-    () => tournamentsStore.withdrawFromTournament(tournament.value!.id, myRegistration.value!.id),
-    {
-      success: 'Successfully withdrawn',
-      failureFallback: 'Failed to withdraw',
-      errorSource: tournamentsStore,
-      after: fetchData,
+  confirmDialog.confirm({
+    title: 'Withdraw from Tournament',
+    message: `Withdraw from ${tournament.value.name}? Your registration is removed and your spot may be given to someone else.`,
+    action: 'Withdraw',
+    color: 'error',
+    handler: async () => {
+      await feedback.run(
+        () => tournamentsStore.withdrawFromTournament(tournament.value!.id, myRegistration.value!.id),
+        {
+          success: 'Successfully withdrawn',
+          failureFallback: 'Failed to withdraw',
+          errorSource: tournamentsStore,
+          after: fetchData,
+          rethrow: true,
+        },
+      )
     },
-  )
+  })
 }
 
 async function handleCheckIn() {
@@ -549,18 +605,30 @@ async function handleApproveRegistration(registration: { id: string; participant
   regActionLoadingId.value = null
 }
 
-async function handleRejectRegistration(registration: { id: string; participant_name: string }) {
+function handleRejectRegistration(registration: { id: string; participant_name: string }) {
   if (!tournament.value) return
-  regActionLoadingId.value = registration.id
-  await feedback.run(
-    () => tournamentsStore.rejectRegistration(tournament.value!.id, registration.id),
-    {
-      success: `${registration.participant_name} rejected`,
-      failureFallback: 'Failed to reject registration',
-      errorSource: tournamentsStore,
+  confirmDialog.confirm({
+    title: 'Reject Registration',
+    message: `Reject ${registration.participant_name}'s registration? They will not participate in this tournament.`,
+    action: 'Reject',
+    color: 'error',
+    handler: async () => {
+      regActionLoadingId.value = registration.id
+      try {
+        await feedback.run(
+          () => tournamentsStore.rejectRegistration(tournament.value!.id, registration.id),
+          {
+            success: `${registration.participant_name} rejected`,
+            failureFallback: 'Failed to reject registration',
+            errorSource: tournamentsStore,
+            rethrow: true,
+          },
+        )
+      } finally {
+        regActionLoadingId.value = null
+      }
     },
-  )
-  regActionLoadingId.value = null
+  })
 }
 
 async function fetchData() {
@@ -599,8 +667,9 @@ async function fetchData() {
 // Watch for route changes
 watch(
   () => route.params.slug,
-  () => {
-    fetchData()
+  (slug) => {
+    // Param empties out while navigating away — don't fire a spurious fetch.
+    if (slug) fetchData()
   }
 )
 
@@ -608,3 +677,10 @@ onMounted(() => {
   fetchData()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

@@ -3,12 +3,12 @@
     <!-- Header with week navigation -->
     <v-card-title class="d-flex justify-space-between align-center">
       <span class="text-body-1 font-weight-medium">Availability</span>
-      <div class="d-flex align-center gap-1">
-        <v-btn icon variant="text" size="small" @click="overlay.previousWeek()">
+      <div class="d-flex align-center ga-1">
+        <v-btn aria-label="Previous week" icon variant="text" size="small" @click="overlay.previousWeek()">
           <v-icon>mdi-chevron-left</v-icon>
         </v-btn>
         <span class="text-body-2">{{ overlay.weekLabel.value }}</span>
-        <v-btn icon variant="text" size="small" @click="overlay.nextWeek()">
+        <v-btn aria-label="Next week" icon variant="text" size="small" @click="overlay.nextWeek()">
           <v-icon>mdi-chevron-right</v-icon>
         </v-btn>
         <v-btn
@@ -77,14 +77,14 @@
 
         <!-- Mobile: single-day view -->
         <div class="d-sm-none">
-          <div class="d-flex align-center justify-center gap-2 mb-3">
-            <v-btn icon variant="text" size="small" @click="mobileDayIndex = Math.max(0, mobileDayIndex - 1)">
+          <div class="d-flex align-center justify-center ga-2 mb-3">
+            <v-btn aria-label="Previous day" icon variant="text" size="small" @click="mobileDayIndex = Math.max(0, mobileDayIndex - 1)">
               <v-icon>mdi-chevron-left</v-icon>
             </v-btn>
             <span class="text-body-1 font-weight-medium">
               {{ currentMobileDay?.dayLabel }} {{ formatDayDate(currentMobileDay?.date || '') }}
             </span>
-            <v-btn icon variant="text" size="small" @click="mobileDayIndex = Math.min(6, mobileDayIndex + 1)">
+            <v-btn aria-label="Next day" icon variant="text" size="small" @click="mobileDayIndex = Math.min(6, mobileDayIndex + 1)">
               <v-icon>mdi-chevron-right</v-icon>
             </v-btn>
           </div>
@@ -121,20 +121,20 @@
         </div>
 
         <!-- Legend -->
-        <div class="d-flex flex-wrap gap-3 mt-3 justify-center text-caption">
-          <div class="d-flex align-center gap-1">
+        <div class="d-flex flex-wrap ga-3 mt-3 justify-center text-caption">
+          <div class="d-flex align-center ga-1">
             <span class="legend-swatch swatch-my-only" />
             You
           </div>
-          <div class="d-flex align-center gap-1">
+          <div class="d-flex align-center ga-1">
             <span class="legend-swatch swatch-opponent-only" />
             Opponent
           </div>
-          <div class="d-flex align-center gap-1">
+          <div class="d-flex align-center ga-1">
             <span class="legend-swatch swatch-mutual" />
             Mutual
           </div>
-          <div class="d-flex align-center gap-1">
+          <div class="d-flex align-center ga-1">
             <span class="legend-swatch swatch-suggested" />
             <v-icon size="x-small">mdi-star</v-icon>
             Suggested
@@ -146,7 +146,7 @@
           <v-alert type="info" variant="tonal" density="compact">
             <div class="text-body-2">
               <strong>{{ selectedTimes.length }} time{{ selectedTimes.length > 1 ? 's' : '' }} selected:</strong>
-              <div class="d-flex flex-wrap gap-1 mt-1">
+              <div class="d-flex flex-wrap ga-1 mt-1">
                 <v-chip
                   v-for="time in selectedTimes"
                   :key="time"

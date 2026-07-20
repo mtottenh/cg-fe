@@ -3,12 +3,20 @@ html {
   overflow-y: auto;
 }
 
-// Gaming portal custom styles
-.v-card {
-  transition: transform 0.2s, box-shadow 0.2s;
+// Gaming portal custom styles.
+// The hover lift is opt-in: `.v-card--link` is Vuetify's own class for cards
+// with `to`/`@click` (plus our explicit `.card-link`). A global `.v-card:hover`
+// lift made every static surface (info cards, dialogs, alerts) signal
+// clickability. Wrapped in prefers-reduced-motion so vestibular-sensitive
+// users get no gratuitous movement.
+@media (prefers-reduced-motion: no-preference) {
+  .v-card--link,
+  .card-link {
+    transition: transform 0.2s, box-shadow 0.2s;
 
-  &:hover {
-    transform: translateY(-2px);
+    &:hover {
+      transform: translateY(-2px);
+    }
   }
 }
 

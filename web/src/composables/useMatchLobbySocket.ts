@@ -1,6 +1,10 @@
 import { ref, onUnmounted } from 'vue'
 import { getAuthToken } from '@/api/client'
 import { wsBaseUrl } from '@/api/baseUrl'
+import type { components } from '@/api/types'
+
+type VetoSessionPayload = components['schemas']['VetoSessionResponse']
+type VetoActionPayload = components['schemas']['VetoActionResponse']
 
 // Derived from the configured API origin (VITE_WS_URL overrides) — resolved
 // lazily so `window.location` is only consulted at connect time.
@@ -18,7 +22,7 @@ export interface AuthSuccessMessage {
   registration_id: string | null
   team_name: string | null
   lobby_state: {
-    session: unknown // VetoSessionResponse — typed by consumer
+    session: VetoSessionPayload | null
     participants: LobbyParticipant[]
     spectator_count: number
   }
@@ -47,20 +51,20 @@ export interface ChatMessageIncoming {
 
 export interface VetoStateUpdateMessage {
   type: 'veto_state_update'
-  session: unknown
+  session: VetoSessionPayload
 }
 
 export interface VetoActionPerformedMessage {
   type: 'veto_action_performed'
-  session: unknown
-  action: unknown
+  session: VetoSessionPayload
+  action: VetoActionPayload
   is_complete: boolean
 }
 
 export interface VetoCompleteMessage {
   type: 'veto_complete'
   selected_maps: string[]
-  session: unknown
+  session: VetoSessionPayload
 }
 
 export interface VetoActionAckMessage {
@@ -152,6 +156,41 @@ type MessageHandlerMap = {
   [K in ServerMessage['type']]?: (msg: Extract<ServerMessage, { type: K }>) => void
 }
 
+const SERVER_MESSAGE_TYPES = new Set<ServerMessage['type']>([
+  'auth_success',
+  'chat_history',
+  'chat',
+  'coin_flip_result',
+  'veto_state_update',
+  'veto_action_performed',
+  'veto_complete',
+  'veto_action_ack',
+  'player_connected',
+  'player_disconnected',
+  'spectator_count',
+  'timeout_warning',
+  'error',
+  'pong',
+])
+
+/** Runtime guard: a parsed frame must be an object with a known `type`, and
+ * veto frames must carry an object `session` — protects the veto store from
+ * silently-drifted or malformed payloads. */
+function isServerMessage(msg: unknown): msg is ServerMessage {
+  if (typeof msg !== 'object' || msg === null) return false
+  const m = msg as { type?: unknown; session?: unknown }
+  if (typeof m.type !== 'string' || !SERVER_MESSAGE_TYPES.has(m.type as ServerMessage['type'])) {
+    return false
+  }
+  if (
+    (m.type === 'veto_state_update' || m.type === 'veto_action_performed' || m.type === 'veto_complete') &&
+    (typeof m.session !== 'object' || m.session === null)
+  ) {
+    return false
+  }
+  return true
+}
+
 // ── Composable ──
 
 export function useMatchLobbySocket(matchId: () => string | null) {
@@ -178,6 +217,13 @@ export function useMatchLobbySocket(matchId: () => string | null) {
   }
 
   function connect() {
+    // External (re)connect: start with a fresh retry budget. Retries go
+    // through connectInternal() so the counter survives failed attempts.
+    reconnectAttempts = 0
+    connectInternal()
+  }
+
+  function connectInternal() {
     const id = matchId()
     if (!id) return
 
@@ -185,7 +231,6 @@ export function useMatchLobbySocket(matchId: () => string | null) {
     if (!token) return
 
     cleanup()
-    reconnectAttempts = 0
 
     try {
       ws = new WebSocket(`${WS_BASE()}/v1/ws/veto/${id}`)
@@ -193,6 +238,7 @@ export function useMatchLobbySocket(matchId: () => string | null) {
       ws.onopen = () => {
         connected.value = true
         usingFallback.value = false
+        reconnectAttempts = 0
         // Send in-band auth as first message
         ws!.send(JSON.stringify({ type: 'auth', token }))
         startPing()
@@ -200,8 +246,8 @@ export function useMatchLobbySocket(matchId: () => string | null) {
 
       ws.onmessage = (event) => {
         try {
-          const msg = JSON.parse(event.data) as ServerMessage
-          dispatch(msg)
+          const msg: unknown = JSON.parse(event.data)
+          if (isServerMessage(msg)) dispatch(msg)
         } catch {
           // Ignore unparseable messages
         }
@@ -270,7 +316,7 @@ export function useMatchLobbySocket(matchId: () => string | null) {
 
     reconnectAttempts++
     const delay = RECONNECT_DELAY_MS * Math.min(reconnectAttempts, 5)
-    reconnectTimeout = setTimeout(() => connect(), delay)
+    reconnectTimeout = setTimeout(() => connectInternal(), delay)
   }
 
   // ── Fallback polling ──

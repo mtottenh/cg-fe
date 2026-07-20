@@ -1,5 +1,13 @@
 <template>
-  <v-navigation-drawer v-model="open" :rail="rail" permanent color="surface">
+  <!-- Permanent rail on desktop; temporary overlay on phones so the
+       app-bar toggle actually works and content isn't crushed. -->
+  <v-navigation-drawer
+    v-model="open"
+    :rail="rail && mdAndUp"
+    :permanent="mdAndUp"
+    :temporary="!mdAndUp"
+    color="surface"
+  >
     <v-list density="compact" nav>
       <!-- Home -->
       <v-list-item
@@ -7,7 +15,12 @@
         title="Dashboard"
         :to="{ name: 'home' }"
         :active="route.name === 'home'"
-      />
+      >
+        <!-- Action-items badge lives here: the widget is on the dashboard. -->
+        <template v-slot:append v-if="actionCount > 0">
+          <v-badge :content="actionCount" :color="hasCriticalAction ? 'error' : 'warning'" inline />
+        </template>
+      </v-list-item>
 
       <v-list-subheader v-if="!rail">Browse</v-list-subheader>
 
@@ -33,17 +46,6 @@
       />
 
       <v-list-subheader v-if="!rail">My Hub</v-list-subheader>
-
-      <v-list-item
-        prepend-icon="mdi-bell-badge-outline"
-        title="Action Items"
-        :to="{ name: 'home' }"
-        :active="false"
-      >
-        <template v-slot:append v-if="actionCount > 0">
-          <v-badge :content="actionCount" :color="hasCriticalAction ? 'error' : 'warning'" inline />
-        </template>
-      </v-list-item>
 
       <v-list-item
         prepend-icon="mdi-shield-account"
@@ -88,12 +90,14 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useDisplay } from 'vuetify'
 import { storeToRefs } from 'pinia'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { useLeaguesStore } from '@/stores/leagues'
 import { useCaptainActionsStore } from '@/stores/captainActions'
 
 const route = useRoute()
+const { mdAndUp } = useDisplay()
 const leagueTeamsStore = useLeagueTeamsStore()
 const leaguesStore = useLeaguesStore()
 const captainActionsStore = useCaptainActionsStore()

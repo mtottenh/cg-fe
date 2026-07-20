@@ -5,15 +5,15 @@
         <v-chip color="warning" size="small" class="mr-4">
           ADMIN
         </v-chip>
-        <v-btn variant="text" to="/" icon>
+        <v-btn aria-label="Back to Portal" variant="text" to="/" icon>
           <v-icon>mdi-home</v-icon>
           <v-tooltip activator="parent" location="bottom">Back to Portal</v-tooltip>
         </v-btn>
-        <v-btn variant="text" to="/profile" icon>
+        <v-btn aria-label="Profile" variant="text" to="/profile" icon>
           <v-icon>mdi-account</v-icon>
           <v-tooltip activator="parent" location="bottom">Profile</v-tooltip>
         </v-btn>
-        <v-btn variant="text" @click="handleLogout" icon>
+        <v-btn aria-label="Logout" variant="text" @click="handleLogout" icon>
           <v-icon>mdi-logout</v-icon>
           <v-tooltip activator="parent" location="bottom">Logout</v-tooltip>
         </v-btn>

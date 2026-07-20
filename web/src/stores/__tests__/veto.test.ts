@@ -318,6 +318,36 @@ describe('Veto Store', () => {
     })
   })
 
+  describe('selectSide', () => {
+    it('applies the returned action locally so the UI converges without the WS echo', async () => {
+      const store = useVetoStore()
+      store.session = makeSession({ current_action_number: 2 })
+      store.sessionState = makeSessionState()
+
+      const action = makeAction({
+        action_number: 2,
+        action_type: 'pick',
+        map_id: 'de_nuke',
+        side_selection: 'ct',
+      })
+      mockPost.mockResolvedValueOnce({ data: { data: action }, error: undefined })
+
+      await store.selectSide('match-1', { side: 'ct' } as Parameters<typeof store.selectSide>[1])
+
+      expect(store.sessionState?.actions?.some(a => a.action_number === 2 && a.side_selection === 'ct')).toBe(true)
+    })
+
+    it('records the error and rethrows on API failure', async () => {
+      const store = useVetoStore()
+      mockPost.mockResolvedValueOnce({ error: { status: 400, detail: 'Not your turn' } })
+
+      await expect(
+        store.selectSide('match-1', { side: 'ct' } as Parameters<typeof store.selectSide>[1]),
+      ).rejects.toThrow(ApiError)
+      expect(store.sideSelectState.error).toBe('Not your turn')
+    })
+  })
+
   describe('clear', () => {
     it('resets session, sessionState and delegates', () => {
       const store = useVetoStore()

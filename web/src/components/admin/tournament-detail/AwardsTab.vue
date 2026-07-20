@@ -6,7 +6,7 @@
         <v-icon start size="20">mdi-shape-plus</v-icon>
         Add from Template
       </h3>
-      <p v-if="availableTemplates.length === 0 && !awardsStore.fetchTemplatesState.loading" class="text-grey text-body-2">
+      <p v-if="availableTemplates.length === 0 && !awardsStore.fetchTemplatesState.loading" class="text-medium-emphasis text-body-2">
         All templates for this game have been added.
       </p>
       <v-chip-group v-else column>
@@ -79,7 +79,7 @@
         </v-list-item-subtitle>
         <template v-slot:append>
           <div class="d-flex ga-1">
-            <v-btn
+            <v-btn aria-label="Edit award"
               v-if="award.status === 'active'"
               icon
               variant="text"
@@ -102,7 +102,7 @@
             >
               Finalize
             </v-btn>
-            <v-btn
+            <v-btn aria-label="Void award"
               v-if="award.status === 'active'"
               icon
               variant="text"
@@ -118,7 +118,7 @@
         </template>
       </v-list-item>
     </v-list>
-    <div v-else class="text-center pa-6 text-grey">
+    <div v-else class="text-center pa-6 text-medium-emphasis">
       No awards yet. Add one from a template or create a custom award.
     </div>
 
@@ -138,7 +138,7 @@
           <v-icon class="mr-2">mdi-pencil</v-icon>
           Edit Award
           <v-spacer />
-          <v-btn icon variant="text" size="small" @click="editDialogOpen = false">
+          <v-btn aria-label="Close" icon variant="text" size="small" @click="editDialogOpen = false">
             <v-icon>mdi-close</v-icon>
           </v-btn>
         </v-card-title>
@@ -170,7 +170,7 @@
           <div class="mb-1">
             <v-label class="mb-1 text-caption">Accent Color</v-label>
             <div class="d-flex ga-2 flex-wrap">
-              <v-btn
+              <v-btn :aria-label="`Select color ${color}`"
                 v-for="color in AWARD_COLORS"
                 :key="color"
                 :style="{ backgroundColor: color }"
@@ -210,16 +210,7 @@
     </v-dialog>
 
     <!-- Confirm dialog (finalize / void) -->
-    <ConfirmDialog
-      :open="confirmDialog.state.open"
-      :title="confirmDialog.state.title"
-      :message="confirmDialog.state.message"
-      :action-label="confirmDialog.state.actionLabel"
-      :color="confirmDialog.state.color"
-      :loading="confirmDialog.state.loading"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
-    />
+    <ConfirmDialogHost :dialog="confirmDialog" />
   </v-card-text>
 </template>
 
@@ -230,7 +221,7 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { AWARD_ICONS, AWARD_COLORS, AGGREGATION_OPTIONS, buildTemplateAwardPayload } from '@/utils/awards'
 import CustomAwardDialog from '@/components/awards/CustomAwardDialog.vue'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 
 const props = defineProps<{
   scopeType: AwardScopeType

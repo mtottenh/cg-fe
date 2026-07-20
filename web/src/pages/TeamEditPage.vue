@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-btn variant="text" :to="`/teams/${teamId}`" class="mb-4">
       <v-icon start>mdi-arrow-left</v-icon>
       Back to Team
@@ -132,7 +132,7 @@
 
                 <v-divider class="my-6" />
 
-                <div class="d-flex gap-3">
+                <div class="d-flex ga-3">
                   <v-btn
                     type="submit"
                     color="primary"
@@ -175,7 +175,7 @@
                   :color="form.primary_color || 'primary'"
                   size="56"
                 >
-                  <v-img v-if="form.logo_url" :src="form.logo_url" />
+                  <v-img alt="Team logo preview" v-if="form.logo_url" :src="form.logo_url" />
                   <span v-else class="text-h6">{{ (form.tag || 'TM').substring(0, 2) }}</span>
                 </v-avatar>
               </template>
@@ -186,7 +186,7 @@
               {{ form.description }}
             </v-card-text>
             <v-card-text v-if="form.primary_color || form.secondary_color">
-              <div class="d-flex gap-2 align-center">
+              <div class="d-flex ga-2 align-center">
                 <span class="text-caption text-medium-emphasis">Colors:</span>
                 <div
                   v-if="form.primary_color"
@@ -219,6 +219,7 @@ import { useRoute } from 'vue-router'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { useAuthStore } from '@/stores/auth'
 import { useFormRules } from '@/composables/useFormRules'
+import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
 import ImageUpload from '@/components/ImageUpload.vue'
 import ColorPicker from '@/components/ColorPicker.vue'
 
@@ -270,6 +271,8 @@ const hasChanges = computed(() => {
 
 const rules = useFormRules()
 
+useUnsavedChanges(hasChanges)
+
 onMounted(async () => {
   try {
     await leagueTeamsStore.fetchTeam(teamId.value)
@@ -295,7 +298,7 @@ onMounted(async () => {
       // Store original for change detection
       originalForm.value = { ...form }
     }
-  } catch (e) {
+  } catch {
     error.value = leagueTeamsStore.error || 'Failed to load team'
   } finally {
     loading.value = false
@@ -328,7 +331,7 @@ async function handleSubmit() {
 
     successMessage.value = 'Team settings saved'
     showSuccess.value = true
-  } catch (e) {
+  } catch {
     error.value = leagueTeamsStore.error || 'Failed to save team settings'
   } finally {
     saving.value = false

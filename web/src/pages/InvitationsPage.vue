@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-row align="center" class="mb-6">
       <v-col>
         <h1 class="text-h3">My Invitations</h1>
@@ -15,9 +15,12 @@
       </v-col>
     </v-row>
 
-    <v-alert v-if="leagueTeamsStore.error || leaguesStore.error" type="error" class="mb-4" closable>
-      {{ leagueTeamsStore.error || leaguesStore.error }}
-    </v-alert>
+    <ErrorAlert
+      :error="leagueTeamsStore.error || leaguesStore.error"
+      retryable
+      @clear="clearErrors"
+      @retry="fetchData"
+    />
 
     <v-progress-linear v-if="leagueTeamsStore.loading || leaguesStore.fetchMyLeagueInvitationsState.loading" indeterminate class="mb-4" />
 
@@ -98,7 +101,7 @@
           <v-card-item>
             <template v-slot:prepend>
               <v-avatar color="primary" size="48">
-                <v-img v-if="invitation.team_logo_url" :src="invitation.team_logo_url" />
+                <v-img alt="" v-if="invitation.team_logo_url" :src="invitation.team_logo_url" />
                 <span v-else class="text-h6">{{ (invitation.team_tag || invitation.team_name || '??').substring(0, 2).toUpperCase() }}</span>
               </v-avatar>
             </template>
@@ -163,30 +166,19 @@
       </v-col>
     </v-row>
 
-    <v-row v-else-if="!leagueTeamsStore.loading && leaguesStore.myLeagueInvitations.length === 0">
-      <v-col cols="12" class="text-center py-12">
-        <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-email-outline</v-icon>
-        <h3 class="text-h5 text-medium-emphasis mb-2">No Pending Invitations</h3>
-        <p class="text-body-2 text-medium-emphasis mb-4">
-          You don't have any invitations at the moment.
-        </p>
-        <v-btn color="primary" to="/leagues">Browse Leagues</v-btn>
-      </v-col>
-    </v-row>
+    <EmptyState
+      v-else-if="!leagueTeamsStore.loading && leaguesStore.myLeagueInvitations.length === 0"
+      icon="mdi-email-outline"
+      title="No Pending Invitations"
+      subtitle="You don't have any invitations at the moment."
+    >
+      <template #action>
+        <v-btn color="primary" class="mt-4" to="/leagues">Browse Leagues</v-btn>
+      </template>
+    </EmptyState>
 
     <!-- Decline Confirm Dialog -->
-    <ConfirmDialog
-      :open="confirmDialog.state.open"
-      :title="confirmDialog.state.title"
-      :message="confirmDialog.state.message"
-      :action-label="confirmDialog.state.actionLabel"
-      :color="confirmDialog.state.color"
-      :loading="confirmDialog.state.loading"
-      :error="confirmDialog.state.dialogError"
-      @clear-error="confirmDialog.clearError()"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
-    />
+    <ConfirmDialogHost :dialog="confirmDialog" />
 
   </v-container>
 </template>
@@ -198,7 +190,10 @@ import { useLeagueTeamsStore, type LeagueTeamInvitationWithTeamResponse } from '
 import { useLeaguesStore } from '@/stores/leagues'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import { teamRoleMap, getStatusColor, formatRole } from '@/utils/statusMaps'
 
 const router = useRouter()
 const leagueTeamsStore = useLeagueTeamsStore()
@@ -216,12 +211,23 @@ const processing = computed(() =>
   acceptingLeague.value !== null || decliningLeague.value !== null
 )
 
-onMounted(async () => {
-  await Promise.all([
-    leagueTeamsStore.fetchMyInvitations(),
-    leaguesStore.fetchMyLeagueInvitations(),
-  ])
-})
+async function fetchData() {
+  try {
+    await Promise.all([
+      leagueTeamsStore.fetchMyInvitations(),
+      leaguesStore.fetchMyLeagueInvitations(),
+    ])
+  } catch {
+    // Errors are captured in stores
+  }
+}
+
+function clearErrors() {
+  leagueTeamsStore.error = null
+  leaguesStore.error = null
+}
+
+onMounted(() => { fetchData() })
 
 // League invitation handlers
 async function handleAcceptLeague(invitationId: string) {
@@ -303,17 +309,5 @@ function formatRelativeTime(dateStr: string): string {
   }
 }
 
-function formatRole(role: string): string {
-  return role.charAt(0).toUpperCase() + role.slice(1)
-}
-
-function getRoleColor(role: string): string {
-  const colors: Record<string, string> = {
-    captain: 'primary',
-    founder: 'purple',
-    player: 'success',
-    substitute: 'info',
-  }
-  return colors[role] || 'grey'
-}
+const getRoleColor = (role: string) => getStatusColor(teamRoleMap, role)
 </script>

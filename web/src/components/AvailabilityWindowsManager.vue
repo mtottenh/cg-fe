@@ -51,10 +51,10 @@
                 </v-list-item-subtitle>
 
                 <template #append>
-                  <v-btn icon variant="text" size="small" @click="editWindow(window)">
+                  <v-btn aria-label="Edit availability window" icon variant="text" size="small" @click="editWindow(window)">
                     <v-icon>mdi-pencil</v-icon>
                   </v-btn>
-                  <v-btn icon variant="text" size="small" color="error" @click="confirmDelete(window)">
+                  <v-btn aria-label="Delete availability window" icon variant="text" size="small" color="error" @click="confirmDelete(window)">
                     <v-icon>mdi-delete</v-icon>
                   </v-btn>
                 </template>

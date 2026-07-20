@@ -123,13 +123,17 @@ test.describe('Tournament Lifecycle (admin)', () => {
         .or(page.getByText(/No Bracket (Generated|Available)/i).first()),
     ).toBeVisible({ timeout: 10_000 })
 
-    // 9. Complete: in_progress → completed.
+    // 9. Complete: in_progress → completed. Confirm-gated (an accidental
+    // click used to end the tournament outright).
     await page.getByRole('button', { name: /^Complete$/i }).click()
+    await page.getByRole('dialog').getByRole('button', { name: /^Complete$/i }).click()
     await waitForTournamentStatus(adminToken, tournament.id, 'completed')
     await expectStatusChip(page, 'Completed')
 
-    // 10. Finalize: completed → finalized.
+    // 10. Finalize: completed → finalized. Confirm-gated (results become
+    // official and immutable).
     await page.getByRole('button', { name: 'Finalize' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Finalize' }).click()
     await waitForTournamentStatus(adminToken, tournament.id, 'finalized')
     await expectStatusChip(page, 'Finalized')
   })

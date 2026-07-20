@@ -22,7 +22,6 @@ vi.mock('@/api', () => ({
       this.detail = detail
     }
   },
-  handleApiError: vi.fn(),
 }))
 
 import { useAuthStore } from '../auth'
@@ -80,9 +79,10 @@ const ME_RESPONSE = {
 
 const ROLES_RESPONSE = { data: { data: [] } }
 
-function seedStorage(token: string, refresh: string | null) {
+function seedStorage(token: string) {
+  // The refresh token is no longer persisted — after a reload the store
+  // relies on the httpOnly refresh cookie (sent via credentials: 'include').
   localStorageMock.setItem('token', token)
-  if (refresh) localStorageMock.setItem('refresh_token', refresh)
 }
 
 describe('Auth Store — initialize() logout-only-on-auth-error', () => {
@@ -98,7 +98,7 @@ describe('Auth Store — initialize() logout-only-on-auth-error', () => {
 
   describe('valid stored token', () => {
     it('keeps the session when /users/me fails with a network error', async () => {
-      seedStorage(VALID_JWT, 'refresh-1')
+      seedStorage(VALID_JWT)
       apiGet.mockRejectedValue(new TypeError('fetch failed'))
 
       const store = freshStore()
@@ -106,13 +106,11 @@ describe('Auth Store — initialize() logout-only-on-auth-error', () => {
 
       expect(store.initialized).toBe(true)
       expect(store.token).toBe(VALID_JWT)
-      expect(store.refreshToken).toBe('refresh-1')
       expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('token')
-      expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('refresh_token')
     })
 
     it('keeps the session when /users/me fails with a 500', async () => {
-      seedStorage(VALID_JWT, 'refresh-1')
+      seedStorage(VALID_JWT)
       apiGet.mockResolvedValue({ error: { status: 500, detail: 'internal error' } })
 
       const store = freshStore()
@@ -120,11 +118,10 @@ describe('Auth Store — initialize() logout-only-on-auth-error', () => {
 
       expect(store.initialized).toBe(true)
       expect(store.token).toBe(VALID_JWT)
-      expect(store.refreshToken).toBe('refresh-1')
     })
 
     it('logs out when /users/me is rejected with 401', async () => {
-      seedStorage(VALID_JWT, 'refresh-1')
+      seedStorage(VALID_JWT)
       apiGet.mockResolvedValue({ error: { status: 401, detail: 'Invalid or missing token' } })
 
       const store = freshStore()
@@ -134,11 +131,10 @@ describe('Auth Store — initialize() logout-only-on-auth-error', () => {
       expect(store.token).toBeNull()
       expect(store.refreshToken).toBeNull()
       expect(localStorageMock.removeItem).toHaveBeenCalledWith('token')
-      expect(localStorageMock.removeItem).toHaveBeenCalledWith('refresh_token')
     })
 
     it('logs out when /users/me is rejected with 403', async () => {
-      seedStorage(VALID_JWT, 'refresh-1')
+      seedStorage(VALID_JWT)
       apiGet.mockResolvedValue({ error: { status: 403, detail: 'Forbidden' } })
 
       const store = freshStore()
@@ -149,9 +145,9 @@ describe('Auth Store — initialize() logout-only-on-auth-error', () => {
     })
   })
 
-  describe('expired stored token (refresh path)', () => {
-    it('keeps the stored refresh token when the refresh call hits a network error', async () => {
-      seedStorage(EXPIRED_JWT, 'refresh-1')
+  describe('expired stored token (cookie refresh path)', () => {
+    it('keeps the session when the refresh call hits a network error (transient)', async () => {
+      seedStorage(EXPIRED_JWT)
       apiPost.mockRejectedValue(new TypeError('fetch failed'))
 
       const store = freshStore()
@@ -159,22 +155,21 @@ describe('Auth Store — initialize() logout-only-on-auth-error', () => {
 
       expect(store.initialized).toBe(true)
       // Session material preserved so a later attempt can recover.
-      expect(store.refreshToken).toBe('refresh-1')
-      expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('refresh_token')
+      expect(store.token).toBe(EXPIRED_JWT)
     })
 
-    it('keeps the stored refresh token when the refresh call fails with a 500', async () => {
-      seedStorage(EXPIRED_JWT, 'refresh-1')
+    it('keeps the session when the refresh call fails with a 500 (transient)', async () => {
+      seedStorage(EXPIRED_JWT)
       apiPost.mockResolvedValue({ error: { status: 500, detail: 'internal error' } })
 
       const store = freshStore()
       await store.initialize()
 
-      expect(store.refreshToken).toBe('refresh-1')
+      expect(store.token).toBe(EXPIRED_JWT)
     })
 
-    it('logs out when the refresh token is definitively rejected (401)', async () => {
-      seedStorage(EXPIRED_JWT, 'refresh-1')
+    it('logs out when the refresh is definitively rejected (401)', async () => {
+      seedStorage(EXPIRED_JWT)
       apiPost.mockResolvedValue({ error: { status: 401, detail: 'invalid refresh token' } })
 
       const store = freshStore()
@@ -182,12 +177,11 @@ describe('Auth Store — initialize() logout-only-on-auth-error', () => {
 
       expect(store.token).toBeNull()
       expect(store.refreshToken).toBeNull()
-      expect(localStorageMock.removeItem).toHaveBeenCalledWith('refresh_token')
       expect(localStorageMock.removeItem).toHaveBeenCalledWith('token')
     })
 
-    it('refreshes and loads the user when the refresh succeeds', async () => {
-      seedStorage(EXPIRED_JWT, 'refresh-1')
+    it('refreshes via the cookie (empty body, credentials include) and loads the user', async () => {
+      seedStorage(EXPIRED_JWT)
       apiPost.mockResolvedValue({
         data: { data: { access_token: VALID_JWT, refresh_token: 'refresh-2' } },
       })
@@ -200,19 +194,29 @@ describe('Auth Store — initialize() logout-only-on-auth-error', () => {
       const store = freshStore()
       await store.initialize()
 
+      // No in-memory refresh token after reload → cookie carries the session.
+      expect(apiPost).toHaveBeenCalledWith('/v1/auth/refresh', {
+        body: {},
+        credentials: 'include',
+      })
       expect(store.token).toBe(VALID_JWT)
       expect(store.refreshToken).toBe('refresh-2')
       expect(store.user?.username).toBe('max')
       expect(store.isAuthenticated).toBe(true)
     })
 
-    it('logs out when there is no refresh token at all', async () => {
-      seedStorage(EXPIRED_JWT, null)
+    it('does not persist the rotated refresh token to localStorage', async () => {
+      seedStorage(EXPIRED_JWT)
+      apiPost.mockResolvedValue({
+        data: { data: { access_token: VALID_JWT, refresh_token: 'refresh-2' } },
+      })
+      apiGet.mockResolvedValue(ME_RESPONSE)
 
       const store = freshStore()
       await store.initialize()
 
-      expect(store.token).toBeNull()
+      expect(store.refreshToken).toBe('refresh-2')
+      expect(localStorageMock.setItem).not.toHaveBeenCalledWith('refresh_token', expect.anything())
     })
   })
 })

@@ -11,6 +11,8 @@
       </v-btn>
     </div>
 
+    <ErrorAlert :error="error" retryable @clear="rbacStore.clearError()" @retry="loadData" />
+
     <!-- Tabs -->
     <v-tabs v-model="activeTab" class="mb-4">
       <v-tab value="roles">
@@ -36,103 +38,105 @@
             <v-progress-circular indeterminate color="primary" />
           </v-overlay>
 
-          <v-data-table
-            :headers="roleHeaders"
-            :items="roles"
-            :items-per-page="20"
-            class="elevation-0"
-          >
-            <template v-slot:item.name="{ item }">
-              <div class="d-flex align-center">
+          <div class="table-scroll">
+            <v-data-table
+              :headers="roleHeaders"
+              :items="roles"
+              :items-per-page="20"
+              class="elevation-0"
+            >
+              <template v-slot:item.name="{ item }">
+                <div class="d-flex align-center">
+                  <v-chip
+                    v-if="item.color"
+                    :color="item.color"
+                    size="x-small"
+                    class="mr-2"
+                    variant="flat"
+                  />
+                  <span class="font-weight-medium">{{ item.display_name }}</span>
+                  <v-chip
+                    v-if="item.is_system"
+                    size="x-small"
+                    color="grey"
+                    variant="tonal"
+                    class="ml-2"
+                  >
+                    System
+                  </v-chip>
+                  <v-chip
+                    v-if="item.is_default"
+                    size="x-small"
+                    color="info"
+                    variant="tonal"
+                    class="ml-2"
+                  >
+                    Default
+                  </v-chip>
+                </div>
+                <div class="text-caption text-medium-emphasis">{{ item.name }}</div>
+              </template>
+
+              <template v-slot:item.category="{ item }">
                 <v-chip
-                  v-if="item.color"
-                  :color="item.color"
-                  size="x-small"
-                  class="mr-2"
-                  variant="flat"
-                />
-                <span class="font-weight-medium">{{ item.display_name }}</span>
-                <v-chip
-                  v-if="item.is_system"
-                  size="x-small"
-                  color="grey"
+                  :color="getCategoryColor(item.category)"
+                  size="small"
                   variant="tonal"
-                  class="ml-2"
                 >
-                  System
+                  {{ item.category }}
                 </v-chip>
-                <v-chip
-                  v-if="item.is_default"
-                  size="x-small"
-                  color="info"
-                  variant="tonal"
-                  class="ml-2"
+              </template>
+
+              <template v-slot:item.priority="{ item }">
+                <span class="text-caption">{{ item.priority }}</span>
+              </template>
+
+              <template v-slot:item.description="{ item }">
+                <div class="text-truncate" style="max-width: 300px" :title="item.description ?? undefined">
+                  {{ item.description || '-' }}
+                </div>
+              </template>
+
+              <template v-slot:item.actions="{ item }">
+                <v-btn aria-label="Edit role"
+                  icon
+                  size="small"
+                  variant="text"
+                  title="Manage Permissions"
+                  @click="openRolePermissionsModal(item)"
                 >
-                  Default
-                </v-chip>
-              </div>
-              <div class="text-caption text-grey">{{ item.name }}</div>
-            </template>
+                  <v-icon>mdi-shield-key</v-icon>
+                </v-btn>
+                <v-btn aria-label="Delete role"
+                  icon
+                  size="small"
+                  variant="text"
+                  title="Edit Role"
+                  @click="openEditRoleModal(item)"
+                >
+                  <v-icon>mdi-pencil</v-icon>
+                </v-btn>
+                <v-btn aria-label="Manage permissions"
+                  v-if="!item.is_system"
+                  icon
+                  size="small"
+                  variant="text"
+                  color="error"
+                  title="Delete Role"
+                  @click="confirmDeleteRole(item)"
+                >
+                  <v-icon>mdi-delete</v-icon>
+                </v-btn>
+              </template>
 
-            <template v-slot:item.category="{ item }">
-              <v-chip
-                :color="getCategoryColor(item.category)"
-                size="small"
-                variant="tonal"
-              >
-                {{ item.category }}
-              </v-chip>
-            </template>
-
-            <template v-slot:item.priority="{ item }">
-              <span class="text-caption">{{ item.priority }}</span>
-            </template>
-
-            <template v-slot:item.description="{ item }">
-              <div class="text-truncate" style="max-width: 300px" :title="item.description ?? undefined">
-                {{ item.description || '-' }}
-              </div>
-            </template>
-
-            <template v-slot:item.actions="{ item }">
-              <v-btn
-                icon
-                size="small"
-                variant="text"
-                title="Manage Permissions"
-                @click="openRolePermissionsModal(item)"
-              >
-                <v-icon>mdi-shield-key</v-icon>
-              </v-btn>
-              <v-btn
-                icon
-                size="small"
-                variant="text"
-                title="Edit Role"
-                @click="openEditRoleModal(item)"
-              >
-                <v-icon>mdi-pencil</v-icon>
-              </v-btn>
-              <v-btn
-                v-if="!item.is_system"
-                icon
-                size="small"
-                variant="text"
-                color="error"
-                title="Delete Role"
-                @click="confirmDeleteRole(item)"
-              >
-                <v-icon>mdi-delete</v-icon>
-              </v-btn>
-            </template>
-
-            <template v-slot:no-data>
-              <div class="text-center pa-8">
-                <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-key</v-icon>
-                <p class="text-grey">No roles found</p>
-              </div>
-            </template>
-          </v-data-table>
+              <template v-slot:no-data>
+                <div class="text-center pa-8">
+                  <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-key</v-icon>
+                  <p class="text-medium-emphasis">No roles found</p>
+                </div>
+              </template>
+            </v-data-table>
+          </div>
         </v-card>
       </v-window-item>
 
@@ -164,7 +168,7 @@
                   >
                     {{ category }}
                   </v-chip>
-                  <span class="text-body-2 text-grey">{{ perms.length }} permissions</span>
+                  <span class="text-body-2 text-medium-emphasis">{{ perms.length }} permissions</span>
                 </div>
               </v-expansion-panel-title>
               <v-expansion-panel-text>
@@ -206,27 +210,14 @@
 
           <div v-if="permissions.length === 0" class="text-center pa-8">
             <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-shield-lock</v-icon>
-            <p class="text-grey">No permissions found</p>
+            <p class="text-medium-emphasis">No permissions found</p>
           </div>
         </v-card>
       </v-window-item>
     </v-window>
 
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="rbacStore.clearError()">
-      {{ error }}
-    </v-alert>
-
     <!-- Delete Confirmation Dialog -->
-    <ConfirmDialog
-      :open="confirmDialog.state.open"
-      :title="confirmDialog.state.title"
-      :message="confirmDialog.state.message"
-      :action-label="confirmDialog.state.actionLabel"
-      :color="confirmDialog.state.color"
-      :loading="confirmDialog.state.loading"
-      @confirm="confirmDialog.execute"
-      @cancel="confirmDialog.cancel"
-    />
+    <ConfirmDialogHost :dialog="confirmDialog" />
 
     <!-- Modals -->
     <RoleCreateEditModal
@@ -251,7 +242,9 @@ import RoleCreateEditModal from '@/components/admin/RoleCreateEditModal.vue'
 import RolePermissionsModal from '@/components/admin/RolePermissionsModal.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import { permissionCategoryMap, getStatusColor } from '@/utils/statusMaps'
 
 const rbacStore = useRbacStore()
 const { roles, permissions, loading, error } = storeToRefs(rbacStore)
@@ -301,16 +294,7 @@ async function loadData() {
   }
 }
 
-function getCategoryColor(category: string): string {
-  const colors: Record<string, string> = {
-    platform: 'purple',
-    team: 'blue',
-    league: 'green',
-    tournament: 'orange',
-    admin: 'error',
-  }
-  return colors[category] ?? 'grey'
-}
+const getCategoryColor = (category: string) => getStatusColor(permissionCategoryMap, category)
 
 function openCreateRoleModal() {
   selectedRole.value = null
@@ -353,3 +337,10 @@ onMounted(() => {
   loadData()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

@@ -3,7 +3,7 @@
     <div class="d-flex justify-space-between align-center mb-6">
       <div>
         <h1 class="text-h4">Result Reviews</h1>
-        <p class="text-subtitle-1 text-grey">
+        <p class="text-subtitle-1 text-medium-emphasis">
           Reviews flagged by demo validation requiring admin attention
         </p>
       </div>
@@ -20,64 +20,66 @@
 
     <!-- Data Table -->
     <v-card>
-      <v-data-table
-        :headers="headers"
-        :items="store.reviews"
-        :loading="store.fetchReviewsState.loading"
-        density="comfortable"
-        @click:row="(_: Event, { item }: any) => openDetail(item)"
-        hover
-      >
-        <template v-slot:item.match_id="{ item }">
-          <code class="text-caption">{{ item.match_id.slice(0, 8) }}...</code>
-        </template>
+      <div class="table-scroll">
+        <v-data-table
+          :headers="headers"
+          :items="store.reviews"
+          :loading="store.fetchReviewsState.loading"
+          density="comfortable"
+          @click:row="(_: Event, { item }: any) => openDetail(item)"
+          hover
+        >
+          <template v-slot:item.match_id="{ item }">
+            <code class="text-caption">{{ item.match_id.slice(0, 8) }}...</code>
+          </template>
 
-        <template v-slot:item.mismatches="{ item }">
-          <div class="d-flex gap-1">
-            <v-chip v-if="item.score_mismatch" size="x-small" color="error" prepend-icon="mdi-counter">
-              Score
+          <template v-slot:item.mismatches="{ item }">
+            <div class="d-flex ga-1">
+              <v-chip v-if="item.score_mismatch" size="x-small" color="error" prepend-icon="mdi-counter">
+                Score
+              </v-chip>
+              <v-chip v-if="item.roster_mismatch" size="x-small" color="warning" prepend-icon="mdi-account-group">
+                Roster
+              </v-chip>
+              <v-chip v-if="item.winner_mismatch" size="x-small" color="error" prepend-icon="mdi-trophy">
+                Winner
+              </v-chip>
+              <span v-if="!item.score_mismatch && !item.roster_mismatch && !item.winner_mismatch" class="text-medium-emphasis text-caption">
+                None
+              </span>
+            </div>
+          </template>
+
+          <template v-slot:item.status="{ item }">
+            <v-chip :color="getReviewStatusColor(item.status)" size="small">
+              {{ getReviewStatusLabel(item.status) }}
             </v-chip>
-            <v-chip v-if="item.roster_mismatch" size="x-small" color="warning" prepend-icon="mdi-account-group">
-              Roster
-            </v-chip>
-            <v-chip v-if="item.winner_mismatch" size="x-small" color="error" prepend-icon="mdi-trophy">
-              Winner
-            </v-chip>
-            <span v-if="!item.score_mismatch && !item.roster_mismatch && !item.winner_mismatch" class="text-grey text-caption">
-              None
-            </span>
-          </div>
-        </template>
+          </template>
 
-        <template v-slot:item.status="{ item }">
-          <v-chip :color="getReviewStatusColor(item.status)" size="small">
-            {{ getReviewStatusLabel(item.status) }}
-          </v-chip>
-        </template>
+          <template v-slot:item.created_at="{ item }">
+            {{ formatDateTime(item.created_at) }}
+          </template>
 
-        <template v-slot:item.created_at="{ item }">
-          {{ formatDateTime(item.created_at) }}
-        </template>
+          <template v-slot:item.actions="{ item }">
+            <v-btn aria-label="View review"
+              icon
+              size="small"
+              variant="text"
+              @click.stop="openDetail(item)"
+            >
+              <v-icon>mdi-eye</v-icon>
+            </v-btn>
+          </template>
 
-        <template v-slot:item.actions="{ item }">
-          <v-btn
-            icon
-            size="small"
-            variant="text"
-            @click.stop="openDetail(item)"
-          >
-            <v-icon>mdi-eye</v-icon>
-          </v-btn>
-        </template>
-
-        <template v-slot:no-data>
-          <div class="text-center pa-8">
-            <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-clipboard-check-outline</v-icon>
-            <h3 class="text-h6 mb-2">No Pending Reviews</h3>
-            <p class="text-grey">All result reviews have been processed.</p>
-          </div>
-        </template>
-      </v-data-table>
+          <template v-slot:no-data>
+            <div class="text-center pa-8">
+              <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-clipboard-check-outline</v-icon>
+              <h3 class="text-h6 mb-2">No Pending Reviews</h3>
+              <p class="text-medium-emphasis">All result reviews have been processed.</p>
+            </div>
+          </template>
+        </v-data-table>
+      </div>
     </v-card>
 
     <!-- Detail Modal -->
@@ -133,3 +135,10 @@ onMounted(() => {
   loadReviews()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

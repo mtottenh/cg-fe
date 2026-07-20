@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { loginAsAdmin, register, clearAuthState } from './fixtures/auth.fixture'
+import { loginAsAdmin, register } from './fixtures/auth.fixture'
 import { testUsers } from './fixtures/test-data'
 
 test.describe('Player Profile', () => {
@@ -25,8 +25,9 @@ test.describe('Player Profile', () => {
       // Should see the availability button
       await expect(page.getByRole('link', { name: 'My Availability' })).toBeVisible()
 
-      // Should see the logout button
-      await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
+      // Scope to main: the app bar also exposes an icon-only Logout button
+      // (it gained an aria-label in the accessibility pass).
+      await expect(page.getByRole('main').getByRole('button', { name: 'Logout' })).toBeVisible()
     })
 
     test('should display username and email on profile', async ({ page }) => {

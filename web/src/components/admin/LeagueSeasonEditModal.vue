@@ -7,7 +7,7 @@
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Edit Season: {{ season?.name }}</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>

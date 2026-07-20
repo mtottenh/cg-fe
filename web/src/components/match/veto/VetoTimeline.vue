@@ -8,7 +8,7 @@
         :dot-color="dotColor(action)"
         size="x-small"
       >
-        <div class="d-flex align-center gap-2">
+        <div class="d-flex align-center ga-2">
           <v-icon :color="dotColor(action)" size="small">{{ actionIcon(action) }}</v-icon>
           <span class="text-body-2">
             <strong>{{ getTeamName(action.performed_by_registration_id) }}</strong>

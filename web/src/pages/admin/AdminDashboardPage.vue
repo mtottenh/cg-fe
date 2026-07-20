@@ -8,9 +8,7 @@
       </v-col>
     </v-row>
 
-    <v-alert v-else-if="error" type="error" class="mb-4">
-      {{ error }}
-    </v-alert>
+    <ErrorAlert v-else-if="error" :error="error" retryable @clear="error = null" @retry="fetchStats" />
 
     <template v-else-if="stats">
       <v-row>
@@ -194,6 +192,7 @@ import { api, ApiError } from '@/api'
 import { unwrapApi } from '@/stores/helpers'
 import type { components } from '@/api/types'
 import BanCreateModal from '@/components/admin/BanCreateModal.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 
 type PlatformStats = components['schemas']['PlatformStatsResponse']

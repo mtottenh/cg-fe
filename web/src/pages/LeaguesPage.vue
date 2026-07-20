@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <v-container>
     <v-row align="center" class="mb-6">
       <v-col>
         <h1 class="text-h3">Leagues</h1>
@@ -31,10 +31,21 @@
       </v-col>
     </v-row>
 
-    <v-alert v-if="leaguesStore.error" type="error" class="mb-4" closable>
-      {{ leaguesStore.error }}
-    </v-alert>
+    <ErrorAlert
+      :error="leaguesStore.error"
+      retryable
+      @clear="leaguesStore.error = null"
+      @retry="loadLeagues"
+    />
 
+    <!-- Initial Load Skeleton -->
+    <v-row v-if="leaguesStore.loading && leaguesStore.leagues.length === 0">
+      <v-col v-for="n in 8" :key="n" cols="12" sm="6" md="4" lg="3">
+        <v-skeleton-loader type="card" />
+      </v-col>
+    </v-row>
+
+    <template v-else>
     <v-progress-linear v-if="leaguesStore.loading" indeterminate class="mb-4" />
 
     <!-- League Cards Grid -->
@@ -44,7 +55,7 @@
           <v-card-item>
             <template v-slot:prepend>
               <v-avatar color="primary" size="48" rounded="lg">
-                <v-img v-if="league.logo_url" :src="league.logo_url" />
+                <v-img alt="" v-if="league.logo_url" :src="league.logo_url" />
                 <v-icon v-else>mdi-trophy</v-icon>
               </v-avatar>
             </template>
@@ -76,15 +87,12 @@
     </v-row>
 
     <!-- Empty State -->
-    <v-row v-else-if="!leaguesStore.loading">
-      <v-col cols="12" class="text-center py-12">
-        <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-trophy-outline</v-icon>
-        <h3 class="text-h5 text-medium-emphasis mb-2">No Leagues Found</h3>
-        <p class="text-body-2 text-medium-emphasis">
-          {{ search || selectedGameId ? 'Try different filters' : 'No leagues available yet' }}
-        </p>
-      </v-col>
-    </v-row>
+    <EmptyState
+      v-else-if="!leaguesStore.loading"
+      icon="mdi-trophy-outline"
+      title="No Leagues Found"
+      :subtitle="search || selectedGameId ? 'Try different filters' : 'No leagues available yet'"
+    />
 
     <!-- Pagination -->
     <v-row v-if="leaguesStore.pagination.total_pages > 1" class="mt-4">
@@ -96,7 +104,8 @@
         />
       </v-col>
     </v-row>
-  </div>
+    </template>
+  </v-container>
 </template>
 
 <script setup lang="ts">
@@ -105,6 +114,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { useLeaguesStore } from '@/stores/leagues'
 import { useGamesStore } from '@/stores/games'
 import { useAuthStore } from '@/stores/auth'
+import { leagueAccessTypeMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import EmptyState from '@/components/EmptyState.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -201,23 +213,8 @@ function getGameName(gameId: string): string {
   return game?.display_name || game?.slug || 'Unknown'
 }
 
-function getAccessTypeLabel(type: string): string {
-  switch (type) {
-    case 'open': return 'Open'
-    case 'application': return 'Apply'
-    case 'invite_only': return 'Invite Only'
-    default: return type
-  }
-}
-
-function getAccessTypeColor(type: string): string {
-  switch (type) {
-    case 'open': return 'success'
-    case 'application': return 'warning'
-    case 'invite_only': return 'grey'
-    default: return 'grey'
-  }
-}
+const getAccessTypeLabel = (type: string) => getStatusLabel(leagueAccessTypeMap, type)
+const getAccessTypeColor = (type: string) => getStatusColor(leagueAccessTypeMap, type)
 
 function isMyLeague(leagueId: string): boolean {
   return leaguesStore.myLeagues.some(m => m.league_id === leagueId)

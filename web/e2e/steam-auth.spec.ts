@@ -69,15 +69,17 @@ test.describe('Steam sign-in', () => {
     // The page stores the tokens and redirects home.
     await expect(page).toHaveURL('/', { timeout: 15000 })
 
-    // The app is authenticated: tokens are in localStorage and the
-    // fragment has been cleared from the address bar.
+    // The app is authenticated: the ACCESS token is in localStorage and the
+    // fragment has been cleared from the address bar. The refresh token is
+    // deliberately NOT persisted - it lives in memory plus an httpOnly
+    // cookie, so an XSS payload cannot lift a long-lived session.
     const stored = await page.evaluate(() => ({
       token: localStorage.getItem('token'),
       refresh: localStorage.getItem('refresh_token'),
       playerId: localStorage.getItem('player_id'),
     }))
     expect(stored.token).toBe(accessToken)
-    expect(stored.refresh).toBe(refreshToken)
+    expect(stored.refresh).toBeNull()
     expect(stored.playerId).toBeTruthy()
 
     // Authenticated UI is visible (profile route no longer bounces to login).

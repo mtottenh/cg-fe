@@ -4,7 +4,7 @@
     <div class="d-flex justify-space-between align-center mb-6">
       <div>
         <h1 class="text-h3 font-weight-bold">Tournaments</h1>
-        <p class="text-subtitle-1 text-grey">Find and join competitive tournaments</p>
+        <p class="text-subtitle-1 text-medium-emphasis">Find and join competitive tournaments</p>
       </div>
     </div>
 
@@ -40,7 +40,7 @@
                 <v-list-item v-bind="itemProps">
                   <template v-slot:prepend>
                     <v-avatar size="24" rounded="sm">
-                      <v-img v-if="item.raw.icon_url" :src="item.raw.icon_url" />
+                      <v-img alt="" v-if="item.raw.icon_url" :src="item.raw.icon_url" />
                       <v-icon v-else size="16">mdi-gamepad-variant</v-icon>
                     </v-avatar>
                   </template>
@@ -86,23 +86,28 @@
       </v-tab>
     </v-tabs>
 
-    <!-- Loading State -->
-    <div v-if="loading" class="text-center pa-8">
-      <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading tournaments...</p>
-    </div>
+    <ErrorAlert :error="error" retryable @clear="clearError" @retry="fetchData" />
+
+    <!-- Initial Load Skeleton -->
+    <v-row v-if="loading && tournaments.length === 0">
+      <v-col v-for="n in 8" :key="n" cols="12" sm="6" md="4" lg="3">
+        <v-skeleton-loader type="card" />
+      </v-col>
+    </v-row>
 
     <!-- Empty State -->
-    <v-card v-else-if="filteredTournaments.length === 0" class="pa-8 text-center" variant="outlined">
-      <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-tournament</v-icon>
-      <h3 class="text-h6 mb-2">No Tournaments Found</h3>
-      <p class="text-grey">
-        {{ tournaments.length === 0 ? 'Check back later for upcoming tournaments.' : 'No tournaments match your filters.' }}
-      </p>
-      <v-btn v-if="tournaments.length > 0" color="primary" variant="tonal" class="mt-4" @click="clearFilters">
-        Clear Filters
-      </v-btn>
-    </v-card>
+    <EmptyState
+      v-else-if="filteredTournaments.length === 0"
+      icon="mdi-tournament"
+      title="No Tournaments Found"
+      :subtitle="tournaments.length === 0 ? 'Check back later for upcoming tournaments.' : 'No tournaments match your filters.'"
+    >
+      <template #action>
+        <v-btn v-if="tournaments.length > 0" color="primary" variant="tonal" class="mt-4" @click="clearFilters">
+          Clear Filters
+        </v-btn>
+      </template>
+    </EmptyState>
 
     <!-- Tournament Grid -->
     <v-row v-else>
@@ -128,30 +133,39 @@
         @update:model-value="fetchData"
       />
     </div>
-
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="clearError">
-      {{ error }}
-    </v-alert>
   </v-container>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useGamesStore } from '@/stores/games'
 import { useTournamentsStore, type TournamentSummaryResponse } from '@/stores/tournaments'
 import TournamentCard from '@/components/tournament/TournamentCard.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import EmptyState from '@/components/EmptyState.vue'
 
 const router = useRouter()
+const route = useRoute()
 const gamesStore = useGamesStore()
 const tournamentsStore = useTournamentsStore()
 
-// State
-const search = ref('')
-const activeTab = ref('all')
-const page = ref(1)
-const filters = ref<{ game_id?: string; status?: string }>({})
+// State — hydrated from the URL so filtered views are shareable and survive
+// refresh (same pattern as LeaguesPage).
+const VALID_TABS = ['all', 'registration_open', 'in_progress', 'upcoming', 'completed']
+function queryString(key: string): string | undefined {
+  const v = route.query[key]
+  return typeof v === 'string' && v !== '' ? v : undefined
+}
+
+const search = ref(queryString('q') ?? '')
+const activeTab = ref(VALID_TABS.includes(queryString('tab') ?? '') ? queryString('tab')! : 'all')
+const page = ref(Number(queryString('page')) > 0 ? Number(queryString('page')) : 1)
+const filters = ref<{ game_id?: string; status?: string }>({
+  game_id: queryString('game'),
+  status: queryString('status'),
+})
 
 // Store-backed reactive refs
 const { tournaments, pagination } = storeToRefs(tournamentsStore)
@@ -242,6 +256,40 @@ async function fetchData() {
 // Refetch when tab changes (for server-side filtering in the future)
 watch(activeTab, () => {
   page.value = 1
+})
+
+// Push UI state into the URL.
+watch([search, activeTab, page, filters], () => {
+  router.replace({
+    query: {
+      ...route.query,
+      q: search.value || undefined,
+      tab: activeTab.value === 'all' ? undefined : activeTab.value,
+      game: filters.value.game_id || undefined,
+      status: filters.value.status || undefined,
+      page: page.value > 1 ? String(page.value) : undefined,
+    },
+  })
+}, { deep: true })
+
+// Accept external URL changes (nav from a game hub, back/forward).
+watch(() => route.query, (q) => {
+  const nextSearch = typeof q.q === 'string' ? q.q : ''
+  const nextTab = typeof q.tab === 'string' && VALID_TABS.includes(q.tab) ? q.tab : 'all'
+  const nextGame = typeof q.game === 'string' ? q.game : undefined
+  const nextStatus = typeof q.status === 'string' ? q.status : undefined
+  const nextPage = Number(q.page) > 0 ? Number(q.page) : 1
+
+  if (nextSearch !== search.value) search.value = nextSearch
+  if (nextTab !== activeTab.value) activeTab.value = nextTab
+  if (nextGame !== filters.value.game_id || nextStatus !== filters.value.status) {
+    filters.value = { game_id: nextGame, status: nextStatus }
+  }
+  if (nextPage !== page.value) page.value = nextPage
+})
+
+watch(page, () => {
+  fetchData()
 })
 
 onMounted(() => {

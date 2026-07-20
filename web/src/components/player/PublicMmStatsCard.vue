@@ -52,7 +52,7 @@
         <v-divider class="my-3" />
         <div class="text-caption text-medium-emphasis text-uppercase mb-2">Rating History</div>
         <div style="height: 200px; position: relative;">
-          <Line :data="chartData" :options="chartOptions" />
+          <MmRatingChart :data="chartData" :options="chartOptions" />
         </div>
       </template>
 
@@ -184,21 +184,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
-import { Line } from 'vue-chartjs'
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Tooltip,
-  Filler,
-} from 'chart.js'
+import { computed, defineAsyncComponent, onMounted } from 'vue'
 import { usePlayerStats } from '@/composables/usePlayerStats'
 import { formatRelativeTime } from '@/utils/formatters'
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler)
+// chart.js is heavy and only needed when >1 rated match exists — load it on
+// demand instead of shipping it with every profile/player page view.
+const MmRatingChart = defineAsyncComponent(() => import('./MmRatingChart.vue'))
 
 const props = defineProps<{
   playerId: string

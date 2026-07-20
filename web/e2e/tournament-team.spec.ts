@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { loginAsAdmin, register } from './fixtures/auth.fixture'
-import { testTournaments, testUsers, testLeagues } from './fixtures/test-data'
+import { testTournaments, testUsers } from './fixtures/test-data'
 
 /**
  * Team-based tournament workflow tests.
@@ -27,8 +27,9 @@ test.describe('Team Tournament Workflows', () => {
       // Tournament MUST exist - hard assertion (seeded by global-setup.ts)
       await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
 
-      // Should see tournament name
-      await expect(page.getByText(testTournaments.team.name)).toBeVisible()
+      // Name appears twice by design (breadcrumb trail + header) - assert the
+      // first match rather than requiring a unique hit.
+      await expect(page.getByText(testTournaments.team.name).first()).toBeVisible()
     })
 
     test('should show participant type as team', async ({ page }) => {

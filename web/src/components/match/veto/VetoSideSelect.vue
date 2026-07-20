@@ -7,7 +7,7 @@
     <v-card-text>
       <div v-for="action in actionsNeedingSide" :key="action.id" class="mb-3">
         <div class="text-body-2 mb-2">
-          Select side for <strong>{{ action.map_id }}</strong> (Game {{ action.action_number + 1 }}):
+          Select side for <strong>{{ mapLabel(action) }}</strong>{{ gameLabel(action) }}:
         </div>
         <v-btn-group v-if="canSelectSide(action)" density="compact">
           <v-btn
@@ -36,17 +36,35 @@
 </template>
 
 <script setup lang="ts">
-import { useVetoStore, type VetoActionResponse } from '@/stores/veto'
+import { useVetoStore, type VetoActionResponse, type MapStatusResponse } from '@/stores/veto'
 import { useSnackbar } from '@/composables/useSnackbar'
 
 const props = defineProps<{
   matchId: string
   actionsNeedingSide: VetoActionResponse[]
   userRegistrationId: string | null | undefined
+  maps: MapStatusResponse[]
 }>()
 
 const vetoStore = useVetoStore()
 const snackbar = useSnackbar()
+
+function findMap(action: VetoActionResponse): MapStatusResponse | undefined {
+  return props.maps.find((m) => m.map_id === action.map_id)
+}
+
+/** Human map name — the raw map_id is an internal identifier. */
+function mapLabel(action: VetoActionResponse): string {
+  return findMap(action)?.map_name ?? action.map_id
+}
+
+/** Game number comes from the picked map, NOT the veto sequence index —
+ * action_number counts bans too (a Bo1 decider after 6 bans is action 7,
+ * but Game 1). */
+function gameLabel(action: VetoActionResponse): string {
+  const gameNumber = findMap(action)?.game_number
+  return gameNumber ? ` (Game ${gameNumber})` : ''
+}
 
 // In picker_choice mode, the picker selects the side
 function canSelectSide(action: VetoActionResponse): boolean {

@@ -5,6 +5,7 @@
       <div class="color-preview-wrapper">
         <input
           type="color"
+          aria-label="Pick color"
           :value="color || '#000000'"
           @input="handleColorInput"
           class="color-input"
@@ -16,6 +17,7 @@
       </div>
       <v-text-field
         :model-value="color || ''"
+        aria-label="Hex color code"
         @update:model-value="handleTextInput"
         density="compact"
         variant="outlined"
@@ -24,7 +26,7 @@
         hide-details="auto"
         class="hex-input"
       />
-      <v-btn
+      <v-btn aria-label="Clear color"
         v-if="color && clearable"
         icon
         variant="text"

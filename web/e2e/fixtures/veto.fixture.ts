@@ -12,7 +12,7 @@
  *   bo3_veto — Ban-Ban-Pick-Pick-Ban-Ban-Decider (has Pick actions)
  *   bo5_veto — Ban-Ban-Pick-Pick-Pick-Pick-Decider
  */
-import { expect, type APIRequestContext } from '@playwright/test'
+import { expect, type APIRequestContext, type Page } from '@playwright/test'
 import {
   createCheckInScenario,
   checkInViaApi,
@@ -181,4 +181,29 @@ export async function setupVetoScenario(
 
   await startVetoAndFlipCoin(adminToken, scenario.matchId, scenario.p1.registrationId)
   return scenario
+}
+
+/**
+ * Ban or pick a map through the UI.
+ *
+ * The map grid is a two-step interaction: the first click arms the map
+ * (bans/picks are irreversible and timed, so a stray click must not commit
+ * one), and an explicit "Confirm" button performs the action. Specs call
+ * this instead of clicking a card directly.
+ *
+ * Returns the display name of the map that was acted on.
+ */
+export async function actOnMapViaUi(page: Page, index = 0): Promise<string> {
+  const card = page.locator('.map-card-selectable').nth(index)
+  await expect(card).toBeVisible({ timeout: 15000 })
+  const mapName = (await card.locator('.text-caption').first().innerText()).trim()
+
+  await card.click()
+
+  const confirm = page.getByTestId('veto-confirm-action')
+  await expect(confirm).toBeVisible({ timeout: 10000 })
+  await confirm.click()
+  await expect(confirm).toHaveCount(0, { timeout: 15000 })
+
+  return mapName
 }

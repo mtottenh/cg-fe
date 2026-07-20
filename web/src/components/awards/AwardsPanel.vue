@@ -2,7 +2,7 @@
   <div data-testid="awards-panel">
     <div v-if="initialLoading" class="text-center pa-8">
       <v-progress-circular indeterminate color="primary" size="40" />
-      <p class="text-grey mt-4">Loading awards...</p>
+      <p class="text-medium-emphasis mt-4">Loading awards...</p>
     </div>
 
     <template v-else>
@@ -26,7 +26,7 @@
       <div v-else class="text-center pa-8" data-testid="awards-empty">
         <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-trophy-outline</v-icon>
         <h3 class="text-h6 mb-2">No Awards Yet</h3>
-        <p class="text-grey">
+        <p class="text-medium-emphasis">
           Organizers can create stat awards - from templates like "Headshot Machine"
           or fully custom - and they'll show up here with live standings.
         </p>
@@ -72,11 +72,17 @@ const visibleAwards = computed(() =>
   ),
 )
 
+// Latest-wins token: scope can change while a fetch chain is in flight; the
+// stale run must stop driving loading flags and standings fetches.
+let fetchSeq = 0
+
 async function fetchData() {
+  const seq = ++fetchSeq
   if (!props.scopeId) return
   initialLoading.value = true
   try {
     const awards = await awardsStore.fetchAwards(props.scopeType, props.scopeId)
+    if (seq !== fetchSeq) return
     const active = awards.filter((a) => a.status !== 'void')
     standingsLoadingIds.value = new Set(active.map((a) => a.id))
     await Promise.allSettled(
@@ -84,15 +90,17 @@ async function fetchData() {
         try {
           await awardsStore.fetchStandings(props.scopeType, props.scopeId, award.id, 50)
         } finally {
-          standingsLoadingIds.value.delete(award.id)
-          standingsLoadingIds.value = new Set(standingsLoadingIds.value)
+          if (seq === fetchSeq) {
+            standingsLoadingIds.value.delete(award.id)
+            standingsLoadingIds.value = new Set(standingsLoadingIds.value)
+          }
         }
       }),
     )
   } catch {
     // Error captured in store state
   } finally {
-    initialLoading.value = false
+    if (seq === fetchSeq) initialLoading.value = false
   }
 }
 

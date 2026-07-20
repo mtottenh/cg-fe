@@ -1,5 +1,6 @@
 <template>
   <v-dialog
+    :fullscreen="smAndDown"
     v-model="open"
     max-width="600"
     persistent
@@ -7,7 +8,7 @@
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Edit League: {{ league?.league_name }}</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -18,7 +19,7 @@
         <!-- Loading state while fetching full league details -->
         <div v-if="loadingDetails" class="text-center pa-8">
           <v-progress-circular indeterminate color="primary" />
-          <p class="text-grey mt-4">Loading league details...</p>
+          <p class="text-medium-emphasis mt-4">Loading league details...</p>
         </div>
 
         <v-form v-else ref="formRef" v-model="formValid">
@@ -78,8 +79,8 @@
                 variant="outlined"
                 density="comfortable"
               >
-                <template v-slot:item="{ item, props }">
-                  <v-list-item v-bind="props">
+                <template v-slot:item="{ item, props: itemProps }">
+                  <v-list-item v-bind="itemProps">
                     <v-list-item-subtitle>{{ item.raw.description }}</v-list-item-subtitle>
                   </v-list-item>
                 </template>
@@ -178,6 +179,7 @@
 </template>
 
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import { ref, watch } from 'vue'
 import { useLeaguesStore, type UserLeagueMembership, type LeagueResponse } from '@/stores/leagues'
 import { useFormRules } from '@/composables/useFormRules'
@@ -187,6 +189,9 @@ import {
   buildEligibilitySettings,
   type LeagueAccessType,
 } from '@/composables/useLeagueEligibility'
+
+// Long scrolling forms in a small floating dialog are unusable on phones.
+const { smAndDown } = useDisplay()
 
 // Store
 const leaguesStore = useLeaguesStore()

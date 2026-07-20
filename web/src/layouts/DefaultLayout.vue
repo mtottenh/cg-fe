@@ -11,9 +11,6 @@
           <v-btn variant="text" to="/register">Register</v-btn>
         </template>
         <template v-else>
-          <v-chip v-if="authStore.isDevMode" color="warning" size="small" class="mr-2">
-            DEV
-          </v-chip>
           <v-btn v-if="authStore.isAdmin" variant="text" to="/admin" class="mr-2">
             Admin
           </v-btn>
@@ -61,7 +58,7 @@ const leagueTeamsStore = useLeagueTeamsStore()
 const router = useRouter()
 
 // User is considered logged in if authenticated OR in dev mode
-const isLoggedIn = computed(() => authStore.isAuthenticated || authStore.isDevMode)
+const isLoggedIn = computed(() => authStore.isAuthenticated)
 const pendingInvitationCount = computed(() => leagueTeamsStore.myInvitations.length)
 
 // Fetch invitation count when logged in

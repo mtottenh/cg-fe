@@ -3,14 +3,14 @@
     <!-- Match Header -->
     <v-card variant="outlined" class="mb-4">
       <v-card-text>
-        <div class="d-flex align-center justify-center gap-6 pa-4">
+        <div class="d-flex align-center justify-center ga-6 pa-4">
           <div class="text-center">
             <div class="text-h6" :class="{ 'font-weight-bold text-success': match.winner_registration_id === match.participant1_registration_id }">
               {{ match.participant1_name || 'TBD' }}
             </div>
             <div class="text-h4 font-weight-bold">{{ match.participant1_score ?? '-' }}</div>
           </div>
-          <div class="text-grey text-h6">vs</div>
+          <div class="text-medium-emphasis text-h6">vs</div>
           <div class="text-center">
             <div class="text-h6" :class="{ 'font-weight-bold text-success': match.winner_registration_id === match.participant2_registration_id }">
               {{ match.participant2_name || 'TBD' }}
@@ -30,31 +30,31 @@
     <v-table density="compact">
       <tbody>
         <tr>
-          <td class="text-grey" width="180">Match ID</td>
+          <td class="text-medium-emphasis" width="180">Match ID</td>
           <td><code>{{ match.id }}</code></td>
         </tr>
         <tr v-if="match.round">
-          <td class="text-grey">Round</td>
+          <td class="text-medium-emphasis">Round</td>
           <td>{{ match.round }}</td>
         </tr>
         <tr>
-          <td class="text-grey">Format</td>
+          <td class="text-medium-emphasis">Format</td>
           <td>{{ formatMatchFormat(match.match_format) }}</td>
         </tr>
         <tr>
-          <td class="text-grey">Scheduled At</td>
+          <td class="text-medium-emphasis">Scheduled At</td>
           <td>{{ match.scheduled_at ? formatDateTime(match.scheduled_at) : 'Not scheduled' }}</td>
         </tr>
         <tr v-if="match.started_at">
-          <td class="text-grey">Started At</td>
+          <td class="text-medium-emphasis">Started At</td>
           <td>{{ formatDateTime(match.started_at) }}</td>
         </tr>
         <tr v-if="match.completed_at">
-          <td class="text-grey">Completed At</td>
+          <td class="text-medium-emphasis">Completed At</td>
           <td>{{ formatDateTime(match.completed_at) }}</td>
         </tr>
         <tr v-if="match.winner_registration_id">
-          <td class="text-grey">Winner</td>
+          <td class="text-medium-emphasis">Winner</td>
           <td>
             <strong>{{ match.winner_registration_id === match.participant1_registration_id ? match.participant1_name : match.participant2_name }}</strong>
           </td>

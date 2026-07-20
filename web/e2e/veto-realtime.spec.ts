@@ -7,6 +7,7 @@ import {
   primeAuthStorage,
   type CheckInScenario,
 } from './fixtures/checkin.fixture'
+import { actOnMapViaUi } from './fixtures/veto.fixture'
 
 /**
  * Real-time map veto sync E2E.
@@ -132,12 +133,10 @@ test.describe('Map Veto Real-time Sync', () => {
       await expect(pageA.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
       await expect(pageB.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
       await expect(pageA.getByText('Your turn!')).toBeVisible({ timeout: 10000 })
-      await expect(pageB.getByText(/Waiting for opponent/i)).toBeVisible({ timeout: 10000 })
+      await expect(pageB.getByText(/Waiting for/i).first()).toBeVisible({ timeout: 10000 })
 
       // --- P1 bans a map on page A ---------------------------------------
-      const firstPick = pageA.locator('.map-card-selectable').first()
-      await expect(firstPick).toBeVisible()
-      await firstPick.click()
+      await actOnMapViaUi(pageA)
 
       // Page A reflects its own action.
       await expect(pageA.locator('.map-card-banned')).toHaveCount(1, { timeout: 10000 })
@@ -146,12 +145,10 @@ test.describe('Map Veto Real-time Sync', () => {
       // WebSocket. Generous timeout: the only trigger is the WS broadcast.
       await expect(pageB.locator('.map-card-banned')).toHaveCount(1, { timeout: 15000 })
       await expect(pageB.getByText('Your turn!')).toBeVisible({ timeout: 15000 })
-      await expect(pageA.getByText(/Waiting for opponent/i)).toBeVisible({ timeout: 15000 })
+      await expect(pageA.getByText(/Waiting for/i).first()).toBeVisible({ timeout: 15000 })
 
       // --- P2 bans a map on page B ---------------------------------------
-      const secondPick = pageB.locator('.map-card-selectable').first()
-      await expect(secondPick).toBeVisible({ timeout: 10000 })
-      await secondPick.click()
+      await actOnMapViaUi(pageB)
 
       // Page B reflects its own action.
       await expect(pageB.locator('.map-card-banned')).toHaveCount(2, { timeout: 10000 })

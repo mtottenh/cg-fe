@@ -1,5 +1,6 @@
 <template>
   <v-dialog
+    :fullscreen="smAndDown"
     v-model="open"
     max-width="900"
     persistent
@@ -8,15 +9,15 @@
       <v-card-title class="d-flex justify-space-between align-center">
         <div class="d-flex align-center">
           <v-avatar size="32" rounded="sm" class="mr-3">
-            <v-img v-if="team?.team_logo_url" :src="team.team_logo_url" />
+            <v-img alt="" v-if="team?.team_logo_url" :src="team.team_logo_url" />
             <v-icon v-else>mdi-shield</v-icon>
           </v-avatar>
           <div>
             <span>{{ team?.team_name }}</span>
-            <span class="text-caption text-grey ml-2">[{{ team?.team_tag }}]</span>
+            <span class="text-caption text-medium-emphasis ml-2">[{{ team?.team_tag }}]</span>
           </div>
         </div>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -83,7 +84,7 @@
             >
               <template v-slot:item.avatar_url="{ item }">
                 <v-avatar size="32">
-                  <v-img v-if="item.avatar_url" :src="item.avatar_url" />
+                  <v-img :alt="item.display_name ?? ''" v-if="item.avatar_url" :src="item.avatar_url" />
                   <v-icon v-else>mdi-account</v-icon>
                 </v-avatar>
               </template>
@@ -91,7 +92,7 @@
               <template v-slot:item.display_name="{ item }">
                 <div>
                   <div class="font-weight-medium">{{ item.display_name }}</div>
-                  <div class="text-caption text-grey">{{ item.position || '-' }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ item.position || '-' }}</div>
                 </div>
               </template>
 
@@ -118,12 +119,12 @@
 
               <template v-slot:item.actions="{ item }">
                 <v-menu v-if="item.role !== 'captain' || members.filter(m => m.role === 'captain').length > 1">
-                  <template v-slot:activator="{ props }">
-                    <v-btn
+                  <template v-slot:activator="{ props: activatorProps }">
+                    <v-btn aria-label="Member actions"
                       icon
                       size="small"
                       variant="text"
-                      v-bind="props"
+                      v-bind="activatorProps"
                       :disabled="team?.roster_lock_status === 'locked'"
                     >
                       <v-icon>mdi-dots-vertical</v-icon>
@@ -156,7 +157,7 @@
               <template v-slot:no-data>
                 <div class="text-center pa-8">
                   <v-icon size="48" color="grey-lighten-1">mdi-account-group-outline</v-icon>
-                  <p class="text-grey mt-2">No team members yet</p>
+                  <p class="text-medium-emphasis mt-2">No team members yet</p>
                 </div>
               </template>
             </v-data-table>
@@ -209,7 +210,7 @@
 
               <template v-slot:item.actions="{ item }">
                 <template v-if="item.status === 'pending'">
-                  <v-btn
+                  <v-btn aria-label="Accept application"
                     v-if="item.invitation_type === 'application'"
                     icon
                     size="small"
@@ -220,7 +221,7 @@
                   >
                     <v-icon>mdi-check</v-icon>
                   </v-btn>
-                  <v-btn
+                  <v-btn :aria-label="item.invitation_type === 'invite' ? 'Cancel invitation' : 'Reject application'"
                     icon
                     size="small"
                     variant="text"
@@ -236,7 +237,7 @@
               <template v-slot:no-data>
                 <div class="text-center pa-8">
                   <v-icon size="48" color="grey-lighten-1">mdi-email-outline</v-icon>
-                  <p class="text-grey mt-2">No pending invitations</p>
+                  <p class="text-medium-emphasis mt-2">No pending invitations</p>
                 </div>
               </template>
             </v-data-table>
@@ -316,6 +317,7 @@
 </template>
 
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import { computed, ref, watch } from 'vue'
 import type { components } from '@/api/types'
 import LeagueTeamInviteModal from './LeagueTeamInviteModal.vue'
@@ -323,11 +325,15 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useFormRules } from '@/composables/useFormRules'
 import { formatDate } from '@/utils/formatters'
+import { teamRoleMap, teamInvitationStatusMap, getStatusColor, formatRole } from '@/utils/statusMaps'
 import {
   useLeagueTeamsStore,
   type LeagueTeamMemberWithPlayer,
   type LeagueTeamInvitationResponse,
 } from '@/stores/leagueTeams'
+
+// Long scrolling forms in a small floating dialog are unusable on phones.
+const { smAndDown } = useDisplay()
 
 type LeagueTeamSummary = components['schemas']['LeagueTeamSummaryResponse']
 
@@ -522,29 +528,8 @@ function onPlayerInvited() {
 }
 
 // Helpers
-function formatRole(role: string): string {
-  return role.charAt(0).toUpperCase() + role.slice(1)
-}
-
-function getRoleColor(role: string): string {
-  switch (role) {
-    case 'captain': return 'primary'
-    case 'player': return 'success'
-    case 'substitute': return 'info'
-    default: return 'grey'
-  }
-}
-
-function getInvitationStatusColor(status: string): string {
-  switch (status) {
-    case 'pending': return 'warning'
-    case 'accepted': return 'success'
-    case 'declined': return 'error'
-    case 'cancelled': return 'grey'
-    case 'expired': return 'grey'
-    default: return 'grey'
-  }
-}
+const getRoleColor = (role: string) => getStatusColor(teamRoleMap, role)
+const getInvitationStatusColor = (status: string) => getStatusColor(teamInvitationStatusMap, status)
 
 function close() {
   error.value = null

@@ -10,7 +10,7 @@
         @dragleave="isDragging = false"
         @drop.prevent="handleDrop"
       >
-        <v-img
+        <v-img alt="Image preview"
           v-if="previewUrl"
           :src="previewUrl"
           :aspect-ratio="aspectRatio"

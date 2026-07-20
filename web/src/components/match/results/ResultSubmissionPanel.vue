@@ -13,7 +13,7 @@
 
       <!-- Score inputs for each game in the match -->
       <div class="scores-section mb-4">
-        <div v-for="(game, index) in games" :key="game.gameNumber">
+        <div v-for="(game, index) in gamesView" :key="game.gameNumber">
           <ScoreInput
             :game-number="game.gameNumber"
             :team-a-name="teamAName"
@@ -26,20 +26,20 @@
           />
           <!-- Linked demo info for this game -->
           <div
-            v-if="getLinkedDemoForGame(game.gameNumber)"
+            v-if="game.demo"
             class="d-flex align-center ga-2 ml-2 mt-n1 mb-2"
           >
             <v-icon size="x-small" color="info">mdi-link</v-icon>
             <span class="text-caption text-info">
-              <template v-if="getLinkedDemoForGame(game.gameNumber)!.demo.metadata">
-                Demo: {{ getLinkedDemoForGame(game.gameNumber)!.demo.metadata!.map_name }} &mdash;
-                {{ getLinkedDemoForGame(game.gameNumber)!.demo.metadata!.team1_name }}
-                {{ getLinkedDemoForGame(game.gameNumber)!.demo.metadata!.team1_score }}
-                : {{ getLinkedDemoForGame(game.gameNumber)!.demo.metadata!.team2_score }}
-                {{ getLinkedDemoForGame(game.gameNumber)!.demo.metadata!.team2_name }}
+              <template v-if="game.demoMeta">
+                Demo: {{ game.demoMeta.map_name }} &mdash;
+                {{ game.demoMeta.team1_name }}
+                {{ game.demoMeta.team1_score }}
+                : {{ game.demoMeta.team2_score }}
+                {{ game.demoMeta.team2_name }}
               </template>
               <template v-else>
-                Demo: {{ getLinkedDemoForGame(game.gameNumber)!.demo.file_name }}
+                Demo: {{ game.demo.file_name }}
               </template>
             </span>
             <v-chip
@@ -55,6 +55,7 @@
               size="x-small"
               variant="text"
               color="error"
+              aria-label="Unlink demo"
               :loading="evidenceStore.unlinkDemoState.loading"
               @click="unlinkGameDemo(game.gameNumber)"
             >
@@ -200,16 +201,33 @@ const games = ref<GameData[]>(
   }))
 )
 
-// Reset games when format changes
+// Resize on format change, PRESERVING already-entered scores for games that
+// survive the resize — silently wiping user input is data loss.
 watch(numGames, (newNum) => {
-  games.value = Array.from({ length: newNum }, (_, i) => ({
-    gameNumber: i + 1,
-    teamAScore: 0,
-    teamBScore: 0,
-    mapId: props.maps?.[i]?.id || `map_${i + 1}`,
-    mapName: props.maps?.[i]?.name,
-  }))
+  games.value = Array.from({ length: newNum }, (_, i) =>
+    games.value[i] ?? {
+      gameNumber: i + 1,
+      teamAScore: 0,
+      teamBScore: 0,
+      mapId: props.maps?.[i]?.id || `map_${i + 1}`,
+      mapName: props.maps?.[i]?.name,
+    }
+  )
+  for (const gameNumber of [...autoFilledGames.value]) {
+    if (gameNumber > newNum) autoFilledGames.value.delete(gameNumber)
+  }
 })
+
+// Maps arrive async (veto completion / parent fetch) — refresh each game's
+// map identity when they land, without touching entered scores.
+watch(() => props.maps, (maps) => {
+  if (!maps?.length) return
+  games.value = games.value.map((game, i) => ({
+    ...game,
+    mapId: maps[i]?.id || game.mapId,
+    mapName: maps[i]?.name ?? game.mapName,
+  }))
+}, { deep: true })
 
 // Notes
 const notes = ref('')
@@ -223,8 +241,29 @@ const demoLinkIds = ref<string[]>([])
 // Auto-fill tracking
 const autoFilledGames = ref(new Set<number>())
 
+// Single O(n) join instead of an O(n) `.find()` per game per render, and no
+// non-null assertions in the template.
+const linkedDemoByGame = computed(() => {
+  const byGame = new Map<number, (typeof evidenceStore.linkedDemos)[number]>()
+  for (const item of evidenceStore.linkedDemos) {
+    if (item.link.game_number != null) byGame.set(item.link.game_number, item)
+  }
+  return byGame
+})
+
+const gamesView = computed(() =>
+  games.value.map((game) => {
+    const linked = linkedDemoByGame.value.get(game.gameNumber) ?? null
+    return {
+      ...game,
+      demo: linked?.demo ?? null,
+      demoMeta: linked?.demo.metadata ?? null,
+    }
+  })
+)
+
 function getLinkedDemoForGame(gameNumber: number) {
-  return evidenceStore.linkedDemos.find(d => d.link.game_number === gameNumber) ?? null
+  return linkedDemoByGame.value.get(gameNumber) ?? null
 }
 
 function mapDemoScoresToMatch(
@@ -344,7 +383,7 @@ async function handleSubmit() {
 
   // Convert games to GameResultInput format, attaching per-game demo links
   const gameResults: GameResultInput[] = games.value.map((g) => {
-    const linkedDemo = evidenceStore.linkedDemos.find(d => d.link.game_number === g.gameNumber)
+    const linkedDemo = linkedDemoByGame.value.get(g.gameNumber)
     return {
       game_number: g.gameNumber,
       map_id: g.mapId,

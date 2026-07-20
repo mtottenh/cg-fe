@@ -14,7 +14,7 @@
           size="small"
         >
           <template #opposite>
-            <span class="text-caption text-grey">{{ formatDate(entry.created_at) }}</span>
+            <span class="text-caption text-medium-emphasis">{{ formatDate(entry.created_at) }}</span>
           </template>
 
           <v-card variant="outlined" density="compact" class="timeline-card">
@@ -28,11 +28,11 @@
                 </div>
               </div>
 
-              <div class="text-caption text-grey mt-1">
+              <div class="text-caption text-medium-emphasis mt-1">
                 {{ formatScores(entry) }}
               </div>
 
-              <div v-if="entry.was_auto_confirmed" class="text-caption text-grey-darken-1 mt-1">
+              <div v-if="entry.was_auto_confirmed" class="text-caption text-medium-emphasis mt-1">
                 <v-icon size="x-small" class="mr-1">mdi-robot</v-icon>
                 Auto-confirmed
               </div>

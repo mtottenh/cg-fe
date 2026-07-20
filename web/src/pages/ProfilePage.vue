@@ -1,10 +1,8 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-progress-linear v-if="loading" indeterminate class="mb-4" />
 
-    <v-alert v-if="error" type="error" class="mb-4">
-      {{ error }}
-    </v-alert>
+    <ErrorAlert :error="error" retryable @clear="error = null" @retry="fetchProfile" />
 
     <template v-if="user && playerProfile">
       <!-- Banner + Avatar header -->
@@ -98,7 +96,7 @@
             </v-card-title>
             <v-divider />
             <v-card-text>
-              <div class="d-flex flex-wrap gap-2">
+              <div class="d-flex flex-wrap ga-2">
                 <v-btn
                   color="primary"
                   variant="outlined"
@@ -139,16 +137,19 @@
       <PlayerGameStatsCard :player-id="playerProfile.id" />
     </template>
 
-    <v-row v-else-if="!loading">
-      <v-col cols="12" class="text-center py-12">
-        <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-off</v-icon>
-        <h3 class="text-h5 text-medium-emphasis mb-2">Not Logged In</h3>
-        <p class="text-body-2 text-medium-emphasis mb-4">
-          Using dev token. Register to create an account.
-        </p>
-        <v-btn color="primary" to="/register">Register</v-btn>
-      </v-col>
-    </v-row>
+    <EmptyState
+      v-else-if="!loading"
+      icon="mdi-account-off"
+      title="Not Logged In"
+      subtitle="Sign in to view your profile, or create an account to get started."
+    >
+      <template #action>
+        <div class="mt-4">
+          <v-btn color="primary" class="mr-2" to="/login">Sign In</v-btn>
+          <v-btn variant="outlined" to="/register">Register</v-btn>
+        </div>
+      </template>
+    </EmptyState>
   </v-container>
 </template>
 
@@ -162,6 +163,8 @@ import PlayerGameStatsCard from '@/components/player/PlayerGameStatsCard.vue'
 import PublicMmStatsCard from '@/components/player/PublicMmStatsCard.vue'
 import MatchHistoryList from '@/components/player/MatchHistoryList.vue'
 import TrophyCase from '@/components/player/TrophyCase.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import EmptyState from '@/components/EmptyState.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -186,21 +189,25 @@ const bannerStyle = computed(() => {
   }
 })
 
-onMounted(async () => {
+async function fetchProfile() {
+  loading.value = true
+  error.value = null
   try {
     await Promise.all([
       authStore.fetchCurrentUser(),
       playersStore.fetchMyProfile(),
     ])
-  } catch (e) {
+  } catch {
     error.value = authStore.error || 'Failed to load profile'
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(() => { fetchProfile() })
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',

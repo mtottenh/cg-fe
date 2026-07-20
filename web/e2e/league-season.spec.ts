@@ -45,7 +45,7 @@ test.describe('League Season Lifecycle', () => {
       await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
-      await expect(page.getByText(scenario.leagueName)).toBeVisible()
+      await expect(page.getByText(scenario.leagueName).first()).toBeVisible()
 
       // Season selector MUST be visible with our season auto-selected.
       const seasonSelect = page.locator('.v-select').first()
@@ -134,7 +134,7 @@ test.describe('League Season Lifecycle', () => {
       // side searchable) admin list. Search first: the per-game data tables
       // paginate at 10 rows.
       await page.getByRole('textbox', { name: /Search leagues/i }).fill(scenario.leagueName)
-      await expect(page.getByText(scenario.leagueName)).toBeVisible()
+      await expect(page.getByText(scenario.leagueName).first()).toBeVisible()
       await expect(page.getByText(scenario.leagueSlug)).toBeVisible()
     })
 

@@ -23,7 +23,7 @@
         <!-- Current Permissions -->
         <div class="mb-4">
           <h3 class="text-subtitle-1 mb-2">Current Permissions ({{ currentPermissions.length }})</h3>
-          <div v-if="currentPermissions.length === 0" class="text-grey text-body-2">
+          <div v-if="currentPermissions.length === 0" class="text-medium-emphasis text-body-2">
             No permissions assigned to this role.
           </div>
           <v-chip
@@ -71,7 +71,7 @@
                 >
                   {{ category }}
                 </v-chip>
-                <span class="text-body-2 text-grey">
+                <span class="text-body-2 text-medium-emphasis">
                   {{ perms.length }} available
                 </span>
               </div>
@@ -109,7 +109,7 @@
                     <code class="text-caption">{{ perm.name }}</code>
                   </v-list-item-subtitle>
                   <template v-slot:append>
-                    <v-btn
+                    <v-btn aria-label="Add permission"
                       icon
                       size="small"
                       variant="text"
@@ -122,7 +122,7 @@
                   </template>
                 </v-list-item>
                 <v-list-item v-if="perms.length === 0" class="px-0">
-                  <v-list-item-title class="text-grey text-body-2">
+                  <v-list-item-title class="text-medium-emphasis text-body-2">
                     All permissions in this category are already assigned
                   </v-list-item-title>
                 </v-list-item>
@@ -133,7 +133,7 @@
 
         <div v-if="Object.keys(availablePermissionsByCategory).length === 0" class="text-center pa-4">
           <v-icon size="48" color="grey-lighten-1">mdi-check-all</v-icon>
-          <p class="text-grey mt-2">All permissions are already assigned to this role</p>
+          <p class="text-medium-emphasis mt-2">All permissions are already assigned to this role</p>
         </div>
       </v-card-text>
 
@@ -150,6 +150,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRbacStore, type RoleResponse, type PermissionResponse, type RoleWithPermissionsResponse } from '@/stores/rbac'
+import { permissionCategoryMap, getStatusColor } from '@/utils/statusMaps'
 
 const props = defineProps<{  role: RoleResponse | null
 }>()
@@ -231,16 +232,7 @@ async function loadRoleData() {
   }
 }
 
-function getCategoryColor(category: string): string {
-  const colors: Record<string, string> = {
-    platform: 'purple',
-    team: 'blue',
-    league: 'green',
-    tournament: 'orange',
-    admin: 'error',
-  }
-  return colors[category] || 'grey'
-}
+const getCategoryColor = (category: string) => getStatusColor(permissionCategoryMap, category)
 
 async function addPermission(permissionId: string) {
   if (!props.role || saving.value) return

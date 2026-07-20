@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-row justify="center">
       <v-col cols="12" sm="8" md="6" lg="4">
         <v-card class="pa-6">
@@ -57,7 +57,7 @@
           <v-divider class="my-4" />
 
           <div class="text-center">
-            <span class="text-body-2 text-grey">Don't have an account?</span>
+            <span class="text-body-2 text-medium-emphasis">Don't have an account?</span>
             <router-link to="/register" class="ml-1 text-primary">Register</router-link>
           </div>
         </v-card>
@@ -100,7 +100,7 @@ async function handleSubmit() {
     // Redirect to home or intended destination after login
     const redirect = router.currentRoute.value.query.redirect as string
     router.push(redirect || '/')
-  } catch (e) {
+  } catch {
     error.value = authStore.error || 'Login failed. Please check your credentials.'
   } finally {
     loading.value = false

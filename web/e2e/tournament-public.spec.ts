@@ -51,8 +51,9 @@ test.describe('Tournament Public Flows', () => {
       // Click Open Registration tab
       await page.getByRole('tab', { name: /Open Registration/i }).click()
 
-      // URL should remain the same (client-side filter)
-      await expect(page).toHaveURL('/tournaments')
+      // Filtering is client-side but the active tab is mirrored into the URL
+      // so a filtered view can be shared and survives a refresh.
+      await expect(page).toHaveURL(/\/tournaments\?.*tab=registration_open/)
     })
 
     test('should search tournaments by name', async ({ page }) => {
@@ -412,11 +413,8 @@ test.describe('Tournament Public Flows', () => {
       // Tournament MUST exist
       await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
 
-      // Look for check-in button
-      const checkInButton = page.getByRole('button', { name: /Check In/i })
-
-      // If check-in is open and user is approved, button should be visible
-      // This is state-dependent - just verify tournament page loaded
+      // Check-in visibility is state-dependent (needs an open window and an
+      // approved registration) - this case only asserts the page loaded.
     })
 
     test('should show checked-in status after check-in', async ({ page }) => {

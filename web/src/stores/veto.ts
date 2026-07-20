@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, createLatestGuard } from '@/stores/helpers'
 
 type VetoSessionResponse = components['schemas']['VetoSessionResponse']
 type VetoSessionStateResponse = components['schemas']['DataResponse_VetoSessionStateResponse']['data']
@@ -35,14 +35,21 @@ export const useVetoStore = defineStore('veto', () => {
 
   // ==================== Veto Session ====================
 
+  // Latest-wins guard: a slow session fetch for the previous match must not
+  // clobber the state of the lobby the user has since navigated into.
+  const beginSessionFetch = createLatestGuard()
+
   async function getVetoSession(matchId: string): Promise<VetoSessionStateResponse> {
     return withActionState(getSessionState, async () => {
+      const isCurrent = beginSessionFetch()
       const result = await unwrapApi(api.GET('/v1/matches/{match_id}/veto', {
         params: { path: { match_id: matchId } },
       }))
-      sessionState.value = result.data
-      session.value = result.data.session
-      return sessionState.value
+      if (isCurrent()) {
+        sessionState.value = result.data
+        session.value = result.data.session
+      }
+      return result.data
     }, 'Failed to fetch veto session')
   }
 
@@ -108,6 +115,13 @@ export const useVetoStore = defineStore('veto', () => {
         params: { path: { match_id: matchId } },
         body: request,
       }))
+      // Apply the response locally too — the WS echo normally does this, but
+      // in fallback-polling mode (or a dropped socket) the selection would
+      // otherwise appear to do nothing. applyActionPerformed is idempotent
+      // (merges by action_number), so the echo arriving later is harmless.
+      if (session.value) {
+        applyActionPerformed(session.value, result.data)
+      }
       return result.data
     }, 'Failed to select side')
   }

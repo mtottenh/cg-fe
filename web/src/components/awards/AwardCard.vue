@@ -79,7 +79,7 @@
         </v-list-item>
       </v-list>
     </v-card-text>
-    <v-card-text v-else class="text-center text-grey py-4" data-testid="award-no-standings">
+    <v-card-text v-else class="text-center text-medium-emphasis py-4" data-testid="award-no-standings">
       No qualifying stats yet
     </v-card-text>
 

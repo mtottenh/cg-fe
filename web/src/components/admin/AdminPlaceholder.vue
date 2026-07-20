@@ -11,7 +11,7 @@
             Coming Soon
           </v-chip>
 
-          <p class="text-body-1 text-grey mb-6">
+          <p class="text-body-1 text-medium-emphasis mb-6">
             This admin feature is planned but requires additional backend APIs.
           </p>
 

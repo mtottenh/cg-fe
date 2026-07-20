@@ -7,6 +7,7 @@ import {
   primeAuthStorage,
   type CheckInScenario,
 } from './fixtures/checkin.fixture'
+import { actOnMapViaUi } from './fixtures/veto.fixture'
 
 /**
  * Map veto (pick/ban) flow E2E.
@@ -126,15 +127,13 @@ test.describe('Map Veto Flow', () => {
     await expect(page.getByText('Your turn!')).toBeVisible({ timeout: 10000 })
     await expect(page.getByText(/Ban a map/i).first()).toBeVisible()
 
-    // Click the first selectable map card and remember its name
-    const selectable = page.locator('.map-card-selectable').first()
-    await expect(selectable).toBeVisible()
-    const mapName = (await selectable.locator('.text-caption').first().innerText()).trim()
-    await selectable.click()
+    // Arm + confirm the first selectable map (bans are two-step) and
+    // remember its name
+    const mapName = await actOnMapViaUi(page)
 
     // The ban lands: the named map shows as Banned and the turn passes
     await expect(page.locator('.map-card-banned')).toHaveCount(1, { timeout: 10000 })
-    await expect(page.getByText(/Waiting for opponent/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/Waiting for/i).first()).toBeVisible({ timeout: 10000 })
 
     // Backend agrees: one map gone from the pool, next action is #2
     const sessionResp = await request.get(`${API_URL}/v1/matches/${scenario.matchId}/veto`, {
@@ -145,6 +144,42 @@ test.describe('Map Veto Flow', () => {
     expect(session.remaining_maps.length).toBe(session.map_pool.length - 1)
     expect(session.remaining_maps).not.toContain(mapName)
     expect(session.current_action_number).toBe(2)
+  })
+
+  test('arming a map does not commit it until confirmed (misclick protection)', async ({
+    request,
+    page,
+  }) => {
+    const adminToken = await getAdminToken()
+    const scenario = await setupVetoScenario(request, adminToken)
+
+    await primeAuthStorage(page, scenario.p1.token, scenario.p1.userId)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`)
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByText('Your turn!')).toBeVisible({ timeout: 10000 })
+
+    // First click only ARMS the map: a confirm prompt appears and nothing
+    // has been banned yet.
+    await page.locator('.map-card-selectable').first().click()
+    const confirm = page.getByTestId('veto-confirm-action')
+    await expect(confirm).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('.map-card-banned')).toHaveCount(0)
+
+    // Cancelling discards the armed selection without acting.
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await expect(confirm).toHaveCount(0)
+    await expect(page.locator('.map-card-banned')).toHaveCount(0)
+
+    // The backend never saw an action: still on action #1.
+    const sessionResp = await request.get(`${API_URL}/v1/matches/${scenario.matchId}/veto`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    expect(sessionResp.ok()).toBe(true)
+    expect((await sessionResp.json()).data.session.current_action_number).toBe(1)
+
+    // Confirming does commit it.
+    await actOnMapViaUi(page)
+    await expect(page.locator('.map-card-banned')).toHaveCount(1, { timeout: 10000 })
   })
 
   test('opponent sees waiting state and cannot act out of turn', async ({ request, page }) => {
@@ -159,7 +194,7 @@ test.describe('Map Veto Flow', () => {
     await expect(page.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
 
     // Turn indicator says waiting; no card is clickable
-    await expect(page.getByText(/Waiting for opponent/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/Waiting for/i).first()).toBeVisible({ timeout: 10000 })
     await expect(page.getByText('Your turn!')).toHaveCount(0)
     await expect(page.locator('.map-card-selectable')).toHaveCount(0)
   })

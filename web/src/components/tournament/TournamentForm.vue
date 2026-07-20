@@ -20,7 +20,7 @@
             <v-list-item v-bind="itemProps">
               <template v-slot:prepend>
                 <v-avatar size="24" rounded="sm">
-                  <v-img v-if="item.raw.icon_url" :src="item.raw.icon_url" />
+                  <v-img alt="" v-if="item.raw.icon_url" :src="item.raw.icon_url" />
                   <v-icon v-else size="16">mdi-gamepad-variant</v-icon>
                 </v-avatar>
               </template>
@@ -410,7 +410,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, toRef } from 'vue'
+import { computed, toRef, watch } from 'vue'
 import {
   TOURNAMENT_FORMATS,
   PARTICIPANT_TYPES,
@@ -459,7 +459,7 @@ const isEdit = computed(() => props.mode === 'edit')
 // Wire the form composable. Pass the tournament as a reactive ref so edit
 // mode picks up changes to props.tournament (modals swap tournaments without
 // unmounting).
-const tournamentRef = toRef(props, 'tournament') as unknown as import('vue').Ref<TournamentResponse | null>
+const tournamentRef = toRef(props, 'tournament')
 const formBundle = useTournamentForm({
   mode: props.mode,
   initial: tournamentRef,
@@ -518,7 +518,6 @@ const vetoFormatHint = computed(() =>
 
 // Reset league/season + veto when game changes (the gameDetail composable
 // handles the map-pool reset itself).
-import { watch } from 'vue'
 watch(() => form.game_id, () => {
   if (!isCreate.value) return
   form.league_id = null

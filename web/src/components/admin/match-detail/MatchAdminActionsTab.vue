@@ -120,6 +120,10 @@
           <v-row>
             <v-col cols="12" md="4">
               <div class="text-subtitle-2 mb-2">Process Progression</div>
+              <p class="text-body-2 text-medium-emphasis mb-2">
+                Advance the winner into the next bracket slot for the first time
+                (use when automatic progression didn't run).
+              </p>
               <v-select
                 v-model="progressionWinnerId"
                 :items="participantOptions"
@@ -139,6 +143,10 @@
             </v-col>
             <v-col cols="12" md="4">
               <div class="text-subtitle-2 mb-2">Reapply Progression</div>
+              <p class="text-body-2 text-medium-emphasis mb-2">
+                Replace an already-advanced winner with a different one (use
+                after a result correction).
+              </p>
               <v-select
                 v-model="reapplyWinnerId"
                 :items="participantOptions"
@@ -158,7 +166,10 @@
             </v-col>
             <v-col cols="12" md="4">
               <div class="text-subtitle-2 mb-2">Revert Progression</div>
-              <p class="text-body-2 text-grey mb-2">Undo bracket advancement for this match.</p>
+              <p class="text-body-2 text-medium-emphasis mb-2">
+                Undo bracket advancement for this match entirely — downstream
+                pairings created from it are rolled back.
+              </p>
               <v-btn
                 color="error"
                 :loading="tournamentsStore.revertProgressionState.loading"
@@ -172,12 +183,15 @@
       </v-card>
     </v-col>
   </v-row>
+  <ConfirmDialogHost :dialog="confirmDialog" />
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useTournamentsStore, type TournamentMatchResponse } from '@/stores/tournaments'
 import { useActionFeedback } from '@/composables/useActionFeedback'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 
 const props = defineProps<{
   match: TournamentMatchResponse | null
@@ -190,6 +204,18 @@ const emit = defineEmits<{
 
 const tournamentsStore = useTournamentsStore()
 const feedback = useActionFeedback()
+const confirmDialog = useConfirmDialog()
+
+function participantName(registrationId: string | null | undefined): string {
+  if (!props.match) return 'Unknown'
+  if (registrationId === props.match.participant1_registration_id) {
+    return props.match.participant1_name || 'Participant 1'
+  }
+  if (registrationId === props.match.participant2_registration_id) {
+    return props.match.participant2_name || 'Participant 2'
+  }
+  return 'Unknown'
+}
 
 const scheduleDate = ref('')
 const scheduleNotes = ref('')
@@ -251,29 +277,45 @@ async function handleSchedule() {
   )
 }
 
-async function handleForfeit() {
+function handleForfeit() {
   if (!props.match || !forfeitRegistrationId.value) return
   const matchId = props.match.id
   const regId = forfeitRegistrationId.value
   const type = forfeitType.value
   const reason = forfeitReason.value.trim()
-  await feedback.run(
-    () => tournamentsStore.adminForfeitMatch(props.tournamentId, matchId, regId, type, reason),
-    { success: 'Match forfeited', errorSource: tournamentsStore.adminForfeitState, after: afterSuccess },
-  )
+  confirmDialog.confirm({
+    title: 'Forfeit Match',
+    message: `Forfeit ${participantName(regId)} (${type.replace('_', ' ')})? The match is decided immediately.`,
+    action: 'Forfeit',
+    color: 'error',
+    handler: async () => {
+      await feedback.run(
+        () => tournamentsStore.adminForfeitMatch(props.tournamentId, matchId, regId, type, reason),
+        { success: 'Match forfeited', errorSource: tournamentsStore.adminForfeitState, after: afterSuccess, rethrow: true },
+      )
+    },
+  })
 }
 
-async function handleDoubleForfeit() {
+function handleDoubleForfeit() {
   if (!props.match) return
   const matchId = props.match.id
   const reason = doubleForfeitReason.value.trim()
-  await feedback.run(
-    () => tournamentsStore.adminDoubleForfeit(props.tournamentId, matchId, reason),
-    { success: 'Double forfeit processed', errorSource: tournamentsStore.adminDoubleForfeitState, after: afterSuccess },
-  )
+  confirmDialog.confirm({
+    title: 'Double Forfeit',
+    message: 'Forfeit BOTH participants? Neither advances, and the match is closed immediately.',
+    action: 'Double Forfeit',
+    color: 'error',
+    handler: async () => {
+      await feedback.run(
+        () => tournamentsStore.adminDoubleForfeit(props.tournamentId, matchId, reason),
+        { success: 'Double forfeit processed', errorSource: tournamentsStore.adminDoubleForfeitState, after: afterSuccess, rethrow: true },
+      )
+    },
+  })
 }
 
-async function handleProcessProgression() {
+function handleProcessProgression() {
   if (!props.match || !progressionWinnerId.value) return
   const match = props.match
   const winnerId = progressionWinnerId.value
@@ -281,28 +323,52 @@ async function handleProcessProgression() {
     ? match.participant2_registration_id
     : match.participant1_registration_id
   if (!loserId) return
-  await feedback.run(
-    () => tournamentsStore.processProgression(match.id, winnerId, loserId),
-    { success: 'Progression processed', errorSource: tournamentsStore.processProgressionState, after: afterSuccess },
-  )
+  confirmDialog.confirm({
+    title: 'Process Progression',
+    message: `Advance ${participantName(winnerId)} as winner over ${participantName(loserId)}?`,
+    action: 'Process',
+    color: 'primary',
+    handler: async () => {
+      await feedback.run(
+        () => tournamentsStore.processProgression(match.id, winnerId, loserId),
+        { success: 'Progression processed', errorSource: tournamentsStore.processProgressionState, after: afterSuccess, rethrow: true },
+      )
+    },
+  })
 }
 
-async function handleReapplyProgression() {
+function handleReapplyProgression() {
   if (!props.match || !reapplyWinnerId.value) return
   const matchId = props.match.id
   const winnerId = reapplyWinnerId.value
-  await feedback.run(
-    () => tournamentsStore.reapplyProgression(matchId, winnerId),
-    { success: 'Progression reapplied', errorSource: tournamentsStore.reapplyProgressionState, after: afterSuccess },
-  )
+  confirmDialog.confirm({
+    title: 'Reapply Progression',
+    message: `Replace the advanced winner with ${participantName(winnerId)}? Downstream bracket slots are rewritten.`,
+    action: 'Reapply',
+    color: 'warning',
+    handler: async () => {
+      await feedback.run(
+        () => tournamentsStore.reapplyProgression(matchId, winnerId),
+        { success: 'Progression reapplied', errorSource: tournamentsStore.reapplyProgressionState, after: afterSuccess, rethrow: true },
+      )
+    },
+  })
 }
 
-async function handleRevertProgression() {
+function handleRevertProgression() {
   if (!props.match) return
   const matchId = props.match.id
-  await feedback.run(
-    () => tournamentsStore.revertProgression(matchId),
-    { success: 'Progression reverted', errorSource: tournamentsStore.revertProgressionState, after: afterSuccess },
-  )
+  confirmDialog.confirm({
+    title: 'Revert Progression',
+    message: 'Undo bracket advancement for this match? Downstream pairings created from it are rolled back.',
+    action: 'Revert',
+    color: 'error',
+    handler: async () => {
+      await feedback.run(
+        () => tournamentsStore.revertProgression(matchId),
+        { success: 'Progression reverted', errorSource: tournamentsStore.revertProgressionState, after: afterSuccess, rethrow: true },
+      )
+    },
+  })
 }
 </script>

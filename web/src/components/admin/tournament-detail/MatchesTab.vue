@@ -39,7 +39,7 @@
         <span v-if="item.status === 'completed'">
           {{ item.participant1_score }} - {{ item.participant2_score }}
         </span>
-        <span v-else class="text-grey">-</span>
+        <span v-else class="text-medium-emphasis">-</span>
       </template>
 
       <template v-slot:item.status="{ item }">
@@ -53,8 +53,8 @@
       </template>
 
       <template v-slot:item.actions="{ item }">
-        <div class="d-flex gap-1">
-          <v-btn icon size="small" variant="text" @click="$emit('view-detail', item.id)">
+        <div class="d-flex ga-1">
+          <v-btn aria-label="View match details" icon size="small" variant="text" @click="$emit('view-detail', item.id)">
             <v-icon>mdi-eye</v-icon>
             <v-tooltip activator="parent" location="top">View Details</v-tooltip>
           </v-btn>
@@ -83,7 +83,7 @@
 
       <template v-slot:no-data>
         <div class="text-center pa-4">
-          <p class="text-grey">No matches generated yet</p>
+          <p class="text-medium-emphasis">No matches generated yet</p>
         </div>
       </template>
     </v-data-table>

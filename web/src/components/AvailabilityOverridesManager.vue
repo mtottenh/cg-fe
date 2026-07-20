@@ -56,7 +56,7 @@
             </v-list-item-subtitle>
 
             <template #append>
-              <v-btn icon variant="text" size="small" color="error" @click="confirmDelete(override)">
+              <v-btn aria-label="Delete override" icon variant="text" size="small" color="error" @click="confirmDelete(override)">
                 <v-icon>mdi-delete</v-icon>
               </v-btn>
             </template>

@@ -12,7 +12,7 @@
         <!-- Loading State -->
         <div v-if="loadingTeams" class="text-center pa-8">
           <v-progress-circular indeterminate color="primary" />
-          <p class="text-grey mt-4">Loading your teams...</p>
+          <p class="text-medium-emphasis mt-4">Loading your teams...</p>
         </div>
 
         <!-- No Eligible Teams -->
@@ -37,7 +37,7 @@
 
         <!-- Team Selection -->
         <template v-else>
-          <p class="text-body-2 text-grey mb-4">
+          <p class="text-body-2 text-medium-emphasis mb-4">
             Select a team to register for <strong>{{ tournament.name }}</strong>
           </p>
 
@@ -53,12 +53,12 @@
               <v-card-text class="d-flex align-center pa-3">
                 <v-radio :value="team.team_season_id" class="mr-0" />
                 <v-avatar size="40" rounded="sm" class="mx-3">
-                  <v-img v-if="team.team_logo_url" :src="team.team_logo_url" />
+                  <v-img alt="" v-if="team.team_logo_url" :src="team.team_logo_url" />
                   <v-icon v-else>mdi-shield</v-icon>
                 </v-avatar>
                 <div class="flex-grow-1">
                   <div class="font-weight-medium">{{ team.team_name }}</div>
-                  <div class="text-caption text-grey">
+                  <div class="text-caption text-medium-emphasis">
                     [{{ team.team_tag }}] &bull; {{ team.league_name }}
                     <span v-if="team.season_name"> &bull; {{ team.season_name }}</span>
                   </div>

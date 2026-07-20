@@ -10,7 +10,7 @@
       </div>
 
       <!-- Backend-scored suggestions -->
-      <div v-if="suggestedTimes.length > 0" class="d-flex flex-wrap gap-2">
+      <div v-if="suggestedTimes.length > 0" class="d-flex flex-wrap ga-2">
         <v-chip
           v-for="(time, idx) in suggestedTimes"
           :key="time"
@@ -46,35 +46,42 @@
         <v-icon start size="small">mdi-calendar-edit</v-icon>
         Custom Times
       </div>
-      <v-row>
-        <v-col v-for="(time, index) in times" :key="index" cols="12" md="6">
-          <v-text-field
-            :model-value="toLocalDatetime(time)"
-            :label="`Time Option ${index + 1}`"
-            type="datetime-local"
-            variant="outlined"
-            density="comfortable"
-            :min="minDateTime"
-            :rules="index === 0 ? [rules.required, rules.futureDate] : [rules.futureDate]"
-            @update:model-value="(val) => updateTime(index, val)"
-          >
-            <template v-slot:append>
-              <v-btn
-                v-if="index > 0 || times.length > 1"
-                icon
-                size="small"
-                variant="text"
-                @click="removeTime(index)"
-              >
-                <v-icon>mdi-close</v-icon>
-              </v-btn>
-            </template>
-          </v-text-field>
-        </v-col>
-      </v-row>
+      <!-- Cross-region leagues live or die on this being unambiguous. -->
+      <div class="text-caption text-medium-emphasis mb-2">
+        Times are in your local timezone ({{ timezoneLabel }})
+      </div>
+      <v-form v-model="formValid">
+        <v-row>
+          <v-col v-for="(entry, index) in entries" :key="entry.id" cols="12" md="6">
+            <v-text-field
+              :model-value="toLocalDatetime(entry.value)"
+              :label="`Time Option ${index + 1}`"
+              type="datetime-local"
+              variant="outlined"
+              density="comfortable"
+              :min="minDateTime"
+              :rules="index === 0 ? [rules.required, rules.futureDate] : [rules.futureDate]"
+              @update:model-value="(val) => updateTime(index, val)"
+            >
+              <template v-slot:append>
+                <v-btn
+                  v-if="index > 0 || entries.length > 1"
+                  icon
+                  size="small"
+                  variant="text"
+                  aria-label="Remove time option"
+                  @click="removeTime(index)"
+                >
+                  <v-icon>mdi-close</v-icon>
+                </v-btn>
+              </template>
+            </v-text-field>
+          </v-col>
+        </v-row>
+      </v-form>
 
       <v-btn
-        v-if="times.length < maxTimes"
+        v-if="entries.length < maxTimes"
         variant="tonal"
         size="small"
         @click="addEmptySlot"
@@ -104,7 +111,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useFormRules } from '@/composables/useFormRules'
 
 const props = withDefaults(
@@ -122,8 +129,45 @@ const props = withDefaults(
 
 const times = defineModel<string[]>({ required: true })
 
+/** True when every rendered rule passes — parents gate submission on this
+ * instead of merely "some string is non-empty". */
+const formValid = defineModel<boolean>('valid', { default: false })
+
+// Internal rows carry a stable id so Vuetify field state (validation, dirty,
+// focus) follows the datum, not the position — with `:key="index"` deleting
+// row 1 of 3 leaves row 2 wearing row 3's state.
+interface TimeEntry {
+  id: number
+  value: string
+}
+let nextRowId = 0
+const entries = ref<TimeEntry[]>(
+  (times.value.length > 0 ? times.value : ['']).map((value) => ({ id: nextRowId++, value }))
+)
+
+function commit() {
+  times.value = entries.value.map((e) => e.value)
+}
+
+// External replacement of the model (e.g. parent resets after submit)
+// rebuilds the rows; internal commits round-trip without rebuilding.
+watch(times, (external) => {
+  const current = entries.value.map((e) => e.value)
+  if (external.length === current.length && external.every((v, i) => v === current[i])) return
+  entries.value = (external.length > 0 ? external : ['']).map((value) => ({
+    id: nextRowId++,
+    value,
+  }))
+})
+
 // Computed
-const validTimes = computed(() => times.value.filter((t) => t !== ''))
+const validTimes = computed(() => entries.value.map((e) => e.value).filter((t) => t !== ''))
+
+const timezoneLabel = computed(() => {
+  const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(new Date())
+  const zone = parts.find((p) => p.type === 'timeZoneName')?.value
+  return zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+})
 
 const minDateTime = computed(() => {
   const min = new Date()
@@ -205,68 +249,60 @@ function formatTime(isoString: string): string {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZoneName: 'short',
   })
 }
 
 function isTimeSelected(time: string): boolean {
-  return times.value.includes(time)
+  return entries.value.some((e) => e.value === time)
 }
 
 function toggleSuggestedTime(time: string) {
-  const index = times.value.indexOf(time)
+  const index = entries.value.findIndex((e) => e.value === time)
   if (index >= 0) {
-    // Remove it
-    const newTimes = [...times.value]
-    newTimes.splice(index, 1)
-    if (newTimes.length === 0) {
-      newTimes.push('') // Keep at least one slot
+    entries.value.splice(index, 1)
+    if (entries.value.length === 0) {
+      entries.value.push({ id: nextRowId++, value: '' }) // Keep at least one slot
     }
-    times.value = newTimes
-  } else if (times.value.length < props.maxTimes) {
-    // Add it
-    const newTimes = times.value.filter((t) => t !== '')
-    newTimes.push(time)
-    times.value = newTimes
+  } else if (entries.value.length < props.maxTimes) {
+    // Drop empty slots, then add the suggestion
+    entries.value = entries.value.filter((e) => e.value !== '')
+    entries.value.push({ id: nextRowId++, value: time })
   }
+  commit()
 }
 
 function addQuickTime(time: Date) {
   const isoTime = time.toISOString()
-  if (!times.value.includes(isoTime) && times.value.length < props.maxTimes) {
-    // Replace first empty slot or add new
-    const emptyIndex = times.value.findIndex((t) => t === '')
-    if (emptyIndex >= 0) {
-      const newTimes = [...times.value]
-      newTimes[emptyIndex] = isoTime
-      times.value = newTimes
-    } else {
-      times.value = [...times.value, isoTime]
-    }
+  if (isTimeSelected(isoTime) || entries.value.length >= props.maxTimes) return
+  // Replace first empty slot (same row, new value) or add a new row
+  const empty = entries.value.find((e) => e.value === '')
+  if (empty) {
+    empty.value = isoTime
+  } else {
+    entries.value.push({ id: nextRowId++, value: isoTime })
   }
+  commit()
 }
 
 function updateTime(index: number, localValue: string) {
-  const newTimes = [...times.value]
-  if (localValue) {
-    newTimes[index] = new Date(localValue).toISOString()
-  } else {
-    newTimes[index] = ''
-  }
-  times.value = newTimes
+  const entry = entries.value[index]
+  if (!entry) return
+  entry.value = localValue ? new Date(localValue).toISOString() : ''
+  commit()
 }
 
 function removeTime(index: number) {
-  const newTimes = [...times.value]
-  newTimes.splice(index, 1)
-  if (newTimes.length === 0) {
-    newTimes.push('')
+  entries.value.splice(index, 1)
+  if (entries.value.length === 0) {
+    entries.value.push({ id: nextRowId++, value: '' })
   }
-  times.value = newTimes
+  commit()
 }
 
 function addEmptySlot() {
-  if (times.value.length < props.maxTimes) {
-    times.value = [...times.value, '']
+  if (entries.value.length < props.maxTimes) {
+    entries.value.push({ id: nextRowId++, value: '' })
   }
 }
 </script>

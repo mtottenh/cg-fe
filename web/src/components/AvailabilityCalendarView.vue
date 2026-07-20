@@ -2,12 +2,12 @@
   <v-card>
     <v-card-title class="d-flex justify-space-between align-center">
       <span>Availability Calendar</span>
-      <div class="d-flex align-center gap-2">
-        <v-btn icon variant="text" size="small" @click="previousPeriod">
+      <div class="d-flex align-center ga-2">
+        <v-btn aria-label="Previous period" icon variant="text" size="small" @click="previousPeriod">
           <v-icon>mdi-chevron-left</v-icon>
         </v-btn>
         <span class="text-body-1">{{ periodRangeLabel }}</span>
-        <v-btn icon variant="text" size="small" @click="nextPeriod">
+        <v-btn aria-label="Next period" icon variant="text" size="small" @click="nextPeriod">
           <v-icon>mdi-chevron-right</v-icon>
         </v-btn>
         <v-btn variant="text" size="small" @click="goToToday">Today</v-btn>
@@ -144,16 +144,16 @@
       </div>
 
       <!-- Legend -->
-      <div class="d-flex gap-4 mt-4 justify-center text-caption">
-        <div class="d-flex align-center gap-1">
+      <div class="d-flex ga-4 mt-4 justify-center text-caption">
+        <div class="d-flex align-center ga-1">
           <v-icon size="small" color="primary">mdi-star</v-icon>
           <span>Preferred</span>
         </div>
-        <div class="d-flex align-center gap-1">
+        <div class="d-flex align-center ga-1">
           <v-icon size="small" color="grey">mdi-clock-outline</v-icon>
           <span>Available</span>
         </div>
-        <div class="d-flex align-center gap-1">
+        <div class="d-flex align-center ga-1">
           <v-icon size="small" color="error">mdi-calendar-remove</v-icon>
           <span>Blocked</span>
         </div>

@@ -34,7 +34,7 @@
         <td>
           <span class="d-inline-flex align-center">
             <v-avatar size="24" class="mr-2">
-              <v-img v-if="entry.avatar_url" :src="entry.avatar_url" />
+              <v-img alt="" v-if="entry.avatar_url" :src="entry.avatar_url" />
               <v-icon v-else size="16">mdi-account</v-icon>
             </v-avatar>
             {{ entry.display_name }}
@@ -50,10 +50,10 @@
           </span>
         </td>
         <td class="text-right font-weight-medium">{{ formatAwardValue(entry.value) }}</td>
-        <td class="text-right text-grey">{{ entry.demos_counted }}</td>
+        <td class="text-right text-medium-emphasis">{{ entry.demos_counted }}</td>
       </tr>
       <tr v-if="entries.length === 0">
-        <td colspan="4" class="text-center text-grey py-4">No qualifying players yet</td>
+        <td colspan="4" class="text-center text-medium-emphasis py-4">No qualifying players yet</td>
       </tr>
     </tbody>
   </v-table>

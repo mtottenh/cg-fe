@@ -81,11 +81,11 @@ function defaultFormState(): TournamentFormState {
  * Extract `side_selection_mode` from a tournament's `settings` JSONB, with
  * a legacy fallback to the top-level field in case older rows still carry it.
  *
- * Casts through `unknown` because `TournamentResponse`'s generated OpenAPI type
- * doesn't yet surface `settings` (see `api/overrides.ts` — pending spec fix).
+ * `settings` is now in the generated spec (untyped JSON value), so only its
+ * inner shape needs a local type.
  */
 function readSideSelectionMode(t: TournamentResponse): string {
-  const settings = (t as unknown as { settings?: TournamentSettings }).settings
+  const settings = (t.settings ?? undefined) as TournamentSettings | undefined
   return (
     settings?.side_selection_mode
     ?? (t as unknown as { side_selection_mode?: string }).side_selection_mode
@@ -119,8 +119,9 @@ function fromTournament(t: TournamentResponse): TournamentFormState {
 
 export interface UseTournamentFormOptions {
   mode: TournamentFormMode
-  /** Required for edit mode — the tournament being edited. Ignored in create mode. */
-  initial?: Ref<TournamentResponse | null>
+  /** Required for edit mode — the tournament being edited. Ignored in create mode.
+   * Read-only: a ComputedRef is fine. */
+  initial?: Readonly<Ref<TournamentResponse | null | undefined>>
 }
 
 /**

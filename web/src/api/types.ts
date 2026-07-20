@@ -1466,6 +1466,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/league-seasons/{season_id}/stats-leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Combined per-player stat leaderboard over a league season's linked demos. */
+        get: operations["get_season_player_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/league-seasons/{season_id}/teams": {
         parameters: {
             query?: never;
@@ -3759,6 +3776,23 @@ export interface paths {
         put?: never;
         /** Start a tournament (generate brackets). */
         post: operations["start_tournament"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/stats-leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Combined per-player stat leaderboard over a tournament's linked demos. */
+        get: operations["get_tournament_player_stats"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7780,6 +7814,52 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_PlayerStatsEntryResponse: {
+            data: {
+                /**
+                 * Format: double
+                 * @description Rounds-weighted average damage per round.
+                 */
+                adr: number;
+                /**
+                 * Format: double
+                 * @description Summed assists across counted demos.
+                 */
+                assists: number;
+                avatar_url?: string | null;
+                /**
+                 * Format: double
+                 * @description Summed deaths across counted demos.
+                 */
+                deaths: number;
+                /**
+                 * Format: int64
+                 * @description Distinct demos that contributed to the row.
+                 */
+                demos_counted: number;
+                display_name: string;
+                /**
+                 * Format: double
+                 * @description Summed kills across counted demos.
+                 */
+                kills: number;
+                /** Format: uuid */
+                player_id: string;
+                /**
+                 * Format: double
+                 * @description Summed rounds played across counted demos.
+                 */
+                rounds_played: number;
+                /**
+                 * Format: double
+                 * @description Summed damage dealt across counted demos.
+                 */
+                total_damage: number;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_Vec_PlayerTrophyResponse: {
             data: {
                 award: components["schemas"]["AwardResponse"];
@@ -10777,6 +10857,75 @@ export interface components {
             id: string;
             /** @description Whether the player is looking for a team. */
             looking_for_team: boolean;
+        };
+        /**
+         * @description One combined player-stats row: separate summed core stats plus a
+         *     rounds-weighted ADR (`total_damage / rounds_played`).
+         */
+        PlayerStatsEntryResponse: {
+            /**
+             * Format: double
+             * @description Rounds-weighted average damage per round.
+             */
+            adr: number;
+            /**
+             * Format: double
+             * @description Summed assists across counted demos.
+             */
+            assists: number;
+            avatar_url?: string | null;
+            /**
+             * Format: double
+             * @description Summed deaths across counted demos.
+             */
+            deaths: number;
+            /**
+             * Format: int64
+             * @description Distinct demos that contributed to the row.
+             */
+            demos_counted: number;
+            display_name: string;
+            /**
+             * Format: double
+             * @description Summed kills across counted demos.
+             */
+            kills: number;
+            /** Format: uuid */
+            player_id: string;
+            /**
+             * Format: double
+             * @description Summed rounds played across counted demos.
+             */
+            rounds_played: number;
+            /**
+             * Format: double
+             * @description Summed damage dealt across counted demos.
+             */
+            total_damage: number;
+        };
+        /** @description Query parameters for the combined player-stats leaderboard endpoints. */
+        PlayerStatsQueryParams: {
+            /**
+             * Format: int64
+             * @description Maximum rows (default 100, max 200).
+             */
+            limit?: number | null;
+            /**
+             * Format: int32
+             * @description Only rank players with at least this many counted demos (default 1).
+             */
+            min_demos?: number | null;
+            /**
+             * Format: int32
+             * @description Only rank players with at least this many rounds played in scope
+             *     (default 0).
+             */
+            min_rounds?: number | null;
+            /**
+             * @description Sort column: `kills` (default), `deaths`, `assists`, `total_damage`,
+             *     or `adr`. Rows are ordered by this column descending.
+             */
+            sort?: string | null;
         };
         /**
          * @description One trophy-case entry: a finalized result with its award and the scope's
@@ -15878,6 +16027,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Account is not active (banned/suspended) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     register: {
@@ -17721,6 +17879,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_Vec_LeaderboardEntryResponse"];
+                };
+            };
+            /** @description Invalid query parameters */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Season not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_season_player_stats: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Sort column: `kills` (default), `deaths`, `assists`, `total_damage`,
+                 *     or `adr`. Rows are ordered by this column descending.
+                 */
+                sort?: string | null;
+                /**
+                 * @description Only rank players with at least this many rounds played in scope
+                 *     (default 0).
+                 */
+                min_rounds?: number | null;
+                /** @description Only rank players with at least this many counted demos (default 1). */
+                min_demos?: number | null;
+                /** @description Maximum rows (default 100, max 200). */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description League season ID */
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Combined player-stats rows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_PlayerStatsEntryResponse"];
                 };
             };
             /** @description Invalid query parameters */
@@ -20934,6 +21148,15 @@ export interface operations {
             };
             /** @description Claim not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Claim already resolved (e.g. concurrent confirm) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -25508,6 +25731,62 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_tournament_player_stats: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Sort column: `kills` (default), `deaths`, `assists`, `total_damage`,
+                 *     or `adr`. Rows are ordered by this column descending.
+                 */
+                sort?: string | null;
+                /**
+                 * @description Only rank players with at least this many rounds played in scope
+                 *     (default 0).
+                 */
+                min_rounds?: number | null;
+                /** @description Only rank players with at least this many counted demos (default 1). */
+                min_demos?: number | null;
+                /** @description Maximum rows (default 100, max 200). */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Combined player-stats rows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_PlayerStatsEntryResponse"];
+                };
+            };
+            /** @description Invalid query parameters */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

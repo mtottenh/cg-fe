@@ -213,6 +213,16 @@
             <AwardsPanel scope-type="league_season" :scope-id="selectedSeasonId" />
           </v-col>
         </v-row>
+
+        <v-row class="mb-4">
+          <v-col cols="12">
+            <h2 class="text-h6 mb-4">
+              <v-icon start>mdi-chart-box-outline</v-icon>
+              Season Stats
+            </h2>
+            <StatsLeaderboard scope="season" :scope-id="selectedSeasonId" />
+          </v-col>
+        </v-row>
       </template>
 
       <!-- Teams Grid -->
@@ -456,6 +466,7 @@ import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import TournamentCreateModal from '@/components/admin/TournamentCreateModal.vue'
 import TournamentCard from '@/components/tournament/TournamentCard.vue'
 import AwardsPanel from '@/components/awards/AwardsPanel.vue'
+import StatsLeaderboard from '@/components/awards/StatsLeaderboard.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
 import type { TournamentSummaryResponse } from '@/stores/tournaments'

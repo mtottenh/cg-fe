@@ -298,6 +298,67 @@ describe('Awards Store', () => {
     })
   })
 
+  describe('fetchPlayerStatsLeaderboard', () => {
+    it('hits the tournament stats path with mapped query params', async () => {
+      const rows = [
+        {
+          player_id: 'p1',
+          display_name: 'Player One',
+          avatar_url: null,
+          kills: 20,
+          deaths: 5,
+          assists: 2,
+          total_damage: 1600,
+          adr: 80,
+          rounds_played: 20,
+          demos_counted: 1,
+        },
+      ]
+      mockGet.mockResolvedValue({ data: { data: rows } })
+      const store = useAwardsStore()
+
+      const result = await store.fetchPlayerStatsLeaderboard('tournament', 'tourn-1', {
+        sort: 'kills',
+        minRounds: 5,
+        minDemos: 1,
+        limit: 50,
+      })
+
+      expect(mockGet).toHaveBeenCalledWith('/v1/tournaments/{tournament_id}/stats-leaderboard', {
+        params: {
+          path: { tournament_id: 'tourn-1' },
+          query: { sort: 'kills', min_rounds: 5, min_demos: 1, limit: 50 },
+        },
+      })
+      expect(result).toEqual(rows)
+    })
+
+    it('hits the league-season stats path for season scope', async () => {
+      mockGet.mockResolvedValue({ data: { data: [] } })
+      const store = useAwardsStore()
+
+      await store.fetchPlayerStatsLeaderboard('season', 'season-1')
+
+      expect(mockGet).toHaveBeenCalledWith('/v1/league-seasons/{season_id}/stats-leaderboard', {
+        params: {
+          path: { season_id: 'season-1' },
+          query: { sort: undefined, min_rounds: undefined, min_demos: undefined, limit: undefined },
+        },
+      })
+    })
+
+    it('captures the RFC 7807 detail on failure', async () => {
+      mockGet.mockResolvedValue(apiError(404, 'Tournament not found'))
+      const store = useAwardsStore()
+
+      await expect(
+        store.fetchPlayerStatsLeaderboard('tournament', 'missing'),
+      ).rejects.toThrow()
+      expect(store.fetchStatsLeaderboardState.error).toBe('Tournament not found')
+      expect(store.fetchStatsLeaderboardState.loading).toBe(false)
+    })
+  })
+
   describe('clear', () => {
     it('resets all state', async () => {
       const store = useAwardsStore()

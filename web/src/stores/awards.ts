@@ -12,11 +12,25 @@ type FinalizedAwardResponse = components['schemas']['FinalizedAwardResponse']
 type LeaderboardEntryResponse = components['schemas']['LeaderboardEntryResponse']
 type StatCatalogEntryResponse = components['schemas']['StatCatalogEntryResponse']
 type PlayerTrophyResponse = components['schemas']['PlayerTrophyResponse']
+type PlayerStatsEntryResponse = components['schemas']['PlayerStatsEntryResponse']
 type CreateAwardRequest = components['schemas']['CreateAwardRequest']
 type UpdateAwardRequest = components['schemas']['UpdateAwardRequest']
 
 /** The two scopes an award can live in. Matches `AwardResponse.scope_type`. */
 export type AwardScopeType = 'tournament' | 'league_season'
+
+/** Scope for the combined player-stats leaderboard. */
+export type StatsLeaderboardScope = 'tournament' | 'season'
+
+/** Sortable columns for the combined player-stats leaderboard. */
+export type StatsLeaderboardSort = 'kills' | 'deaths' | 'assists' | 'total_damage' | 'adr'
+
+export interface StatsLeaderboardOptions {
+  sort?: StatsLeaderboardSort
+  minRounds?: number
+  minDemos?: number
+  limit?: number
+}
 
 export interface LeaderboardFilters {
   stat_key: string
@@ -47,11 +61,12 @@ export const useAwardsStore = defineStore('awards', () => {
   const finalizeAwardState = createActionState()
   const fetchTrophiesState = createActionState()
   const fetchLeaderboardState = createActionState()
+  const fetchStatsLeaderboardState = createActionState()
 
   const { loading, error } = aggregateActionStates([
     fetchTemplatesState, fetchCatalogState, fetchAwardsState, fetchStandingsState,
     createAwardState, updateAwardState, voidAwardState, finalizeAwardState,
-    fetchTrophiesState, fetchLeaderboardState,
+    fetchTrophiesState, fetchLeaderboardState, fetchStatsLeaderboardState,
   ])
 
   async function fetchTemplates(gameIdOrSlug: string): Promise<AwardTemplateResponse[]> {
@@ -211,6 +226,29 @@ export const useAwardsStore = defineStore('awards', () => {
     }, 'Failed to fetch leaderboard')
   }
 
+  async function fetchPlayerStatsLeaderboard(
+    scope: StatsLeaderboardScope,
+    id: string,
+    opts: StatsLeaderboardOptions = {},
+  ): Promise<PlayerStatsEntryResponse[]> {
+    return withActionState(fetchStatsLeaderboardState, async () => {
+      const query = {
+        sort: opts.sort,
+        min_rounds: opts.minRounds,
+        min_demos: opts.minDemos,
+        limit: opts.limit,
+      }
+      const result = scope === 'tournament'
+        ? await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/stats-leaderboard', {
+            params: { path: { tournament_id: id }, query },
+          }))
+        : await unwrapApi(api.GET('/v1/league-seasons/{season_id}/stats-leaderboard', {
+            params: { path: { season_id: id }, query },
+          }))
+      return result.data
+    }, 'Failed to fetch player stats leaderboard')
+  }
+
   function clear() {
     templates.value = []
     statCatalog.value = []
@@ -245,6 +283,7 @@ export const useAwardsStore = defineStore('awards', () => {
     finalizeAwardState,
     fetchTrophiesState,
     fetchLeaderboardState,
+    fetchStatsLeaderboardState,
 
     // Actions
     fetchTemplates,
@@ -257,6 +296,7 @@ export const useAwardsStore = defineStore('awards', () => {
     finalizeAward,
     fetchPlayerTrophies,
     fetchLeaderboard,
+    fetchPlayerStatsLeaderboard,
 
     // Utility
     clear,
@@ -272,6 +312,7 @@ export type {
   LeaderboardEntryResponse,
   StatCatalogEntryResponse,
   PlayerTrophyResponse,
+  PlayerStatsEntryResponse,
   CreateAwardRequest,
   UpdateAwardRequest,
 }

@@ -46,6 +46,7 @@
           <v-tab value="bracket" :disabled="!hasBracket">Bracket</v-tab>
           <v-tab value="matches" :disabled="matches.length === 0">Matches</v-tab>
           <v-tab value="awards" data-testid="awards-tab">Awards</v-tab>
+          <v-tab value="stats" data-testid="stats-tab">Stats</v-tab>
         </v-tabs>
 
         <v-divider />
@@ -270,6 +271,13 @@
               <AwardsPanel scope-type="tournament" :scope-id="tournament.id" />
             </v-card-text>
           </v-tabs-window-item>
+
+          <!-- Stats Tab -->
+          <v-tabs-window-item value="stats">
+            <v-card-text>
+              <StatsLeaderboard scope="tournament" :scope-id="tournament.id" />
+            </v-card-text>
+          </v-tabs-window-item>
         </v-tabs-window>
       </v-card>
     </template>
@@ -334,6 +342,7 @@ import OrganizerToolbar from '@/components/tournament/OrganizerToolbar.vue'
 import { useTournamentContext } from '@/composables/useTournamentContext'
 import TournamentBracket from '@/components/tournament/TournamentBracket.vue'
 import AwardsPanel from '@/components/awards/AwardsPanel.vue'
+import StatsLeaderboard from '@/components/awards/StatsLeaderboard.vue'
 import TournamentMatchCard from '@/components/tournament/TournamentMatchCard.vue'
 import TeamRegistrationModal from '@/components/tournament/TeamRegistrationModal.vue'
 import PlayerRegistrationModal from '@/components/tournament/PlayerRegistrationModal.vue'

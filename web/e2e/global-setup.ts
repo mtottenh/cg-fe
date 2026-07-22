@@ -229,17 +229,18 @@ async function seedLeagueAndSeason(token: string): Promise<{ leagueId: string | 
   const gameId = games[0].id
   console.log(`Using game for league: ${games[0].name} (${gameId})`)
 
-  // Check if test league already exists
-  const leaguesResponse = await fetch(`${API_URL}/v1/leagues`)
-  const leaguesData = await leaguesResponse.json()
-  const leagues: League[] = leaguesData.data || []
-
+  // Check if the test league already exists. Look it up by slug directly rather
+  // than scanning `GET /v1/leagues`, whose first page is only 20 rows: prior runs
+  // leave e2e-season-league-* leagues that crowd our slug off page 1, so a page-1
+  // scan would miss it, try to re-create it, and 409 on every run (P-28 class —
+  // pagination mistaken for "not found").
   let leagueId: string | null = null
-  const existingLeague = leagues.find((l) => l.slug === 'e2e-test-league')
+  const bySlug = await fetch(`${API_URL}/v1/leagues/by-slug/e2e-test-league`)
 
-  if (existingLeague) {
+  if (bySlug.ok) {
+    const existing = (await bySlug.json()).data as League
     console.log('Test league already exists, using existing')
-    leagueId = existingLeague.id
+    leagueId = existing.id
   } else {
     // Create test league
     const leagueData = {

@@ -379,7 +379,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 29 found · **8 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24) · P-9 API shipped, UI open ·
+**Status:** 30 found · **12 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
 1 decision pending UI (P-12) · 5 deliberately deferred to the lineup redesign (P-15, P-18, P-23,
 P-25, P-26 — see `api/docs/lineup-design.md`; do not fix these in isolation).
 
@@ -398,19 +398,19 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-7 | Veto side-select unreachable in UI | feature dead | **fixed** |
 | P-8 | Can propose a past time, then hard-fails | dead end | open |
 | P-9 | Proposer cannot withdraw own proposal | API gap | **API done** `a3c1876`, UI open |
-| P-10 | Admin registrations table prints raw enum | user-facing | open |
-| P-11 | Roster lock never enforced in admin UI | enforcement | open |
+| P-10 | Admin registrations table prints raw enum | user-facing | **fixed** `f2694b0` |
+| P-11 | Roster lock never enforced in admin UI | enforcement | **fixed** `ce732a0` |
 | P-12 | No captain entry point to invite modal | blocks flow | decided |
 | P-13 | `TeamEditPage` blank form to non-owners | confusing | open |
 | P-14 | **Roster lock cannot be set via API at all** | feature dead | open |
 | P-15 | Invitation path bypasses the lock check | inconsistent | open |
 | P-16 | Role changes not lock-checked | enforcement | open |
-| P-17 | Edit modal offers a lock value the API 400s | user-facing | open |
+| P-17 | Edit modal offers a lock value the API 400s | user-facing | **fixed** `7b4aa8d` |
 | P-18 | No admin/emergency override of the lock | design gap | open |
 | P-19 | **"Upcoming" tournaments tab always empty** | user-facing | **fixed** `c4bca02` |
 | P-20 | Home page hides `pick_ban`/`ready`/`awaiting_result` matches | user-facing | **fixed** `c727267` |
 | P-21 | Tournament **list** cards print raw enum | user-facing | **fixed** `c4bca02` |
-| P-22 | Season roster-lock column always "Open" | enforcement | open |
+| P-22 | Season roster-lock column always "Open" | enforcement | **fixed** `7b4aa8d` |
 | P-23 | Roster-mismatch review built but unreachable | integrity | open |
 | P-24 | **Check-in has no authz — anyone can start any match** (+forfeit, +reg check-in) | **security** | **fixed** `98c8f48` |
 | P-25 | Benched players credited with matches; ringer stats count | integrity | open |
@@ -418,6 +418,7 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-27 | `invite_only` tournaments accept anyone | trust | open |
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | open |
+| P-30 | Season edit Save disabled when max_teams is null | user-facing | open |
 
 **P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
 blocked on the same missing table, and **P-15/P-18 are superseded in part** by the
@@ -575,6 +576,7 @@ Each entry below was independently re-verified (not taken on the agent's word).
       endpoint and a control on `ProposalCard`. (Wave 3 — API first, then UI)
 
 ### P-10 — Admin registrations table prints the raw status enum
+- ✅ **Verified already fixed** (`f2694b0`): `RegistrationsTab.vue:22` applies `getStatusLabel` over `registrationStatusMap`, which covers all eight DB statuses. Confirmed by inspection. No change needed.
 - **Symptom:** organisers see `checked_in`, `no_show`, `disqualified` in the admin registrations
   table instead of readable labels.
 - **Root cause:** `components/admin/tournament-detail/RegistrationsTab.vue:20-24` renders
@@ -587,6 +589,7 @@ Each entry below was independently re-verified (not taken on the agent's word).
 - [ ] Fix: `getStatusLabel(registrationStatusMap, item.status)`.
 
 ### P-11 — Roster lock is NEVER enforced in the admin UI (compares against a value that cannot exist)  ⚠️ enforcement gap
+- ✅ **Verified already fixed** (`ce732a0`): `LeagueTeamDetailModal.vue` uses the `rosterLock.ts` helper. Confirmed by inspection — imports `rosterLockColor/Hint`, renders via `rosterLockChip`. No change needed.
 - **Symptom:** the "Roster Locked" chip never renders, and **Invite Player / member-action menus
   are never disabled** — an admin can invite players and mutate rosters on a `hard_lock` season.
 - **Root cause:** `components/admin/LeagueTeamDetailModal.vue:54`, `:67`, `:128` all test
@@ -720,6 +723,7 @@ tests to never leave a form dirty.
 - [ ] Decide and align.
 
 ### P-17 — `LeagueSeasonEditModal` offers a roster-lock value the API rejects with 400
+- ✅ **FIXED** in `7b4aa8d`. Both `<v-select>` option lists (`statusOptions` had `registration_open/registration_closed/in_progress`; `rosterLockOptions` had `locked`) are now derived from the real enums. Same P-11/P-22 family.
 - `src/components/admin/LeagueSeasonEditModal.vue:196-199` — `rosterLockOptions` is
   `[open, locked]`. `'locked'` is not a valid `RosterLockStatus`, so selecting it produces a
   **400 "Invalid roster lock status"**; selecting `'open'` is a silent no-op per P-14.
@@ -796,6 +800,7 @@ tests to never leave a form dirty.
 ---
 
 ### P-22 — Season roster-lock column always reads "Open" (second instance of P-11)
+- ✅ **FIXED** in `7b4aa8d`. Uses `rosterLockLabel/Color/Hint` from `rosterLock.ts` (fails closed: unknown ⇒ hard_lock). Verified: tsc + ratchet clean.
 - **Symptom:** `components/admin/LeagueSeasonsPanel.vue:60,64` compares
   `roster_lock_status === 'locked'`. The real values are `open` / `soft_lock` / `hard_lock`,
   so the chip renders "Open" for every season including locked ones.
@@ -842,6 +847,25 @@ tests to never leave a form dirty.
       dropping `DISTINCT`.
 - [ ] Then restore the `MatchHistoryList` e2e test.
 - [ ] Un-swallow `fetchMyMatches` so the next such 500 is visible, not silent.
+
+---
+
+### P-30 — `LeagueSeasonEditModal` Save is permanently disabled for a default season  ⚠️ user-facing dead end
+- **Symptom:** every newly created season has `max_teams = null` (the default). The edit
+  modal binds "Max Teams" with the `positiveNumber` rule, which — unlike the sibling
+  `nonNegativeNumber` / `maxGreaterThanMin` rules — has **no empty-value guard**
+  (`src/composables/useFormRules.ts:39`: `(v: number) => v > 0 || '…'`; `null > 0` is false).
+  So `formValid` is false on open and **Save Changes never enables** until the admin happens
+  to type a Max Teams value.
+- **Impact:** an admin cannot edit *any* setting of a freshly-created season — change its
+  status, its dates, anything — without first noticing they must fill an unrelated optional
+  field. Found while writing the P-17 status-persist test; worked around by filling a valid
+  Max Teams rather than weakening the assertion.
+- **Not fixed** — the rule lives in the frozen `src/composables/`. Root cause is a missing
+  null guard on one rule, so the fix is one line but should be verified against every other
+  `positiveNumber` call site.
+- [ ] Add an empty/null guard to `positiveNumber` (mirror `nonNegativeNumber`), or make the
+      Max Teams binding tolerate empty.
 
 ---
 
@@ -960,13 +984,13 @@ states, so the admin disputes table rendered raw enums. Those are fixed.
       exists for it yet).
 
 ### Dead conditions / behavioural gaps
-- [x] → **promoted to P-22.** **`components/admin/LeagueSeasonsPanel.vue:60,64`** — a **second instance of P-11**:
+- [x] → **promoted to P-22, FIXED `7b4aa8d`.** **`components/admin/LeagueSeasonsPanel.vue:60,64`** — a **second instance of P-11**:
       `roster_lock_status === 'locked'`, so the Locked/Open column always reads "Open".
 - [x] **FIXED `c727267`** `components/match/MatchStatusTimeline.vue:48-62` — the step list omits `forfeit` and
       `disputed`, so such a match highlights no current step.
 - [x] **FIXED `c727267`** `composables/useMatchLobby.ts:154-165` — a `cancelled` veto session is treated as
       in-progress.
-- [ ] `components/admin/DisputeDetailModal.vue:201` — `status !== 'closed'` can never be
+- [x] **FIXED `7b4aa8d`** — `components/admin/DisputeDetailModal.vue:201`: rebuilt as `canResolve` mirroring `Dispute::can_resolve()` (pending | under_review), wider than the old accident which showed the resolve UI on cancelled disputes. — `status !== 'closed'` can never be
       false; reduces to `!dispute.resolution`.
 
 ### Verified correct — no action

@@ -328,6 +328,14 @@ real action test (tracked in §7).
 
 ## 9. Tests whose name misrepresents what they verify
 
+- [ ] ⚠️ **`match-workflow.spec.ts` — "displays tournament and match status chips" asserts
+      `hasText: 'ready'`, i.e. it was written to certify the RAW ENUM.** It still passes after
+      the status sweep only because Playwright's `hasText` is case-insensitive and now matches
+      "Ready". This is the §3 anti-pattern in its purest form — a test that would have
+      *prevented* the fix had it been stricter. Reassert the human label explicitly.
+      (Found by the P-19/P-21 sweep; that spec is owned by the §6.5 workstream.)
+
+
 Actively misleading — rename or fix (most are also tracked above).
 
 - [x] `match-results.spec.ts:360` "P2 **disputes it**" → API call `:373`
@@ -358,7 +366,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Wave 3 status:** 27 found · 4 fixed (P-4, P-2, P-5, P-9 backend) · 1 decision pending UI (P-12).
+**Wave 3 status:** 28 found · 4 fixed (P-4, P-2, P-5, P-9 backend) · 1 decision pending UI (P-12).
 
 **This register is authoritative.** Any product bug found by this work gets a P-number *here*,
 even if it also appears in a §9c sweep list — findings parked only in a checklist get lost.
@@ -384,9 +392,10 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-16 | Role changes not lock-checked | enforcement | open |
 | P-17 | Edit modal offers a lock value the API 400s | user-facing | open |
 | P-18 | No admin/emergency override of the lock | design gap | open |
-| P-19 | **"Upcoming" tournaments tab always empty** | user-facing | open |
+| P-19 | **"Upcoming" tournaments tab always empty** | user-facing | **fixed** `c4bca02` |
 | P-20 | Home page hides `pick_ban`/`ready`/`awaiting_result` matches | user-facing | open |
-| P-21 | Tournament **list** cards print raw enum | user-facing | open |
+| P-21 | Tournament **list** cards print raw enum | user-facing | **fixed** `c4bca02` |
+| P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
 | P-22 | Season roster-lock column always "Open" | enforcement | open |
 | P-23 | Roster-mismatch review built but unreachable | integrity | open |
 | P-24 | **Check-in has no authz — anyone can start any match** | **security** | open |
@@ -705,10 +714,23 @@ tests to never leave a form dirty.
       instance in `LeagueSeasonsPanel.vue`).
 
 ### P-19 — The "Upcoming" tournaments tab is silently empty  ⚠️ user-facing
-- **Symptom:** `pages/TournamentsPage.vue:195-197` filters on
-  `['draft','published','registration_open','registration_closed','ready']`. **None of those
-  five is a real tournament status** — the backend emits `registration` and `scheduled`. The
-  tab therefore matches nothing and renders as an empty state.
+- ✅ **FIXED** in `c4bca02`.
+- **Symptom:** `pages/TournamentsPage.vue:195-197` filtered on
+  `['draft','published','registration_open','registration_closed','ready']`. **Three of those
+  five are not real statuses** (`registration_open`, `registration_closed`, `ready`), so the
+  tab matched almost nothing and rendered as an empty state.
+- ⚠️ **Correction to an earlier version of this entry**, which claimed none of the five were
+  real. `draft` and `published` **are** valid. The authoritative list is
+  `draft, published, registration, scheduled, in_progress, completed, finalized, cancelled`
+  (`portal-core/src/types/status.rs:118-137`).
+  **`migrations/0030_create_tournaments.sql:77` is STALE** — it still permits `check_in` and
+  `seeding`, which no longer exist. The live constraint is
+  `migrations/0053_fix_tournament_status_constraint.sql`. Do not read 0030 as source of truth.
+  (0030 must NOT be edited to fix this — sqlx checksums applied migrations.)
+- **Three further instances of the same defect were found in the same file and fixed:** the
+  Registration-Open tab, the Completed tab (was dropping `finalized`), and the status
+  `v-select`, which offered `registration_open` as a value into a strict-equality filter at
+  `:221` so selecting "Open Registration" always returned zero results.
 - **Impact:** the primary discovery surface for upcoming tournaments shows zero results,
   permanently. Not cosmetic — users cannot find tournaments that have not started.
 - **Root cause:** same stale-status-string class as P-4/P-10/P-11 (§9c).
@@ -730,6 +752,7 @@ tests to never leave a form dirty.
 ---
 
 ### P-21 — Tournament **list** page prints the raw status enum (P-4 verbatim, higher traffic)  ⚠️ user-facing
+- ✅ **FIXED** in `c4bca02` using the P-4 public-map-first pattern; the two maps remain separate.
 - **Symptom:** `components/tournament/TournamentCard.vue:107-155` is the same hand-rolled
   `switch` that P-4 fixed on the header — matching `registration_open`, `check_in_open`,
   `ready` (none real) and falling through to `default: return props.tournament.status`.
@@ -739,6 +762,19 @@ tests to never leave a form dirty.
   public copy. ⚠️ Use the P-4 pattern — public map first, `tournamentStatusMap` as fallback.
   Do **not** collapse to the admin map; the divergence is intentional (see P-4).
 - [ ] Replace the switch with the P-4 computed pattern.
+
+---
+
+### P-28 — `/tournaments` search and filters only see the first 20 rows  ⚠️ user-facing
+- **Symptom:** `fetchData` in `pages/TournamentsPage.vue` sends only `page` / `per_page`.
+  Search text, game, status and every tab then filter **client-side over the 20 rows already
+  fetched**. Any tournament past position 20 in the default ordering is **undiscoverable by
+  search** — typing its exact name returns nothing.
+- **The API already supports this**: `search`, `status`, `upcoming` and `active` query filters
+  exist server-side and are simply never sent.
+- **Impact grows with the catalogue** — invisible with 12 tournaments, badly broken with 200.
+  Found while fixing P-19; the tab filters and the search box share the root cause.
+- [ ] Send the filters to the API instead of filtering the fetched page.
 
 ---
 
@@ -842,7 +878,7 @@ notably `disputeStatusMap` lacked `pending` and `cancelled`, the two most common
 states, so the admin disputes table rendered raw enums. Those are fixed.
 
 ### ⚠️ FUNCTIONAL — these silently hide data from users (fix first)
-- [x] → **promoted to P-19.** **`pages/TournamentsPage.vue:196`** — the **"Upcoming" tab filters on
+- [x] → **promoted to P-19, FIXED `c4bca02`.** **`pages/TournamentsPage.vue:196`** — the **"Upcoming" tab filters on
       `['draft','published','registration_open','registration_closed','ready']`**. The real
       statuses are `registration` and `scheduled`, so the tab **silently drops nearly every
       upcoming tournament**. Not cosmetic — the page appears empty.
@@ -854,7 +890,7 @@ states, so the admin disputes table rendered raw enums. Those are fixed.
       `'registration_open'`; it only works at all via the `is_registration_open` fallback.
 
 ### Raw enum leaked to users (P-4 / P-10 class)
-- [x] → **promoted to P-21.** **`components/tournament/TournamentCard.vue:108-155`** — **P-4 verbatim, still
+- [x] → **promoted to P-21, FIXED `c4bca02`.** **`components/tournament/TournamentCard.vue:108-155`** — **P-4 verbatim, still
       unfixed, on the tournaments LIST page** (`registration_open`, `check_in_open`,
       `ready` … then `default: return props.tournament.status`). Arguably higher-traffic
       than the header that was fixed. `tournamentPublicStatusMap` already has the right
@@ -864,7 +900,7 @@ states, so the admin disputes table rendered raw enums. Those are fixed.
 - [ ] `pages/LeagueDetailPage.vue:154` — renders the raw season status; the file imports
       `getStatusLabel` but never applies it. NOTE: `e2e/league-season.spec.ts:68,185`
       currently assert the raw text and must be updated with the fix.
-- [ ] `components/tournament/TournamentMatchCard.vue:113,149` — compares `'scheduling'`
+- [x] **FIXED `c4bca02`** — `components/tournament/TournamentMatchCard.vue:113,149` — compares `'scheduling'`
       (not a real status) and omits `ready`/`forfeit`, which fall through to the raw enum.
 - [ ] `components/match/evidence/EvidenceDisplay.vue:65-66` — raw evidence status (no map
       exists for it yet).

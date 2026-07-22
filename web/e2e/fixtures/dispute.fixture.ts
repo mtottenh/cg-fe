@@ -148,8 +148,10 @@ export async function submitResultClaim(
 }
 
 /**
- * Dispute a submitted result claim — flips the match to `Disputed` status
- * so we can subsequently raise a formal dispute record.
+ * Dispute a submitted result claim. In the current API this atomically flips
+ * the match to `Disputed` AND opens the tournament dispute (the row the admin
+ * queue reads) — a separate raiseDispute call is no longer needed (and would
+ * fail with "already has a pending dispute").
  */
 export async function disputeResultClaim(
   token: string,
@@ -325,16 +327,35 @@ export async function getDisputeThread(
   return (data.data || data) as DisputeWithThread
 }
 
+/**
+ * Fetch the active dispute for a match. The claim-dispute endpoint opens the
+ * dispute but does not return its id, so read it back here.
+ */
+export async function getMatchDispute(
+  token: string,
+  tournamentId: string,
+  matchId: string
+): Promise<Dispute | null> {
+  const response = await fetch(
+    `${API_URL}/v1/tournaments/${tournamentId}/matches/${matchId}/dispute`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  if (!response.ok) return null
+  const data = await response.json()
+  return (data.data || data) as Dispute
+}
+
 // =============================================================================
 // Test setup helpers
 // =============================================================================
 
 /**
  * End-to-end setup for a disputable match: takes an already-started match,
- * submits a P1-wins claim, then has P2 dispute it so the match is in
- * `Disputed` status and a formal dispute can be raised.
+ * submits a P1-wins claim, then has P2 dispute the claim — which in the
+ * current API atomically flips the match to `Disputed` AND opens the
+ * tournament dispute.
  *
- * Returns the context needed to raise + resolve the dispute.
+ * Returns the context needed to resolve the dispute (including its id).
  */
 export interface DisputableMatchContext {
   tournamentId: string
@@ -342,6 +363,8 @@ export interface DisputableMatchContext {
   p1RegistrationId: string
   p2RegistrationId: string
   claimId: string
+  /** The dispute opened by the claim dispute. */
+  disputeId: string
 }
 
 export async function seedDisputableMatch(
@@ -349,7 +372,10 @@ export async function seedDisputableMatch(
   player2Token: string,
   tournamentId: string,
   matchId: string,
-  scores: { p1: number; p2: number } = { p1: 1, p2: 0 }
+  scores: { p1: number; p2: number } = { p1: 1, p2: 0 },
+  // Disputing the claim now atomically OPENS the tournament dispute (the API
+  // merged the two steps), so this text becomes the dispute's description.
+  disputeReason = 'Scores are incorrect — I won this match.'
 ): Promise<DisputableMatchContext | null> {
   // 1. Fetch the match — we need both registration IDs.
   const match = await getMatch(adminToken, tournamentId, matchId)
@@ -367,14 +393,20 @@ export async function seedDisputableMatch(
   )
   if (!claim) return null
 
-  // 3. P2 disputes the claim — flips the match to `Disputed`.
+  // 3. P2 disputes the claim — flips the match to `Disputed` AND opens the
+  //    tournament dispute (single atomic step in the current API).
   const disputed = await disputeResultClaim(
     player2Token,
     matchId,
     claim.id,
-    'Scores are incorrect — I won this match.'
+    disputeReason
   )
   if (!disputed) return null
+
+  // 4. Read back the dispute the claim-dispute just opened (its id is not in
+  //    the claim-dispute response).
+  const dispute = await getMatchDispute(adminToken, tournamentId, matchId)
+  if (!dispute) return null
 
   return {
     tournamentId,
@@ -382,5 +414,6 @@ export async function seedDisputableMatch(
     p1RegistrationId: match.participant1_registration_id,
     p2RegistrationId: match.participant2_registration_id,
     claimId: claim.id,
+    disputeId: dispute.id,
   }
 }

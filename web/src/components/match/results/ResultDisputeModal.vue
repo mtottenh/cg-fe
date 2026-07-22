@@ -103,21 +103,11 @@ async function handleDispute() {
   if (!isValid.value) return
 
   try {
+    // Disputing the result claim now atomically opens the tournament dispute
+    // (flips the match to Disputed and creates the row the admin queue reads),
+    // so no separate raiseDispute call is needed. The old two-step flow would
+    // now fail the second call with "already has a pending dispute".
     await store.disputeResult(props.matchId, props.claimId, reason.value, evidenceIds.value)
-    // Also raise a tournament-scoped dispute so it appears in the admin queue
-    if (props.tournamentId && props.registrationId) {
-      await store.raiseDispute(
-        props.tournamentId,
-        props.matchId,
-        props.registrationId,
-        reason.value,
-        reason.value,
-        evidenceIds.value,
-        props.claimId,
-      ).catch(() => {
-        // Non-fatal: the claim is already marked disputed
-      })
-    }
     isOpen.value = false
     emit('disputed')
   } catch {

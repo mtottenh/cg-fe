@@ -4,7 +4,6 @@ import {
   adminAddDisputeMessage,
   getDisputeThread,
   getMatch,
-  raiseDispute,
   seedDisputableMatch,
   type DisputableMatchContext,
 } from './fixtures/dispute.fixture'
@@ -45,6 +44,8 @@ async function buildDisputedMatch(
   request: APIRequestContext,
   adminToken: string,
   scores: { p1: number; p2: number },
+  // Becomes the opened dispute's description (see seedDisputableMatch).
+  disputeReason?: string,
 ): Promise<{ scenario: CheckInScenario; ctx: DisputableMatchContext }> {
   const scenario = await createCheckInScenario(request, adminToken, {
     checkInRequired: true,
@@ -71,13 +72,15 @@ async function buildDisputedMatch(
     'both check-ins should auto-advance the match to in_progress',
   ).toBe('in_progress')
 
-  // P1 claims the win with the given scores; P2 disputes the claim.
+  // P1 claims the win with the given scores; P2 disputes the claim, which
+  // atomically opens the tournament dispute.
   const ctx = await seedDisputableMatch(
     scenario.p1.token,
     scenario.p2.token,
     scenario.tournamentId,
     scenario.matchId,
     scores,
+    disputeReason,
   )
   expect(ctx, 'result claim + claim dispute should succeed').not.toBeNull()
 
@@ -98,19 +101,8 @@ test.describe('Admin Dispute Resolution', () => {
     const { scenario, ctx } = await buildDisputedMatch(request, adminToken, {
       p1: 1,
       p2: 0,
-    })
+    }, reason)
     const matchId = scenario.matchId
-
-    const dispute = await raiseDispute(
-      scenario.p2.token,
-      scenario.tournamentId,
-      matchId,
-      ctx.p2RegistrationId,
-      'wrong_score',
-      reason,
-      ctx.claimId
-    )
-    expect(dispute, 'raising the formal dispute should succeed').not.toBeNull()
 
     // --- UI: admin sees dispute in list ----------------------------------
     await loginAsAdmin(page)
@@ -129,9 +121,9 @@ test.describe('Admin Dispute Resolution', () => {
     const truncatedMatch = `${matchId.slice(0, 8)}...`
     const row = page.getByRole('row').filter({ hasText: truncatedMatch }).first()
     await expect(row).toBeVisible({ timeout: 10000 })
-    // The Reason column renders the reason ENUM (`item.reason`), not the
-    // free-text description — the description is only shown in the modal.
-    await expect(row).toContainText('wrong_score')
+    // Claim-path disputes carry the structured reason `other` (the free text
+    // is the description, shown only in the modal).
+    await expect(row).toContainText('other')
 
     // --- UI: open detail modal, post admin reply, resolve in favour of P1 -
     await row.click()
@@ -233,19 +225,8 @@ test.describe('Admin Dispute Resolution', () => {
     const { scenario, ctx } = await buildDisputedMatch(request, adminToken, {
       p1: 1,
       p2: 0, // original claim says P1 won the BO1
-    })
+    }, reason)
     const matchId = scenario.matchId
-
-    const dispute = await raiseDispute(
-      scenario.p2.token,
-      scenario.tournamentId,
-      matchId,
-      ctx.p2RegistrationId,
-      'wrong_winner',
-      reason,
-      ctx.claimId
-    )
-    expect(dispute, 'raising the formal dispute should succeed').not.toBeNull()
 
     // --- UI: admin resolves in favour of P2 via the overturn form --------
     // Note: /v1/admin/disputes only ever returns pending disputes
@@ -331,30 +312,19 @@ test.describe('Admin Dispute Resolution', () => {
     const { scenario, ctx } = await buildDisputedMatch(request, adminToken, {
       p1: 1,
       p2: 0,
-    })
+    }, reason)
     const matchId = scenario.matchId
-
-    const dispute = await raiseDispute(
-      scenario.p2.token,
-      scenario.tournamentId,
-      matchId,
-      ctx.p2RegistrationId,
-      'wrong_score',
-      reason,
-      ctx.claimId
-    )
-    expect(dispute, 'raising the formal dispute should succeed').not.toBeNull()
 
     // Admin posts one internal and one public message via API.
     const internalMsg = await adminAddDisputeMessage(
       adminToken,
-      dispute!.id,
+      ctx.disputeId,
       internalText,
       true
     )
     const publicMsg = await adminAddDisputeMessage(
       adminToken,
-      dispute!.id,
+      ctx.disputeId,
       publicText,
       false
     )
@@ -362,12 +332,12 @@ test.describe('Admin Dispute Resolution', () => {
     expect(publicMsg).not.toBeNull()
 
     // --- Cross-check via API: admin sees both, captain sees only public --
-    const adminView = await getDisputeThread(adminToken, dispute!.id)
+    const adminView = await getDisputeThread(adminToken, ctx.disputeId)
     expect(adminView).not.toBeNull()
     const adminMessages = adminView!.messages.map((m) => m.message)
     expect(adminMessages).toEqual(expect.arrayContaining([internalText, publicText]))
 
-    const captainView = await getDisputeThread(scenario.p2.token, dispute!.id)
+    const captainView = await getDisputeThread(scenario.p2.token, ctx.disputeId)
     expect(captainView).not.toBeNull()
     const captainMessages = captainView!.messages.map((m) => m.message)
     expect(captainMessages).toContain(publicText)

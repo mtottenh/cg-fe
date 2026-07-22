@@ -45,6 +45,12 @@ jobs:
       - name: Lint
         run: cd web && npm run lint
 
+      # Ratchet against tests that CANNOT FAIL (visibility guards that skip the
+      # body exactly when the UI is broken, tautologies, or-assertions). Counts
+      # are baselined per file and may only decrease — see web/e2e/COVERAGE-PLAN.md.
+      - name: E2E test-quality ratchet
+        run: cd web && npm run test:quality
+
   # NOTE: the backend (mtottenh/cg) is tested by its OWN repo CI (clippy, fmt,
   # full test suite) and exercised end-to-end by e2e.yml here. This workflow
   # deliberately covers only the frontend to avoid duplicating that — and the

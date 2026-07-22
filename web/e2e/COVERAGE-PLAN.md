@@ -89,14 +89,33 @@ Related "cannot fail" shapes to eliminate wherever found:
 
 Landing these first stops the debt from being re-created while we pay it down.
 
-- [ ] **Ban the vacuous guard in CI.** ESLint rule (or a grep gate) failing on
-      `isVisible().catch(() => false)` used as an `if` condition inside `web/e2e/`.
-- [ ] **Ban tautological assertions**: `expect(… || true)`, and flag
-      `expect(a || b).toBe(true)` for manual review.
-- [ ] **Lint rule / review check: no test body without at least one `expect`.**
-- [ ] Add a short `web/e2e/README.md` pointing at §3 Ground rules + this plan.
-- [ ] Decide + document the exemption mechanism (e.g. `// coverage-plan-exempt: <reason>`)
-      so genuinely API-only tests (RBAC 403 checks) can pass the gate honestly.
+- [x] **Ban the vacuous guard in CI.** Implemented as a **ratchet**, not a hard ban — a hard
+      ban would fail instantly on the ~93 pre-existing sites. `web/e2e/scripts/check-test-quality.mjs`
+      baselines counts per file in `.test-quality-baseline.json`; **counts may only decrease**.
+      Wired as `npm run test:quality` + a CI step in `test.yml`.
+      *Verified it fails on an injected guard and passes when reverted.*
+- [x] **Ban tautological assertions** (`expect(… || true)`) and **or-assertions**
+      (`expect(a || b).toBe(true)`) — both in the ratchet.
+- [x] ~~Lint rule: no test body without at least one `expect`~~ — **prototyped and deliberately
+      dropped from automation.** Reliably delimiting a test body needs real parsing (template
+      and regex literals defeat brace counting); the approximation flagged known-good specs
+      (`uploads`, `league-season`). A guardrail that cries wolf gets ignored. The genuine
+      "no assertion" tests are tracked by hand in §5.3 instead.
+- [x] Add a short `web/e2e/README.md` pointing at §3 Ground rules + this plan.
+- [x] Exemption mechanism: `// coverage-plan-exempt: <reason>` on the line — honoured by the
+      ratchet, for genuinely API-level checks (e.g. RBAC 403) with no UI surface.
+
+**Baseline recorded (2026-07-22):** 112 violations across 10 files —
+`visibilityGuard` 93, `orAssertion` 17, `tautology` 1. The guard counts reproduce the
+manual audit exactly (team-management 42 · tournament-public 25 · tournament-admin 16 ·
+tournament-team 5), independently confirming §2.
+
+### Shared fixtures added for Wave 1 (so parallel agents never touch contended files)
+- [x] `createOpenRegistrationTournament(adminToken, opts)` — fresh tournament left in
+      `registration` status, so `Register Now` / `Withdraw` / `Check In` actually render (§5.2).
+- [x] `transitionTournament(adminToken, tournamentId, action)` — exported lifecycle transition
+      so specs can build an exact precondition instead of guarding on one.
+      Both in `fixtures/tournament-lifecycle.fixture.ts`.
 
 ---
 
@@ -375,8 +394,9 @@ a single serialized pass (Wave 0) so downstream agents build on a stable base.
 
 ### Suggested waves
 
-- [ ] **Wave 0 (serial):** Phase 0 guardrails + all shared fixture/`global-setup` changes
-      needed by Phase 1 (esp. the fresh-registration-tournament helper for §5.2).
+- [x] **Wave 0 (serial):** Phase 0 guardrails + all shared fixture/`global-setup` changes
+      needed by Phase 1 (esp. the fresh-registration-tournament helper for §5.2). **Done** —
+      ratchet + CI gate + README + `createOpenRegistrationTournament` / `transitionTournament`.
 - [ ] **Wave 1 (parallel, P0):** one agent each →
       `match-results.spec.ts` (§5.1) · `tournament-public.spec.ts` (§5.2) ·
       `admin-management.spec.ts` + `auth.spec.ts` + `player-profile.spec.ts` (§5.3)

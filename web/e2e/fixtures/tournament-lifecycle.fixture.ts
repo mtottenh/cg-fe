@@ -219,6 +219,43 @@ export async function waitForTournamentStatus(
 }
 
 /**
+ * Drive a single lifecycle transition (`publish`, `open-registration`,
+ * `close-registration`, `reopen-registration`, `start`, `complete`, …).
+ *
+ * Exported so specs can build the exact precondition they need WITHOUT
+ * guarding on whatever state a shared tournament happens to be in. See
+ * COVERAGE-PLAN.md §3 rule 3 ("own your state").
+ */
+export async function transitionTournament(
+  adminToken: string,
+  tournamentId: string,
+  action: string,
+): Promise<void> {
+  await postAction(adminToken, tournamentId, action)
+}
+
+/**
+ * Create a fresh tournament that is OPEN FOR REGISTRATION.
+ *
+ * Use this for any test that needs `Register Now` / `Withdraw` / `Check In`
+ * to actually render. The globally seeded tournament (`TEST_TOURNAMENT_SLUG`)
+ * is *started* by global-setup, so those controls never appear on it — which
+ * is why the old registration tests were wrapped in visibility guards and
+ * silently never ran (COVERAGE-PLAN.md §5.2).
+ *
+ * Returns the tournament with `status: 'registration'`.
+ */
+export async function createOpenRegistrationTournament(
+  adminToken: string,
+  opts: CreateTournamentOptions = {},
+): Promise<TournamentSummary> {
+  const tournament = await createDraftTournament(adminToken, opts)
+  await postAction(adminToken, tournament.id, 'publish')
+  await postAction(adminToken, tournament.id, 'open-registration')
+  return { ...tournament, status: 'registration' }
+}
+
+/**
  * Admin-drive a tournament from `draft` straight through to `in_progress`
  * via direct API calls. Used by the "cancel mid-play" and "guards"
  * scenarios, where we need the tournament in a specific state but don't

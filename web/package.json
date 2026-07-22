@@ -17,7 +17,8 @@
     "lint": "eslint . --ext .ts,.vue --max-warnings 0",
     "lint:fix": "eslint . --ext .ts,.vue --fix --max-warnings 0",
     "generate:api": "openapi-typescript http://localhost:3000/api-docs/openapi.json -o src/api/types.ts",
-    "test:e2e:ephemeral": "./scripts/e2e-ephemeral.sh"
+    "test:e2e:ephemeral": "./scripts/e2e-ephemeral.sh",
+    "test:quality": "node e2e/scripts/check-test-quality.mjs"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",

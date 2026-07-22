@@ -356,7 +356,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Wave 3 status:** 13 found · 1 fixed (P-4) · 4 product decisions taken (P-2, P-5, P-9, P-12).
+**Wave 3 status:** 17 found · 1 fixed (P-4) · 4 product decisions taken (P-2, P-5, P-9, P-12).
 Three of these — **P-4, P-10, P-11** — are the *same defect*: a hand-rolled comparison against a
 status string that drifted from the backend. Fix them as one sweep, not three point fixes.
 
@@ -564,6 +564,58 @@ tests to never leave a form dirty.
       Fail loudly instead. (Same swallowed-error family as P-6 and the original dispute bug.)
 
 ---
+
+### P-14 — The roster lock CANNOT BE SET through the API, so all its enforcement is unreachable  ⚠️⚠️ whole feature non-functional
+- **Symptom:** an admin sets "Roster Lock" and gets a **200 with no effect**. The column stays
+  `'open'` forever, so every roster-lock rule the backend implements is dead code.
+- **Verified chain:**
+  - The DTO **accepts and validates** it — `portal-api/src/dto/requests/league_team.rs:189-217`
+    parses `roster_lock_status` into `UpdateLeagueSeasonCommand`.
+  - `LeagueSeasonService::update_season` (`portal-domain/src/services/league_team/season.rs:145-166`)
+    **never forwards it**.
+  - The repo command `UpdateLeagueSeason` (`portal-domain/src/repositories/league_team.rs:119-133`)
+    **has no such field**, and the adapter's UPDATE never binds the column.
+  - `LeagueSeasonService::update_roster_lock` (`season.rs:193-218`) would work but has
+    **no HTTP route** — a search over `portal-api/src/routes` and `handlers` finds nothing.
+- **Consequence:** the enforcement that *does* exist and is correct — `create_invitation`
+  (`invitation.rs:85-89`), `accept_invitation` (`:288-293`), `add_member_authorized`
+  (`team.rs:390-401`), `remove_member_authorized` (`team.rs:488-499`) — can never trigger.
+- This is strictly more serious than P-11 (the UI half): P-11 made the control look absent;
+  this makes the feature absent.
+- **Why no e2e test asserts `hard_lock` blocks invites:** nothing can put a season into
+  `hard_lock`, and e2e has no DB access. Rather than fake it, the test trips the *same*
+  predicate through the reachable half (advancing the season to `active`, which also fails
+  `allows_primary_roster_changes()`), with a comment explaining why the literal variant is
+  unwritable. Ground rule 8.
+- [ ] Fix: plumb `roster_lock_status` through `update_season` (add the repo field + bind the
+      column), **or** expose a route for the existing `update_roster_lock`. Then add the
+      `hard_lock` e2e test that is currently impossible.
+
+### P-15 — Substitute invitations bypass the roster lock
+- `create_invitation` (`invitation.rs:85-89`) and `accept_invitation` (`:288-293`) check only
+  `role.is_primary()`; neither consults `allows_substitute_changes()`, and acceptance seats the
+  member via `accept_and_add_member` directly on the repo, bypassing `add_member_authorized`.
+- So under `hard_lock` — "no roster changes" per the migration's own comment — a **substitute**
+  can still be invited and seated.
+- [ ] Decide whether `hard_lock` should block substitutes too (the comment says yes), then check
+      `allows_substitute_changes()` on both paths.
+
+### P-16 — Role changes are not lock-checked
+- `promote_to_captain` / `demote_from_captain` (`team.rs:526-600`) never consult the season lock,
+  so captaincy can change under `hard_lock`.
+- The UI is deliberately stricter here (the member-action menu is disabled under `hard_lock`);
+  that mismatch should be resolved in the backend's favour or the UI's, not left implicit.
+- [ ] Decide and align.
+
+### P-17 — `LeagueSeasonEditModal` offers a roster-lock value the API rejects with 400
+- `src/components/admin/LeagueSeasonEditModal.vue:196-199` — `rosterLockOptions` is
+  `[open, locked]`. `'locked'` is not a valid `RosterLockStatus`, so selecting it produces a
+  **400 "Invalid roster lock status"**; selecting `'open'` is a silent no-op per P-14.
+- Its `statusOptions` (`:187-194`) are equally stale — `registration_open`,
+  `registration_closed`, `in_progress` are not backend season statuses
+  (`draft/registration/active/playoffs/completed/cancelled`). Same family as §9c.
+- [ ] Fix both option lists against the real enums (and see §9c for the fourth `=== 'locked'`
+      instance in `LeagueSeasonsPanel.vue`).
 
 ## 9c. The stale-status-string defect class (systematic sweep)
 

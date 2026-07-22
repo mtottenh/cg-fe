@@ -356,7 +356,40 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Wave 3 status:** 18 found · 1 fixed (P-4) · 4 product decisions taken (P-2, P-5, P-9, P-12).
+**Wave 3 status:** 22 found · 1 fixed (P-4) · 4 product decisions taken (P-2, P-5, P-9, P-12).
+
+**This register is authoritative.** Any product bug found by this work gets a P-number *here*,
+even if it also appears in a §9c sweep list — findings parked only in a checklist get lost.
+P-19..P-22 were promoted out of §9c for exactly that reason.
+
+| # | Finding | Severity | State |
+|---|---|---|---|
+| P-1 | `MapResultsSummary` never renders | data hidden | open |
+| P-2 | Open registration never auto-approves | blocks flow | Wave 3 |
+| P-3 | `checkInRequired` alone can't open check-in | minor | open |
+| P-4 | Tournament **header** shows raw status | user-facing | **fixed** |
+| P-5 | Display name: signup allows dupes, save rejects | user trap | Wave 3 |
+| P-6 | Result history stale after dispute | suspected | open |
+| P-7 | Veto side-select unreachable in UI | feature dead | **fixed** |
+| P-8 | Can propose a past time, then hard-fails | dead end | open |
+| P-9 | Proposer cannot withdraw own proposal | API gap | Wave 3 |
+| P-10 | Admin registrations table prints raw enum | user-facing | open |
+| P-11 | Roster lock never enforced in admin UI | enforcement | open |
+| P-12 | No captain entry point to invite modal | blocks flow | decided |
+| P-13 | `TeamEditPage` blank form to non-owners | confusing | open |
+| P-14 | **Roster lock cannot be set via API at all** | feature dead | open |
+| P-15 | Invitation path bypasses the lock check | inconsistent | open |
+| P-16 | Role changes not lock-checked | enforcement | open |
+| P-17 | Edit modal offers a lock value the API 400s | user-facing | open |
+| P-18 | No admin/emergency override of the lock | design gap | open |
+| P-19 | **"Upcoming" tournaments tab always empty** | user-facing | open |
+| P-20 | Home page hides `pick_ban`/`ready`/`awaiting_result` matches | user-facing | open |
+| P-21 | Tournament **list** cards print raw enum | user-facing | open |
+| P-22 | Season roster-lock column always "Open" | enforcement | open |
+
+**P-14/15/16/17/18 are one cluster** (roster lock) and **P-15/P-18 are superseded in part by the
+substitute/lineup redesign** — see `docs/lineup-design.md`. Do not fix P-15 in isolation until
+that design lands.
 Three of these — **P-4, P-10, P-11** — are the *same defect*: a hand-rolled comparison against a
 status string that drifted from the backend. Fix them as one sweep, not three point fixes.
 
@@ -653,6 +686,55 @@ tests to never leave a form dirty.
 - [ ] Fix both option lists against the real enums (and see §9c for the fourth `=== 'locked'`
       instance in `LeagueSeasonsPanel.vue`).
 
+### P-19 — The "Upcoming" tournaments tab is silently empty  ⚠️ user-facing
+- **Symptom:** `pages/TournamentsPage.vue:195-197` filters on
+  `['draft','published','registration_open','registration_closed','ready']`. **None of those
+  five is a real tournament status** — the backend emits `registration` and `scheduled`. The
+  tab therefore matches nothing and renders as an empty state.
+- **Impact:** the primary discovery surface for upcoming tournaments shows zero results,
+  permanently. Not cosmetic — users cannot find tournaments that have not started.
+- **Root cause:** same stale-status-string class as P-4/P-10/P-11 (§9c).
+- [ ] Filter on the real statuses (`registration`, `scheduled`); add an e2e assertion that an
+      upcoming tournament actually appears under the tab.
+
+---
+
+### P-20 — Home page drops matches in three states from "your upcoming matches"  ⚠️ user-facing
+- **Symptom:** `pages/HomePage.vue:344` — `ACTIVE_MATCH_STATUSES` is
+  `['pending','scheduling','scheduled','checking_in','in_progress']`. `scheduling` **is not a
+  real status**, and `ready`, `pick_ban` and `awaiting_result` are **missing**. The local
+  `matchStatusMap` (`:346-352`) has the same holes.
+- **Impact:** a match sitting in veto (`pick_ban`) or awaiting a result — precisely when a
+  player most needs to act — **does not appear on their home page at all.**
+- [ ] Use the shared `matchStatusMap` from `utils/statusMaps.ts` instead of a second local copy,
+      and derive the active list from it.
+
+---
+
+### P-21 — Tournament **list** page prints the raw status enum (P-4 verbatim, higher traffic)  ⚠️ user-facing
+- **Symptom:** `components/tournament/TournamentCard.vue:107-155` is the same hand-rolled
+  `switch` that P-4 fixed on the header — matching `registration_open`, `check_in_open`,
+  `ready` (none real) and falling through to `default: return props.tournament.status`.
+- **Impact:** every card on the tournaments list shows the raw enum. This is the **more
+  trafficked** surface of the two; P-4 fixed only the detail page.
+- **Fix is already available:** `tournamentPublicStatusMap` (added for P-4) has the correct
+  public copy. ⚠️ Use the P-4 pattern — public map first, `tournamentStatusMap` as fallback.
+  Do **not** collapse to the admin map; the divergence is intentional (see P-4).
+- [ ] Replace the switch with the P-4 computed pattern.
+
+---
+
+### P-22 — Season roster-lock column always reads "Open" (second instance of P-11)
+- **Symptom:** `components/admin/LeagueSeasonsPanel.vue:60,64` compares
+  `roster_lock_status === 'locked'`. The real values are `open` / `soft_lock` / `hard_lock`,
+  so the chip renders "Open" for every season including locked ones.
+- **Impact:** admins are told every roster is unlocked. Compounds P-14 — the lock cannot be
+  set, and where it could be, the UI would not show it.
+- [ ] Use `rosterLockStatusMap`; fail closed (unknown ⇒ treat as locked), matching
+      `src/utils/rosterLock.ts`.
+
+---
+
 ## 9c. The stale-status-string defect class (systematic sweep)
 
 P-4, P-7, P-10 and P-11 all turned out to be **the same defect**: a hand-rolled
@@ -666,11 +748,11 @@ notably `disputeStatusMap` lacked `pending` and `cancelled`, the two most common
 states, so the admin disputes table rendered raw enums. Those are fixed.
 
 ### ⚠️ FUNCTIONAL — these silently hide data from users (fix first)
-- [ ] **`pages/TournamentsPage.vue:196`** — the **"Upcoming" tab filters on
+- [x] → **promoted to P-19.** **`pages/TournamentsPage.vue:196`** — the **"Upcoming" tab filters on
       `['draft','published','registration_open','registration_closed','ready']`**. The real
       statuses are `registration` and `scheduled`, so the tab **silently drops nearly every
       upcoming tournament**. Not cosmetic — the page appears empty.
-- [ ] **`pages/HomePage.vue:344,346-352`** — the local map and `ACTIVE_MATCH_STATUSES`
+- [x] → **promoted to P-20.** **`pages/HomePage.vue:344,346-352`** — the local map and `ACTIVE_MATCH_STATUSES`
       contain `'scheduling'` (not a real status) and omit `ready`, `pick_ban`,
       `awaiting_result`, so **matches in those states never appear in "your upcoming
       matches"**.
@@ -678,7 +760,7 @@ states, so the admin disputes table rendered raw enums. Those are fixed.
       `'registration_open'`; it only works at all via the `is_registration_open` fallback.
 
 ### Raw enum leaked to users (P-4 / P-10 class)
-- [ ] **`components/tournament/TournamentCard.vue:108-155`** — **P-4 verbatim, still
+- [x] → **promoted to P-21.** **`components/tournament/TournamentCard.vue:108-155`** — **P-4 verbatim, still
       unfixed, on the tournaments LIST page** (`registration_open`, `check_in_open`,
       `ready` … then `default: return props.tournament.status`). Arguably higher-traffic
       than the header that was fixed. `tournamentPublicStatusMap` already has the right
@@ -694,7 +776,7 @@ states, so the admin disputes table rendered raw enums. Those are fixed.
       exists for it yet).
 
 ### Dead conditions / behavioural gaps
-- [ ] **`components/admin/LeagueSeasonsPanel.vue:60,64`** — a **second instance of P-11**:
+- [x] → **promoted to P-22.** **`components/admin/LeagueSeasonsPanel.vue:60,64`** — a **second instance of P-11**:
       `roster_lock_status === 'locked'`, so the Locked/Open column always reads "Open".
 - [ ] `components/match/MatchStatusTimeline.vue:48-62` — the step list omits `forfeit` and
       `disputed`, so such a match highlights no current step.

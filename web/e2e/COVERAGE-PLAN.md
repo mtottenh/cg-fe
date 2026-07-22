@@ -356,7 +356,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Wave 3 status:** 27 found · 1 fixed (P-4) · 4 product decisions taken (P-2, P-5, P-9, P-12).
+**Wave 3 status:** 27 found · 4 fixed (P-4, P-2, P-5, P-9 backend) · 1 decision pending UI (P-12).
 
 **This register is authoritative.** Any product bug found by this work gets a P-number *here*,
 even if it also appears in a §9c sweep list — findings parked only in a checklist get lost.
@@ -365,14 +365,14 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | # | Finding | Severity | State |
 |---|---|---|---|
 | P-1 | `MapResultsSummary` never renders | data hidden | open |
-| P-2 | Open registration never auto-approves | blocks flow | Wave 3 |
+| P-2 | Open registration never auto-approves | blocks flow | **fixed** `a3c1876` |
 | P-3 | `checkInRequired` alone can't open check-in | minor | open |
 | P-4 | Tournament **header** shows raw status | user-facing | **fixed** |
-| P-5 | Display name: signup allows dupes, save rejects | user trap | Wave 3 |
+| P-5 | Display name: signup allows dupes, save rejects | user trap | **fixed** `a3c1876` |
 | P-6 | Result history stale after dispute | suspected | open |
 | P-7 | Veto side-select unreachable in UI | feature dead | **fixed** |
 | P-8 | Can propose a past time, then hard-fails | dead end | open |
-| P-9 | Proposer cannot withdraw own proposal | API gap | Wave 3 |
+| P-9 | Proposer cannot withdraw own proposal | API gap | **API done** `a3c1876`, UI open |
 | P-10 | Admin registrations table prints raw enum | user-facing | open |
 | P-11 | Roster lock never enforced in admin UI | enforcement | open |
 | P-12 | No captain entry point to invite modal | blocks flow | decided |
@@ -530,6 +530,14 @@ Each entry below was independently re-verified (not taken on the agent's word).
       button once `weekOffset` would go before today).
 
 ### P-9 — A proposer cannot withdraw their own schedule proposal
+- ✅ **API shipped** in `a3c1876`. `POST /v1/tournaments/{tid}/matches/{mid}/schedule/cancel`,
+  body `{ "proposal_id": "<uuid>" }`, returns `ScheduleProposalResponse` with
+  `status: "cancelled"`. Errors: 400 not pending · 401 anon · 403 not the proposer ·
+  404 unknown proposal or wrong match. After 200, `…/schedule/active` returns `data: null`,
+  a fresh propose succeeds immediately, and the cancelled row stays in `…/schedule/history`.
+- ⚠️ For the UI: `responded_by_user_id` is now **"who took the terminal action"**, not
+  "the opponent" — on a cancel it is the proposer. Do not label it as the responder.
+- [ ] **UI still to build** — no withdraw affordance exists on the proposal card.
 - **Symptom:** mistype a time and you are stuck. The proposer sees only
   "Waiting for your opponent to respond…" (`ProposalCard.vue:137-145`) with no cancel control, so
   a wrong proposal blocks scheduling for the full 48h TTL unless the opponent happens to respond.

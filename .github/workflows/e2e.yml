@@ -6,9 +6,13 @@ on:
   pull_request:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      api_version:
+        description: "API release tag to test against (default: latest release)"
+        required: false
+        default: ""
 
 env:
-  CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   # Ephemeral per-run database. The API applies migrations on boot (which
   # also seed the games catalog), so no separate migrate step is needed.
@@ -20,7 +24,7 @@ env:
 jobs:
   e2e-tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -41,25 +45,24 @@ jobs:
       - name: Checkout frontend
         uses: actions/checkout@v4
 
-      # The backend is a separate repository (mtottenh/cg), NOT a directory of
-      # this one. For a private backend repo, set the API_REPO_TOKEN secret
-      # (PAT with repo read); public repos work with the default token.
-      - name: Checkout backend
-        uses: actions/checkout@v4
-        with:
-          repository: mtottenh/cg
-          path: api
-          token: ${{ secrets.API_REPO_TOKEN || github.token }}
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.88"
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: api
+      # Use the SHIPPED artifact rather than a from-source build: this tests the
+      # frontend against the actual released backend (higher fidelity for a
+      # release gate) and skips the ~5-min Rust compile. The migrations are
+      # compiled into the binary (sqlx::migrate!), so it self-migrates on boot
+      # with no migrations/ dir. Defaults to the latest mtottenh/cg release;
+      # override via the api_version workflow_dispatch input. For a private
+      # backend repo set the API_REPO_TOKEN secret (PAT with repo read).
+      - name: Download released API (portal-api deb)
+        env:
+          GH_TOKEN: ${{ secrets.API_REPO_TOKEN || github.token }}
+          API_VERSION: ${{ inputs.api_version }}
+        run: |
+          mkdir -p api-pkg
+          gh release download $API_VERSION --repo mtottenh/cg \
+            --pattern 'portal-api_*_amd64.deb' --dir api-pkg
+          dpkg-deb -x api-pkg/portal-api_*_amd64.deb api-pkg/root
+          echo "API_BIN=$PWD/api-pkg/root/usr/bin/portal-api" >> "$GITHUB_ENV"
+          echo "CLI_BIN=$PWD/api-pkg/root/usr/bin/portal-cli" >> "$GITHUB_ENV"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -74,28 +77,18 @@ jobs:
       - name: Install Playwright browsers
         run: cd web && npx playwright install chromium --with-deps
 
-      # Debug build: ~half the compile time of release and CI does not need
-      # release performance. The portal-app package's binary is named
-      # `portal`; portal-cli provides the admin bootstrap.
-      # SQLX_OFFLINE: the compile-time sqlx macros must not validate against
-      # the service DB — it is empty until the API boots and runs migrations.
-      - name: Build API + CLI
-        run: cd api && SQLX_OFFLINE=true cargo build -p portal-app -p portal-cli
-
       - name: Start API server (migrations run on boot)
         run: |
-          cd api
           JWT_SECRET=e2e-ci-jwt-secret-that-is-long-enough-123 \
           PORTAL_AUTH_RATE_BURST=10000 \
           PORTAL_AUTH_RATE_PER_SECOND=1000 \
-          ./target/debug/portal > /tmp/api.log 2>&1 &
+          "$API_BIN" > /tmp/api.log 2>&1 &
           timeout 120 bash -c 'until curl -sf http://localhost:3000/health > /dev/null; do sleep 2; done'
 
       # global-setup.ts logs in as this admin before seeding anything.
       - name: Bootstrap e2e admin
         run: |
-          cd api
-          ./target/debug/portal-cli bootstrap admin \
+          "$CLI_BIN" bootstrap admin \
             --username e2e_admin \
             --email "$E2E_ADMIN_EMAIL" \
             --password "$E2E_ADMIN_PASSWORD" \

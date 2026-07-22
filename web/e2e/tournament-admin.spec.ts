@@ -316,6 +316,8 @@ test.describe('Tournament Admin Flows', () => {
       // offering the pending-only actions (RegistrationsTab.vue:42-62).
       const row = registrationRow(page, participantName)
       await expect(row).toBeVisible({ timeout: 10_000 })
+      // The status chip carries the human label, not the raw enum (§9b P-10).
+      await expect(row.getByText('Pending', { exact: true })).toBeVisible()
       await expect(row.getByRole('button', { name: 'Approve' })).toBeVisible()
       await expect(row.getByRole('button', { name: 'Reject' })).toBeVisible()
       await expect(page.getByText('No registrations yet')).toHaveCount(0)
@@ -367,10 +369,11 @@ test.describe('Tournament Admin Flows', () => {
       // column ticks (`:26-29`).
       await expect(checkInRow.getByRole('button', { name: 'Check In' })).toHaveCount(0)
       await expect(checkInRow.locator('.mdi-check-circle')).toBeVisible()
-      // NOTE: the admin table prints the RAW status enum — it imports
-      // registrationStatusMap for the chip COLOUR only and never applies the
-      // label (RegistrationsTab.vue:20-24 vs :144). See the report's P-7.
-      await expect(checkInRow.getByText('checked_in')).toBeVisible()
+      // The status chip shows the HUMAN LABEL, not the raw enum. This used to
+      // print `checked_in`: the table imported registrationStatusMap for the
+      // chip COLOUR only and never applied the label (COVERAGE-PLAN.md §9b
+      // P-10). exact:true, so a regression to the enum fails here.
+      await expect(checkInRow.getByText('Checked In', { exact: true })).toBeVisible()
 
       // ---------------------------------------------------------------
       // 2. Disqualify → handleDisqualify → handleReasonConfirm (dq branch)
@@ -395,7 +398,8 @@ test.describe('Tournament Admin Flows', () => {
       await dqSnackbar
 
       await expect(modal).not.toBeVisible({ timeout: 10_000 })
-      await expect(dqRow.getByText('disqualified')).toBeVisible()
+      // Human label again (was the raw `disqualified` enum — §9b P-10).
+      await expect(dqRow.getByText('Disqualified', { exact: true })).toBeVisible()
       // Terminal state ⇒ no actions left (RegistrationsTab.vue:101-102).
       await expect(dqRow.getByRole('button', { name: 'Disqualify' })).toHaveCount(0)
 

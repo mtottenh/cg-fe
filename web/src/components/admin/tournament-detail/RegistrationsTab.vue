@@ -19,7 +19,7 @@
 
       <template v-slot:item.status="{ item }">
         <v-chip :color="getStatusColor(item.status)" size="small">
-          {{ item.status }}
+          {{ getStatusLabel(item.status) }}
         </v-chip>
       </template>
 
@@ -115,7 +115,11 @@
 <script setup lang="ts">
 import type { TournamentRegistrationResponse } from '@/stores/tournaments'
 import { formatDateTime } from '@/utils/formatters'
-import { registrationStatusMap, getStatusColor as mapStatusColor } from '@/utils/statusMaps'
+import {
+  registrationStatusMap,
+  getStatusColor as mapStatusColor,
+  getStatusLabel as mapStatusLabel,
+} from '@/utils/statusMaps'
 
 defineProps<{
   registrations: TournamentRegistrationResponse[]
@@ -142,4 +146,7 @@ const headers = [
 ]
 
 const getStatusColor = (status: string) => mapStatusColor(registrationStatusMap, status)
+// The map was imported for its colour half only, so organisers saw the raw enum
+// (`checked_in`, `no_show`, …) in the Status column. See COVERAGE-PLAN.md §9b P-10.
+const getStatusLabel = (status: string) => mapStatusLabel(registrationStatusMap, status)
 </script>

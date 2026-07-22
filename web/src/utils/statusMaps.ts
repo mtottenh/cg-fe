@@ -36,6 +36,12 @@ export const tournamentPublicStatusMap: StatusMap = {
   cancelled: { color: 'error', label: 'Cancelled' },
 }
 
+/**
+ * Keys mirror `TournamentMatchStatus`
+ * (api/crates/portal-core/src/types/tournament.rs) and the
+ * `tournament_matches_check_status` CHECK constraint
+ * (api/migrations/0030_create_tournaments.sql:369).
+ */
 export const matchStatusMap: StatusMap = {
   pending: { color: 'grey', label: 'Pending' },
   ready: { color: 'info', label: 'Ready' },
@@ -46,6 +52,10 @@ export const matchStatusMap: StatusMap = {
   awaiting_result: { color: 'warning', label: 'Awaiting Result' },
   completed: { color: 'success', label: 'Completed' },
   cancelled: { color: 'error', label: 'Cancelled' },
+  // Both are real backend statuses that were missing here, so they rendered as
+  // the raw enum wherever getMatchStatusLabel() is used.
+  forfeit: { color: 'error', label: 'Forfeit' },
+  disputed: { color: 'error', label: 'Disputed' },
 }
 
 export const registrationStatusMap: StatusMap = {
@@ -57,23 +67,31 @@ export const registrationStatusMap: StatusMap = {
   disqualified: { color: 'error', label: 'Disqualified' },
   withdrawn: { color: 'grey', label: 'Withdrawn' },
   no_show: { color: 'grey', label: 'No Show' },
+  // NOTE: `rejected` is not a backend status — `reject_registration` stores
+  // `withdrawn` (portal-domain/src/services/tournament/registration.rs:178-193)
+  // and the CHECK constraint does not permit it. Kept as a harmless alias.
   rejected: { color: 'error', label: 'Rejected' },
 }
 
+/** Keys mirror `ClaimStatus` (portal-domain/src/entities/result_claim.rs:134). */
 export const resultClaimStatusMap: StatusMap = {
   pending: { color: 'warning', label: 'Awaiting Confirmation' },
   confirmed: { color: 'success', label: 'Confirmed' },
   disputed: { color: 'error', label: 'Disputed' },
+  // `expired` is not a backend claim status; kept as a harmless alias.
   expired: { color: 'grey', label: 'Expired' },
   superseded: { color: 'grey', label: 'Superseded' },
+  cancelled: { color: 'grey', label: 'Cancelled' },
 }
 
+/** Keys mirror `ProposalStatus` (portal-core/src/types/tournament.rs:919). */
 export const proposalStatusMap: StatusMap = {
   pending: { color: 'warning', label: 'Awaiting Response' },
   accepted: { color: 'success', label: 'Accepted' },
   rejected: { color: 'error', label: 'Rejected' },
   expired: { color: 'grey', label: 'Expired' },
   counter_proposed: { color: 'info', label: 'Counter Proposed' },
+  cancelled: { color: 'grey', label: 'Cancelled' },
 }
 
 export const demoStatusMap: StatusMap = {
@@ -92,11 +110,23 @@ export const demoCategoryMap: StatusMap = {
   ignored: { color: 'grey', label: 'Ignored', icon: 'mdi-eye-off' },
 }
 
+/**
+ * Keys mirror `DisputeStatus` (portal-domain/src/entities/dispute.rs:151) and
+ * the `disputes_check_status` CHECK (api/migrations/0039_disputes.sql:43):
+ * `pending` / `under_review` / `resolved` / `cancelled`.
+ *
+ * `pending` and `cancelled` were missing, so the two most common dispute states
+ * rendered as the raw enum in the admin disputes table and detail modal — while
+ * `open` / `assigned` / `closed` below are values the backend cannot emit.
+ */
 export const disputeStatusMap: StatusMap = {
-  open: { color: 'error', label: 'Open', icon: 'mdi-alert-circle' },
-  assigned: { color: 'warning', label: 'Assigned', icon: 'mdi-account-check' },
+  pending: { color: 'error', label: 'Pending', icon: 'mdi-alert-circle' },
   under_review: { color: 'info', label: 'Under Review', icon: 'mdi-magnify' },
   resolved: { color: 'success', label: 'Resolved', icon: 'mdi-check-circle' },
+  cancelled: { color: 'grey', label: 'Cancelled', icon: 'mdi-close-circle' },
+  // Legacy keys, unreachable from the backend. Kept as harmless aliases.
+  open: { color: 'error', label: 'Open', icon: 'mdi-alert-circle' },
+  assigned: { color: 'warning', label: 'Assigned', icon: 'mdi-account-check' },
   closed: { color: 'grey', label: 'Closed', icon: 'mdi-close-circle' },
 }
 
@@ -124,6 +154,13 @@ export const leagueRoleMap: StatusMap = {
   member: { color: 'grey', label: 'Member' },
 }
 
+/**
+ * Shared across three different backend status columns, so it is the union of
+ * all of them: `league_teams` (`active`/`inactive`/`disbanded`),
+ * `league_team_members` (`active`/`inactive`/`left`/`removed`), `teams`
+ * (`active`/`inactive`/`disbanded`/`suspended`) and legacy `team_members`
+ * (`active`/`inactive`/`benched`/`trial`).
+ */
 export const teamStatusMap: StatusMap = {
   active: { color: 'success', label: 'Active' },
   inactive: { color: 'grey', label: 'Inactive' },
@@ -131,6 +168,10 @@ export const teamStatusMap: StatusMap = {
   disbanded: { color: 'error', label: 'Disbanded' },
   left: { color: 'error', label: 'Left' },
   suspended: { color: 'error', label: 'Suspended' },
+  // Real backend values that were missing and rendered as the raw enum.
+  removed: { color: 'error', label: 'Removed' },
+  benched: { color: 'grey', label: 'Benched' },
+  trial: { color: 'info', label: 'Trial' },
 }
 
 export const teamInvitationStatusMap: StatusMap = {
@@ -141,13 +182,27 @@ export const teamInvitationStatusMap: StatusMap = {
   expired: { color: 'grey', label: 'Expired' },
 }
 
+/**
+ * Keys mirror `SeasonStatus` (portal-core/src/types/league_team.rs:12) and the
+ * `league_seasons_check_status` CHECK
+ * (api/migrations/0025_league_teams_and_seasons.sql:61):
+ * `draft` / `registration` / `active` / `playoffs` / `completed` / `cancelled`.
+ *
+ * `registration`, `active` and `playoffs` were missing, so every non-draft
+ * season rendered as the raw enum; `registration_open` / `registration_closed` /
+ * `in_progress` below are values the backend cannot emit.
+ */
 export const seasonStatusMap: StatusMap = {
   draft: { color: 'grey', label: 'Draft' },
+  registration: { color: 'info', label: 'Registration Open' },
+  active: { color: 'primary', label: 'Active' },
+  playoffs: { color: 'deep-purple', label: 'Playoffs' },
+  completed: { color: 'success', label: 'Completed' },
+  cancelled: { color: 'error', label: 'Cancelled' },
+  // Legacy keys, unreachable from the backend. Kept as harmless aliases.
   registration_open: { color: 'info', label: 'Registration Open' },
   registration_closed: { color: 'warning', label: 'Registration Closed' },
   in_progress: { color: 'primary', label: 'In Progress' },
-  completed: { color: 'success', label: 'Completed' },
-  cancelled: { color: 'error', label: 'Cancelled' },
 }
 
 export const banTypeMap: StatusMap = {

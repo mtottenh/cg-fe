@@ -28,7 +28,7 @@
           </v-btn>
         </v-btn-group>
         <v-chip v-else size="small" variant="tonal" color="grey">
-          Waiting for picker to select side...
+          {{ waitingLabel(action) }}
         </v-chip>
       </div>
     </v-card-text>
@@ -66,10 +66,39 @@ function gameLabel(action: VetoActionResponse): string {
   return gameNumber ? ` (Game ${gameNumber})` : ''
 }
 
-// In picker_choice mode, the picker selects the side
+/**
+ * In `picker_choice` mode the OPPONENT of the team that picked the map chooses
+ * the side (standard CS convention).
+ *
+ * `userRegistrationId` is non-null only for a participant of THIS match
+ * (`useMatchContext`), so "not the picker" is exactly "the opponent" here —
+ * spectators are filtered out by the null guard.
+ *
+ * This used to compare with `===` (offering the buttons to the picker), which
+ * the API rejects with 403 — `VetoService::select_side` authorizes only the
+ * opponent (api/crates/portal-domain/src/services/tournament/veto.rs:507-512,
+ * and the handler resolves the opponent before authorizing,
+ * api/crates/portal-api/src/handlers/veto.rs:452-465). The result was that side
+ * selection was unreachable: the only client with a control got a 403 and the
+ * only accepted client had no control. See COVERAGE-PLAN.md §9b P-7.
+ */
 function canSelectSide(action: VetoActionResponse): boolean {
   if (!props.userRegistrationId || !action.performed_by_registration_id) return false
-  return action.performed_by_registration_id === props.userRegistrationId
+  return action.performed_by_registration_id !== props.userRegistrationId
+}
+
+/**
+ * Shown to whoever is NOT choosing: the picker (whose opponent decides) and
+ * spectators. The old copy ("Waiting for picker to select side...") named the
+ * wrong party once `canSelectSide` was corrected.
+ */
+function waitingLabel(action: VetoActionResponse): string {
+  const isPicker =
+    !!props.userRegistrationId &&
+    action.performed_by_registration_id === props.userRegistrationId
+  return isPicker
+    ? 'Waiting for your opponent to select a side...'
+    : 'Waiting for the opponent to select a side...'
 }
 
 async function selectSide(actionNumber: number, side: string) {

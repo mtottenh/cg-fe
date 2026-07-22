@@ -83,10 +83,12 @@ test.describe('Tournament Registration Approval + Bracket Seeding', () => {
       const resp = await approveResponse
       expect(resp.ok()).toBe(true)
 
-      // Row status chip MUST flip to approved. Actions become Disqualify only
-      // (no check-in button because check_in_required=false).
+      // Row status chip MUST flip to the "Approved" LABEL — exact:true so a
+      // regression to the raw `approved` enum fails here (the table used to
+      // print the enum: COVERAGE-PLAN.md §9b P-10). Actions become Disqualify
+      // only (no check-in button because check_in_required=false).
       await expect(
-        registrationRow(page, player.participantName).getByText('approved'),
+        registrationRow(page, player.participantName).getByText('Approved', { exact: true }),
       ).toBeVisible({ timeout: 5_000 })
     }
 

@@ -45,50 +45,12 @@ jobs:
       - name: Lint
         run: cd web && npm run lint
 
-  # Backend tests
-  backend-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  # NOTE: the backend (mtottenh/cg) is tested by its OWN repo CI (clippy, fmt,
+  # full test suite) and exercised end-to-end by e2e.yml here. This workflow
+  # deliberately covers only the frontend to avoid duplicating that — and the
+  # fragile cross-repo checkout it required.
 
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: portal_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: api -> target
-
-      - name: Run Clippy
-        run: cd api && cargo clippy -- -D warnings
-        env:
-          SQLX_OFFLINE: true
-
-      - name: Run tests
-        run: cd api && cargo test
-        env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:5432/portal_test
-          RUST_BACKTRACE: 1
-
-  # Build check
+  # Build check (frontend)
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -112,17 +74,3 @@ jobs:
         run: cd web && npm run build
         env:
           VITE_API_URL: http://localhost:3000
-
-      # Backend build
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: api -> target
-
-      - name: Build backend
-        run: cd api && cargo build --release
-        env:
-          SQLX_OFFLINE: true

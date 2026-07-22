@@ -79,7 +79,11 @@ jobs:
 
       - name: Start API server (migrations run on boot)
         run: |
+          # Release builds (the deb) require PORTAL_CORS_ORIGINS to be set —
+          # debug builds default it, which is why the from-source e2e never
+          # needed it. "*" is fine for an ephemeral CI run (bearer-token auth).
           JWT_SECRET=e2e-ci-jwt-secret-that-is-long-enough-123 \
+          PORTAL_CORS_ORIGINS='*' \
           PORTAL_AUTH_RATE_BURST=10000 \
           PORTAL_AUTH_RATE_PER_SECOND=1000 \
           "$API_BIN" > /tmp/api.log 2>&1 &

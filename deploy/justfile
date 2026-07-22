@@ -44,7 +44,7 @@ deploy VERSION:
     set -euo pipefail
     tmp=$(mktemp -d)
     echo "→ downloading portal-api + portal-scanner {{VERSION}} → $tmp"
-    gh release download {{VERSION}} --repo community-gaming/gaming-portal \
+    gh release download {{VERSION}} --repo mtottenh/cg \
         --pattern 'portal-api_*_amd64.deb' \
         --pattern 'portal-scanner_*_amd64.deb' \
         --dir "$tmp"

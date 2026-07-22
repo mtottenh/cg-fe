@@ -127,6 +127,19 @@ tournament-team 5), independently confirming §2.
 
 ---
 
+## 4b. CI blockers found mid-campaign (fix before the next CI run)
+
+- [ ] **`e2e/global-setup.ts:233` finds the test league by scanning only page 1 of
+      `/v1/leagues`** (no query params ⇒ 20 rows). The DB now holds 22 leagues, so on a fresh
+      run `e2e-test-league` may not be on page 1; setup then tries to re-create it and 409s,
+      failing every spec. **This is P-28's root cause inside the test harness** — the same
+      "only sees the first page" defect. Fix: query by slug / `per_page`, not page 1. Owner: me
+      (deferred until the admin-surface agent commits — `global-setup.ts` is a §11 contended file).
+- [ ] **Leftover temp file `web/playwright.noseed.tmp.config.ts`** — created by the player-facing
+      agent to work around the above; believed removed, still on disk. Delete.
+
+---
+
 ## 5. Phase 1 — P0: the critical holes
 
 Highest risk-per-effort. These are the flows a real user hits first.

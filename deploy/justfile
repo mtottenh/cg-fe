@@ -58,9 +58,27 @@ deploy VERSION:
 
 # Build the SPA locally (npm ci && npm run build, same-origin VITE_API_URL)
 # and ship web/dist to /var/www/portal. See roles/portal_web.
+# For dev iteration; prefer `deploy-web-release` for reproducible prod deploys.
 deploy-web:
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
         --ask-vault-pass --tags portal_web
+
+# Ship a released SPA bundle: download the vite build from the cg-fe release
+# (produced by .github/workflows/release-web.yml) and unpack it to the docroot
+# — no local npm build, reproducible artifact.
+#
+# Usage: just deploy-web-release v0.1.0
+deploy-web-release VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    echo "→ downloading web-dist {{VERSION}} from mtottenh/cg-fe → $tmp"
+    gh release download {{VERSION}} --repo mtottenh/cg-fe \
+        --pattern 'web-dist.tar.gz' --dir "$tmp"
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
+        --ask-vault-pass --tags portal_web \
+        -e portal_web_dist_tarball="$tmp/web-dist.tar.gz"
+    rm -rf "$tmp"
 
 # Install/refresh the demo-stats service from a locally built deb
 # (built in the sibling demo-stats-service repo).

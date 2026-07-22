@@ -356,6 +356,10 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
+**Wave 3 status:** 13 found · 1 fixed (P-4) · 4 product decisions taken (P-2, P-5, P-9, P-12).
+Three of these — **P-4, P-10, P-11** — are the *same defect*: a hand-rolled comparison against a
+status string that drifted from the backend. Fix them as one sweep, not three point fixes.
+
 **This is a primary deliverable, not a side-effect.** Writing a test that genuinely drives
 the UI forces you to answer "what *should* happen here?" — and that keeps surfacing places
 where the frontend or API is missing/broken. These are **product bugs, not test gaps**.
@@ -390,9 +394,8 @@ Each entry below was independently re-verified (not taken on the agent's word).
   (`portal-db/src/adapters/tournament/registration.rs:176–200`) never sets `status`, so the DB
   default `'pending'` (`migrations/0030_create_tournaments.sql`) always wins.
 - **Found by:** §5.2 — the agent had to determine the true post-registration state to assert on.
-- [ ] Decide: wire it into the registration path (if Open should auto-approve), **or** delete
-      the function and its docstring (if manual approval is intended). Today the code claims
-      one behaviour and ships the other.
+- [ ] **DECIDED: Open tournaments SHOULD auto-approve.** Wire `initial_status_for_tournament`
+      into the registration path so `registration_type: Open` yields `Approved`. (Wave 3)
 
 ### P-4 — Public tournament page shows the RAW status (`registration`) instead of "Registration Open"  ⚠️ user-facing
 - **Symptom:** the status badge on the public tournament detail page — the most-visited page in
@@ -427,8 +430,9 @@ Each entry below was independently re-verified (not taken on the agent's word).
     correctly excluding self (`existing.id != player_id`) — so this is not a "can't save my own
     name" bug; it's that the duplicate was allowed to exist at signup.
 - **Found by:** §5.3 — the bio test hit a real 409 in the live run.
-- [ ] Decide the intended rule and make all three layers agree: enforce at registration (+ add the
-      DB constraint), or drop the check on update.
+- [ ] **DECIDED: display names SHOULD be unique.** Enforce at registration AND add the missing
+      `UNIQUE` constraint on `players.display_name`, so all three layers agree. Needs a migration
+      plus a plan for any existing duplicates. (Wave 3)
 
 ### P-6 — SUSPECTED: result history doesn't refresh in-page after a dispute
 - **Symptom:** after disputing through the UI, the Result History timeline still shows
@@ -491,8 +495,8 @@ Each entry below was independently re-verified (not taken on the agent's word).
 - **Root cause:** no cancel endpoint is exposed (`routes/tournaments.rs:148-164`);
   `ProposalStatus::Cancelled` is only ever set by `admin_schedule`
   (`services/tournament/scheduling.rs:344-353`). A missing capability rather than a broken one.
-- [ ] Decide whether players should be able to withdraw a pending proposal; if so, expose the
-      endpoint and a control on `ProposalCard`.
+- [ ] **DECIDED: proposers SHOULD be able to withdraw.** A real product/API gap: add the cancel
+      endpoint and a control on `ProposalCard`. (Wave 3 — API first, then UI)
 
 ### P-10 — Admin registrations table prints the raw status enum
 - **Symptom:** organisers see `checked_in`, `no_show`, `disqualified` in the admin registrations
@@ -528,7 +532,8 @@ Each entry below was independently re-verified (not taken on the agent's word).
   open their profile; there is no "invite" affordance on your own team.
 - **This invalidated a plan assumption:** §6.1's "captain invites through `LeagueTeamInviteModal`"
   is not achievable as written. Both real surfaces were covered instead of pretending it exists.
-- [ ] Decide: add an "Invite Player" button to `TeamDetailPage`, or accept the profile-page flow.
+- [ ] **DECIDED: captains SHOULD be able to invite.** Add a captain-facing invite entry point on
+      `TeamDetailPage` (today the modal is admin-only). (Wave 3)
 
 ### P-13 — `TeamEditPage` renders a blank editable form to non-owners
 - **Symptom:** a non-owner sees the full edit form with empty fields next to "Only the team owner

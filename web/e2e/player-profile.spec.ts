@@ -1,6 +1,12 @@
 import { test, expect, type Page } from '@playwright/test'
-import { loginAsAdmin, register } from './fixtures/auth.fixture'
-import { testUsers } from './fixtures/test-data'
+import { loginAsAdmin, register, getAdminToken } from './fixtures/auth.fixture'
+import { testUsers, uniqueId, CS2_MAP_POOL } from './fixtures/test-data'
+import {
+  createCheckInScenario,
+  getMatch,
+  primeAuthStorage,
+  type CheckInScenario,
+} from './fixtures/checkin.fixture'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -50,6 +56,210 @@ async function fetchMyWindows(token: string): Promise<AvailabilityWindow[]> {
   }
   return (await response.json()).data
 }
+
+/**
+ * A live (`in_progress`) tournament pinned to the top of the live list.
+ *
+ * The home page's "Upcoming Matches" widget reads
+ * `GET /v1/tournaments?status=in_progress&per_page=5` and looks no further
+ * (HomePage.vue:fetchUpcomingMatches). The backend orders that list
+ * `starts_at DESC NULLS LAST, created_at DESC`
+ * (api/crates/portal-db/src/adapters/tournament/tournament.rs:344) and every
+ * other fixture leaves `starts_at` null, so pinning ours a year out guarantees
+ * it is the first of the five the widget inspects. Without that, a tournament
+ * created by a parallel worker could push ours out of the window and the test
+ * would fail for a reason that has nothing to do with what it asserts.
+ */
+async function createLiveTournamentSortedFirst(
+  adminToken: string,
+): Promise<{ tournamentId: string; name: string }> {
+  const gamesResponse = await fetch(`${API_URL}/v1/games`)
+  if (!gamesResponse.ok) {
+    throw new Error(`GET /v1/games failed (${gamesResponse.status})`)
+  }
+  const games = (await gamesResponse.json()).data as Array<{ id: string }>
+  expect(games.length, 'the environment must expose at least one game').toBeGreaterThan(0)
+
+  const suffix = uniqueId()
+  const name = `E2E Home Widget Tournament ${suffix}`
+  const now = Date.now()
+
+  const createResponse = await fetch(`${API_URL}/v1/tournaments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({
+      name,
+      slug: `e2e-home-widget-${suffix}`,
+      game_id: games[0].id,
+      format: 'single_elimination',
+      map_pool: CS2_MAP_POOL,
+      participant_type: 'individual',
+      min_participants: 2,
+      max_participants: 4,
+      check_in_required: true,
+      check_in_start: new Date(now - 60 * 60 * 1000).toISOString(),
+      check_in_end: new Date(now + 60 * 60 * 1000).toISOString(),
+      starts_at: new Date(now + 365 * 24 * 60 * 60 * 1000).toISOString(),
+    }),
+  })
+  if (!createResponse.ok) {
+    throw new Error(
+      `POST /v1/tournaments failed (${createResponse.status}): ${await createResponse.text()}`
+    )
+  }
+  const tournamentId = (await createResponse.json()).data.id as string
+
+  for (const step of ['publish', 'open-registration']) {
+    const response = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/${step}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    if (!response.ok) {
+      throw new Error(`POST /v1/tournaments/{id}/${step} failed (${response.status})`)
+    }
+  }
+
+  return { tournamentId, name }
+}
+
+/** Admin override of a match's status (the fixture's own escape hatch). */
+async function transitionMatch(
+  adminToken: string,
+  tournamentId: string,
+  matchId: string,
+  toStatus: string,
+): Promise<void> {
+  const response = await fetch(
+    `${API_URL}/v1/admin/tournaments/${tournamentId}/matches/${matchId}/transition`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({
+        to_status: toStatus,
+        override_reason: `E2E: drive the match to ${toStatus}`,
+      }),
+    }
+  )
+  if (!response.ok) {
+    throw new Error(
+      `Admin transition to ${toStatus} failed (${response.status}): ${await response.text()}`
+    )
+  }
+}
+
+/**
+ * Two registered players in a fresh live tournament, with their match driven to
+ * `toStatus`. Returns the scenario plus the tournament name, which is what the
+ * home-page list item is keyed on.
+ */
+async function liveMatchInStatus(
+  adminToken: string,
+  toStatus: string,
+): Promise<{ scenario: CheckInScenario; tournamentName: string }> {
+  const { tournamentId, name } = await createLiveTournamentSortedFirst(adminToken)
+  const scenario = await createCheckInScenario(undefined, adminToken, {
+    tournamentId,
+    checkInRequired: true,
+  })
+
+  await transitionMatch(adminToken, tournamentId, scenario.matchId, toStatus)
+
+  const match = await getMatch(undefined, adminToken, tournamentId, scenario.matchId)
+  expect(match.status, `the match must actually be in ${toStatus} before the UI is asked`).toBe(
+    toStatus
+  )
+
+  return { scenario, tournamentName: name }
+}
+
+/**
+ * P-20 — the home page's "Upcoming Matches" widget filtered on a hand-written
+ * status list that contained `scheduling` (never a backend status) and omitted
+ * `ready`, `pick_ban` and `awaiting_result`. A player whose match was in map
+ * veto, or waiting on them to report a score, saw "No upcoming matches" — the
+ * widget went blank exactly when there was something to do. See
+ * COVERAGE-PLAN.md §9b P-20.
+ *
+ * These tests assert PRESENCE first (the functional bug) and the rendered
+ * label second (the raw-enum leak).
+ */
+test.describe('Home page — Upcoming Matches', () => {
+  test('shows a participant their match while it is in map veto', async ({ page }) => {
+    const adminToken = await getAdminToken()
+    const { scenario, tournamentName } = await liveMatchInStatus(adminToken, 'pick_ban')
+
+    await primeAuthStorage(page, scenario.p1.token, scenario.p1.userId)
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+
+    const widget = page.locator('.v-card').filter({ hasText: 'Upcoming Matches' }).first()
+    await expect(widget).toBeVisible()
+
+    const row = widget.locator('.v-list-item').filter({ hasText: tournamentName })
+    await expect(row).toBeVisible({ timeout: 10000 })
+    await expect(row).toContainText(scenario.p1.username)
+    await expect(row).toContainText('Pick/Ban')
+    await expect(row).not.toContainText('pick_ban')
+  })
+
+  test('shows a participant their match while it is awaiting a result', async ({ page }) => {
+    const adminToken = await getAdminToken()
+    const { scenario, tournamentName } = await liveMatchInStatus(adminToken, 'in_progress')
+    await transitionMatch(adminToken, scenario.tournamentId, scenario.matchId, 'awaiting_result')
+
+    await primeAuthStorage(page, scenario.p2.token, scenario.p2.userId)
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+
+    const widget = page.locator('.v-card').filter({ hasText: 'Upcoming Matches' }).first()
+    const row = widget.locator('.v-list-item').filter({ hasText: tournamentName })
+    await expect(row).toBeVisible({ timeout: 10000 })
+    await expect(row).toContainText('Awaiting Result')
+    await expect(row).not.toContainText('awaiting_result')
+  })
+
+  test('drops a match from the widget once it is completed', async ({ page }) => {
+    const adminToken = await getAdminToken()
+    const { scenario, tournamentName } = await liveMatchInStatus(adminToken, 'in_progress')
+
+    await primeAuthStorage(page, scenario.p1.token, scenario.p1.userId)
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+
+    const widget = page.locator('.v-card').filter({ hasText: 'Upcoming Matches' }).first()
+    await expect(widget.locator('.v-list-item').filter({ hasText: tournamentName })).toBeVisible({
+      timeout: 10000,
+    })
+
+    // Terminal states must NOT be treated as upcoming — the derived active list
+    // has to exclude them, not just include everything in the shared map.
+    await transitionMatch(adminToken, scenario.tournamentId, scenario.matchId, 'awaiting_result')
+    await transitionMatch(adminToken, scenario.tournamentId, scenario.matchId, 'completed')
+
+    await page.reload()
+    await page.waitForLoadState('networkidle')
+    await expect(widget.locator('.v-list-item').filter({ hasText: tournamentName })).toHaveCount(0)
+  })
+})
+
+/*
+ * NO TEST for the profile's "Recent Matches" card (MatchHistoryList.vue), which
+ * printed `match.status` verbatim and is fixed in this change.
+ *
+ * The card CANNOT be populated: `GET /v1/users/me/matches` returns 500 for every
+ * caller — "for SELECT DISTINCT, ORDER BY expressions must appear in select
+ * list". `list_by_player`
+ * (api/crates/portal-db/src/adapters/tournament/match_.rs:807-837) does
+ * `SELECT DISTINCT tm.*` and then orders by a `CASE tm.status::text … END`
+ * expression that is not in the select list, which Postgres rejects outright.
+ * Reproduced against a live stack with both an admin and a participant token.
+ * `stores/players.ts:fetchMyMatches` swallows the failure into an action-state
+ * error the card never reads, so the UI just says "No matches yet".
+ *
+ * Recorded as a product finding rather than tested around — a test written
+ * against the current behaviour would assert the empty state and certify the
+ * bug. See COVERAGE-PLAN.md §9b.
+ */
 
 test.describe('Player Profile', () => {
   test.describe('Profile Viewing', () => {

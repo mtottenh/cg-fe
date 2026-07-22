@@ -38,7 +38,7 @@
 
         <v-list-item-subtitle>
           <v-chip size="x-small" :color="statusColor(match.status)" variant="tonal" class="mr-1">
-            {{ match.status }}
+            {{ statusLabel(match.status) }}
           </v-chip>
           <span class="text-caption">{{ formatDate(match.scheduled_at || match.created_at) }}</span>
         </v-list-item-subtitle>
@@ -60,6 +60,7 @@
 import { onMounted, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { usePlayersStore } from '@/stores/players'
+import { matchStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import type { components } from '@/api/types'
 
 type MatchResponse = components['schemas']['TournamentMatchResponse']
@@ -87,14 +88,16 @@ function resultIcon(match: MatchResponse): string {
   return 'mdi-clock'
 }
 
+// The chip used to render the RAW status (`awaiting_result`, `pick_ban`, …) to
+// the player, with a hand-rolled colour switch that only knew four of the
+// eleven backend statuses. Both now come from the shared map, which mirrors
+// `TournamentMatchStatus`. See COVERAGE-PLAN.md §9c.
 function statusColor(status: string): string {
-  switch (status) {
-    case 'completed': return 'success'
-    case 'in_progress': return 'primary'
-    case 'scheduled': return 'info'
-    case 'cancelled': return 'error'
-    default: return 'grey'
-  }
+  return getStatusColor(matchStatusMap, status)
+}
+
+function statusLabel(status: string): string {
+  return getStatusLabel(matchStatusMap, status)
 }
 
 function formatDate(dateStr: string | null | undefined): string {

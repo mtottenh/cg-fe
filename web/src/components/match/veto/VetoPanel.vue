@@ -34,9 +34,14 @@
       </template>
 
       <template v-else>
+      <!-- Cancelled session: nobody is on the clock and nothing is clickable. -->
+      <v-alert v-if="phase === 'cancelled'" type="error" variant="tonal" density="compact" class="mb-4">
+        <strong>Veto cancelled.</strong> This map veto session was cancelled — no further picks or bans can be made.
+      </v-alert>
+
       <!-- Turn indicator -->
       <v-alert
-        v-if="phase !== 'completed' && phase !== 'waiting'"
+        v-if="phase !== 'completed' && phase !== 'waiting' && phase !== 'cancelled'"
         :type="isMyTurn ? 'info' : 'warning'"
         variant="tonal"
         density="compact"
@@ -77,7 +82,7 @@
 
       <!-- Side Selection (only in picker_choice mode during active phases) -->
       <VetoSideSelect
-        v-if="sideSelectionMode === 'picker_choice' && mapsNeedingSideSelect.length > 0 && phase !== 'completed' && phase !== 'waiting' && phase !== 'coin_flip'"
+        v-if="sideSelectionMode === 'picker_choice' && mapsNeedingSideSelect.length > 0 && phase !== 'completed' && phase !== 'waiting' && phase !== 'coin_flip' && phase !== 'cancelled'"
         :match-id="matchId"
         :actions-needing-side="mapsNeedingSideSelect"
         :user-registration-id="userRegistrationId"
@@ -159,6 +164,7 @@ const phaseColor = computed(() => {
     picking: 'success',
     side_select: 'info',
     completed: 'success',
+    cancelled: 'error',
   }
   return colors[phase.value]
 })
@@ -171,6 +177,7 @@ const phaseLabel = computed(() => {
     picking: 'Picking',
     side_select: 'Side Select',
     completed: 'Complete',
+    cancelled: 'Cancelled',
   }
   return labels[phase.value]
 })

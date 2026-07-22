@@ -62,8 +62,8 @@
                 <v-chip size="x-small" variant="tonal">{{ ev.evidence_type }}</v-chip>
               </td>
               <td v-if="detailed">
-                <v-chip size="x-small" :color="ev.status === 'active' ? 'success' : 'grey'" variant="tonal">
-                  {{ ev.status }}
+                <v-chip size="x-small" :color="evidenceStatusColor(ev.status)" variant="tonal">
+                  {{ evidenceStatusLabel(ev.status) }}
                 </v-chip>
               </td>
               <td>
@@ -104,6 +104,7 @@ import { ref, computed } from 'vue'
 import type { DemoMatchLinkWithDemoResponse, EvidenceSummaryResponse } from '@/stores/evidence'
 import { useEvidenceStore } from '@/stores/evidence'
 import { formatDateTime } from '@/utils/formatters'
+import { evidenceStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 const props = withDefaults(
   defineProps<{
@@ -132,6 +133,18 @@ const evidenceStore = useEvidenceStore()
 const accessLoading = ref<string | null>(null)
 
 const titleClass = computed(() => props.detailed ? 'text-subtitle-1' : 'text-subtitle-2')
+
+// The status cell rendered the RAW value (`quarantined`, `pending`, …) with a
+// binary active/not-active colour. `evidenceStatusMap` mirrors the
+// `match_evidence_check_status` CHECK
+// (api/migrations/0060_evidence_pending_status.sql). See COVERAGE-PLAN.md §9c.
+function evidenceStatusColor(status: string): string {
+  return getStatusColor(evidenceStatusMap, status)
+}
+
+function evidenceStatusLabel(status: string): string {
+  return getStatusLabel(evidenceStatusMap, status)
+}
 
 async function viewEvidence(evidenceId: string) {
   if (!props.matchId) return

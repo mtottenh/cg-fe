@@ -64,6 +64,20 @@ const allSteps: Step[] = [
 const liveSteps = new Set(['pending', 'ready', 'pick_ban', 'in_progress', 'awaiting_result', 'completed'])
 const selfScheduledSteps = new Set(['pending', 'ready', 'scheduled', 'checking_in', 'pick_ban', 'in_progress', 'awaiting_result', 'completed'])
 
+/**
+ * Terminal outcomes other than `completed`. `forfeit` and `disputed` are real
+ * backend statuses (`TournamentMatchStatus`,
+ * api/crates/portal-core/src/types/tournament.rs:231) that appeared in NO step
+ * and in no `statusOrder` entry, so a forfeited or disputed match highlighted
+ * no current step and marked nothing complete — the whole timeline rendered
+ * greyed out. They replace the final `Completed` step, which is the slot they
+ * actually occupy in the lifecycle. See COVERAGE-PLAN.md §9c.
+ */
+const terminalOutcomeSteps: Record<string, Step> = {
+  forfeit: { status: 'forfeit', label: 'Forfeit', icon: 'mdi-flag-off' },
+  disputed: { status: 'disputed', label: 'Disputed', icon: 'mdi-alert-octagon' },
+}
+
 const steps = computed<Step[]>(() => {
   if (props.match.status === 'cancelled') {
     return [{ status: 'cancelled', label: 'Cancelled', icon: 'mdi-close-circle' }]
@@ -83,6 +97,11 @@ const steps = computed<Step[]>(() => {
     filtered = filtered.filter(s => s.status !== 'pick_ban')
   }
 
+  const outcome = terminalOutcomeSteps[props.match.status]
+  if (outcome) {
+    filtered = filtered.map(s => (s.status === 'completed' ? outcome : s))
+  }
+
   return filtered
 })
 
@@ -98,6 +117,9 @@ const statusOrder = [
 ]
 
 function getStepIndex(status: string): number {
+  // `forfeit` / `disputed` end the match where `completed` would, so they rank
+  // at the same position — everything before them is done.
+  if (status in terminalOutcomeSteps) return statusOrder.indexOf('completed')
   return statusOrder.indexOf(status)
 }
 
@@ -129,6 +151,8 @@ function getStepColor(step: Step): string {
     case 'completed':
       return 'success'
     case 'cancelled':
+    case 'forfeit':
+    case 'disputed':
       return 'error'
     default:
       return 'primary'
@@ -143,6 +167,8 @@ function getStepTimestamp(step: Step): string | null {
       case 'in_progress':
         return props.match.started_at || null
       case 'completed':
+      case 'forfeit':
+      case 'disputed':
         return props.match.completed_at || null
       default:
         return null

@@ -63,9 +63,12 @@ test.describe('League Season Lifecycle', () => {
       await expect(seasonSelect).toBeVisible()
       await seasonSelect.click()
 
+      // The chip carries the human label from `seasonStatusMap`, not the raw
+      // `registration` enum the page used to print. See COVERAGE-PLAN.md §9c.
       const option = page.getByRole('option', { name: new RegExp(scenario.seasonName) })
       await expect(option).toBeVisible()
-      await expect(option.getByText('registration', { exact: true })).toBeVisible()
+      await expect(option.getByText('Registration Open', { exact: true })).toBeVisible()
+      await expect(option.getByText('registration', { exact: true })).toHaveCount(0)
     })
   })
 
@@ -182,7 +185,7 @@ test.describe('League Season Lifecycle', () => {
       await seasonSelect.click()
       const option = page.getByRole('option', { name: new RegExp(scenario.seasonName) })
       await expect(option).toBeVisible()
-      await expect(option.getByText('active', { exact: true })).toBeVisible()
+      await expect(option.getByText('Active', { exact: true })).toBeVisible()
       await page.keyboard.press('Escape')
 
       // active → completed
@@ -193,7 +196,7 @@ test.describe('League Season Lifecycle', () => {
       await expect(seasonSelect).toBeVisible()
       await seasonSelect.click()
       await expect(option).toBeVisible()
-      await expect(option.getByText('completed', { exact: true })).toBeVisible()
+      await expect(option.getByText('Completed', { exact: true })).toBeVisible()
     })
   })
 })

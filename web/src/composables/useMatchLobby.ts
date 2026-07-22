@@ -17,7 +17,7 @@ import {
   type TimeoutWarningMessage,
 } from './useMatchLobbySocket'
 
-export type VetoPhase = 'waiting' | 'coin_flip' | 'banning' | 'picking' | 'side_select' | 'completed'
+export type VetoPhase = 'waiting' | 'coin_flip' | 'banning' | 'picking' | 'side_select' | 'completed' | 'cancelled'
 
 export function useMatchLobby(
   matchId: Ref<string | null>,
@@ -155,6 +155,11 @@ export function useMatchLobby(
     const s = session.value
     if (!s) return 'waiting'
     if (s.status === 'completed') return 'completed'
+    // `cancelled` is a real session status (veto_sessions_check_status,
+    // api/migrations/0034_veto_sessions.sql:42). It used to fall through to the
+    // `in_progress` branch below, so a cancelled session still rendered a turn
+    // indicator, a live countdown and clickable maps. See COVERAGE-PLAN.md §9c.
+    if (s.status === 'cancelled') return 'cancelled'
     if (s.status === 'pending') return 'waiting'
     if (s.status === 'coin_flip') return 'coin_flip'
     // status === 'in_progress'
@@ -247,9 +252,11 @@ export function useMatchLobby(
     }
   }
 
-  // Watch for session status changes
+  // Watch for session status changes. A cancelled session is as finished as a
+  // completed one — keeping the countdown running and the socket open left a
+  // dead session ticking down.
   watch(() => session.value?.status, (status) => {
-    if (status === 'completed') {
+    if (status === 'completed' || status === 'cancelled') {
       stopCountdown()
       socket.disconnect()
     }
@@ -257,7 +264,7 @@ export function useMatchLobby(
 
   // Watch for deadline changes to restart countdown
   watch(actionDeadline, () => {
-    if (actionDeadline.value && phase.value !== 'completed') {
+    if (actionDeadline.value && phase.value !== 'completed' && phase.value !== 'cancelled') {
       startCountdown()
     }
   })

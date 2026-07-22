@@ -1,7 +1,7 @@
 import { test, expect, type APIRequestContext } from '@playwright/test'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { getAdminToken } from './fixtures/auth.fixture'
+import { getAdminToken, loginAsAdmin } from './fixtures/auth.fixture'
 import {
   createCheckInScenario,
   checkInViaApi,
@@ -131,6 +131,48 @@ test.describe('Match Evidence', () => {
     const evidence = await listEvidence(request, scenario.p1.token, scenario.matchId)
     expect(evidence.length).toBe(1)
     expect(evidence[0].evidence_type).toBe('screenshot')
+  })
+
+  test('the evidence status column shows a label, not the raw enum', async ({ request, page }) => {
+    const adminToken = await getAdminToken()
+    const scenario = await setupInProgressMatch(request, adminToken)
+
+    // Seed the record via the API — the UI path for creating it is covered by
+    // the first test; what is under test here is how its STATUS renders.
+    const created = await request.post(
+      `${API_URL}/v1/matches/${scenario.matchId}/evidence/link`,
+      {
+        headers: { Authorization: `Bearer ${scenario.p1.token}` },
+        data: {
+          evidence_type: 'link',
+          url: 'https://youtube.com/watch?v=e2e-status-chip',
+          name: 'Status Chip VOD',
+        },
+      },
+    )
+    expect(created.ok()).toBe(true)
+
+    const seeded = await listEvidence(request, scenario.p1.token, scenario.matchId)
+    expect(seeded).toHaveLength(1)
+    expect(seeded[0].status, 'backend evidence lifecycle status').toBe('active')
+
+    // The Status column only renders on the detailed (admin) view.
+    await loginAsAdmin(page)
+    await page.goto(`/admin/tournaments/${scenario.tournamentId}?tab=matches`)
+    await page.waitForLoadState('networkidle')
+
+    const matchRow = page.locator('tr').filter({ hasText: scenario.p1.username })
+    await expect(matchRow).toBeVisible({ timeout: 10000 })
+    await matchRow.getByRole('button', { name: 'View match details' }).click()
+
+    const dialog = page.locator('.v-overlay--active').filter({ hasText: 'Match Detail' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('tab', { name: 'Evidence' }).click()
+
+    const evidenceRow = dialog.locator('tr').filter({ hasText: 'Status Chip VOD' })
+    await expect(evidenceRow).toBeVisible({ timeout: 10000 })
+    await expect(evidenceRow.getByText('Active', { exact: true })).toBeVisible()
+    await expect(evidenceRow.getByText('active', { exact: true })).toHaveCount(0)
   })
 
   test('non-participant does not get the evidence panel', async ({ request, page }) => {

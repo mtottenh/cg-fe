@@ -151,7 +151,7 @@
               <v-list-item v-bind="props">
                 <template v-slot:append>
                   <v-chip size="x-small" :color="getSeasonStatusColor(item.raw.status)" variant="tonal">
-                    {{ item.raw.status }}
+                    {{ getSeasonStatusLabel(item.raw.status) }}
                   </v-chip>
                 </template>
               </v-list-item>
@@ -575,6 +575,10 @@ function handleLeaveLeague() {
 }
 
 const getSeasonStatusColor = (status: string) => getStatusColor(seasonStatusMap, status)
+// The chip printed the RAW season status (`registration`, `playoffs`, …) to
+// visitors — `getStatusLabel` was imported for the access-type chip but never
+// applied here. See COVERAGE-PLAN.md §9c.
+const getSeasonStatusLabel = (status: string) => getStatusLabel(seasonStatusMap, status)
 
 // Season is URL-addressable (?season=<id>) — a shared league link opens on
 // the same season the sender was viewing.

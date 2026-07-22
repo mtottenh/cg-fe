@@ -320,6 +320,7 @@ import { unwrapApi } from '@/stores/helpers'
 import type { components } from '@/api/types'
 import CaptainActionsWidget from '@/components/CaptainActionsWidget.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
+import { matchStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 type TournamentMatchResponse = components['schemas']['TournamentMatchResponse']
 type TournamentRegistrationResponse = components['schemas']['TournamentRegistrationResponse']
@@ -341,15 +342,24 @@ const loadingMatches = ref(false)
 const showLoginPrompt = ref(false)
 const upcomingMatches = ref<UpcomingMatch[]>([])
 
-const ACTIVE_MATCH_STATUSES = ['pending', 'scheduling', 'scheduled', 'checking_in', 'in_progress']
+/**
+ * Match statuses that mean the match is OVER — nothing left for the player to
+ * do on it. Everything else in `matchStatusMap` is, by definition, a state the
+ * player may still need to act on, so the active list is derived rather than
+ * hand-maintained.
+ *
+ * The previous hand-written list carried `scheduling` (never a backend status)
+ * and omitted `ready`, `pick_ban` and `awaiting_result` — so a match sitting in
+ * map veto, or waiting on the player to submit a result, was hidden from
+ * "Upcoming Matches" exactly when the player needed to act. See
+ * COVERAGE-PLAN.md §9b P-20. Keys mirror `TournamentMatchStatus`
+ * (api/crates/portal-core/src/types/tournament.rs:231).
+ */
+const TERMINAL_MATCH_STATUSES = new Set(['completed', 'cancelled', 'forfeit', 'disputed'])
 
-const matchStatusMap: Record<string, { color: string; label: string }> = {
-  pending: { color: 'grey', label: 'Pending' },
-  scheduling: { color: 'info', label: 'Scheduling' },
-  scheduled: { color: 'warning', label: 'Scheduled' },
-  checking_in: { color: 'orange', label: 'Check-in' },
-  in_progress: { color: 'primary', label: 'Live' },
-}
+const ACTIVE_MATCH_STATUSES = Object.keys(matchStatusMap).filter(
+  s => !TERMINAL_MATCH_STATUSES.has(s)
+)
 
 const activeGames = computed(() => gamesStore.games.filter(g => g.status === 'active'))
 const { myTeams, myInvitations } = storeToRefs(leagueTeamsStore)
@@ -446,11 +456,11 @@ async function fetchUpcomingMatches() {
 }
 
 function matchStatusColor(status: string): string {
-  return matchStatusMap[status]?.color ?? 'grey'
+  return getStatusColor(matchStatusMap, status)
 }
 
 function matchStatusLabel(status: string): string {
-  return matchStatusMap[status]?.label ?? status
+  return getStatusLabel(matchStatusMap, status)
 }
 
 function formatMatchTime(dateStr: string): string {

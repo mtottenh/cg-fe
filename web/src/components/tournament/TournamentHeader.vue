@@ -85,6 +85,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { tournamentPublicStatusMap, tournamentStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import type { TournamentResponse } from '@/stores/tournaments'
 import type { GameSummary } from '@/stores/games'
 
@@ -93,55 +94,25 @@ const props = defineProps<{
   game?: GameSummary
 }>()
 
-const statusColor = computed(() => {
-  switch (props.tournament.status) {
-    case 'draft':
-      return 'grey'
-    case 'published':
-      return 'info'
-    case 'registration_open':
-      return 'success'
-    case 'registration_closed':
-      return 'warning'
-    case 'check_in_open':
-      return 'primary'
-    case 'ready':
-      return 'secondary'
-    case 'in_progress':
-      return 'primary'
-    case 'completed':
-      return 'success'
-    case 'cancelled':
-      return 'error'
-    default:
-      return 'grey'
-  }
-})
-
-const statusLabel = computed(() => {
-  switch (props.tournament.status) {
-    case 'draft':
-      return 'Coming Soon'
-    case 'published':
-      return 'Announced'
-    case 'registration_open':
-      return 'Registration Open'
-    case 'registration_closed':
-      return 'Registration Closed'
-    case 'check_in_open':
-      return 'Check-in Open'
-    case 'ready':
-      return 'Starting Soon'
-    case 'in_progress':
-      return 'Live Now'
-    case 'completed':
-      return 'Completed'
-    case 'cancelled':
-      return 'Cancelled'
-    default:
-      return props.tournament.status
-  }
-})
+// Status presentation comes from utils/statusMaps.ts. This used to be two
+// hand-rolled `switch` statements whose cases had drifted from the backend enum
+// (`registration_open`, `check_in_open`, `ready` — none of which the API emits),
+// so a tournament in `registration` fell through to `default` and the RAW status
+// string was shown to users. See COVERAGE-PLAN.md §9b P-4.
+//
+// The public map keeps this page's warmer voice ("Live Now", not "In Progress").
+// Falling back to the admin map means a status we forget to add still renders a
+// real label instead of leaking the enum.
+const statusColor = computed(
+  () =>
+    tournamentPublicStatusMap[props.tournament.status]?.color ??
+    getStatusColor(tournamentStatusMap, props.tournament.status),
+)
+const statusLabel = computed(
+  () =>
+    tournamentPublicStatusMap[props.tournament.status]?.label ??
+    getStatusLabel(tournamentStatusMap, props.tournament.status),
+)
 
 const formatLabel = computed(() => {
   switch (props.tournament.format) {

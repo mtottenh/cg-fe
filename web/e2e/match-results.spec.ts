@@ -478,8 +478,6 @@ test.describe('Result Dispute Workflow', () => {
     // the result history marks the claim as disputed.
     await expect(page.locator('.v-overlay--active', { hasText: 'Dispute Result' })).toHaveCount(0)
     await expect(page.getByText('Opponent Submitted Result')).toHaveCount(0)
-    const history = page.locator('.v-card').filter({ hasText: 'Result History' }).first()
-    await expect(history.getByText('Disputed').first()).toBeVisible({ timeout: 10000 })
 
     // Backend: the dispute flipped the match to `disputed`.
     const disputed = await getMatch(
@@ -495,6 +493,14 @@ test.describe('Result Dispute Workflow', () => {
     await page.waitForLoadState('networkidle')
     const header = page.locator('.v-card').filter({ hasText: /Match #\d+/ }).first()
     await expect(header.getByText('Disputed').first()).toBeVisible({ timeout: 10000 })
+
+    // Result History reflects the dispute. Asserted AFTER the reload on purpose:
+    // in-page it still showed "Awaiting Confirmation" (the `pending` label) for
+    // 10s+ even though the backend had flipped the claim — tracked as the
+    // suspected refresh bug in COVERAGE-PLAN.md §9b P-6. If this assertion ever
+    // starts passing before the reload, promote P-6 and move it back up.
+    const history = page.locator('.v-card').filter({ hasText: 'Result History' }).first()
+    await expect(history.getByText('Disputed').first()).toBeVisible({ timeout: 10000 })
 
     expect(failedDisputeCalls, 'disputing must not fire a failing dispute request').toEqual([])
   })

@@ -39,7 +39,12 @@ export const testUsers = {
     username: uniqueUsername(),
     email: uniqueEmail(),
     password: 'TestPassword123!',
-    display_name: 'Test Player',
+    // Must be unique, like the username and email. Registration does NOT enforce
+    // display-name uniqueness, but PATCH /v1/players/me DOES (409 "already
+    // taken") — so a shared 'Test Player' made every profile-save test after the
+    // first one fail. See COVERAGE-PLAN.md §9b P-5 for the product
+    // inconsistency this exposed.
+    display_name: `Test Player ${uniqueId()}`,
   }),
 
   // Admin user - seeded by Docker entrypoint via portal-cli bootstrap

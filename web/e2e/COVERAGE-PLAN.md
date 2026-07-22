@@ -390,6 +390,55 @@ Each entry below was independently re-verified (not taken on the agent's word).
       the function and its docstring (if manual approval is intended). Today the code claims
       one behaviour and ships the other.
 
+### P-4 — Public tournament page shows the RAW status (`registration`) instead of "Registration Open"  ⚠️ user-facing
+- **Symptom:** the status badge on the public tournament detail page — the most-visited page in
+  the product — renders the raw enum, e.g. **`registration`**, to end users.
+  *Confirmed from the failure screenshot, not inferred.*
+- **Root cause:** `components/tournament/TournamentHeader.vue` hand-rolls its own
+  `statusLabel` / `statusColor` `switch` instead of using `utils/statusMaps.ts`, and its cases are
+  **stale**: it matches `registration_open`, `registration_closed`, `check_in_open`, `ready` —
+  none of which the backend emits. The real status is `registration`, so it falls through to
+  `default: return props.tournament.status` and prints the enum.
+- **Correction to the first diagnosis:** the local switch was *not* pointless duplication — it
+  carried deliberate public-facing copy ("Live Now", "Coming Soon", "Announced") distinct from
+  the admin voice ("In Progress", "Draft", "Published"). Collapsing it into `tournamentStatusMap`
+  regressed an existing, correct test (`match-results.spec.ts:178` asserts "Live Now"). The bug
+  was purely the **stale/incomplete keys plus a raw-enum fallback**, not the separate voice.
+- **Blast radius:** every status the stale switch doesn't know, including the most common public
+  state. Worth auditing other hand-rolled status switches for the same drift.
+- **Found by:** §5.2 — the new test asserted the user-visible label; the app showed an enum.
+- [x] **Fixed:** added `tournamentPublicStatusMap` to `utils/statusMaps.ts` (public voice, full
+      coverage of the real backend statuses) and `TournamentHeader` now reads it, falling back to
+      the admin map so a status we forget to add still renders a real label instead of leaking the
+      enum. Both the new assertion ("Registration Open") and the pre-existing one ("Live Now") pass.
+
+### P-5 — A display name you can register but can never keep: signup allows duplicates, profile save rejects them  ⚠️ user-facing trap
+- **Symptom:** `PATCH /v1/players/me` returns **409 "Display name '…' is already taken"**, so an
+  affected user **can never save their profile** (bio, socials, anything) until they also change
+  their display name — a name the product let them register with.
+- **Root cause — three layers disagree:**
+  - *Registration:* no display-name uniqueness check (`portal-domain/src/services/user.rs`).
+  - *Schema:* **no `UNIQUE` constraint** on `players.display_name` in any migration.
+  - *Update:* `PlayerService` **does** enforce it (`portal-domain/src/services/player.rs:174-181`),
+    correctly excluding self (`existing.id != player_id`) — so this is not a "can't save my own
+    name" bug; it's that the duplicate was allowed to exist at signup.
+- **Found by:** §5.3 — the bio test hit a real 409 in the live run.
+- [ ] Decide the intended rule and make all three layers agree: enforce at registration (+ add the
+      DB constraint), or drop the check on update.
+
+### P-6 — SUSPECTED: result history doesn't refresh in-page after a dispute
+- **Symptom:** after disputing through the UI, the Result History timeline still shows
+  **"Awaiting Confirmation"** (the `pending` label) rather than `Disputed`, for at least 10s.
+  The backend *does* flip the claim (`adapters/dispute.rs:732` —
+  `UPDATE result_claims SET status='disputed' ... WHERE status='pending'`).
+- **Contributing risk:** `composables/useMatchDetail.ts:222-228` refetches with `.catch(() => null)`
+  / `.catch(() => [])` — a failed refresh is **silently swallowed** and the stale list kept. (Same
+  swallowed-error shape as the original dispute bug.) No 4xx/5xx appeared on result endpoints in
+  the run, so the cause is not yet proven.
+- **Status:** the assertion was moved to after a reload so the test is reliable. If it passes
+  there, the in-page refresh is confirmed stale and this becomes a real bug.
+- [ ] Confirm on the next run, then fix the refresh (and stop swallowing refetch errors).
+
 ### P-3 — `checkInRequired` alone can never open check-in
 - **Symptom:** creating a tournament with `checkInRequired: true` is not sufficient for
   `is_check_in_open()` to return true — it also needs a check-in *window*, and

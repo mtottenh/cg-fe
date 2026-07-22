@@ -11,6 +11,31 @@ export const tournamentStatusMap: StatusMap = {
   cancelled: { color: 'error', label: 'Cancelled', icon: 'mdi-close-circle' },
 }
 
+/**
+ * Public-facing tournament status copy.
+ *
+ * Deliberately a SECOND map, not a duplicate to collapse into
+ * `tournamentStatusMap`: player-facing pages use a warmer voice than the admin
+ * surfaces ("Live Now" vs "In Progress", "Coming Soon" vs "Draft").
+ *
+ * It must cover EVERY backend status. `TournamentHeader` previously inlined this
+ * as a `switch` whose cases had drifted from the API (`registration_open`,
+ * `check_in_open`, `ready` — none of which the backend emits), so a tournament in
+ * `registration` fell through and the RAW enum was rendered to users.
+ * See COVERAGE-PLAN.md §9b P-4. Keep these keys in sync with
+ * `tournamentStatusMap` above.
+ */
+export const tournamentPublicStatusMap: StatusMap = {
+  draft: { color: 'grey', label: 'Coming Soon' },
+  published: { color: 'info', label: 'Announced' },
+  registration: { color: 'success', label: 'Registration Open' },
+  scheduled: { color: 'secondary', label: 'Starting Soon' },
+  in_progress: { color: 'primary', label: 'Live Now' },
+  completed: { color: 'success', label: 'Completed' },
+  finalized: { color: 'success', label: 'Finalized' },
+  cancelled: { color: 'error', label: 'Cancelled' },
+}
+
 export const matchStatusMap: StatusMap = {
   pending: { color: 'grey', label: 'Pending' },
   ready: { color: 'info', label: 'Ready' },

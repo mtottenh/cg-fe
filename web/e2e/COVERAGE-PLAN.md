@@ -356,7 +356,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Wave 3 status:** 26 found · 1 fixed (P-4) · 4 product decisions taken (P-2, P-5, P-9, P-12).
+**Wave 3 status:** 27 found · 1 fixed (P-4) · 4 product decisions taken (P-2, P-5, P-9, P-12).
 
 **This register is authoritative.** Any product bug found by this work gets a P-number *here*,
 even if it also appears in a §9c sweep list — findings parked only in a checklist get lost.
@@ -390,6 +390,7 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-24 | **Check-in has no authz — anyone can start any match** | **security** | open |
 | P-25 | Benched players credited with matches; ringer stats count | integrity | open |
 | P-26 | "Sub can't face own team" never enforced | integrity | open |
+| P-27 | `invite_only` tournaments accept anyone | trust | open |
 
 **P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
 blocked on the same missing table, and **P-15/P-18 are superseded in part** by the
@@ -739,6 +740,23 @@ tests to never leave a form dirty.
   set, and where it could be, the UI would not show it.
 - [ ] Use `rosterLockStatusMap`; fail closed (unknown ⇒ treat as locked), matching
       `src/utils/rosterLock.ts`.
+
+---
+
+### P-27 — `invite_only` tournaments accept anyone (leagues enforce it; tournaments don't)
+- **Symptom:** `register_team` (`portal-domain/src/services/tournament/service.rs:451`) and
+  `register_player` (`:505`) check only `is_registration_open()`. There is **no invite check**,
+  so an `invite_only` tournament behaves exactly like `approval`: anyone may register, an
+  organiser must approve.
+- **The inconsistency is the tell:** leagues *do* enforce it —
+  `portal-domain/src/services/league.rs:218` returns `DomainError::LeagueInviteOnly`
+  (mapped to 400 at `portal-api/src/error.rs:276`). The same concept is enforced for leagues
+  and decorative for tournaments.
+- **Impact:** an organiser running a closed/invited event gets no protection from the setting
+  that promises it — the tournament is silently public. Found while implementing P-2, which
+  touches the same `RegistrationType` match but does not change this.
+- [ ] Decide whether tournaments need a real invite list (leagues have one) or whether
+      `InviteOnly` should be removed from `RegistrationType` as a false promise.
 
 ---
 

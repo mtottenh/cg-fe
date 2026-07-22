@@ -366,7 +366,9 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Wave 3 status:** 28 found · 4 fixed (P-4, P-2, P-5, P-9 backend) · 1 decision pending UI (P-12).
+**Status:** 28 found · **6 fixed** (P-4, P-7, P-2, P-5, P-19, P-21) · P-9 API shipped, UI open ·
+1 decision pending UI (P-12) · 5 deliberately deferred to the lineup redesign (P-15, P-18, P-23,
+P-25, P-26 — see `api/docs/lineup-design.md`; do not fix these in isolation).
 
 **This register is authoritative.** Any product bug found by this work gets a P-number *here*,
 even if it also appears in a §9c sweep list — findings parked only in a checklist get lost.
@@ -395,13 +397,13 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-19 | **"Upcoming" tournaments tab always empty** | user-facing | **fixed** `c4bca02` |
 | P-20 | Home page hides `pick_ban`/`ready`/`awaiting_result` matches | user-facing | open |
 | P-21 | Tournament **list** cards print raw enum | user-facing | **fixed** `c4bca02` |
-| P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
 | P-22 | Season roster-lock column always "Open" | enforcement | open |
 | P-23 | Roster-mismatch review built but unreachable | integrity | open |
 | P-24 | **Check-in has no authz — anyone can start any match** | **security** | open |
 | P-25 | Benched players credited with matches; ringer stats count | integrity | open |
 | P-26 | "Sub can't face own team" never enforced | integrity | open |
 | P-27 | `invite_only` tournaments accept anyone | trust | open |
+| P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
 
 **P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
 blocked on the same missing table, and **P-15/P-18 are superseded in part** by the

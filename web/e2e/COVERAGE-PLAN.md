@@ -356,7 +356,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Wave 3 status:** 17 found · 1 fixed (P-4) · 4 product decisions taken (P-2, P-5, P-9, P-12).
+**Wave 3 status:** 18 found · 1 fixed (P-4) · 4 product decisions taken (P-2, P-5, P-9, P-12).
 Three of these — **P-4, P-10, P-11** — are the *same defect*: a hand-rolled comparison against a
 status string that drifted from the backend. Fix them as one sweep, not three point fixes.
 
@@ -597,8 +597,44 @@ tests to never leave a form dirty.
   member via `accept_and_add_member` directly on the repo, bypassing `add_member_authorized`.
 - So under `hard_lock` — "no roster changes" per the migration's own comment — a **substitute**
   can still be invited and seated.
-- [ ] Decide whether `hard_lock` should block substitutes too (the comment says yes), then check
-      `allows_substitute_changes()` on both paths.
+- **Reframed:** the sharp version of this is NOT "should `hard_lock` block substitutes" (a design
+  opinion) but that **two paths disagree**. `add_member_authorized` correctly checks BOTH
+  predicates; the invitation path checks only `role.is_primary()` and then seats the member
+  directly on the repo, bypassing the authorized path entirely. Whatever the policy, both paths
+  must implement it — today the same action is allowed or denied depending on which route you take.
+- The domain is explicit that `hard_lock` excludes substitutes:
+  `allows_substitute_changes()` returns `Open | SoftLock` only
+  (`portal-core/src/types/league_team.rs`). It is dead code — never called.
+- [ ] Fix: call `allows_substitute_changes()` on the invitation path (create + accept), or route
+      acceptance through `add_member_authorized` so there is one enforcement point rather than two.
+
+### P-18 — No admin or emergency override of the roster lock
+- **Symptom:** under `hard_lock`, a team that genuinely cannot field (injury, no-show, no
+  rostered substitute) has **no legitimate path** — and neither does a league admin. The lock
+  check in `add_member_authorized` (`portal-domain/src/services/league_team/team.rs:390-401`) is
+  **unconditional**; a search for any override/bypass/force path over
+  `services/league_team/` finds nothing.
+- **Why this matters:** real leagues handle "we can't field a team" with an admin exception, not
+  by weakening the lock. The schema already anticipates it — `roster_locked_by` exists as an
+  audit column — but there is no operation an admin can perform.
+- **Note this is the RIGHT fix for the "subs should be flexible" instinct**, rather than exempting
+  substitutes from `hard_lock`: exempting them reopens the ringer loophole the lock exists to
+  close (anyone could be added mid-playoffs labelled "substitute"), whereas an audited admin
+  override handles the genuine emergency without weakening the rule.
+- [ ] Decide: add an admin-only roster change that bypasses the lock and is audited
+      (actor + reason), or accept that `hard_lock` is absolute and leagues must use `soft_lock`
+      when they want flexibility.
+
+**Design context established while investigating this (worth keeping):**
+- There is **no match-lineup concept** — match participants are team *registrations*
+  (`migrations/0030_create_tournaments.sql:314-315`), so "who plays tonight" is not modelled.
+  Anyone on the roster is eligible, always.
+- Substitutes are a **pre-registered, capped bench** (`substitute` member role +
+  `league_seasons.max_substitutes`, default 2), not ad-hoc fill-ins.
+- Consequently, using an already-rostered sub in a match needs **no** roster change and is
+  unaffected by any lock. `hard_lock` only blocks changing *who is eligible*.
+- `soft_lock` already encodes "primary roster frozen, bench still movable" — so the flexible
+  behaviour is a **per-season operator choice**, not a missing feature.
 
 ### P-16 — Role changes are not lock-checked
 - `promote_to_captain` / `demote_from_captain` (`team.rs:526-600`) never consult the season lock,

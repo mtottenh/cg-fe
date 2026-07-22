@@ -366,7 +366,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 28 found · **6 fixed** (P-4, P-7, P-2, P-5, P-19, P-21) · P-9 API shipped, UI open ·
+**Status:** 29 found · **7 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20) · P-9 API shipped, UI open ·
 1 decision pending UI (P-12) · 5 deliberately deferred to the lineup redesign (P-15, P-18, P-23,
 P-25, P-26 — see `api/docs/lineup-design.md`; do not fix these in isolation).
 
@@ -395,7 +395,7 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-17 | Edit modal offers a lock value the API 400s | user-facing | open |
 | P-18 | No admin/emergency override of the lock | design gap | open |
 | P-19 | **"Upcoming" tournaments tab always empty** | user-facing | **fixed** `c4bca02` |
-| P-20 | Home page hides `pick_ban`/`ready`/`awaiting_result` matches | user-facing | open |
+| P-20 | Home page hides `pick_ban`/`ready`/`awaiting_result` matches | user-facing | **fixed** `c727267` |
 | P-21 | Tournament **list** cards print raw enum | user-facing | **fixed** `c4bca02` |
 | P-22 | Season roster-lock column always "Open" | enforcement | open |
 | P-23 | Roster-mismatch review built but unreachable | integrity | open |
@@ -404,6 +404,7 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-26 | "Sub can't face own team" never enforced | integrity | open |
 | P-27 | `invite_only` tournaments accept anyone | trust | open |
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
+| P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | open |
 
 **P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
 blocked on the same missing table, and **P-15/P-18 are superseded in part** by the
@@ -742,6 +743,7 @@ tests to never leave a form dirty.
 ---
 
 ### P-20 — Home page drops matches in three states from "your upcoming matches"  ⚠️ user-facing
+- ✅ **FIXED** in `c727267`. The active list is now *derived* from the shared `matchStatusMap` as "everything non-terminal", so a new status cannot be silently dropped again.
 - **Symptom:** `pages/HomePage.vue:344` — `ACTIVE_MATCH_STATUSES` is
   `['pending','scheduling','scheduled','checking_in','in_progress']`. `scheduling` **is not a
   real status**, and `ready`, `pick_ban` and `awaiting_result` are **missing**. The local
@@ -805,6 +807,28 @@ tests to never leave a form dirty.
   touches the same `RegistrationType` match but does not change this.
 - [ ] Decide whether tournaments need a real invite list (leagues have one) or whether
       `InviteOnly` should be removed from `RegistrationType` as a false promise.
+
+---
+
+### P-29 — `GET /v1/users/me/matches` returns HTTP 500 for every caller  ⚠️⚠️ backend, hard failure
+- **Symptom:** the endpoint 500s unconditionally — reproduced live with both admin and
+  participant tokens: `for SELECT DISTINCT, ORDER BY expressions must appear in select list`.
+- **Root cause:** `list_by_player`
+  (`api/crates/portal-db/src/adapters/tournament/match_.rs:807-837`) does `SELECT DISTINCT tm.*`
+  then `ORDER BY CASE tm.status::text WHEN … END`. Although `tm.status` is selected via `tm.*`,
+  the `CASE` **expression** is not in the select list, which Postgres rejects unconditionally
+  under `DISTINCT`. Not data-dependent — it fails on every call, empty DB or not.
+- **Why it stayed hidden:** `src/stores/players.ts:fetchMyMatches` swallows the error, so the
+  profile's "Recent Matches" card silently shows "No matches yet". Same swallowed-error family
+  as P-6.
+- **Blast radius:** the `MatchHistoryList` label fix in `c727267` is correct but **unreachable**
+  until this is fixed. Its e2e test was **dropped, not weakened** (documented at
+  `e2e/player-profile.spec.ts:246`), per §3.
+- [ ] Fix the query: the `OR` join on both participant slots can duplicate rows, so `DISTINCT`
+      is likely load-bearing — add the `CASE` ordering expression to the select list rather than
+      dropping `DISTINCT`.
+- [ ] Then restore the `MatchHistoryList` e2e test.
+- [ ] Un-swallow `fetchMyMatches` so the next such 500 is visible, not silent.
 
 ---
 
@@ -897,22 +921,22 @@ states, so the admin disputes table rendered raw enums. Those are fixed.
       `ready` … then `default: return props.tournament.status`). Arguably higher-traffic
       than the header that was fixed. `tournamentPublicStatusMap` already has the right
       public copy.
-- [ ] `components/player/MatchHistoryList.vue:41` — renders the raw status on the public
+- [x] **FIXED `c727267`** `components/player/MatchHistoryList.vue:41` — renders the raw status on the public
       player profile.
-- [ ] `pages/LeagueDetailPage.vue:154` — renders the raw season status; the file imports
+- [x] **FIXED `c727267`** `pages/LeagueDetailPage.vue:154` — renders the raw season status; the file imports
       `getStatusLabel` but never applies it. NOTE: `e2e/league-season.spec.ts:68,185`
       currently assert the raw text and must be updated with the fix.
 - [x] **FIXED `c4bca02`** — `components/tournament/TournamentMatchCard.vue:113,149` — compares `'scheduling'`
       (not a real status) and omits `ready`/`forfeit`, which fall through to the raw enum.
-- [ ] `components/match/evidence/EvidenceDisplay.vue:65-66` — raw evidence status (no map
+- [x] **FIXED `c727267`** `components/match/evidence/EvidenceDisplay.vue:65-66` — raw evidence status (no map
       exists for it yet).
 
 ### Dead conditions / behavioural gaps
 - [x] → **promoted to P-22.** **`components/admin/LeagueSeasonsPanel.vue:60,64`** — a **second instance of P-11**:
       `roster_lock_status === 'locked'`, so the Locked/Open column always reads "Open".
-- [ ] `components/match/MatchStatusTimeline.vue:48-62` — the step list omits `forfeit` and
+- [x] **FIXED `c727267`** `components/match/MatchStatusTimeline.vue:48-62` — the step list omits `forfeit` and
       `disputed`, so such a match highlights no current step.
-- [ ] `composables/useMatchLobby.ts:154-165` — a `cancelled` veto session is treated as
+- [x] **FIXED `c727267`** `composables/useMatchLobby.ts:154-165` — a `cancelled` veto session is treated as
       in-progress.
 - [ ] `components/admin/DisputeDetailModal.vue:201` — `status !== 'closed'` can never be
       false; reduces to `!dispute.resolution`.

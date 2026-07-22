@@ -82,6 +82,12 @@ Related "cannot fail" shapes to eliminate wherever found:
    `veto-realtime.spec.ts:117–126` is the reference pattern.
 7. **Reference implementations:** `veto-flow`, `veto-realtime`, `tournament-seeding`,
    `tournament-lifecycle`, `uploads`, `evidence`. Copy these patterns.
+8. **Finding product bugs is the point — report them, don't paper over them.** Driving a real
+   UI forces you to decide what *should* happen, which is exactly when missing or broken
+   frontend/API behaviour surfaces. If you cannot make a test pass honestly because the app is
+   wrong: **do not weaken the assertion to get green.** Drop it, record the finding in §9b with
+   root cause + evidence (`file:line`), and say so in your report. A test that passes by
+   accommodating a bug is worse than no test — it *certifies* the bug.
 
 ---
 
@@ -105,7 +111,9 @@ Landing these first stops the debt from being re-created while we pay it down.
 - [x] Exemption mechanism: `// coverage-plan-exempt: <reason>` on the line — honoured by the
       ratchet, for genuinely API-level checks (e.g. RBAC 403) with no UI surface.
 
-**Baseline recorded (2026-07-22):** 112 violations across 10 files —
+**Progress:** Wave 1 cut this from **112 → 79 violations (10 → 7 files)**.
+
+**Baseline originally recorded (2026-07-22):** 112 violations across 10 files —
 `visibilityGuard` 93, `orAssertion` 17, `tautology` 1. The guard counts reproduce the
 manual audit exactly (team-management 42 · tournament-public 25 · tournament-admin 16 ·
 tournament-team 5), independently confirming §2.
@@ -125,16 +133,16 @@ Highest risk-per-effort. These are the flows a real user hits first.
 
 ### 5.1 Result flow — the exact hole that hid the dispute bug
 
-- [ ] **`match-results.spec.ts:360`** — "P1 submits a result, **P2 disputes it**" does the
+- [x] **`match-results.spec.ts:360`** — "P1 submits a result, **P2 disputes it**" does the
       dispute via `disputeResultClaim()` at `:373`. Replace with UI: prime P2 auth → goto
       match → click `Dispute` → fill `Reason for dispute` → click **`Submit Dispute`** →
       assert `Disputed` in UI **and** `getMatch().status === 'disputed'`.
       Keep `submitResultClaim` at `:366` as seeding. → covers `ResultDisputeModal.handleDispute`
-- [ ] **`match-results.spec.ts:306`** — confirms via `confirmResultClaim()` at `:339`.
+- [x] **`match-results.spec.ts:306`** — confirms via `confirmResultClaim()` at `:339`.
       Replace with a second browser context as P2 clicking **`Confirm Result`**; assert the
       `Final` chip + `1 - 0`. → covers `ResultConfirmationPanel.handleConfirm`
       **(currently untested on the happy path of the most important flow in the product)**
-- [ ] **`match-results.spec.ts:269`** — keep the validation half; drop the cancel-only
+- [x] **`match-results.spec.ts:269`** — keep the validation half; drop the cancel-only
       ending once the above lands (it created the false sense of coverage).
 
 ### 5.2 Tournament registration — the primary way a user enters the product
@@ -143,16 +151,16 @@ Root cause: `global-setup.ts:657–721` (`startTournamentAndGetMatches`) **start
 seeded tournament, so `Register Now` / `Withdraw` / `Check In` never render and all 9
 guarded bodies skip. The spec's own comments concede this (`:187–188`, `:300–301`).
 
-- [ ] Build a fresh `registration`-status tournament per test using
+- [x] Build a fresh `registration`-status tournament per test using
       `fixtures/tournament-lifecycle.fixture.ts:271–296` (`createDraftTournament` → publish →
       open-registration). Stop pointing these at `TEST_TOURNAMENT_SLUG`.
-- [ ] `:156` redirect-to-login when unauthenticated (guard `:165`)
-- [ ] `:205` open registration modal (guard `:219`)
-- [ ] `:228` **register successfully** — remove guard `:255` + early `return` `:249`; replace
+- [x] `:156` redirect-to-login when unauthenticated (guard `:165`)
+- [x] `:205` open registration modal (guard `:219`)
+- [x] `:228` **register successfully** — remove guard `:255` + early `return` `:249`; replace
       the "no error visible" assertion `:284` with a positive chip assertion + `listRegistrations()`
-- [ ] `:364` / `:383` withdraw shown / withdraw performed (guards `:377`, `:394`)
-- [ ] `:407` check-in button — **body currently has no action and no assertion**
-- [ ] `:420` checked-in status after check-in (guard `:431`)
+- [x] `:364` / `:383` withdraw shown / withdraw performed (guards `:377`, `:394`)
+- [x] `:407` check-in button — **body currently has no action and no assertion**
+- [x] `:420` checked-in status after check-in (guard `:431`)
 
 → covers `PlayerRegistrationModal.handleRegister`, `TournamentDetailPage.handlePlayerRegister`,
 `TournamentDetailPage.handleCheckIn`, withdraw on `TournamentRegistrationCard`,
@@ -160,18 +168,18 @@ guarded bodies skip. The spec's own comments concede this (`:187–188`, `:300�
 
 ### 5.3 Assertions that verify nothing
 
-- [ ] **`admin-management.spec.ts:323`** — "redirect non-admin users from admin pages"
+- [x] **`admin-management.spec.ts:323`** — "redirect non-admin users from admin pages"
       asserts the URL lacks `/admin/dashboard`, **a route that does not exist** (`router/index.ts:143`
       → `/admin`). A security test that always passes. Use `await expect(page).not.toHaveURL(/\/admin/)`.
-- [ ] `admin-management.spec.ts:257` — delete `expect(hasRefresh || true).toBe(true)`
-- [ ] `admin-management.spec.ts:275` — "filter games by search" types, then asserts nothing
-- [ ] `auth.spec.ts:171` — dead test; `/tournaments` is public (`router/index.ts:67–70`).
+- [x] `admin-management.spec.ts:257` — delete `expect(hasRefresh || true).toBe(true)`
+- [x] `admin-management.spec.ts:275` — "filter games by search" types, then asserts nothing
+- [x] `auth.spec.ts:171` — dead test; `/tournaments` is public (`router/index.ts:67–70`).
       Retarget at `/my-teams` or `/profile`
-- [ ] `player-profile.spec.ts:158` — "update bio successfully" falls back to asserting the
+- [x] `player-profile.spec.ts:158` — "update bio successfully" falls back to asserting the
       field it just typed into (`:202`). Assert the snackbar + API re-fetch
-- [ ] `player-profile.spec.ts:302` — "create availability window" asserts only the page
+- [x] `player-profile.spec.ts:302` — "create availability window" asserts only the page
       heading (`:333`). Assert the new slot renders + `GET /v1/players/me/availability`
-- [ ] `player-profile.spec.ts:336` — asserts the heading, not that the dialog closed
+- [x] `player-profile.spec.ts:336` — asserts the heading, not that the dialog closed
 
 ---
 
@@ -223,7 +231,7 @@ probably isn't in. All are strictly dominated by `tournament-seeding.spec.ts:44`
       assert the scheduled time on both pages. Covers `handlePropose` + `handleAccept` + `ProposalCard`
 
 ### 6.6 `admin-management.spec.ts` — 23 tests, zero mutations
-- [ ] Add a test that actually **creates a ban** (`BanCreateModal.submit`) and one that **lifts** it;
+- [x] Add a test that actually **creates a ban** (`BanCreateModal.submit`) and one that **lifts** it;
       assert the row + `GET /v1/admin/bans`
 - [ ] (assertion fixes tracked in §5.3)
 
@@ -234,7 +242,7 @@ probably isn't in. All are strictly dominated by `tournament-seeding.spec.ts:44`
 - [ ] `match-checkin.spec.ts:74–93` — the one UI click has a silent API fallback; remove it
 - [ ] `team-roster.spec.ts` — demote/transfer are API-driven because **no UI exists**;
       confirm that's intended (if UI is planned, add tests then)
-- [ ] `auth.spec.ts:171` — dead test (also in §5.3)
+- [x] `auth.spec.ts:171` — dead test (also in §5.3)
 
 ---
 
@@ -243,10 +251,10 @@ probably isn't in. All are strictly dominated by `tournament-seeding.spec.ts:44`
 Handlers with user-facing **mutating** actions that **no e2e test triggers through the UI**.
 
 ### Tier 1 — core user flows (highest risk)
-- [ ] `ResultConfirmationPanel.handleConfirm` — `components/match/results/ResultConfirmationPanel.vue:231`
-- [ ] `ResultDisputeModal.handleDispute` — `components/match/results/ResultDisputeModal.vue:102`
-- [ ] `PlayerRegistrationModal.handleRegister`
-- [ ] `TournamentDetailPage.handlePlayerRegister` / `handleCheckIn`
+- [x] `ResultConfirmationPanel.handleConfirm` — `components/match/results/ResultConfirmationPanel.vue:231`
+- [x] `ResultDisputeModal.handleDispute` — `components/match/results/ResultDisputeModal.vue:102`
+- [x] `PlayerRegistrationModal.handleRegister`
+- [x] `TournamentDetailPage.handlePlayerRegister` / `handleCheckIn`
 - [ ] `TeamRegistrationModal.handleRegister` + `TournamentDetailPage.handleTeamRegister`
 - [ ] `MatchDetailPage.handlePropose` / `handleAccept` / `handleReject` / `handleCounter`
       (+ `MatchSchedulingPanel.submitProposal/submitCounter`, `ProposalCard.handleAccept/confirmReject`)
@@ -257,7 +265,8 @@ Handlers with user-facing **mutating** actions that **no e2e test triggers throu
 - [ ] `LeagueTeamInviteModal` submit
 
 ### Tier 2 — admin / organizer surfaces
-- [ ] `BanCreateModal.submit`; `BanDetailModal` lift/detail actions; `AdminBansPage`
+- [x] `BanCreateModal.submit` + ban lift (`AdminBansPage.confirmLiftBan`) — done in §5.3.
+      Still open: `BanDetailModal` detail actions
 - [ ] **`OrganizerToolbar.vue` — entire component untested**: `handlePublish`, `handleOpenRegistration`,
       `handleCloseRegistration`, `handleReopenRegistration`, `handleStart`, `handleComplete`,
       `handleFinalize`, `handleAdvanceRound`
@@ -315,22 +324,22 @@ real action test (tracked in §7).
 
 Actively misleading — rename or fix (most are also tracked above).
 
-- [ ] `match-results.spec.ts:360` "P2 **disputes it**" → API call `:373`
+- [x] `match-results.spec.ts:360` "P2 **disputes it**" → API call `:373`
 - [ ] `team-management.spec.ts:231` "should **create team successfully**" → may not execute
 - [ ] `team-management.spec.ts:788` "should **save** team changes" → triple-guarded
 - [ ] `team-management.spec.ts:478` "should **remove member**" → clicks Cancel
 - [ ] `team-management.spec.ts:510` "should **send invitation**" → never submits
 - [ ] `team-management.spec.ts:554` / `:571` "should **handle accept/decline**" → never runs
-- [ ] `tournament-public.spec.ts:228` "should **register player successfully**" → guarded, early-returns
-- [ ] `tournament-public.spec.ts:383` "should **withdraw**" → guarded
-- [ ] `tournament-public.spec.ts:420` "checked-in status **after check-in**" → guarded
-- [ ] `tournament-public.spec.ts:407` "should show check-in button" → no action, no assertion
+- [x] `tournament-public.spec.ts:228` "should **register player successfully**" → guarded, early-returns
+- [x] `tournament-public.spec.ts:383` "should **withdraw**" → guarded
+- [x] `tournament-public.spec.ts:420` "checked-in status **after check-in**" → guarded
+- [x] `tournament-public.spec.ts:407` "should show check-in button" → no action, no assertion
 - [ ] `tournament-admin.spec.ts:284` / `:311` / `:372` "**approve/reject/disqualify**" → guarded
 - [ ] `tournament-admin.spec.ts:415` / `:439` / `:463` "**publish/open/close** registration" → guarded
-- [ ] `admin-management.spec.ts:323` "**redirect non-admin users**" → asserts a nonexistent route
-- [ ] `admin-management.spec.ts:275` "should **filter** games" → asserts nothing
-- [ ] `player-profile.spec.ts:158` "should **update bio successfully**" → asserts its own input
-- [ ] `player-profile.spec.ts:302` "should **create** availability window" → asserts a heading
+- [x] `admin-management.spec.ts:323` "**redirect non-admin users**" → asserts a nonexistent route
+- [x] `admin-management.spec.ts:275` "should **filter** games" → asserts nothing
+- [x] `player-profile.spec.ts:158` "should **update bio successfully**" → asserts its own input
+- [x] `player-profile.spec.ts:302` "should **create** availability window" → asserts a heading
 - [ ] `tournament-team.spec.ts:87` / `:137` / `:200` → `expect(.v-card).toBeVisible()`
 - [ ] `veto-bo3.spec.ts:244` "**the opponent selects the side**" → `selectSide()` REST call
 
@@ -338,6 +347,57 @@ Actively misleading — rename or fix (most are also tracked above).
 `team-roster.spec.ts:86`, `match-results.spec.ts:306` ("via API" — being replaced in §5.1),
 `team-management.spec.ts:840`, `awards.spec.ts:141`, `admin-demo-links.spec.ts:140`,
 `steam-auth.spec.ts:31`, `match-checkin.spec.ts:125`.
+
+---
+
+## 9b. PRODUCT findings uncovered by this work
+
+**This is a primary deliverable, not a side-effect.** Writing a test that genuinely drives
+the UI forces you to answer "what *should* happen here?" — and that keeps surfacing places
+where the frontend or API is missing/broken. These are **product bugs, not test gaps**.
+
+**Rule:** if you cannot write a passing test because the app is wrong, **do not write a test
+that passes anyway.** Drop the assertion, record the finding here, and keep going.
+
+Each entry below was independently re-verified (not taken on the agent's word).
+
+### P-1 — `MapResultsSummary` can never render (per-map breakdown is dead on finished matches)
+- **Symptom:** the per-map result breakdown — "the primary artifact of a finished series",
+  per its own comment — never appears on a completed match.
+- **Root cause:** the render condition is mutually exclusive with the data it needs.
+  `MatchDetailPage.vue:76–80` gates it on `match.status === 'completed' && currentResult`.
+  But `GET /v1/matches/{id}/result` → `get_pending_claim` →
+  `WHERE match_id = $1 AND status = 'pending'`
+  (`portal-db/src/adapters/tournament/result_claim.rs:52`). Once the match completes the
+  claim is no longer `pending`, so the endpoint 404s and
+  `stores/matchResults.ts` sets `currentResult = null` on 404. Both halves can never be true at once.
+- **Found by:** §5.1 — the agent drafted an assertion on the summary, traced why it wouldn't
+  hold, and correctly dropped it rather than writing a green-but-wrong test.
+- [ ] Fix: either fetch the *resolved* claim for completed matches (new endpoint/param), or
+      render the summary from the match's final scores instead of `currentResult`.
+
+### P-2 — Open-registration tournaments never auto-approve (documented behaviour not wired up)
+- **Symptom:** every self-registration lands in `pending` and needs manual admin approval,
+  even for tournaments whose `registration_type` is `Open`.
+- **Root cause:** `RegistrationService::initial_status_for_tournament`
+  (`portal-domain/src/services/tournament/registration.rs:257`) implements exactly this rule —
+  its docstring says *"For `Open` tournaments: `Approved` (auto-approved)"* — but it is
+  **dead code**: a repo-wide search finds no call site, only the definition. The insert
+  (`portal-db/src/adapters/tournament/registration.rs:176–200`) never sets `status`, so the DB
+  default `'pending'` (`migrations/0030_create_tournaments.sql`) always wins.
+- **Found by:** §5.2 — the agent had to determine the true post-registration state to assert on.
+- [ ] Decide: wire it into the registration path (if Open should auto-approve), **or** delete
+      the function and its docstring (if manual approval is intended). Today the code claims
+      one behaviour and ships the other.
+
+### P-3 — `checkInRequired` alone can never open check-in
+- **Symptom:** creating a tournament with `checkInRequired: true` is not sufficient for
+  `is_check_in_open()` to return true — it also needs a check-in *window*, and
+  `CreateTournamentOptions` (`fixtures/tournament-lifecycle.fixture.ts`) exposes no
+  `checkInStart`/`checkInEnd`.
+- **Impact:** minor/test-facing today (worked around via `createCheckInScenario`), but the flag
+  is misleading to anyone using it.
+- [ ] Add the window fields to the options (and confirm the API accepts them on create).
 
 ---
 
@@ -363,16 +423,16 @@ Actively misleading — rename or fix (most are also tracked above).
 | `awards.spec.ts` | 2 | 1 | – | 1 | – | [x] | [x] | 1 honest RBAC test |
 | `steam-auth.spec.ts` | 4 | 3 | – | 1 | – | [x] | [x] | 1 honest redirect test |
 | `dispute-resolution.spec.ts` | 3 | 2 | – | 1 | – | [x] | [x] | Fixed in `31c2a3e` |
-| `auth.spec.ts` | 13 | 12 | – | – | 1 | [x] | [ ] | §5.3 — dead test `:171` |
+| `auth.spec.ts` | 13 | 12 | – | – | 1 | [x] | [x] | §5.3 done — `2c26cc2` |
 | `match-checkin.spec.ts` | 3 | 2 | – | 1 | – | [x] | [ ] | §6.7 — silent API fallback |
 | `team-roster.spec.ts` | 4 | 2 | 2 | – | – | [x] | [ ] | §6.7 — demote/transfer have no UI |
-| `match-results.spec.ts` | 15 | 13 | 1 | – | 1 | [x] | [ ] | **§5.1 P0** |
-| `player-profile.spec.ts` | 18 | 15 | – | 2 | 1 | [x] | [ ] | §5.3 |
+| `match-results.spec.ts` | 15 | 13 | 1 | – | 1 | [x] | [x] | §5.1 done — `9283af3` |
+| `player-profile.spec.ts` | 18 | 15 | – | 2 | 1 | [x] | [x] | §5.3 done — `2c26cc2` |
 | `match-workflow.spec.ts` | 18 | 15 | – | – | 3 | [x] | [ ] | §6.5 |
-| `admin-management.spec.ts` | 23 | 18 | – | 2 | 3 | [x] | [ ] | §5.3 + §6.6 — zero mutations |
+| `admin-management.spec.ts` | 23 | 18 | – | 2 | 3 | [x] | [x] | §5.3+§6.6 done — `2c26cc2`, now has mutations |
 | `tournament-admin.spec.ts` | 23 | 15 | – | – | 8 | [x] | [ ] | §6.3 — 16 guards |
 | `tournament-team.spec.ts` | 18 | 6 | – | 9 | 3 | [x] | [ ] | §6.4 — smoke tests |
-| `tournament-public.spec.ts` | 21 | 8 | – | 4 | 9 | [x] | [ ] | **§5.2 P0** — 25 guards |
+| `tournament-public.spec.ts` | 21 | 8 | – | 4 | 9 | [x] | [x] | §5.2 done — `975874f`, guards 25→0 |
 | `team-management.spec.ts` | 34 | 6 | 1 | 6 | 21 | [x] | [ ] | §6.1 — 42 guards, worst file |
 
 ---
@@ -397,7 +457,7 @@ a single serialized pass (Wave 0) so downstream agents build on a stable base.
 - [x] **Wave 0 (serial):** Phase 0 guardrails + all shared fixture/`global-setup` changes
       needed by Phase 1 (esp. the fresh-registration-tournament helper for §5.2). **Done** —
       ratchet + CI gate + README + `createOpenRegistrationTournament` / `transitionTournament`.
-- [ ] **Wave 1 (parallel, P0):** one agent each →
+- [x] **Wave 1 (parallel, P0):** **Done** — `9283af3`, `975874f`, `2c26cc2`. one agent each →
       `match-results.spec.ts` (§5.1) · `tournament-public.spec.ts` (§5.2) ·
       `admin-management.spec.ts` + `auth.spec.ts` + `player-profile.spec.ts` (§5.3)
 - [ ] **Wave 2 (parallel, de-guard):** one agent each →
@@ -411,7 +471,9 @@ a single serialized pass (Wave 0) so downstream agents build on a stable base.
 2. Every touched test performs its named action through the UI.
 3. Every mutation asserts both UI and backend state.
 4. `npm run lint` + `npm run typecheck` clean; the owned specs pass locally against a live stack.
-5. The relevant boxes in this document are ticked in the same commit.
+5. Any product bug encountered is recorded in §9b (root cause + `file:line` evidence),
+   rather than worked around to get a green test.
+6. The relevant boxes in this document are ticked in the same commit.
 
 ---
 

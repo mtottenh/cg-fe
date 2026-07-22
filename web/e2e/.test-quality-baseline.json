@@ -1,16 +1,8 @@
 {
-  "admin-management.spec.ts": {
-    "visibilityGuard": 1,
-    "tautology": 1,
-    "orAssertion": 1
-  },
   "fixtures/auth.fixture.ts": {
     "visibilityGuard": 1
   },
   "match-checkin.spec.ts": {
-    "visibilityGuard": 1
-  },
-  "match-results.spec.ts": {
     "visibilityGuard": 1
   },
   "team-management.spec.ts": {
@@ -20,10 +12,6 @@
   "tournament-admin.spec.ts": {
     "orAssertion": 2,
     "visibilityGuard": 16
-  },
-  "tournament-public.spec.ts": {
-    "visibilityGuard": 25,
-    "orAssertion": 4
   },
   "tournament-team.spec.ts": {
     "visibilityGuard": 5

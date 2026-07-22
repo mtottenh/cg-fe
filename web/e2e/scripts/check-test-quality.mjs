@@ -72,6 +72,12 @@ function scan() {
     const counts = {}
     for (const line of source.split('\n')) {
       if (line.includes(EXEMPT)) continue
+      // Skip comments: the rules are line-regexes, so PROSE describing a banned
+      // pattern (e.g. a comment explaining why the old assertion was wrong) was
+      // being counted as a violation. Documenting the anti-pattern must not be
+      // penalised — that made contributors reword explanatory comments.
+      const code = line.trim()
+      if (code.startsWith('//') || code.startsWith('*') || code.startsWith('/*')) continue
       for (const [name, rule] of Object.entries(RULES)) {
         if (rule.test(line)) counts[name] = (counts[name] ?? 0) + 1
       }

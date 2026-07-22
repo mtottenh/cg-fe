@@ -57,11 +57,12 @@
 
       <template v-slot:item.roster_lock_status="{ item }">
         <v-chip
-          :color="item.roster_lock_status === 'locked' ? 'error' : 'success'"
+          :color="rosterChipColor(item.roster_lock_status)"
           size="x-small"
           variant="flat"
+          :title="rosterLockHint(item.roster_lock_status) ?? undefined"
         >
-          {{ item.roster_lock_status === 'locked' ? 'Locked' : 'Open' }}
+          {{ rosterChipLabel(item.roster_lock_status) }}
         </v-chip>
       </template>
 
@@ -109,6 +110,7 @@
 import { formatDate } from '@/utils/formatters'
 import type { LeagueSeasonResponse } from '@/stores/leagueSeasons'
 import { seasonStatusMap, getStatusColor as mapStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import { rosterLockColor, rosterLockHint, rosterLockLabel } from '@/utils/rosterLock'
 
 type LeagueSeason = LeagueSeasonResponse
 
@@ -136,5 +138,23 @@ const headers = [
 
 const formatStatus = (status: string) => getStatusLabel(seasonStatusMap, status)
 const getStatusColor = (status: string) => mapStatusColor(seasonStatusMap, status)
+
+// ---------------------------------------------------------------------------
+// Roster column (COVERAGE-PLAN §9b P-22 — a second instance of P-11)
+//
+// This column used to render `roster_lock_status === 'locked' ? 'Locked' : 'Open'`.
+// The DB CHECK permits only open / soft_lock / hard_lock
+// (api/migrations/0025_league_teams_and_seasons.sql:69), so `'locked'` can never
+// occur and EVERY season — locked or not — reported "Open" to admins.
+//
+// `utils/rosterLock.ts` is the single mirror of the backend enum and fails
+// CLOSED: a value we do not recognise is treated as `hard_lock` rather than
+// silently reading as "unlocked". `rosterLockLabel` returns null for `open`
+// (its callers use it as a "show a warning chip?" test); this column always
+// shows a chip, so the open case supplies its own label and colour here.
+// ---------------------------------------------------------------------------
+const rosterChipLabel = (value: string | null | undefined) => rosterLockLabel(value) ?? 'Open'
+const rosterChipColor = (value: string | null | undefined) =>
+  rosterLockLabel(value) === null ? 'success' : rosterLockColor(value)
 
 </script>

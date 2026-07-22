@@ -150,6 +150,8 @@
 import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api'
 import { useFormRules } from '@/composables/useFormRules'
+import { getStatusLabel, seasonStatusMap } from '@/utils/statusMaps'
+import { rosterLockLabel } from '@/utils/rosterLock'
 import {
   useLeagueSeasonsStore,
   type LeagueSeasonResponse,
@@ -184,19 +186,45 @@ const form = ref({
   roster_lock_status: 'open',
 })
 
-const statusOptions = [
-  { value: 'draft', label: 'Draft' },
-  { value: 'registration_open', label: 'Registration Open' },
-  { value: 'registration_closed', label: 'Registration Closed' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'cancelled', label: 'Cancelled' },
-]
+// ---------------------------------------------------------------------------
+// Option lists (COVERAGE-PLAN §9b P-17)
+//
+// Both lists offered values the API rejects with 400. `registration_open`,
+// `registration_closed` and `in_progress` are not season statuses — the CHECK
+// constraint and `SeasonStatus` permit draft / registration / active /
+// playoffs / completed / cancelled
+// (api/migrations/0025_league_teams_and_seasons.sql:61) — and `'locked'` is not
+// a `RosterLockStatus` (`:69`), so picking it produced
+// 400 "Invalid roster lock status" (portal-api/src/dto/requests/league_team.rs:211-217).
+//
+// Labels are pulled from the shared maps rather than re-typed, so this control
+// and the Seasons table speak with one voice.
+// ---------------------------------------------------------------------------
+const SEASON_STATUSES = [
+  'draft',
+  'registration',
+  'active',
+  'playoffs',
+  'completed',
+  'cancelled',
+] as const
 
-const rosterLockOptions = [
-  { value: 'open', label: 'Open' },
-  { value: 'locked', label: 'Locked' },
-]
+const statusOptions = SEASON_STATUSES.map((value) => ({
+  value,
+  label: getStatusLabel(seasonStatusMap, value),
+}))
+
+// NOTE (P-14): the API accepts and validates `roster_lock_status` but
+// `LeagueSeasonService::update_season` never forwards it to the repository, so
+// changing this select is a silent no-op today. The option list is still fixed
+// here so it stops offering a value that 400s, and so it is correct the moment
+// the backend is plumbed through.
+const ROSTER_LOCK_STATUSES = ['open', 'soft_lock', 'hard_lock'] as const
+
+const rosterLockOptions = ROSTER_LOCK_STATUSES.map((value) => ({
+  value,
+  label: rosterLockLabel(value) ?? 'Open',
+}))
 
 const rules = {
   ...useFormRules(),

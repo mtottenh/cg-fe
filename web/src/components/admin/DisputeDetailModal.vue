@@ -197,8 +197,8 @@
           </v-card-text>
         </v-card>
 
-        <!-- Resolution Panel (if unresolved) -->
-        <div v-if="!dispute.resolution && dispute.status !== 'closed'">
+        <!-- Resolution Panel (only while the backend will accept a resolution) -->
+        <div v-if="canResolve">
           <div class="text-subtitle-1 mb-2">Resolve Dispute</div>
 
           <v-expansion-panels v-model="resolutionPanel">
@@ -408,6 +408,33 @@ const newWinnerRegistrationId = ref('')
 
 const dispute = computed(() => store.currentDispute)
 const messages = computed(() => store.currentThread)
+
+// ---------------------------------------------------------------------------
+// Resolution panel visibility (COVERAGE-PLAN §9c)
+//
+// The guard used to be `!dispute.resolution && dispute.status !== 'closed'`.
+// `closed` is not a `DisputeStatus` — the enum and the CHECK constraint are
+// pending / under_review / resolved / cancelled
+// (portal-domain/src/entities/dispute.rs:148-160,
+//  api/migrations/0039_disputes.sql:43) — so that half could never be false and
+// the condition silently reduced to `!dispute.resolution`.
+//
+// Chosen fix: restore the INTENT ("only offer resolution while the dispute can
+// still be resolved") rather than simplify to the accident. The authority is
+// `Dispute::can_resolve()` (dispute.rs:87-95) = Pending | UnderReview, which is
+// exactly what `validate_can_resolve` enforces on all five resolve endpoints
+// (services/tournament/dispute.rs:722-731). Mirroring it means the panel is
+// shown iff a resolution would be accepted.
+//
+// This is strictly wider than the old behaviour: a CANCELLED dispute has no
+// `resolution`, so the old guard rendered the whole panel for it and every
+// button would have failed with 400 "cannot be resolved". (Reaching that state
+// needs a cancel endpoint, which does not exist yet — see the report.)
+// ---------------------------------------------------------------------------
+const RESOLVABLE_STATUSES = ['pending', 'under_review']
+const canResolve = computed(
+  () => dispute.value !== null && RESOLVABLE_STATUSES.includes(dispute.value.status),
+)
 
 const canOverturn = computed(() =>
   resolutionNotes.value.trim() &&

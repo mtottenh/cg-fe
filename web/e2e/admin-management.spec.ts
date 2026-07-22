@@ -1,5 +1,6 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { getAdminToken, loginAsAdmin, register } from './fixtures/auth.fixture'
+import { createLeague, createSeason } from './fixtures/league-season-extra.fixture'
 import { testUsers, uniqueEmail, uniqueId, uniqueUsername } from './fixtures/test-data'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
@@ -76,6 +77,22 @@ async function createBanViaApi(
   })
   if (!response.ok) {
     throw new Error(`POST /v1/admin/bans failed (${response.status}): ${await response.text()}`)
+  }
+  return (await response.json()).data
+}
+
+/** GET /v1/league-seasons/{id} — backend handler `league_teams::get_season`. */
+async function getSeason(
+  adminToken: string,
+  seasonId: string
+): Promise<{ status: string; roster_lock_status: string }> {
+  const response = await fetch(`${API_URL}/v1/league-seasons/${seasonId}`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  })
+  if (!response.ok) {
+    throw new Error(
+      `GET /v1/league-seasons/${seasonId} failed (${response.status}): ${await response.text()}`
+    )
   }
   return (await response.json()).data
 }
@@ -530,6 +547,155 @@ test.describe('Admin Management', () => {
       // Should show loading indicator briefly (may be too fast to catch)
       // Just verify page doesn't crash
       await expect(page.getByRole('heading', { name: 'Games' })).toBeVisible()
+    })
+  })
+
+  test.describe('Admin League Seasons', () => {
+    /**
+     * Open /admin/leagues, reveal the league's row (the page groups leagues into
+     * collapsed per-game expansion panels) and open the Seasons & Teams modal.
+     * Returns the LeagueDetailModal dialog.
+     */
+    async function openSeasonsPanel(page: Page, leagueName: string) {
+      await page.goto('/admin/leagues')
+
+      // Search narrows `filteredGroups` to the groups that still contain a
+      // match (AdminLeaguesPage.vue:287-300), leaving exactly one game panel.
+      await page.getByLabel('Search leagues...').fill(leagueName)
+      const gamePanel = page.locator('.v-expansion-panel-title')
+      await expect(gamePanel).toHaveCount(1)
+      await gamePanel.click()
+
+      const leagueRow = page.locator('tbody tr').filter({ hasText: leagueName })
+      await expect(leagueRow).toBeVisible({ timeout: 15_000 })
+      await leagueRow.getByRole('button', { name: 'Manage seasons and teams' }).click()
+
+      const detailDialog = page.getByRole('dialog').filter({ hasText: 'Seasons' })
+      await expect(detailDialog).toBeVisible()
+      return detailDialog
+    }
+
+    test('should label season status and roster lock instead of printing the enum', async ({
+      page,
+    }) => {
+      // COVERAGE-PLAN §9b P-22. The Roster column compared against `'locked'`,
+      // a value the CHECK constraint cannot produce
+      // (api/migrations/0025_league_teams_and_seasons.sql:69 permits only
+      // open / soft_lock / hard_lock), so it read "Open" for every season.
+      //
+      // Only the `open` state is reachable end-to-end: `roster_lock_status` is
+      // validated by the update DTO but never forwarded to the repository, and
+      // `update_roster_lock` has no HTTP route (§9b P-14). The soft_lock /
+      // hard_lock / unknown-value rendering is covered where it can be driven
+      // honestly — src/components/admin/__tests__/LeagueSeasonsPanel.spec.ts.
+      const adminToken = await getAdminToken()
+      const league = await createLeague(adminToken, { namePrefix: 'E2E Admin Seasons' })
+      const season = await createSeason(adminToken, league.leagueId)
+
+      await loginAsAdmin(page)
+      const detailDialog = await openSeasonsPanel(page, league.leagueName)
+
+      const seasonRow = detailDialog.locator('tbody tr').filter({ hasText: season.seasonName })
+      await expect(seasonRow).toBeVisible({ timeout: 15_000 })
+      // A newly created season is `draft` / `open`.
+      await expect(seasonRow.getByText('Draft', { exact: true })).toBeVisible()
+      await expect(seasonRow.getByText('Open', { exact: true })).toBeVisible()
+    })
+
+    test('should offer only real season statuses in the edit modal and persist the change', async ({
+      page,
+    }) => {
+      // COVERAGE-PLAN §9b P-17. `statusOptions` offered `registration_open`,
+      // `registration_closed` and `in_progress` — none of which parse into
+      // `SeasonStatus`, so saving any of them returned
+      // 400 "Invalid season status" (portal-api/src/dto/requests/league_team.rs:205-210).
+      const adminToken = await getAdminToken()
+      const league = await createLeague(adminToken, { namePrefix: 'E2E Admin Seasons' })
+      const season = await createSeason(adminToken, league.leagueId)
+      expect(season.status, 'a new season starts in draft').toBe('draft')
+
+      await loginAsAdmin(page)
+      const detailDialog = await openSeasonsPanel(page, league.leagueName)
+
+      const seasonRow = detailDialog.locator('tbody tr').filter({ hasText: season.seasonName })
+      await expect(seasonRow).toBeVisible({ timeout: 15_000 })
+      await seasonRow.getByRole('button', { name: 'Edit season' }).click()
+
+      const editDialog = page
+        .getByRole('dialog')
+        .filter({ hasText: `Edit Season: ${season.seasonName}` })
+      await expect(editDialog).toBeVisible()
+
+      // A freshly created season has `max_teams = null` (unlimited). The modal's
+      // "Max Teams" field uses the `positiveNumber` rule, which — unlike the
+      // sibling `nonNegativeNumber` / `maxGreaterThanMin` rules — does not
+      // tolerate an empty value, so the form is invalid and Save is disabled
+      // until this field holds a positive number. That is a SEPARATE product
+      // bug (reported alongside this work), not the P-17 behaviour under test;
+      // supply a valid value so we can exercise the status-persist path.
+      await editDialog.getByLabel('Max Teams').fill('16')
+
+      await editDialog.locator('.v-select').filter({ hasText: 'Status' }).click()
+      // Exactly the six values of `SeasonStatus` / the CHECK constraint
+      // (api/migrations/0025_league_teams_and_seasons.sql:61), in order.
+      await expect(page.getByRole('listbox').getByRole('option')).toHaveText([
+        'Draft',
+        'Registration Open',
+        'Active',
+        'Playoffs',
+        'Completed',
+        'Cancelled',
+      ])
+
+      await page.getByRole('option', { name: 'Active', exact: true }).click()
+
+      const patchPromise = page.waitForResponse(
+        (resp) =>
+          /\/v1\/league-seasons\/[^/]+$/.test(resp.url()) && resp.request().method() === 'PATCH'
+      )
+      await editDialog.getByRole('button', { name: 'Save Changes' }).click()
+      const patchResponse = await patchPromise
+      expect(patchResponse.status(), 'PATCH /v1/league-seasons/{id} must succeed').toBe(200)
+
+      // UI: modal closed and the table re-read the season.
+      await expect(editDialog).toBeHidden()
+      await expect(seasonRow.getByText('Active', { exact: true })).toBeVisible({ timeout: 15_000 })
+
+      // Backend.
+      const persisted = await getSeason(adminToken, season.seasonId)
+      expect(persisted.status).toBe('active')
+    })
+
+    test('should offer the three real roster-lock states in the edit modal', async ({ page }) => {
+      // COVERAGE-PLAN §9b P-17, second half: the list was [open, locked], and
+      // `'locked'` fails `RosterLockStatus::from_str` → 400 "Invalid roster lock
+      // status" (portal-api/src/dto/requests/league_team.rs:211-217).
+      //
+      // Only the option list is asserted: per §9b P-14 the API drops
+      // `roster_lock_status` on update, so saving a lock here is a silent no-op
+      // and there is nothing honest to assert about persistence yet.
+      const adminToken = await getAdminToken()
+      const league = await createLeague(adminToken, { namePrefix: 'E2E Admin Seasons' })
+      const season = await createSeason(adminToken, league.leagueId)
+
+      await loginAsAdmin(page)
+      const detailDialog = await openSeasonsPanel(page, league.leagueName)
+
+      const seasonRow = detailDialog.locator('tbody tr').filter({ hasText: season.seasonName })
+      await expect(seasonRow).toBeVisible({ timeout: 15_000 })
+      await seasonRow.getByRole('button', { name: 'Edit season' }).click()
+
+      const editDialog = page
+        .getByRole('dialog')
+        .filter({ hasText: `Edit Season: ${season.seasonName}` })
+      await expect(editDialog).toBeVisible()
+
+      await editDialog.locator('.v-select').filter({ hasText: 'Roster Lock' }).click()
+      await expect(page.getByRole('listbox').getByRole('option')).toHaveText([
+        'Open',
+        'Roster Soft-Locked',
+        'Roster Locked',
+      ])
     })
   })
 

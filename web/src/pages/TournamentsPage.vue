@@ -175,10 +175,42 @@ const loading = computed(() => tournamentsLoading.value || gamesLoading.value)
 const games = computed(() => gamesStore.games.filter((g) => g.status === 'active'))
 const totalPages = computed(() => pagination.value.total_pages || 1)
 
+/**
+ * Statuses a tournament that has not started yet can be in.
+ *
+ * The real enum is `draft/published/registration/scheduled/in_progress/
+ * completed/finalized/cancelled` — `TournamentStatus`
+ * (portal-core/src/types/status.rs:118) and the `tournaments_check_status`
+ * CHECK (migrations/0053_fix_tournament_status_constraint.sql).
+ *
+ * The "Upcoming" tab used to filter on
+ * `['draft','published','registration_open','registration_closed','ready']`.
+ * `registration_open`, `registration_closed` and `ready` are not tournament
+ * statuses at all, so the tab matched almost nothing and rendered as a
+ * permanent empty state — the primary discovery surface for tournaments that
+ * have not started. See COVERAGE-PLAN.md §9b P-19.
+ *
+ * `draft` is deliberately excluded: a draft is unpublished and must not be
+ * advertised on a public tab.
+ */
+const UPCOMING_TOURNAMENT_STATUSES = ['published', 'registration', 'scheduled']
+
+/**
+ * Terminal "it's over and there are results" statuses. `finalized` is the state
+ * a tournament reaches after `completed` is verified, and it was missing here —
+ * finalized tournaments vanished from the Completed tab.
+ */
+const FINISHED_TOURNAMENT_STATUSES = ['completed', 'finalized']
+
+// Values MUST be real backend statuses: the select feeds a strict equality
+// filter below, so a stale value silently yields zero results.
 const statusOptions = [
-  { value: 'registration_open', label: 'Open Registration' },
+  { value: 'registration', label: 'Registration Open' },
+  { value: 'scheduled', label: 'Starting Soon' },
   { value: 'in_progress', label: 'In Progress' },
   { value: 'completed', label: 'Completed' },
+  { value: 'finalized', label: 'Finalized' },
+  { value: 'cancelled', label: 'Cancelled' },
 ]
 
 // Apply tab-based filtering
@@ -187,18 +219,21 @@ const tabFilteredTournaments = computed(() => {
 
   switch (activeTab.value) {
     case 'registration_open':
-      result = result.filter((t) => t.status === 'registration_open' || t.is_registration_open)
+      // `is_registration_open` is the backend's own predicate: status is
+      // `registration` AND now is inside the registration window
+      // (portal-domain/src/entities/tournament.rs:109-129). It is strictly
+      // stronger than the `status === 'registration'` string compare this used
+      // to lean on, and it matches what gates the card's "Register Now" CTA.
+      result = result.filter((t) => t.is_registration_open)
       break
     case 'in_progress':
       result = result.filter((t) => t.status === 'in_progress')
       break
     case 'upcoming':
-      result = result.filter((t) =>
-        ['draft', 'published', 'registration_open', 'registration_closed', 'ready'].includes(t.status)
-      )
+      result = result.filter((t) => UPCOMING_TOURNAMENT_STATUSES.includes(t.status))
       break
     case 'completed':
-      result = result.filter((t) => t.status === 'completed')
+      result = result.filter((t) => FINISHED_TOURNAMENT_STATUSES.includes(t.status))
       break
   }
 

@@ -6,6 +6,8 @@ import {
   registerPlayer,
   approveRegistration,
   fetchTournament,
+  transitionTournament,
+  waitForTournamentStatus,
 } from './fixtures/tournament-lifecycle.fixture'
 import { listRegistrations } from './fixtures/team-tournament-extra.fixture'
 import { createCheckInScenario, getRegistration } from './fixtures/checkin.fixture'
@@ -62,6 +64,63 @@ function registrationCard(page: Page) {
         /Join This Tournament|Registration Pending|You're Registered|Check-in Now Open|You're All Set!|Registration Opens Soon|Registration Closed/,
     })
     .first()
+}
+
+const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
+
+/**
+ * Every real value of `TournamentStatus`
+ * (api/crates/portal-core/src/types/status.rs:118, mirrored by the
+ * `tournaments_check_status` CHECK in
+ * api/migrations/0053_fix_tournament_status_constraint.sql).
+ *
+ * A card badge whose text is EXACTLY one of these is a raw enum leaking to
+ * users — the P-4/P-21 defect. Every one of these maps to human copy in
+ * `src/utils/statusMaps.ts`, so none of them may ever be the rendered label.
+ */
+const RAW_TOURNAMENT_STATUSES = [
+  'draft',
+  'published',
+  'registration',
+  'scheduled',
+  'in_progress',
+  'completed',
+  'finalized',
+  'cancelled',
+]
+
+/**
+ * `/tournaments` fetches ONE page of 20 and filters client-side
+ * (TournamentsPage.vue `fetchData` sends only page/per_page), while the API
+ * orders by `starts_at DESC NULLS LAST, created_at DESC`
+ * (portal-db/src/adapters/tournament/tournament.rs:344).
+ *
+ * Fixture tournaments have no `starts_at`, so they land in the NULL bucket
+ * behind every dated tournament and can be pushed off page 1 by whatever else
+ * the suite created. Giving ours a far-future `starts_at` puts it at position 1
+ * deterministically, so "the card is not on screen" can only mean the filter
+ * dropped it — which is exactly what P-19 is about.
+ */
+async function pinToTopOfTournamentList(
+  adminToken: string,
+  tournamentId: string,
+): Promise<void> {
+  const resp = await fetch(`${API_URL}/v1/tournaments/${tournamentId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
+    body: JSON.stringify({ starts_at: '2099-01-01T12:00:00Z' }),
+  })
+  if (!resp.ok) {
+    throw new Error(`Pin tournament failed (${resp.status}): ${await resp.text()}`)
+  }
+}
+
+/** The `TournamentCard` for a given tournament name (TournamentCard.vue:2). */
+function tournamentCard(page: Page, name: string) {
+  return page.locator('.tournament-card').filter({ hasText: name })
 }
 
 test.describe('Tournament Public Flows', () => {
@@ -157,6 +216,101 @@ test.describe('Tournament Public Flows', () => {
       // Search input MUST be cleared and the grid MUST come back
       await expect(searchInput).toHaveValue('')
       await expect(page.locator('.tournament-card').first()).toBeVisible()
+    })
+
+    /**
+     * COVERAGE-PLAN.md §9b P-19.
+     *
+     * The Upcoming tab used to filter on
+     * `['draft','published','registration_open','registration_closed','ready']`
+     * — three of which are not tournament statuses at all — so it rendered as a
+     * permanent empty state and users could not discover tournaments that had
+     * not started. This test seeds a genuinely upcoming tournament and demands
+     * to see it on that tab.
+     */
+    test('should list an open-registration tournament under the Upcoming tab', async ({ page }) => {
+      const adminToken = await getAdminToken()
+      const tournament = await createOpenRegistrationTournament(adminToken)
+      await pinToTopOfTournamentList(adminToken, tournament.id)
+
+      await page.goto('/tournaments?tab=upcoming')
+
+      // The tab really is the one under test...
+      await expect(page.getByRole('tab', { name: /Upcoming/i })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+      // ...and the tournament is on it.
+      const card = tournamentCard(page, tournament.name)
+      await expect(card).toHaveCount(1)
+      await expect(card).toBeVisible()
+      await expect(page.getByText('No Tournaments Found')).toHaveCount(0)
+
+      // Backend cross-check: the status the tab had to cope with is
+      // `registration` — not the `registration_open` the filter used to look
+      // for.
+      expect((await fetchTournament(adminToken, tournament.id)).status).toBe('registration')
+    })
+
+    /**
+     * The other half of P-19: `scheduled` (what `close-registration` produces)
+     * is also an upcoming status, and the Open Registration tab must be precise
+     * enough to let go of a tournament once registration closes.
+     */
+    test('should move a tournament out of Open Registration into Upcoming when registration closes', async ({
+      page,
+    }) => {
+      const adminToken = await getAdminToken()
+      const tournament = await createOpenRegistrationTournament(adminToken)
+      await pinToTopOfTournamentList(adminToken, tournament.id)
+
+      await page.goto('/tournaments?tab=registration_open')
+      await expect(tournamentCard(page, tournament.name)).toHaveCount(1)
+
+      // Registration closes -> status becomes `scheduled`
+      // (TournamentService::close_registration, service.rs:302-317).
+      await transitionTournament(adminToken, tournament.id, 'close-registration')
+      await waitForTournamentStatus(adminToken, tournament.id, 'scheduled')
+
+      await page.goto('/tournaments?tab=registration_open')
+      await expect(page.locator('.tournament-card').first()).toBeVisible()
+      await expect(tournamentCard(page, tournament.name)).toHaveCount(0)
+
+      // But it is still upcoming, and says so in public voice.
+      await page.goto('/tournaments?tab=upcoming')
+      const card = tournamentCard(page, tournament.name)
+      await expect(card).toHaveCount(1)
+      await expect(card.locator('.status-badge')).toHaveText('Starting Soon')
+    })
+
+    /**
+     * COVERAGE-PLAN.md §9b P-21 — the list card used to run its own `switch`
+     * over `registration_open` / `check_in_open` / `ready` with
+     * `default: return props.tournament.status`, so a tournament in
+     * `registration`, `scheduled` or `finalized` printed the raw enum onto the
+     * badge.
+     */
+    test('should label tournament cards with human copy, never the raw status enum', async ({
+      page,
+    }) => {
+      const adminToken = await getAdminToken()
+      const tournament = await createOpenRegistrationTournament(adminToken)
+      await pinToTopOfTournamentList(adminToken, tournament.id)
+
+      await page.goto('/tournaments')
+
+      // The seeded tournament is in `registration` — the status that used to
+      // fall through to `default` — and MUST read as public copy.
+      await expect(tournamentCard(page, tournament.name).locator('.status-badge')).toHaveText(
+        'Registration Open',
+      )
+
+      // And no card anywhere on the page may be showing a raw enum.
+      const badges = page.locator('.tournament-card .status-badge')
+      await expect(badges.first()).toBeVisible()
+      const labels = (await badges.allTextContents()).map((t) => t.trim())
+      expect(labels.length).toBeGreaterThan(0)
+      expect(labels.filter((l) => RAW_TOURNAMENT_STATUSES.includes(l))).toEqual([])
     })
   })
 

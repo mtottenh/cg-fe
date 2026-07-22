@@ -89,6 +89,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { matchStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import type { TournamentMatchResponse } from '@/stores/tournaments'
 
 const props = withDefaults(
@@ -109,32 +110,16 @@ const emit = defineEmits<{
   click: [match: TournamentMatchResponse]
 }>()
 
-const statusColor = computed(() => {
-  switch (props.match.status) {
-    case 'pending':
-      return 'grey'
-    case 'scheduling':
-      return 'info'
-    case 'scheduled':
-      return 'primary'
-    case 'checking_in':
-      return 'warning'
-    case 'pick_ban':
-      return 'info'
-    case 'in_progress':
-      return 'primary'
-    case 'awaiting_result':
-      return 'warning'
-    case 'completed':
-      return 'success'
-    case 'cancelled':
-      return 'error'
-    case 'disputed':
-      return 'error'
-    default:
-      return 'grey'
-  }
-})
+// Status presentation comes from utils/statusMaps.ts (COVERAGE-PLAN.md §9c).
+//
+// These were two hand-rolled `switch` statements that had drifted from
+// `TournamentMatchStatus` (portal-core/src/types/tournament.rs:231-255, mirrored
+// by the `tournament_matches_check_status` CHECK in
+// migrations/0030_create_tournaments.sql:369). They matched `scheduling`, which
+// is NOT a match status, and omitted `ready` and `forfeit`, which ARE — so a
+// match in either state hit `default` and leaked the raw enum onto the bracket
+// and the tournament Matches tab.
+const statusColor = computed(() => getStatusColor(matchStatusMap, props.match.status))
 
 // A live Bo3 at 1-0 should show 1-0 on the card, not "- / -".
 const showScores = computed(() =>
@@ -145,32 +130,7 @@ const statusVariant = computed(() => {
   return props.match.status === 'in_progress' ? 'flat' : 'tonal'
 })
 
-const statusLabel = computed(() => {
-  switch (props.match.status) {
-    case 'pending':
-      return 'Pending'
-    case 'scheduling':
-      return 'Scheduling'
-    case 'scheduled':
-      return 'Scheduled'
-    case 'checking_in':
-      return 'Check-in'
-    case 'pick_ban':
-      return 'Pick/Ban'
-    case 'in_progress':
-      return 'Live'
-    case 'awaiting_result':
-      return 'Awaiting Result'
-    case 'completed':
-      return 'Completed'
-    case 'cancelled':
-      return 'Cancelled'
-    case 'disputed':
-      return 'Disputed'
-    default:
-      return props.match.status
-  }
-})
+const statusLabel = computed(() => getStatusLabel(matchStatusMap, props.match.status))
 
 function isWinner(registrationId: string | null | undefined): boolean {
   if (!registrationId || !props.match.winner_registration_id) return false

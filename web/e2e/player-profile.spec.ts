@@ -1,6 +1,55 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { loginAsAdmin, register } from './fixtures/auth.fixture'
 import { testUsers } from './fixtures/test-data'
+
+const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
+
+/**
+ * Read the session token the app itself stored at login/registration, so the
+ * backend cross-checks below run as exactly the player under test.
+ * (auth.fixture writes/clears `token` in localStorage — see clearAuthState.)
+ */
+async function sessionToken(page: Page): Promise<string> {
+  const token = await page.evaluate(() => localStorage.getItem('token'))
+  expect(token, 'the session should have stored an access token').toBeTruthy()
+  return token as string
+}
+
+/** GET /v1/players/me — the authoritative view of the profile. */
+async function fetchMyProfile(token: string): Promise<{ bio?: string | null }> {
+  const response = await fetch(`${API_URL}/v1/players/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) {
+    throw new Error(`GET /v1/players/me failed (${response.status}): ${await response.text()}`)
+  }
+  return (await response.json()).data
+}
+
+interface AvailabilityWindow {
+  id: string
+  day_of_week: number
+  start_time: string
+  end_time: string
+  is_preferred: boolean
+  notes: string | null
+}
+
+/**
+ * GET /v1/players/me/availability/windows — the endpoint
+ * `stores/availability.ts:fetchWindows` reads and `createWindow` writes.
+ */
+async function fetchMyWindows(token: string): Promise<AvailabilityWindow[]> {
+  const response = await fetch(`${API_URL}/v1/players/me/availability/windows`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) {
+    throw new Error(
+      `GET /v1/players/me/availability/windows failed (${response.status}): ${await response.text()}`
+    )
+  }
+  return (await response.json()).data
+}
 
 test.describe('Player Profile', () => {
   test.describe('Profile Viewing', () => {
@@ -159,6 +208,7 @@ test.describe('Player Profile', () => {
       // Register a fresh user for this test
       const userData = testUsers.standard()
       await register(page, userData)
+      const token = await sessionToken(page)
 
       await page.goto('/profile/edit')
 
@@ -167,40 +217,32 @@ test.describe('Player Profile', () => {
 
       // Fill in bio with unique content
       const bioContent = `This is my test bio for E2E testing - ${Date.now()}.`
-      const bioField = page.getByLabel('Bio')
-      await bioField.fill(bioContent)
+      await page.getByLabel('Bio').fill(bioContent)
 
-      // Click save changes button
+      // ProfileEditPage.saveBasicInfo → playersStore.updateMyProfile →
+      // PATCH /v1/players/me (src/stores/players.ts:100-105).
+      const savePromise = page.waitForResponse(
+        (resp) =>
+          resp.url().includes('/v1/players/me') && resp.request().method() === 'PATCH'
+      )
       await page.getByRole('button', { name: 'Save Changes' }).click()
+      const saveResponse = await savePromise
+      expect(saveResponse.ok(), 'PATCH /v1/players/me must succeed').toBe(true)
 
-      // Wait for API response
-      await page.waitForLoadState('networkidle')
-      await page.waitForTimeout(1000)
+      // UI assertion: the success alert really renders. `successMessage` is set
+      // at src/pages/ProfileEditPage.vue:359 and rendered by the success
+      // v-alert at :16-18.
+      //
+      // The previous version of this test fell through to
+      // `expect(currentBio.length).toBeGreaterThan(0)` — i.e. it asserted that
+      // the textarea it had just typed into was non-empty. That holds whether
+      // or not the save worked, so the test could never fail.
+      await expect(page.getByText('Profile updated successfully')).toBeVisible()
 
-      // Test passes if: 1) success message shown, 2) no error shown, or 3) bio field has content
-      const hasSuccessMessage = await page
-        .getByText(/Profile updated|saved|success/i)
-        .first()
-        .isVisible()
-        .catch(() => false)
-
-      const hasError = await page
-        .getByText(/error|failed/i)
-        .first()
-        .isVisible()
-        .catch(() => false)
-
-      // If there's a success message, test passes
-      if (hasSuccessMessage) {
-        return
-      }
-
-      // If there's no error and the bio field still has our content, test passes
-      if (!hasError) {
-        const currentBio = await page.getByLabel('Bio').inputValue().catch(() => '')
-        // Bio field should still have our content (not cleared on error)
-        expect(currentBio.length).toBeGreaterThan(0)
-      }
+      // Backend assertion: the bio is actually persisted, not just echoed by
+      // the form.
+      const profile = await fetchMyProfile(token)
+      expect(profile.bio).toBe(bioContent)
     })
 
     test('should show validation error for short display name', async ({ page }) => {
@@ -300,41 +342,79 @@ test.describe('Player Profile', () => {
     })
 
     test('should create availability window', async ({ page }) => {
-      await loginAsAdmin(page)
+      // Own the state: a freshly registered player has zero windows, so both
+      // the "before" and "after" assertions below are exact rather than
+      // "something is probably there". The admin account accumulates windows
+      // across runs, which is why this test used to assert nothing.
+      const userData = testUsers.standard()
+      await register(page, userData)
+      const token = await sessionToken(page)
 
       await page.goto('/profile/availability')
 
       // Click weekly schedule tab
       await page.getByRole('tab', { name: 'Weekly Schedule' }).click()
 
+      // AvailabilityWindowsManager.vue:2-9 — the manager is the card titled
+      // "Weekly Availability"; scope every list assertion to it so the
+      // calendar tab (still mounted, hidden) can't satisfy them.
+      const weeklyCard = page.locator('.v-card').filter({ hasText: 'Weekly Availability' })
+      // Precondition, asserted rather than assumed (component :20-24).
+      await expect(weeklyCard.getByText('No availability windows set.')).toBeVisible()
+
       // Click add time slot button
       await page.getByRole('button', { name: 'Add Time Slot' }).click()
 
-      // Wait for dialog to render
-      await page.waitForTimeout(500)
-
-      // Wait for dialog to be visible
-      await expect(page.getByText('Add Availability')).toBeVisible()
+      // The add/edit dialog (component :69-148).
+      const dialog = page.getByRole('dialog').filter({ hasText: 'Add Availability' })
+      await expect(dialog).toBeVisible()
 
       // Select day of week - click the v-select and choose an option
-      await page.locator('.v-select').filter({ hasText: 'Day of Week' }).click()
+      await dialog.locator('.v-select').filter({ hasText: 'Day of Week' }).click()
+      // The v-select menu is teleported to the overlay container, outside the dialog.
       await page.getByRole('option', { name: 'Tuesday' }).click()
 
-      // Wait for dropdown to close
-      await page.waitForTimeout(300)
+      // Notes give the rendered row a unique, unambiguous string to assert on
+      // (component :49-51 renders it as the list-item subtitle).
+      const notes = `E2E slot ${Date.now()}`
+      await dialog.getByLabel('Notes (Optional)').fill(notes)
 
-      // Click Add button in dialog (times are pre-filled with defaults) - use exact match
-      await page.getByRole('button', { name: 'Add', exact: true }).click()
+      // saveWindow → store.createWindow → POST /v1/players/me/availability/windows
+      // (src/stores/availability.ts:81-90).
+      const createPromise = page.waitForResponse(
+        (resp) =>
+          resp.url().includes('/v1/players/me/availability/windows') &&
+          resp.request().method() === 'POST'
+      )
+      // Times are pre-filled with the component defaults 18:00 / 22:00 (:189-195).
+      await dialog.getByRole('button', { name: 'Add', exact: true }).click()
+      const createResponse = await createPromise
+      expect(createResponse.status(), 'window creation must return 201').toBe(201)
 
-      // Wait for dialog to close
-      await page.waitForTimeout(1000)
+      // UI assertion: the dialog closed and the new slot is rendered in the
+      // weekly list — day subheader (:30), formatted range (:43) and notes.
+      // formatTimeRange('18:00:00','22:00:00') === '6:00 PM - 10:00 PM'
+      // (src/stores/availability.ts:224-236).
+      await expect(dialog).toBeHidden()
+      await expect(weeklyCard.getByText('Tuesday')).toBeVisible()
+      await expect(weeklyCard.getByText('6:00 PM - 10:00 PM')).toBeVisible()
+      await expect(weeklyCard.getByText(notes)).toBeVisible()
+      await expect(weeklyCard.getByText('No availability windows set.')).toBeHidden()
 
-      // Should see the availability page (either with new slot or existing state)
-      await expect(page.getByRole('heading', { name: 'My Availability' })).toBeVisible()
+      // Backend assertion: exactly one window, with the values we entered.
+      const windows = await fetchMyWindows(token)
+      expect(windows).toHaveLength(1)
+      expect(windows[0]!.day_of_week).toBe(2) // DAY_NAMES index for Tuesday
+      expect(windows[0]!.start_time).toBe('18:00:00')
+      expect(windows[0]!.end_time).toBe('22:00:00')
+      expect(windows[0]!.notes).toBe(notes)
     })
 
     test('should cancel add availability dialog', async ({ page }) => {
-      await loginAsAdmin(page)
+      // Fresh player so "nothing was created" is a precise assertion.
+      const userData = testUsers.standard()
+      await register(page, userData)
+      const token = await sessionToken(page)
 
       await page.goto('/profile/availability')
 
@@ -344,16 +424,21 @@ test.describe('Player Profile', () => {
       // Click add time slot button
       await page.getByRole('button', { name: 'Add Time Slot' }).click()
 
-      // Wait for dialog/overlay
-      await expect(page.getByText('Add Availability')).toBeVisible()
+      const dialog = page.getByRole('dialog').filter({ hasText: 'Add Availability' })
+      await expect(dialog).toBeVisible()
 
-      // Click cancel button
-      await page.getByRole('button', { name: 'Cancel' }).click()
+      // Click cancel button (AvailabilityWindowsManager.vue:136 → closeDialog)
+      await dialog.getByRole('button', { name: 'Cancel' }).click()
 
-      // Dialog should close - verify by checking "Add Availability" is no longer in overlay position
-      await page.waitForTimeout(500)
-      // Page should still be on availability
-      await expect(page.getByRole('heading', { name: 'My Availability' })).toBeVisible()
+      // The contract of this test is "the dialog closes". Asserting the page
+      // heading — as this test used to — is true before, during and after the
+      // dialog is open, so it could not fail.
+      await expect(dialog).toBeHidden()
+      await expect(page.getByText('Add Availability')).toBeHidden()
+      await expect(page.getByRole('button', { name: 'Add', exact: true })).toBeHidden()
+
+      // Cancelling must not have written anything.
+      expect(await fetchMyWindows(token)).toHaveLength(0)
     })
 
     test('should show tips card', async ({ page }) => {

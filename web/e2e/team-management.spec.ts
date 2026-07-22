@@ -468,16 +468,36 @@ test.describe('League Team Management Flows', () => {
     })
 
     test('should show every roster member with their role', async ({ page }) => {
+      // Must be authenticated: the roster list is populated by
+      // teamsStore.fetchMembers (TeamDetailPage.vue:348), and anonymously that
+      // request fails, leaving `members` empty and the list unrendered — the
+      // page still shows the team name/description from the public endpoint, so
+      // the failure is silent. Same pattern as the role test below.
+      await loginAsUser(page, {
+        email: roster.owner.email,
+        password: roster.owner.password,
+      })
       await page.goto(`/teams/${roster.teamId}?season=${roster.teamSeasonId}`)
       await page.waitForLoadState('networkidle')
 
       // TeamDetailPage.vue:134-203 — the roster card carries a member count
       // chip and one list item per member.
-      const rosterCard = page.locator('.v-card').filter({ hasText: 'Roster' }).first()
+      // Pin the card by its TITLE. `filter({ hasText: 'Roster' })` matches any
+      // ancestor .v-card whose subtree contains the word, which resolved to the
+      // wrong element (the members render fine — confirmed from the failure's
+      // accessibility snapshot).
+      const rosterCard = page
+        .locator('.v-card')
+        .filter({ has: page.locator('.v-card-title', { hasText: 'Roster' }) })
+        .first()
       await expect(rosterCard).toBeVisible({ timeout: 10_000 })
-      await expect(rosterCard.getByText(roster.owner.displayName)).toBeVisible()
-      for (const member of roster.members) {
-        await expect(rosterCard.getByText(member.displayName)).toBeVisible()
+      // Assert against the display names the API actually returns rather than the
+      // fixture's local copies — the roster renders `member.display_name` from
+      // the members endpoint (TeamDetailPage.vue:156), and the two can differ.
+      const apiMembers = await getTeamMembers(roster.teamSeasonId, roster.owner.token)
+      expect(apiMembers.length, 'fixture seeds a 3-person roster').toBe(3)
+      for (const member of apiMembers) {
+        await expect(rosterCard.getByText(member.display_name).first()).toBeVisible()
       }
       await expect(rosterCard.locator('.v-chip').filter({ hasText: 'captain' })).toHaveCount(1)
       await expect(rosterCard.locator('.v-chip').filter({ hasText: 'player' })).toHaveCount(2)
@@ -819,7 +839,9 @@ test.describe('Team Invitation Lifecycle', () => {
 
     // Player search is a prefix match on the normalised display name
     // (portal-db/src/adapters/user.rs:441), so search the full display name.
-    const search = page.getByLabel('Search Player')
+    // getByLabel('Search Player') also matches the autocomplete's
+    // "Clear Search Player" icon button, so pin to the combobox input.
+    const search = page.getByRole('combobox', { name: /Search Player/ })
     await search.click()
     await search.fill(fixture.invitee.displayName)
     const option = page.getByRole('option').filter({ hasText: fixture.invitee.displayName })

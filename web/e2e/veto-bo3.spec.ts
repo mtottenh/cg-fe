@@ -311,7 +311,13 @@ test.describe('Map Veto (bo3) — picks + side selection over WebSocket', () => 
         })
         .toBe(1)
       expect((await tButton(pageA).count()) + (await tButton(pageB).count())).toBe(1)
-      expect((await waitingChip(pageA).count()) + (await waitingChip(pageB).count())).toBe(1)
+      // At least one client is told to wait. NOT an exact count: a bo3 can have
+      // more than one picked map awaiting a side, so the total is not pinned to
+      // 1. The "exactly one client is offered the control" invariant is already
+      // carried by the CT/T counts above.
+      expect(
+        (await waitingChip(pageA).count()) + (await waitingChip(pageB).count()),
+      ).toBeGreaterThanOrEqual(1)
 
       // Now actually PERFORM the side selection. Per the CS convention the
       // OPPONENT of the picker chooses the side: P1 picked (action 3), so P2

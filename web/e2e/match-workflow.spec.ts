@@ -448,7 +448,11 @@ test.describe('Schedule negotiation (two browser contexts)', () => {
       await pageP2.waitForLoadState('networkidle')
 
       await expect(pageP2.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
-      await expect(pageP2.getByText('Awaiting Response')).toBeVisible()
+      // 'Awaiting Response' renders BOTH as the status chip and inside a <strong>
+      // in the body copy, so scope to the chip or Playwright strict mode fails.
+      await expect(
+        pageP2.locator('.v-chip').filter({ hasText: 'Awaiting Response' }).first(),
+      ).toBeVisible()
 
       // Accept stays locked until a time is picked (ProposalCard.vue:109).
       const acceptButton = pageP2.getByRole('button', { name: 'Accept' })

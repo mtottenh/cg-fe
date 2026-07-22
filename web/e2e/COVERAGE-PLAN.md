@@ -379,7 +379,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 30 found · **12 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
+**Status:** 31 found · **12 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
 1 decision pending UI (P-12) · 5 deliberately deferred to the lineup redesign (P-15, P-18, P-23,
 P-25, P-26 — see `api/docs/lineup-design.md`; do not fix these in isolation).
 
@@ -419,6 +419,7 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | open |
 | P-30 | Season edit Save disabled when max_teams is null | user-facing | open |
+| P-31 | **API declares ~no enums — root cause of the status-drift class** | **architectural** | open |
 
 **P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
 blocked on the same missing table, and **P-15/P-18 are superseded in part** by the
@@ -869,6 +870,30 @@ tests to never leave a form dirty.
 
 ---
 
+### P-31 — The API declares almost no enums, which is the ROOT CAUSE of the whole status-drift class  ⚠️ architectural
+- **Measured, not estimated:** the live OpenAPI spec has **366 schemas across 217 paths and
+  exactly ONE schema containing an `enum`** (`LoserResultResponse`). **41 response-DTO fields**
+  are declared `pub status: String` / `pub *_status: String`
+  (`crates/portal-api/src/dto/responses/`), and **no type in `portal-core/src/types/` derives
+  `ToSchema` at all**.
+- **Consequence:** `openapi-typescript` (already wired as `npm run generate:api` →
+  `src/api/types.ts`, 26k lines) can only emit `string` for every status. So **no frontend
+  status comparison is checkable by any compiler** — which is precisely why P-4, P-10, P-11,
+  P-19, P-20, P-21, P-22 and the §9c sweep all happened, and why they will happen again.
+- **This is the prevention step for the class.** It cannot be done from the frontend: the fix
+  is backend-side — derive `ToSchema` on the status enums and type the DTO fields as those
+  enums rather than `String`, then regenerate. A drifted status then becomes a **compile
+  error** instead of a silent `default:` branch.
+- **Sequencing:** this rewrites the call sites the status sweep just touched, so it must run
+  **solo**, after that sweep — not alongside it.
+- [ ] Derive `ToSchema` on the status enums in `portal-core/src/types/`.
+- [ ] Type the 41 DTO `status` fields as the real enums (start with tournament + match, the
+      highest-traffic).
+- [ ] `npm run generate:api`, then fix the resulting type errors — each one is a latent bug.
+- [ ] Verify the spec's enum count goes from 1 to something sane, and keep a check on it.
+
+---
+
 ### P-23 — Roster-mismatch detection is fully built and permanently dead  ⚠️ integrity
 - **Symptom:** `result_reviews.roster_mismatch` / `unrecognized_players`
   (`migrations/0042_result_reviews.sql:18,25`) and the whole two-captain acknowledgment flow
@@ -1001,8 +1026,9 @@ filters, `useTournamentContext`, `TournamentRegistrationCard`. `EvidenceCard` /
 not backend enums — legitimate. (`EvidenceCard` is additionally unreferenced anywhere.)
 
 **Preventing recurrence:** every one of these is a string literal that no compiler checks.
-Worth considering generated union types from the OpenAPI schema (`src/api/types.ts` already
-exists) so a drifted status becomes a type error rather than a silent `default:` branch.
+This is now tracked as **P-31**, and the investigation found the blocker: `src/api/types.ts` is
+already generated, but the spec declares **1 enum across 366 schemas**, so it can only ever emit
+`string`. The prevention step is backend-side — see P-31.
 
 ## 10. Per-spec tracker
 

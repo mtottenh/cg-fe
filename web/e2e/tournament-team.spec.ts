@@ -1,341 +1,474 @@
-import { test, expect } from '@playwright/test'
-import { loginAsAdmin, register } from './fixtures/auth.fixture'
-import { testTournaments, testUsers } from './fixtures/test-data'
+import { test, expect, type Page } from '@playwright/test'
+import { loginAsAdmin, getAdminToken } from './fixtures/auth.fixture'
+import { uniqueId, CS2_MAP_POOL } from './fixtures/test-data'
+import { createLeagueSeasonScenario } from './fixtures/league-season-extra.fixture'
+import {
+  createTeamWithMembers,
+  loginAsUser,
+  registerAsRosterUser,
+  type RosterUser,
+} from './fixtures/team-roster.fixture'
+import { approveRegistration } from './fixtures/tournament-lifecycle.fixture'
+import { listRegistrations } from './fixtures/team-tournament-extra.fixture'
 
 /**
- * Team-based tournament workflow tests.
- * These tests cover team registration, team roster display,
- * and bracket visualization for team tournaments.
+ * TEAM tournament registration — the captain-facing surface.
  *
- * Prerequisites (seeded by global-setup.ts):
- * - E2E Test League with active season
- * - E2E Admin Team registered for the season
- * - E2E Team Tournament with registration open
+ * SCOPE
+ * -----
+ * This file used to be 18 tests against the globally seeded team tournament
+ * that mostly asserted `expect(page.locator('.v-card').first()).toBeVisible()`
+ * — i.e. "the page rendered something" (COVERAGE-PLAN.md §6.4). Everything
+ * generic about a team tournament's *rendering* is already covered properly
+ * elsewhere and is not repeated here:
  *
- * IMPORTANT: Tests use hard assertions. If seeded data doesn't exist,
- * tests WILL FAIL - this is intentional to surface seeding issues.
+ *   - team-based overview copy ("Teams (5 players)"), the Participants tab
+ *     listing team names, and the Bracket tab rendering Swiss standings
+ *     → `team-tournament.spec.ts:103-121`
+ *   - the tournaments list page, the detail tabs, "Tournament Not Found", and
+ *     the status chip → `tournament-public.spec.ts:67-201`
+ *   - the admin tournament table → `tournament-admin.spec.ts`
+ *
+ * What NOTHING covered — and what this file is now about — is the team
+ * registration flow through the UI: `TeamRegistrationModal.handleRegister`
+ * and `TournamentDetailPage.handleTeamRegister` (COVERAGE-PLAN.md §7 Tier 1).
+ *
+ * WHY EVERY TEST BUILDS ITS OWN SCENARIO
+ * --------------------------------------
+ * Eligibility is a five-way conjunction (captain/manager · not already
+ * registered · same league · same season · active membership —
+ * `TeamRegistrationModal.vue:144-173`), so the only way to make the modal
+ * deterministic is to own the league, the season, the team and the
+ * tournament. The seeded singleton satisfied none of that reliably, which is
+ * exactly why the old tests were wrapped in visibility guards. No guards
+ * remain in this file.
  */
 
-test.describe('Team Tournament Workflows', () => {
-  test.describe('Team Tournament Detail Page', () => {
-    test('should display team tournament detail page', async ({ page }) => {
-      await loginAsAdmin(page)
+const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
+/** 5v5 — matches the team size used by the flagship team spec. */
+const TEAM_SIZE = 5
 
-      // Tournament MUST exist - hard assertion (seeded by global-setup.ts)
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
+interface ApiResult<T> {
+  data: T
+}
 
-      // Name appears twice by design (breadcrumb trail + header) - assert the
-      // first match rather than requiring a unique hit.
-      await expect(page.getByText(testTournaments.team.name).first()).toBeVisible()
-    })
+async function jsonOrThrow<T>(response: Response, context: string): Promise<T> {
+  const text = await response.text()
+  if (!response.ok) {
+    throw new Error(`${context} failed (${response.status}): ${text}`)
+  }
+  return (text ? JSON.parse(text) : {}) as T
+}
 
-    test('should show participant type as team', async ({ page }) => {
-      await loginAsAdmin(page)
+interface TeamRegistrationScenario {
+  tournamentId: string
+  tournamentSlug: string
+  tournamentName: string
+  leagueId: string
+  leagueName: string
+  seasonId: string
+  captain: RosterUser
+  teamName: string
+  teamTag: string
+  teamSeasonId: string
+}
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
-
-      // Tournament MUST exist - hard assertion
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
-
-      // Should see team indicator somewhere on the page
-      await expect(page.getByText(/team|teams/i).first()).toBeVisible()
-    })
-
-    test('should show registration status', async ({ page }) => {
-      await loginAsAdmin(page)
-
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
-
-      // Tournament MUST exist - hard assertion
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
-
-      // Tournament should show some registration-related UI element
-      const statusIndicator = page.getByText(/registration|register|withdraw|open|closed/i)
-      await expect(statusIndicator.first()).toBeVisible()
-    })
+/**
+ * League (open) + season in `registration` + a one-person team whose owner is
+ * its captain + a league/season-scoped TEAM tournament left in `registration`.
+ *
+ * The tournament body mirrors the proven one in
+ * `fixtures/team-tournament-extra.fixture.ts:206-224` (participant_type=team,
+ * team_size, league_id/season_id, open registration). It is built here rather
+ * than in a fixture because the fixtures directory is owned by another
+ * workstream — see the report for the extraction suggestion.
+ */
+async function createTeamRegistrationScenario(
+  adminToken: string,
+): Promise<TeamRegistrationScenario> {
+  const ls = await createLeagueSeasonScenario(adminToken)
+  const roster = await createTeamWithMembers({
+    leagueId: ls.leagueId,
+    seasonId: ls.seasonId,
+    memberCount: 0,
+    teamNamePrefix: 'E2E Reg Team',
   })
 
-  test.describe('Team Selection for Registration', () => {
-    test('should show team selection when registering for team tournament', async ({ page }) => {
-      await loginAsAdmin(page)
+  const suffix = uniqueId()
+  const tournamentName = `E2E Team Registration ${suffix}`
+  const tournamentSlug = `e2e-team-registration-${suffix}`
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
+  const createResp = await fetch(`${API_URL}/v1/tournaments`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
+    body: JSON.stringify({
+      name: tournamentName,
+      slug: tournamentSlug,
+      game_id: ls.gameId,
+      format: 'single_elimination',
+      map_pool: CS2_MAP_POOL,
+      participant_type: 'team',
+      team_size: TEAM_SIZE,
+      min_participants: 2,
+      max_participants: 8,
+      registration_type: 'open',
+      scheduling_mode: 'live',
+      default_match_format: 'bo1',
+      league_id: ls.leagueId,
+      season_id: ls.seasonId,
+      description: 'Team registration coverage for E2E',
+    }),
+  })
+  const created = await jsonOrThrow<ApiResult<{ id: string; slug: string }>>(
+    createResp,
+    'Create team tournament',
+  )
 
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
+  for (const action of ['publish', 'open-registration']) {
+    const resp = await fetch(`${API_URL}/v1/tournaments/${created.data.id}/${action}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    if (!resp.ok) {
+      throw new Error(`Tournament ${action} failed (${resp.status}): ${await resp.text()}`)
+    }
+  }
 
-      // Look for register button
-      const registerButton = page.getByRole('button', { name: /register/i })
-      const hasRegisterButton = await registerButton.isVisible().catch(() => false)
+  return {
+    tournamentId: created.data.id,
+    tournamentSlug: created.data.slug,
+    tournamentName,
+    leagueId: ls.leagueId,
+    leagueName: ls.leagueName,
+    seasonId: ls.seasonId,
+    captain: roster.owner,
+    teamName: roster.teamName,
+    teamTag: roster.teamTag,
+    teamSeasonId: roster.teamSeasonId,
+  }
+}
 
-      if (hasRegisterButton) {
-        await registerButton.click()
+/** Register a team season into a tournament as its captain (API seeding only —
+ *  the UI path is what the tests below drive).
+ *  `POST /v1/tournaments/{id}/registrations/team` — RegisterTeamRequest. */
+async function registerTeamViaApi(
+  captainToken: string,
+  tournamentId: string,
+  teamSeasonId: string,
+  participantName: string,
+): Promise<string> {
+  const resp = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/registrations/team`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${captainToken}`,
+    },
+    body: JSON.stringify({ team_season_id: teamSeasonId, participant_name: participantName }),
+  })
+  const body = await jsonOrThrow<ApiResult<{ id: string }>>(resp, 'Register team')
+  return body.data.id
+}
 
-        // Should see team selection dialog or dropdown
-        await expect(page.getByText(/select.*team|choose.*team|team/i).first()).toBeVisible()
-      }
-      // If no register button, user may already be registered or tournament state doesn't allow registration
-      // This is valid - the tournament exists and loaded
+/**
+ * The `TournamentRegistrationCard` root, located by copy only it renders
+ * (title computed — TournamentRegistrationCard.vue:197-205). Scoping to this
+ * card keeps chip/button assertions away from the header and the tabs card.
+ */
+function registrationCard(page: Page) {
+  return page
+    .locator('.v-card')
+    .filter({
+      hasText:
+        /Join This Tournament|Registration Pending|You're Registered|Check-in Now Open|You're All Set!|Registration Opens Soon|Registration Closed/,
+    })
+    .first()
+}
+
+test.describe('Team Tournament Registration', () => {
+  test('should show the team registration call-to-action to an eligible captain', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+
+    const adminToken = await getAdminToken()
+    const scenario = await createTeamRegistrationScenario(adminToken)
+    await loginAsUser(page, scenario.captain)
+
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
+    await expect(page.getByRole('heading', { name: scenario.tournamentName })).toBeVisible({
+      timeout: 15_000,
     })
 
-    test('should show eligible teams for tournament', async ({ page }) => {
-      await loginAsAdmin(page)
+    // The tournament renders as TEAM-based, not solo: the header chip uses
+    // formatParticipantType(participant_type, team_size)
+    // (TournamentHeader.vue:59, stores/tournaments.ts:199-205). It also
+    // appears in the Overview details list, hence `.first()`.
+    await expect(page.getByText(`Teams (${TEAM_SIZE} players)`).first()).toBeVisible()
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
+    // Registration is open, and the card offers the TEAM call-to-action
+    // ("Register Team", not "Register Now" — TournamentRegistrationCard.vue:23)
+    // with the team-specific subtitle (`:213`).
+    const card = registrationCard(page)
+    await expect(card.getByText('Join This Tournament')).toBeVisible()
+    await expect(card.getByText('Register your team to compete')).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Register Team' })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Register Now' })).toHaveCount(0)
 
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
-
-      // Page should have loaded with some content
-      await expect(page.locator('.v-card').first()).toBeVisible()
-    })
+    // Nothing has been registered by merely looking at the page.
+    expect(await listRegistrations(adminToken, scenario.tournamentId)).toHaveLength(0)
   })
 
-  test.describe('Team Registration Status', () => {
-    test('should show participants section', async ({ page }) => {
-      await loginAsAdmin(page)
+  test("should list the captain's eligible team in the team registration modal", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
+    const adminToken = await getAdminToken()
+    const scenario = await createTeamRegistrationScenario(adminToken)
+    await loginAsUser(page, scenario.captain)
 
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
-
-      // Should see participants/registrations tab or section
-      const participantsTab = page.getByRole('tab', { name: /participant|registration/i })
-      await expect(participantsTab).toBeVisible()
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
+    await expect(page.getByRole('heading', { name: scenario.tournamentName })).toBeVisible({
+      timeout: 15_000,
     })
+    await registrationCard(page).getByRole('button', { name: 'Register Team' }).click()
 
-    test('should display participants tab content when clicked', async ({ page }) => {
-      await loginAsAdmin(page)
+    const modal = page.getByRole('dialog')
+    await expect(modal).toBeVisible()
+    // Title, not the submit button — both read "Register Team"
+    // (TeamRegistrationModal.vue:6 and :98).
+    await expect(modal.locator('.v-card-title')).toContainText('Register Team')
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
+    // The modal MUST name the tournament it is registering for
+    // (TeamRegistrationModal.vue:40-42)...
+    await expect(modal.getByText(scenario.tournamentName)).toBeVisible()
 
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
+    // ...and list the captain's team with its tag, league and role
+    // (`:44-71`). The "No Eligible Teams" alert (`:19-36`) MUST NOT show.
+    await expect(modal.getByText('No Eligible Teams')).toHaveCount(0)
+    await expect(modal.getByText(scenario.teamName)).toBeVisible()
+    await expect(modal.getByText(`[${scenario.teamTag}]`)).toBeVisible()
+    await expect(modal.getByText(scenario.leagueName)).toBeVisible()
+    await expect(modal.locator('.v-chip').filter({ hasText: 'captain' })).toBeVisible()
 
-      // Click participants/registrations tab
-      const participantsTab = page.getByRole('tab', { name: /participant|registration/i })
-      if (await participantsTab.isVisible()) {
-        await participantsTab.click()
+    // Submission is blocked until a team is picked (`canRegister`, `:181-183`).
+    await expect(modal.getByRole('button', { name: 'Register Team' })).toBeDisabled()
 
-        // Should see some content in the tab
-        await expect(page.locator('main')).toBeVisible()
-      }
-    })
+    // Opening the modal MUST NOT have registered anything.
+    expect(await listRegistrations(adminToken, scenario.tournamentId)).toHaveLength(0)
   })
 
-  test.describe('Team Withdraw', () => {
-    test('should display withdraw option when applicable', async ({ page }) => {
-      await loginAsAdmin(page)
+  test('should register a team through the registration modal', async ({ page }) => {
+    test.setTimeout(120_000)
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
+    const adminToken = await getAdminToken()
+    const scenario = await createTeamRegistrationScenario(adminToken)
+    await loginAsUser(page, scenario.captain)
 
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
-
-      // Page should load - withdraw button visibility depends on registration state
-      await expect(page.locator('.v-card').first()).toBeVisible()
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
+    await expect(page.getByRole('heading', { name: scenario.tournamentName })).toBeVisible({
+      timeout: 15_000,
     })
+    await registrationCard(page).getByRole('button', { name: 'Register Team' }).click()
+
+    const modal = page.getByRole('dialog')
+    await expect(modal).toBeVisible()
+
+    // Pick the team. Each option is an outlined v-card whose @click runs
+    // selectTeam() (TeamRegistrationModal.vue:46-52, 186-189), which also
+    // seeds the display name with the team name.
+    await modal
+      .locator('.v-card--variant-outlined')
+      .filter({ hasText: scenario.teamName })
+      .first()
+      .click()
+
+    const displayName = modal.getByLabel('Display Name')
+    await expect(displayName).toHaveValue(scenario.teamName)
+
+    // Override the bracket name to prove the field is actually submitted.
+    const participantName = `${scenario.teamTag} Squad ${uniqueId()}`
+    await displayName.fill(participantName)
+
+    const submit = modal.getByRole('button', { name: 'Register Team' })
+    await expect(submit).toBeEnabled()
+
+    // Arm the snackbar before clicking — success toasts auto-dismiss after 3s
+    // (AppSnackbar.vue:25). Copy from TournamentDetailPage.vue:534.
+    const snackbarPromise = expect(
+      page.locator('.v-snackbar').getByText('Team registered successfully!'),
+    ).toBeVisible({ timeout: 15_000 })
+    await submit.click()
+    await snackbarPromise
+
+    await expect(modal).not.toBeVisible({ timeout: 10_000 })
+
+    // UI: the card flips to the pending state. Registrations always land in
+    // `pending` (DB default; see COVERAGE-PLAN.md §9b P-2), so the card shows
+    // the Awaiting Approval chip (TournamentRegistrationCard.vue:28-45).
+    const card = registrationCard(page)
+    await expect(card.getByText('Registration Pending')).toBeVisible({ timeout: 15_000 })
+    await expect(card.locator('.v-chip').filter({ hasText: 'Awaiting Approval' })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Register Team' })).toHaveCount(0)
+
+    // UI: and the team shows up in the Participants tab under the name we
+    // typed, with the mapped status label (TournamentDetailPage.vue:185-189).
+    await page.getByRole('tab', { name: /Participants/ }).click()
+    const participantRow = page.locator('tr').filter({ hasText: participantName })
+    await expect(participantRow).toBeVisible()
+    await expect(participantRow.locator('.v-chip').filter({ hasText: 'Pending' })).toBeVisible()
+
+    // Backend: exactly one registration, bound to THIS team season.
+    const regs = await listRegistrations(adminToken, scenario.tournamentId)
+    expect(regs).toHaveLength(1)
+    expect(regs[0]?.team_season_id).toBe(scenario.teamSeasonId)
+    expect(regs[0]?.participant_name).toBe(participantName)
+    expect(regs[0]?.status).toBe('pending')
   })
 
-  test.describe('Team Tournament Bracket', () => {
-    test('should display bracket tab', async ({ page }) => {
-      await loginAsAdmin(page)
+  test('should show "No Eligible Teams" to a user who captains no team', async ({ page }) => {
+    test.setTimeout(120_000)
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
+    const adminToken = await getAdminToken()
+    const scenario = await createTeamRegistrationScenario(adminToken)
 
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
+    // A brand-new player: registered, authenticated, but on no roster at all.
+    const outsider = await registerAsRosterUser()
+    await loginAsUser(page, outsider)
 
-      // Should see bracket tab
-      await expect(page.getByRole('tab', { name: 'Bracket' })).toBeVisible()
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
+    await expect(page.getByRole('heading', { name: scenario.tournamentName })).toBeVisible({
+      timeout: 15_000,
     })
 
-    test('should display bracket content when bracket exists', async ({ page }) => {
-      await loginAsAdmin(page)
+    // `hasEligibleTeams === false` suppresses the CTA and swaps in the
+    // explanatory chip (TournamentRegistrationCard.vue:91-96, driven by
+    // useTournamentContext.ts:46-60).
+    const card = registrationCard(page)
+    await expect(card.locator('.v-chip').filter({ hasText: 'No Eligible Teams' })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Register Team' })).toHaveCount(0)
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
-
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
-
-      // Bracket tab MUST be visible
-      const bracketTab = page.getByRole('tab', { name: 'Bracket' })
-      await expect(bracketTab).toBeVisible()
-
-      // Check if tab is disabled (no bracket generated yet)
-      const isDisabled = await bracketTab.getAttribute('disabled')
-      if (isDisabled !== null) {
-        // Tab is disabled - no bracket generated, this is valid state
-        return
-      }
-
-      // Tab is enabled - bracket exists, click it
-      await bracketTab.click()
-      await page.waitForTimeout(1000)
-
-      // Should see either bracket content or empty state
-      const hasBracketContent =
-        (await page.locator('.tournament-bracket').isVisible().catch(() => false)) ||
-        (await page.getByText(/no bracket|generate bracket/i).first().isVisible().catch(() => false)) ||
-        (await page.locator('[role="tabpanel"]').isVisible().catch(() => false))
-
-      expect(hasBracketContent).toBe(true)
-    })
+    expect(await listRegistrations(adminToken, scenario.tournamentId)).toHaveLength(0)
   })
 
-  test.describe('League-Scoped Team Tournament', () => {
-    test('should show league association in tournament details', async ({ page }) => {
-      await loginAsAdmin(page)
+  test('should show the registered state and withdraw option once the team is approved', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
+    const adminToken = await getAdminToken()
+    const scenario = await createTeamRegistrationScenario(adminToken)
 
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
+    // Seed an APPROVED team registration (the register + approve UI paths have
+    // their own tests above / in tournament-seeding.spec.ts:44).
+    const registrationId = await registerTeamViaApi(
+      scenario.captain.token,
+      scenario.tournamentId,
+      scenario.teamSeasonId,
+      scenario.teamName,
+    )
+    await approveRegistration(adminToken, scenario.tournamentId, registrationId)
 
-      // Page should have loaded
-      await expect(page.locator('.v-card').first()).toBeVisible()
+    await loginAsUser(page, scenario.captain)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
+    await expect(page.getByRole('heading', { name: scenario.tournamentName })).toBeVisible({
+      timeout: 15_000,
     })
 
-    test('should restrict registration to league teams', async ({ page }) => {
-      // Register a new user without any teams
-      const userData = testUsers.standard()
-      await register(page, userData)
+    // Approved + tournament still in `registration` ⇒ the "You're Registered"
+    // branch with the Withdraw affordance (TournamentRegistrationCard.vue:70-88;
+    // `canWithdraw` at `:163-167`). Check-in is not open, so no Check In button.
+    const card = registrationCard(page)
+    await expect(card.getByText("You're Registered")).toBeVisible({ timeout: 15_000 })
+    await expect(card.locator('.v-chip').filter({ hasText: 'Registered' })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Withdraw' })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Register Team' })).toHaveCount(0)
+    await expect(card.getByRole('button', { name: 'Check In' })).toHaveCount(0)
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
-
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
-
-      // User without teams trying to register should see appropriate message
-      const registerButton = page.getByRole('button', { name: /register/i })
-      if (await registerButton.isVisible()) {
-        await registerButton.click()
-
-        // Should show either team selection (empty) or "no teams" message
-        await expect(
-          page.getByText(/no.*team|not.*member|create.*team|select.*team/i).first()
-        ).toBeVisible({ timeout: 5000 })
-      }
-    })
+    // Backend agrees.
+    const regs = await listRegistrations(adminToken, scenario.tournamentId)
+    expect(regs.find((r) => r.id === registrationId)?.status).toBe('approved')
   })
 
-  test.describe('Tournament Navigation', () => {
-    test('should navigate to tournament from tournaments list', async ({ page }) => {
-      await loginAsAdmin(page)
+  test('should link back to the tournament league from the breadcrumb', async ({ page }) => {
+    test.setTimeout(120_000)
 
-      await page.goto('/tournaments')
-      await page.waitForLoadState('networkidle')
+    const adminToken = await getAdminToken()
+    const scenario = await createTeamRegistrationScenario(adminToken)
 
-      // Tournaments list MUST load
-      await expect(page.getByRole('heading', { name: 'Tournaments' })).toBeVisible()
-
-      // Try to find the team tournament
-      const teamTournament = page.getByText(testTournaments.team.name)
-      if (await teamTournament.isVisible().catch(() => false)) {
-        // Click to navigate
-        const tournamentLink = page.locator(`a[href*="${testTournaments.team.slug}"]`).first()
-        if (await tournamentLink.isVisible()) {
-          await tournamentLink.click()
-          await expect(page).toHaveURL(new RegExp(testTournaments.team.slug))
-        }
-      }
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
+    await expect(page.getByRole('heading', { name: scenario.tournamentName })).toBeVisible({
+      timeout: 15_000,
     })
 
-    test('should show team tournament in admin tournament list', async ({ page }) => {
-      await loginAsAdmin(page)
+    // A league-scoped tournament gets a League crumb ahead of Tournaments
+    // (TournamentDetailPage.vue:391-403). Clicking it MUST reach that league.
+    const breadcrumbs = page.locator('.v-breadcrumbs')
+    await expect(breadcrumbs.getByText('Tournaments')).toBeVisible()
+    await expect(breadcrumbs.getByText(scenario.tournamentName)).toBeVisible()
 
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
-
-      // Admin tournament list MUST load
-      await expect(page.getByRole('heading', { name: /Tournaments/i })).toBeVisible()
-
-      // Wait for table to load
-      await expect(page.getByRole('table')).toBeVisible({ timeout: 10000 })
-
-      // Should have at least one tournament (we seeded it)
-      const hasTournaments = await page.locator('table tbody tr').first().isVisible()
-      expect(hasTournaments).toBe(true)
-    })
-  })
-
-  test.describe('Team Tournament Check-in', () => {
-    test('should display tournament tabs', async ({ page }) => {
-      await loginAsAdmin(page)
-
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
-
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
-
-      // Should see tournament tabs
-      await expect(page.getByRole('tablist')).toBeVisible()
-    })
+    await breadcrumbs.getByText('League', { exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`/leagues/${scenario.leagueId}`))
+    // LeagueDetailPage renders the name in a v-card-title, not a heading
+    // element (LeagueDetailPage.vue:31), so match on text.
+    await expect(page.getByText(scenario.leagueName).first()).toBeVisible({ timeout: 15_000 })
   })
 })
 
-test.describe('Team Tournament Admin', () => {
-  test.describe('Managing Team Registrations', () => {
-    test('should show registrations tab for admin', async ({ page }) => {
-      await loginAsAdmin(page)
+test.describe('Team Tournament Organizer', () => {
+  test('should let an organizer approve a pending team registration from the participants tab', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
+    const adminToken = await getAdminToken()
+    const scenario = await createTeamRegistrationScenario(adminToken)
+    const participantName = `${scenario.teamTag} Squad ${uniqueId()}`
+    const registrationId = await registerTeamViaApi(
+      scenario.captain.token,
+      scenario.tournamentId,
+      scenario.teamSeasonId,
+      participantName,
+    )
 
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
-
-      // Should see registrations tab (admin or public view)
-      const registrationsTab = page.getByRole('tab', { name: /registration|participant/i })
-      await expect(registrationsTab).toBeVisible()
+    // Admin is an organizer of every tournament (useTournamentContext.ts:64-69).
+    await loginAsAdmin(page)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
+    await expect(page.getByRole('heading', { name: scenario.tournamentName })).toBeVisible({
+      timeout: 15_000,
     })
 
-    test('should display registrations tab content', async ({ page }) => {
-      await loginAsAdmin(page)
+    // The organizer toolbar renders with the pending-approval nudge
+    // (OrganizerToolbar.vue:2-6, 55-58).
+    const toolbar = page.locator('.v-card').filter({ hasText: 'Tournament Management' }).first()
+    await expect(toolbar.getByText('Organizer')).toBeVisible()
+    await expect(toolbar.getByText('1 pending approvals')).toBeVisible()
 
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
+    // Approve through the participants table's organizer-only Actions column
+    // (TournamentDetailPage.vue:202-223 → handleApproveRegistration `:594`).
+    await page.getByRole('tab', { name: /Participants/ }).click()
+    const row = page.locator('tr').filter({ hasText: participantName })
+    await expect(row).toBeVisible()
+    await expect(row.locator('.v-chip').filter({ hasText: 'Pending' })).toBeVisible()
 
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
+    const snackbarPromise = expect(
+      page.locator('.v-snackbar').getByText(`${participantName} approved`),
+    ).toBeVisible({ timeout: 15_000 })
+    await row.getByRole('button', { name: 'Approve' }).click()
+    await snackbarPromise
 
-      // Click registrations tab
-      const registrationsTab = page.getByRole('tab', { name: /registration|participant/i })
-      await registrationsTab.click()
+    // UI: the row flips to Approved and loses its pending actions; the
+    // toolbar's pending counter disappears.
+    await expect(row.locator('.v-chip').filter({ hasText: 'Approved' })).toBeVisible()
+    await expect(row.getByRole('button', { name: 'Approve' })).toHaveCount(0)
+    await expect(toolbar.getByText('1 pending approvals')).toHaveCount(0)
 
-      // Should see some content (either registrations or empty state)
-      await expect(page.locator('main')).toBeVisible()
-    })
-  })
-
-  test.describe('Starting Team Tournament', () => {
-    test('should display tournament action buttons', async ({ page }) => {
-      await loginAsAdmin(page)
-
-      await page.goto(`/tournaments/${testTournaments.team.slug}`)
-      await page.waitForLoadState('networkidle')
-
-      // Tournament MUST exist
-      await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
-
-      // Should see some action buttons (view public, edit, etc.)
-      await expect(page.locator('.v-btn').first()).toBeVisible()
-    })
+    // Backend agrees.
+    const regs = await listRegistrations(adminToken, scenario.tournamentId)
+    expect(regs.find((r) => r.id === registrationId)?.status).toBe('approved')
   })
 })

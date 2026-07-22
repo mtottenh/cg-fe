@@ -366,7 +366,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 29 found · **7 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20) · P-9 API shipped, UI open ·
+**Status:** 29 found · **8 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24) · P-9 API shipped, UI open ·
 1 decision pending UI (P-12) · 5 deliberately deferred to the lineup redesign (P-15, P-18, P-23,
 P-25, P-26 — see `api/docs/lineup-design.md`; do not fix these in isolation).
 
@@ -399,7 +399,7 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-21 | Tournament **list** cards print raw enum | user-facing | **fixed** `c4bca02` |
 | P-22 | Season roster-lock column always "Open" | enforcement | open |
 | P-23 | Roster-mismatch review built but unreachable | integrity | open |
-| P-24 | **Check-in has no authz — anyone can start any match** | **security** | open |
+| P-24 | **Check-in has no authz — anyone can start any match** (+forfeit, +reg check-in) | **security** | **fixed** `98c8f48` |
 | P-25 | Benched players credited with matches; ringer stats count | integrity | open |
 | P-26 | "Sub can't face own team" never enforced | integrity | open |
 | P-27 | `invite_only` tournaments accept anyone | trust | open |
@@ -849,6 +849,21 @@ tests to never leave a form dirty.
 ---
 
 ### P-24 — `match_check_in` has NO authorization: anyone can check in any team  ⚠️⚠️ SECURITY
+- ✅ **FIXED** in `98c8f48` (api repo). Verified independently: fmt/clippy clean, and the three
+  denial tests were confirmed to fail (200 instead of 403) when the guard is reverted, so they
+  catch the real bug.
+- **Scope was WORSE than recorded — the same hole existed in two more endpoints**, both now fixed:
+  - `POST /matches/{id}/forfeit` — even more damaging: hands someone else's match away.
+  - `POST /registrations/{rid}/check-in` — participant-facing tournament check-in.
+  - `POST /registrations/{rid}/admin-check-in` was **already** gated by
+    `tournament.participants.manage` — verified, left unchanged.
+- **Fix:** generalized the veto authorization service to `can_act_for_registration` and added a
+  `require_registration_actor` handler helper — scoped `tournament.participants.manage` +
+  admin override first, then the participant-actor fallback (captain / owner / delegate, or the
+  registered player for individual entries). The helper resolves the tournament from the
+  **registration row, not the URL**, closing a cross-tournament variant the agent found unprompted.
+- **Bonus hardening:** the participant-binding check now runs BEFORE the `Scheduled → CheckingIn`
+  auto-transition, so a rejected non-participant can no longer nudge match status as a side effect.
 - **Symptom:** `portal-api/src/handlers/tournaments/match_lifecycle.rs:116-155` takes
   `AuthenticatedUser` but **no `PermissionChecker`**, and
   `services/tournament/match_lifecycle.rs:201-208` only verifies the `registration_id` is one of

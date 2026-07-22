@@ -356,7 +356,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Wave 3 status:** 22 found · 1 fixed (P-4) · 4 product decisions taken (P-2, P-5, P-9, P-12).
+**Wave 3 status:** 26 found · 1 fixed (P-4) · 4 product decisions taken (P-2, P-5, P-9, P-12).
 
 **This register is authoritative.** Any product bug found by this work gets a P-number *here*,
 even if it also appears in a §9c sweep list — findings parked only in a checklist get lost.
@@ -386,10 +386,17 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-20 | Home page hides `pick_ban`/`ready`/`awaiting_result` matches | user-facing | open |
 | P-21 | Tournament **list** cards print raw enum | user-facing | open |
 | P-22 | Season roster-lock column always "Open" | enforcement | open |
+| P-23 | Roster-mismatch review built but unreachable | integrity | open |
+| P-24 | **Check-in has no authz — anyone can start any match** | **security** | open |
+| P-25 | Benched players credited with matches; ringer stats count | integrity | open |
+| P-26 | "Sub can't face own team" never enforced | integrity | open |
 
-**P-14/15/16/17/18 are one cluster** (roster lock) and **P-15/P-18 are superseded in part by the
-substitute/lineup redesign** — see `docs/lineup-design.md`. Do not fix P-15 in isolation until
-that design lands.
+**P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
+blocked on the same missing table, and **P-15/P-18 are superseded in part** by the
+substitute/lineup redesign — see `api/docs/lineup-design.md`. Do not fix P-15 in isolation.
+
+⚠️ **P-24 is a live authorization hole and must NOT wait on any of that** — it is independent,
+it is exploitable today, and a stranger can force any match to start.
 Three of these — **P-4, P-10, P-11** — are the *same defect*: a hand-rolled comparison against a
 status string that drifted from the backend. Fix them as one sweep, not three point fixes.
 
@@ -732,6 +739,65 @@ tests to never leave a form dirty.
   set, and where it could be, the UI would not show it.
 - [ ] Use `rosterLockStatusMap`; fail closed (unknown ⇒ treat as locked), matching
       `src/utils/rosterLock.ts`.
+
+---
+
+### P-23 — Roster-mismatch detection is fully built and permanently dead  ⚠️ integrity
+- **Symptom:** `result_reviews.roster_mismatch` / `unrecognized_players`
+  (`migrations/0042_result_reviews.sql:18,25`) and the whole two-captain acknowledgment flow
+  (`services/tournament/result_review.rs:45-170`) are complete. The producer is
+  `let unrecognized = Vec::new();` (`portal-api/src/adapters/demo_validator.rs:88`) — declared,
+  never mutated, passed at `:145`. **`roster_mismatch` is always false in production.**
+- **Same defect in the CS2 plugin:** `Cs2EvidenceValidator::verify_players` returns
+  `(true, 0, 0)` on empty input (`evidence_validator.rs:182-186`) and its only production call
+  site passes two empty slices (`plugins/src/games/cs2/mod.rs:1352`, comment: *"Steam IDs
+  unavailable at this layer"*). Player verification always passes.
+- **Root cause:** both need to know who was *supposed* to play. Nothing records that.
+  → blocked on `docs/lineup-design.md`.
+- [ ] Populate `unrecognized_players` by diffing demo Steam IDs against the declared lineup.
+
+---
+
+### P-24 — `match_check_in` has NO authorization: anyone can check in any team  ⚠️⚠️ SECURITY
+- **Symptom:** `portal-api/src/handlers/tournaments/match_lifecycle.rs:116-155` takes
+  `AuthenticatedUser` but **no `PermissionChecker`**, and
+  `services/tournament/match_lifecycle.rs:201-208` only verifies the `registration_id` is one of
+  the two match participants — never that the caller has any authority over it.
+- **Impact:** any authenticated user can check in **any** team for **any** match. Because
+  `both_checked_in()` auto-advances to `PickBan`/`InProgress` (`match_lifecycle.rs:244-260`), a
+  stranger can **force a match to start**. The stored `participantN_checked_in_by` is then a
+  meaningless audit value.
+- **Contrast:** veto solves exactly this — `services/tournament/veto_authorization.rs:114-160`
+  (captain / owner / active `veto_delegates`). Check-in simply never adopted it.
+- **Fix independently of the lineup work — this is live.**
+- [ ] Reuse `VetoAuthorizationService::is_captain / is_owner / is_delegate` in `check_in`.
+- [ ] Add an e2e test: a non-member must get 403 checking in someone else's team.
+
+---
+
+### P-25 — Benched players are credited with matches they did not play  ⚠️ integrity
+- **Symptom:** the completion saga bumps `player_game_profile` (`matches_played`, `wins`,
+  `losses`, `win_streak`) for the **team-season roster**, recording idempotency in
+  `player_match_stats_applied (player_id, match_id)`
+  (`migrations/0073_player_match_stats_applied.sql:20-28`). There is no lineup, so it cannot do
+  otherwise.
+- **Impact:** a player who sat out the entire season still shows a full match record.
+- **Related:** demo stat attribution is a bare global `steam_id_64` equality UPDATE with **no**
+  match/roster/eligibility predicate (`adapters/demo.rs:899-919`,
+  `adapters/demo_stats.rs:118-132`), so **a ringer's stats count** toward leaderboards
+  (`demo_stats.rs:175-205`) and awards. → blocked on `docs/lineup-design.md`.
+- [ ] Credit participation from the lineup, not the roster.
+
+---
+
+### P-26 — "Substitutes cannot play against their primary team" is a comment, not a rule
+- **Symptom:** `migrations/0025_league_teams_and_seasons.sql:16` states the intent. No code
+  enforces it. `idx_one_primary_team_per_season`
+  (`0026_restructure_league_teams.sql:275-277`) deliberately lets a `substitute` be active on
+  many teams in one season, so the situation is reachable by design.
+- **Why it is unenforceable today:** the rule is about a *match* ("play against"), and nothing
+  binds a player to a match. → blocked on `docs/lineup-design.md`.
+- [ ] Enforce at lineup submission once lineups exist.
 
 ---
 

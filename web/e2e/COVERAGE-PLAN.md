@@ -318,9 +318,11 @@ No test ever loads these:
 Each needs at minimum a load + render assertion; those with mutating actions need a
 real action test (tracked in §7).
 
-- [ ] **Investigate:** `pages/TeamCreatePage.vue` appears unreachable —
-      `router/index.ts:137` redirects `/teams/new` → `/leagues`. Likely dead code, not a test gap.
-      Delete the page or restore the route.
+- [x] **Investigated — dead code, deleted.** `pages/TeamCreatePage.vue` was imported by
+      **nothing** (`router/index.ts:137` redirects `/teams/new` → `/leagues` without it). The
+      page was a "teams are now created within leagues, go to /leagues" signpost pointing at
+      the same destination the redirect already reaches, so it could only ever have added a
+      click. Confirmed not a test gap. Deleted; `vue-tsc` clean.
 
 ---
 

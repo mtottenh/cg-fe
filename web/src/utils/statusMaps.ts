@@ -239,6 +239,16 @@ export const resultReviewStatusMap: StatusMap = {
   rejected: { color: 'error', label: 'Rejected', icon: 'mdi-close' },
 }
 
+// Evidence lifecycle. Values from migrations/0060_evidence_pending_status.sql:
+// the CHECK constraint is ('pending','active','expired','deleted','quarantined').
+export const evidenceStatusMap: StatusMap = {
+  pending: { color: 'warning', label: 'Pending', icon: 'mdi-clock-outline' },
+  active: { color: 'success', label: 'Active', icon: 'mdi-check-circle' },
+  expired: { color: 'grey', label: 'Expired', icon: 'mdi-clock-alert-outline' },
+  deleted: { color: 'error', label: 'Deleted', icon: 'mdi-delete' },
+  quarantined: { color: 'error', label: 'Quarantined', icon: 'mdi-shield-alert' },
+}
+
 export function formatRole(role: string): string {
   return role.charAt(0).toUpperCase() + role.slice(1)
 }

@@ -18,9 +18,10 @@ import {
  *   draft → published → registration → scheduled → in_progress
  *         → completed → finalized
  *
- * Existing admin specs in `tournament-admin.spec.ts` cover each state
- * transition in isolation. This spec exercises them as a single state
- * machine, plus three auxiliary scenarios:
+ * This spec is the SOLE owner of the lifecycle transitions: the
+ * `tournament-admin.spec.ts` duplicates were state-dependent no-ops and were
+ * deleted in Wave 2. It exercises them as a single state machine, plus three
+ * auxiliary scenarios:
  *
  *   - Reopen registration from `scheduled` (bounces back to
  *     `registration` and can then be closed again).

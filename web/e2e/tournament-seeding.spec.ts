@@ -120,9 +120,9 @@ test.describe('Tournament Registration Approval + Bracket Seeding', () => {
     expect(byStatus.withdrawn ?? byStatus.rejected).toBe(1)
 
     // Close registration via API so start-tournament is valid. The UI also
-    // exposes a Close Registration button, but we already exercise that in
-    // tournament-admin.spec; here we want to keep this test focused on
-    // approval + seeding.
+    // exposes a Close Registration button, but that is exercised in
+    // tournament-lifecycle.spec.ts (:96, :176); here we keep this test focused
+    // on approval + seeding.
     await closeRegistration(adminToken, tournament.id)
 
     // Seeding tab → Auto Seed button.

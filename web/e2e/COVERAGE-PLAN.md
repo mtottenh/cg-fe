@@ -288,6 +288,10 @@ Handlers with user-facing **mutating** actions that **no e2e test triggers throu
 - [ ] `AdminDemoDetailPage.handleCategorize` / `handleReprocess` / `handleSaveNotes` / `handleToggleVisibility`
 
 ### Tier 3 — other components with mutating handlers, no coverage
+- [ ] **`LeagueTeamDetailModal` admin demote-from-captain** (`src/components/admin/LeagueTeamDetailModal.vue:139-146`)
+      — reached from `/admin/teams`, a route §8 says no test ever loads. Closes a §8 route and a
+      §7 Tier-2 component in one test. (A captain-facing demote UI does NOT exist; transfer-ownership
+      has no UI at all — the endpoint appears only in the generated client.)
 - [ ] `SteamTrackingCard.handleRegister` / `handleUpdate` / `handleDelete`
 - [ ] `SocialLinksEditor` + `ProfileEditPage.saveSocialLinks`
 - [ ] `AvailabilityOverridesManager.saveOverride`
@@ -439,6 +443,106 @@ Each entry below was independently re-verified (not taken on the agent's word).
   there, the in-page refresh is confirmed stale and this becomes a real bug.
 - [ ] Confirm on the next run, then fix the refresh (and stop swallowing refetch errors).
 
+### P-7 — Map-veto side selection is UNREACHABLE through the UI (frontend and backend disagree on who picks)  ⚠️ feature dead in the product
+- **Symptom:** in `picker_choice` mode, nobody can select a side. The only client shown the
+  CT/T buttons is rejected by the API with 403; the client the API accepts is never given a
+  control. The whole side-selection step is dead in the UI.
+- **Root cause — the two layers carry literally opposite rules, each with a comment asserting it:**
+  - Frontend `src/components/match/veto/VetoSideSelect.vue:69-73` —
+    `// In picker_choice mode, the picker selects the side` →
+    `return action.performed_by_registration_id === props.userRegistrationId`
+  - Backend `portal-domain/src/services/tournament/veto.rs:507-512` —
+    `// In picker_choice mode, the OPPONENT (non-picker) selects the side.` →
+    `if acting_for_registration == picker { return NotAuthorized("The opponent of the picker selects the side") }`
+  - The WS path (`portal-api/src/handlers/veto_ws.rs:611-625`) feeds the same service, so it is
+    rejected identically — there is no alternate route in.
+- **History:** the backend was deliberately changed to require the opponent (`bf22c90`, after
+  `47738fa` flagged the disagreement). **The frontend was never updated to match**, so the
+  inversion is still live — now pointing the other way.
+- **Intent is settled:** backend, the domain comment, CS convention and the product decision
+  taken earlier in this work all agree — *the opponent chooses*. So the frontend is the side
+  that is wrong.
+- **Found by:** §6.7 — the agent tried to actually click the button, discovered the client it was
+  told to click has no control, and traced both layers instead of forcing the test green.
+- **Note on the test:** assertions were deliberately made role-agnostic ("exactly one client is
+  offered the control"). Pinning them to today's behaviour would have *certified* the bug and
+  gone red when it is fixed.
+- [ ] Fix: flip `canSelectSide` to `!==` (and reword the waiting chip, which will then show to
+      the picker). One-line frontend change; the backend is already correct.
+
+### P-8 — Calendar mode lets you propose a time in the PAST, then hard-fails  ⚠️ user-facing dead end
+- **Symptom:** page back a week in the scheduling calendar, click a slot, and **Send Proposal is
+  enabled** — then the API rejects it with a hard 400 *"Proposed times must be in the future"*.
+- **Root cause:** `components/match/MatchSchedulingPanel.vue:205-209` deliberately skips the
+  picker's validity check in calendar mode —
+  `if (viewMode.value === 'calendar') return nonEmpty` — on the assumption that "the calendar
+  overlay only offers valid cells". That assumption is false: `AvailabilityCalendarOverlay.vue:7`
+  renders an **ungated** "Previous week" button (no `:disabled`), past weeks are built identically
+  (weekly-recurring windows repeat backwards), and neither `handleCellClick` nor `cellToIso`
+  applies a future check. Backend guard: `services/tournament/scheduling.rs:94-100`.
+- **Found by:** §6.5, while driving the calendar path for real.
+- [ ] Fix: add a future-date guard in `hasValidTime` (or disable past cells / the Previous-week
+      button once `weekOffset` would go before today).
+
+### P-9 — A proposer cannot withdraw their own schedule proposal
+- **Symptom:** mistype a time and you are stuck. The proposer sees only
+  "Waiting for your opponent to respond…" (`ProposalCard.vue:137-145`) with no cancel control, so
+  a wrong proposal blocks scheduling for the full 48h TTL unless the opponent happens to respond.
+- **Root cause:** no cancel endpoint is exposed (`routes/tournaments.rs:148-164`);
+  `ProposalStatus::Cancelled` is only ever set by `admin_schedule`
+  (`services/tournament/scheduling.rs:344-353`). A missing capability rather than a broken one.
+- [ ] Decide whether players should be able to withdraw a pending proposal; if so, expose the
+      endpoint and a control on `ProposalCard`.
+
+### P-10 — Admin registrations table prints the raw status enum
+- **Symptom:** organisers see `checked_in`, `no_show`, `disqualified` in the admin registrations
+  table instead of readable labels.
+- **Root cause:** `components/admin/tournament-detail/RegistrationsTab.vue:20-24` renders
+  `{{ item.status }}`. It *imports* `registrationStatusMap` but uses only the **color** half
+  (`:118`, `:144`) — the `label` is never applied. The public participants table on the same data
+  maps it correctly (`TournamentDetailPage.vue:185-189`), so this reads as an oversight.
+- Same family as P-4 (a status map imported but half-used), one severity lower (admin-only).
+- **Note:** the test asserts the *raw* text to match shipped behaviour, with an inline comment —
+  rather than asserting the correct label and shipping a red test. Flagged here instead.
+- [ ] Fix: `getStatusLabel(registrationStatusMap, item.status)`.
+
+### P-11 — Roster lock is NEVER enforced in the admin UI (compares against a value that cannot exist)  ⚠️ enforcement gap
+- **Symptom:** the "Roster Locked" chip never renders, and **Invite Player / member-action menus
+  are never disabled** — an admin can invite players and mutate rosters on a `hard_lock` season.
+- **Root cause:** `components/admin/LeagueTeamDetailModal.vue:54`, `:67`, `:128` all test
+  `team?.roster_lock_status === 'locked'`. The column's CHECK constraint permits only
+  `open` / `soft_lock` / `hard_lock` (`api/migrations/0025_league_teams_and_seasons.sql:46,69`);
+  **`'locked'` appears nowhere in the schema or domain**, so all three conditions are dead.
+- Same failure mode as P-4/P-10 — a hand-rolled comparison against a stale string — but here the
+  consequence is a bypassed business rule, not cosmetics.
+- **Found by:** §6.1. It made the agent's test *pass*, so it was reported rather than asserted on.
+- [ ] Fix: compare against the real values (`soft_lock` / `hard_lock`, with the intended semantics
+      for each) and add a test that a hard-locked season blocks invites.
+
+### P-12 — No captain-facing entry point to the team invite modal
+- **Symptom:** a captain cannot invite from their own team page. `LeagueTeamInviteModal` lives in
+  `components/admin/` and is only mounted by `LeagueTeamDetailModal` (`:311`), reachable from
+  `/admin/teams` and `/admin/leagues`. `TeamDetailPage.vue` shows a captain-only "Pending
+  Invitations" card with *cancel* buttons but **no invite button**.
+- The only captain path is `PlayerDetailPage.vue:53-62` — you must already know the player and
+  open their profile; there is no "invite" affordance on your own team.
+- **This invalidated a plan assumption:** §6.1's "captain invites through `LeagueTeamInviteModal`"
+  is not achievable as written. Both real surfaces were covered instead of pretending it exists.
+- [ ] Decide: add an "Invite Player" button to `TeamDetailPage`, or accept the profile-page flow.
+
+### P-13 — `TeamEditPage` renders a blank editable form to non-owners
+- **Symptom:** a non-owner sees the full edit form with empty fields next to "Only the team owner
+  can edit team settings".
+- **Root cause:** `onMounted` sets the error and `return`s (`pages/TeamEditPage.vue:281-284`)
+  *before* populating `form`, but the template's `v-if="team"` is already satisfied.
+- Harmless today (`hasChanges` stays false so Save is disabled), but confusing.
+- [ ] Fix: gate the form on ownership, or populate/redirect before rendering.
+
+**Process note (not a product bug):** `composables/useUnsavedChanges.ts:30-33` puts a
+`window.confirm` in front of in-app navigation. **Playwright auto-dismisses dialogs**, so any
+future test that routes away from a dirty edit form will silently fail to navigate. Structure such
+tests to never leave a form dirty.
+
 ### P-3 — `checkInRequired` alone can never open check-in
 - **Symptom:** creating a tournament with `checkInRequired: true` is not sufficient for
   `is_check_in_open()` to return true — it also needs a check-in *window*, and
@@ -447,6 +551,12 @@ Each entry below was independently re-verified (not taken on the agent's word).
 - **Impact:** minor/test-facing today (worked around via `createCheckInScenario`), but the flag
   is misleading to anyone using it.
 - [ ] Add the window fields to the options (and confirm the API accepts them on create).
+- [ ] `match-workflow-extra.fixture.ts` — `proposeScheduleViaApi` is now unused suite-wide (the
+      describe that used it was deleted); `MatchDetails` omits `scheduled_at` and nothing reads
+      `/schedule/active` or `/schedule/history`. Fold the spec-local helpers in and drop the dead one.
+- [ ] `fixtures/checkin.fixture.ts` — `advanceMatchToCheckingIn` swallows HTTP 400 on both the
+      schedule and the transition, so a fixture failure surfaces later as a confusing UI failure.
+      Fail loudly instead. (Same swallowed-error family as P-6 and the original dispute bug.)
 
 ---
 

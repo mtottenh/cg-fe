@@ -2,25 +2,8 @@
   "fixtures/auth.fixture.ts": {
     "visibilityGuard": 1
   },
-  "match-checkin.spec.ts": {
-    "visibilityGuard": 1
-  },
-  "team-management.spec.ts": {
-    "orAssertion": 8,
-    "visibilityGuard": 42
-  },
-  "tournament-admin.spec.ts": {
-    "orAssertion": 2,
-    "visibilityGuard": 16
-  },
-  "tournament-team.spec.ts": {
-    "visibilityGuard": 5
-  },
   "uploads.spec.ts": {
     "visibilityGuard": 2,
-    "orAssertion": 1
-  },
-  "veto-bo3.spec.ts": {
     "orAssertion": 1
   }
 }

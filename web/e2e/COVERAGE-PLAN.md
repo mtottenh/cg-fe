@@ -414,7 +414,7 @@ Each entry below was independently re-verified (not taken on the agent's word).
 - **Blast radius:** every status the stale switch doesn't know, including the most common public
   state. Worth auditing other hand-rolled status switches for the same drift.
 - **Found by:** §5.2 — the new test asserted the user-visible label; the app showed an enum.
-- [x] **Fixed:** added `tournamentPublicStatusMap` to `utils/statusMaps.ts` (public voice, full
+- [x] **Fixed** in `TournamentHeader` (but see §9c — `TournamentCard` has the identical bug, unfixed): added `tournamentPublicStatusMap` to `utils/statusMaps.ts` (public voice, full
       coverage of the real backend statuses) and `TournamentHeader` now reads it, falling back to
       the admin map so a status we forget to add still renders a real label instead of leaking the
       enum. Both the new assertion ("Registration Open") and the pre-existing one ("Live Now") pass.
@@ -564,6 +564,67 @@ tests to never leave a form dirty.
       Fail loudly instead. (Same swallowed-error family as P-6 and the original dispute bug.)
 
 ---
+
+## 9c. The stale-status-string defect class (systematic sweep)
+
+P-4, P-7, P-10 and P-11 all turned out to be **the same defect**: a hand-rolled
+comparison or `switch` against a status string that drifted from what the backend
+actually emits, with a `default` that leaks the raw enum. A sweep of `src/` against the
+Rust enums and DB `CHECK` constraints found **~12 more instances**. Fixing them one at a
+time was never going to work.
+
+Also found: several maps in `statusMaps.ts` were **missing real backend values** — most
+notably `disputeStatusMap` lacked `pending` and `cancelled`, the two most common dispute
+states, so the admin disputes table rendered raw enums. Those are fixed.
+
+### ⚠️ FUNCTIONAL — these silently hide data from users (fix first)
+- [ ] **`pages/TournamentsPage.vue:196`** — the **"Upcoming" tab filters on
+      `['draft','published','registration_open','registration_closed','ready']`**. The real
+      statuses are `registration` and `scheduled`, so the tab **silently drops nearly every
+      upcoming tournament**. Not cosmetic — the page appears empty.
+- [ ] **`pages/HomePage.vue:344,346-352`** — the local map and `ACTIVE_MATCH_STATUSES`
+      contain `'scheduling'` (not a real status) and omit `ready`, `pick_ban`,
+      `awaiting_result`, so **matches in those states never appear in "your upcoming
+      matches"**.
+- [ ] `pages/TournamentsPage.vue:190` — the Registration-Open tab compares
+      `'registration_open'`; it only works at all via the `is_registration_open` fallback.
+
+### Raw enum leaked to users (P-4 / P-10 class)
+- [ ] **`components/tournament/TournamentCard.vue:108-155`** — **P-4 verbatim, still
+      unfixed, on the tournaments LIST page** (`registration_open`, `check_in_open`,
+      `ready` … then `default: return props.tournament.status`). Arguably higher-traffic
+      than the header that was fixed. `tournamentPublicStatusMap` already has the right
+      public copy.
+- [ ] `components/player/MatchHistoryList.vue:41` — renders the raw status on the public
+      player profile.
+- [ ] `pages/LeagueDetailPage.vue:154` — renders the raw season status; the file imports
+      `getStatusLabel` but never applies it. NOTE: `e2e/league-season.spec.ts:68,185`
+      currently assert the raw text and must be updated with the fix.
+- [ ] `components/tournament/TournamentMatchCard.vue:113,149` — compares `'scheduling'`
+      (not a real status) and omits `ready`/`forfeit`, which fall through to the raw enum.
+- [ ] `components/match/evidence/EvidenceDisplay.vue:65-66` — raw evidence status (no map
+      exists for it yet).
+
+### Dead conditions / behavioural gaps
+- [ ] **`components/admin/LeagueSeasonsPanel.vue:60,64`** — a **second instance of P-11**:
+      `roster_lock_status === 'locked'`, so the Locked/Open column always reads "Open".
+- [ ] `components/match/MatchStatusTimeline.vue:48-62` — the step list omits `forfeit` and
+      `disputed`, so such a match highlights no current step.
+- [ ] `composables/useMatchLobby.ts:154-165` — a `cancelled` veto session is treated as
+      in-progress.
+- [ ] `components/admin/DisputeDetailModal.vue:201` — `status !== 'closed'` can never be
+      false; reduces to `!dispute.resolution`.
+
+### Verified correct — no action
+`GameMapCard` / `VetoMapGrid`, the awards components, `ResultReviewDetailModal`,
+`ProposalCard`, `AdminDisputesPage` filters, `AdminDemoDetailPage`, all `=== 'active'`
+filters, `useTournamentContext`, `TournamentRegistrationCard`. `EvidenceCard` /
+`EvidenceAttachmentPanel` and `AvailabilityCalendarOverlay` compare **client-side** unions,
+not backend enums — legitimate. (`EvidenceCard` is additionally unreferenced anywhere.)
+
+**Preventing recurrence:** every one of these is a string literal that no compiler checks.
+Worth considering generated union types from the OpenAPI schema (`src/api/types.ts` already
+exists) so a drifted status becomes a type error rather than a silent `default:` branch.
 
 ## 10. Per-spec tracker
 

@@ -18,13 +18,16 @@ import {
  * Complements `match-workflow.spec.ts`, which only asserts that the
  * check-in panel renders. These tests drive real check-in state transitions
  * and verify the backend responds correctly to:
- *   1. Both-participants-checked-in -> match auto-advances.
+ *   1. Both-participants-checked-in -> match auto-advances (P1 checks in
+ *      through the UI: the button, the POST it fires, and the panel's
+ *      post-check-in state are all asserted).
  *   2. No-show admin processing marks the absent registration NoShow.
  *   3. Non-participants never see the "Check In" button.
  *
- * Setup is done entirely via the backend API (using helpers in
- * `fixtures/checkin.fixture.ts`) so the spec stays deterministic and
- * doesn't depend on the seeded E2E tournament's state.
+ * Setup (tournament, registrations, bracket, match state) is done via the
+ * backend API using helpers in `fixtures/checkin.fixture.ts` so the spec
+ * stays deterministic and doesn't depend on the seeded E2E tournament's
+ * state. The actions under test are driven through the UI.
  */
 
 // State-machine notes the fixture depends on:
@@ -65,32 +68,35 @@ test.describe('Match Check-in Enforcement', () => {
     await page.goto(`/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`)
     await page.waitForLoadState('networkidle')
 
-    // The fixture drives the match to `checking_in`, so the Check In button
-    // should render for a participant. Keep the API fallback in case the
-    // page is mid-refresh. (The waitForResponse promise is created only on
-    // the UI path — a pending listener at test end rejects and fails the
-    // test otherwise.)
-    const checkInButton = page.getByRole('button', { name: /Check In/i })
-    if (await checkInButton.isVisible().catch(() => false)) {
-      const p1CheckInPromise = page
-        .waitForResponse(
-          (res) =>
-            res.url().includes(`/matches/${scenario.matchId}/check-in`) &&
-            res.request().method() === 'POST',
-          { timeout: 10000 },
-        )
-        .catch(() => undefined)
-      await checkInButton.click()
-      await p1CheckInPromise
-    } else {
-      await checkInViaApi(
-        request,
-        scenario.p1.token,
-        scenario.tournamentId,
-        scenario.matchId,
-        scenario.p1.registrationId,
-      )
-    }
+    // The Check In button is GUARANTEED to render here — no guard, no
+    // fallback (a fallback would let this test pass with a broken panel):
+    //  - `showCheckInPanel` (composables/useMatchDetail.ts:86-89) needs the
+    //    match in `scheduled` | `checking_in` — asserted above — plus a
+    //    resolved `userRegistrationId`; the fixture registered + approved P1
+    //    and `primeAuthStorage` seeds the player id (players.id == users.id
+    //    by construction, api/crates/portal-db/src/adapters/user.rs:209-228).
+    //  - the button itself is gated on `!userAlreadyCheckedIn`
+    //    (pages/MatchDetailPage.vue:181, 501-508) and P1's match-level
+    //    check-in timestamp is still null (asserted above).
+    const checkInButton = page.getByRole('button', { name: /^Check In$/i })
+    await expect(checkInButton).toBeVisible({ timeout: 10000 })
+
+    const p1CheckInResponse = page.waitForResponse(
+      (res) =>
+        res.url().includes(`/matches/${scenario.matchId}/check-in`) &&
+        res.request().method() === 'POST',
+      { timeout: 15000 },
+    )
+    await checkInButton.click()
+    expect((await p1CheckInResponse).status()).toBe(200)
+
+    // UI reflects the mutation without a reload: MatchDetailPage swaps the
+    // button for the "waiting for opponent" alert (`v-else` at
+    // pages/MatchDetailPage.vue:191-193) once `fetchAll` re-reads the match.
+    await expect(page.getByText(/checked in\. Waiting for opponent/i)).toBeVisible({
+      timeout: 10000,
+    })
+    await expect(checkInButton).toHaveCount(0)
 
     // Backend now has P1 checked in.
     const afterP1 = await getMatch(request, adminToken, scenario.tournamentId, scenario.matchId)

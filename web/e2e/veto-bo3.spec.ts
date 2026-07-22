@@ -40,13 +40,26 @@ import {
  *    to each pick the instant it is made — this is the only side path that
  *    round-trips cleanly to a recorded value, so the "side reflected on both
  *    clients + backend" assertion uses it.
- *  - In `picker_choice` mode the VetoSideSelect control renders (CT/T for the
- *    picker, a waiting chip for the opponent). The side is chosen by the
- *    OPPONENT of the team that picked the map (standard CS convention): the
- *    REST POST /veto/side endpoint accepts the write from the opponent's token
- *    and records the side attributed to the opponent — this test both asserts
- *    the control's presentation/sync AND performs the write as the opponent,
- *    then asserts the recorded side reflects live on both clients.
+ *  - In `picker_choice` mode the VetoSideSelect control renders on both
+ *    clients (CT/T buttons for one, a waiting chip for the other) and the
+ *    side is chosen by the OPPONENT of the team that picked the map (standard
+ *    CS convention): POST /veto/side accepts the write from the opponent's
+ *    token and records the side attributed to the opponent.
+ *
+ *    PRODUCT BUG — the side write has no working UI path. The frontend offers
+ *    the CT/T buttons to the PICKER (`VetoSideSelect.canSelectSide`,
+ *    web/src/components/match/veto/VetoSideSelect.vue:70-73 — "In
+ *    picker_choice mode, the picker selects the side"), but the backend only
+ *    accepts the OPPONENT: the handler resolves the picker's opponent and
+ *    authorizes against it (api/crates/portal-api/src/handlers/veto.rs:445-465)
+ *    and the domain rejects the picker outright with NotAuthorized
+ *    ("The opponent of the picker selects the side",
+ *    api/crates/portal-domain/src/services/tournament/veto.rs:507-512).
+ *    So the only client with a button gets a 403, and the only client the
+ *    backend accepts has no button. Until that is fixed the write below is
+ *    REST; the control's *presence and sync* is still asserted through the UI
+ *    on both clients, but WHICH client owns the buttons deliberately is not —
+ *    asserting today's role would certify the inversion.
  *
  * UI selectors (verified in web/src/components/GameMapCard.vue + veto/*.vue):
  *   .map-card-selectable  clickable available map
@@ -241,7 +254,7 @@ test.describe('Map Veto (bo3) — picks + side selection over WebSocket', () => 
     }
   })
 
-  test('after a PICK the opponent selects the side; it is recorded and reflected live on both clients (picker_choice)', async ({
+  test('after a PICK both clients render the side-select control; the recorded side reflects live on both (picker_choice — side write via API, no working UI path)', async ({
     browser,
     request,
   }) => {
@@ -276,27 +289,46 @@ test.describe('Map Veto (bo3) — picks + side selection over WebSocket', () => 
       await expect(pageA.locator('.map-card-picked')).toHaveCount(1, { timeout: 15000 })
       await expect(pageB.locator('.map-card-picked')).toHaveCount(1, { timeout: 15000 })
 
-      // The VetoSideSelect control now renders, gated by who picked, live on
-      // BOTH clients over the WebSocket (no reload):
-      //  - the picker (P1 / page A) gets the CT/T side buttons
-      //  - the opponent (P2 / page B) gets the "waiting for picker" chip
+      // The VetoSideSelect control now renders live on BOTH clients over the
+      // WebSocket (no reload): exactly one client is offered the CT/T
+      // buttons, the other is told to wait.
+      //
+      // WHICH client owns the buttons is deliberately NOT asserted — see the
+      // PRODUCT BUG note in this file's header: the frontend gates them on
+      // the picker while the backend only accepts the opponent, so pinning
+      // today's role would certify the inversion. A missing or broken control
+      // (neither client offered the choice, or both) still fails here.
       await expect(pageA.getByText('Side Selection')).toBeVisible({ timeout: 15000 })
-      await expect(pageA.getByRole('button', { name: 'CT', exact: true })).toBeVisible({
-        timeout: 15000,
-      })
-      await expect(pageA.getByRole('button', { name: 'T', exact: true })).toBeVisible({
-        timeout: 15000,
-      })
-      await expect(pageB.getByText(/Waiting for picker to select side/i)).toBeVisible({
-        timeout: 15000,
-      })
+      await expect(pageB.getByText('Side Selection')).toBeVisible({ timeout: 15000 })
+
+      const ctButton = (p: Page) => p.getByRole('button', { name: 'CT', exact: true })
+      const tButton = (p: Page) => p.getByRole('button', { name: 'T', exact: true })
+      const waitingChip = (p: Page) => p.getByText(/Waiting for .+ side/i)
+
+      await expect
+        .poll(async () => (await ctButton(pageA).count()) + (await ctButton(pageB).count()), {
+          timeout: 15000,
+        })
+        .toBe(1)
+      expect((await tButton(pageA).count()) + (await tButton(pageB).count())).toBe(1)
+      expect((await waitingChip(pageA).count()) + (await waitingChip(pageB).count())).toBe(1)
 
       // Now actually PERFORM the side selection. Per the CS convention the
       // OPPONENT of the picker chooses the side: P1 picked (action 3), so P2
-      // is the opponent and its token completes the write via REST.
+      // is the opponent and its token completes the write.
+      //
+      // This cannot be driven through the UI today: the only client with the
+      // buttons is the picker, whose write the backend rejects with 403, and
+      // the client the backend accepts (the opponent) is shown a waiting chip
+      // with no control at all. See the header for the two file:line
+      // references. Doing it via REST keeps the live-propagation assertions
+      // below honest instead of certifying the broken control.
       const preSide = await getVetoState(adminToken, scenario.matchId)
       const pickAction = preSide.actions.find((a) => a.action_type === 'pick')
       expect(pickAction, 'a pick action should exist before side selection').toBeTruthy()
+      // coverage-plan-exempt: no working UI path for the side write — the control is
+      // offered to the picker, whom the backend rejects (VetoSideSelect.vue:70-73 vs
+      // portal-domain/src/services/tournament/veto.rs:507-512).
       await selectSide(scenario.p2.token, scenario.matchId, pickAction!.action_number, 'ct')
 
       // Backend records the side, attributed to the opponent (P2), not the picker.
@@ -359,7 +391,7 @@ test.describe('Map Veto (bo3) — picks + side selection over WebSocket', () => 
       const pick = state.actions.find((a) => a.action_type === 'pick')
       expect(pick, 'a pick action should exist').toBeTruthy()
       const side = pick!.side_selection
-      expect(side === 'ct' || side === 't', `side should be ct|t, got ${side}`).toBe(true)
+      expect(['ct', 't'], 'coin_flip should auto-assign a concrete side').toContain(side)
 
       // That same side is reflected on BOTH clients live: the veto history
       // timeline shows the side chip (CT|T) without any reload.

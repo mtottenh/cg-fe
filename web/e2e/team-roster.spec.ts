@@ -19,9 +19,11 @@ import {
  *
  * Scenarios:
  *   1. Captain promotes a member to captain (UI)
- *   2. Captain demotes a co-captain back to a regular member (API + UI reflection)
+ *   2. Captain demotes a co-captain back to a regular member
+ *      (API + UI reflection — no captain-facing demote control exists)
  *   3. Captain removes a member via the action menu + ConfirmDialog (UI)
- *   4. Owner transfers team ownership; Edit-Team button moves from old to new owner
+ *   4. Owner transfers team ownership; edit access moves from old to new owner
+ *      (API + UI reflection — no transfer-ownership control exists at all)
  *
  * Most setup happens via API (registering throwaway players + seeding team
  * rosters through the UI would be slow and brittle). The UI is exercised only
@@ -83,10 +85,17 @@ test.describe('Team Roster Management', () => {
     expect(promotedRow!.role.toLowerCase()).toBe('captain')
   })
 
-  test('captain demotes a co-captain back to member (API-driven)', async ({ page }) => {
-    // The `TeamDetailPage` UI does not currently expose a "Demote" action
-    // (only Promote / Remove), so this scenario exercises the backend +
-    // asserts the UI reflects the updated role on reload.
+  test('captain demotes a co-captain back to member (API — no captain-facing demote UI exists)', async ({ page }) => {
+    // Verified 2026-07-22: the captain-facing roster menu on
+    // `pages/TeamDetailPage.vue:170-190` offers only "Promote to Captain" and
+    // "Remove from Team" — there is no demote item, and no other captain
+    // surface calls `leagueTeamsStore.demoteFromCaptain` (stores/leagueTeams.ts:190).
+    // The ONLY demote control in the app is the ADMIN one in
+    // `components/admin/LeagueTeamDetailModal.vue:139-146` (reached from
+    // /admin/teams), which is a different actor and a different scenario —
+    // tracked as new coverage, not something this captain-side test can drive.
+    // So the demote itself stays API-driven; the UI half below still asserts
+    // that the roster renders the demoted role.
     const scenario = await createTeamWithMembers({ leagueId, seasonId, memberCount: 1 })
     const [coCaptain] = scenario.members
 
@@ -98,7 +107,9 @@ test.describe('Team Roster Management', () => {
       expect(row?.role.toLowerCase()).toBe('captain')
     }
 
-    // Act: demote via API (the domain action owner actually performs).
+    // Act: demote via API (the domain action the owner actually performs).
+    // coverage-plan-exempt: no captain-facing demote UI exists (see the note above);
+    // this is a deliberate API-level action, not a bypassed UI control.
     await demoteFromCaptainApi(scenario.owner.token, scenario.teamSeasonId, coCaptain.playerId)
 
     // Assert (API): role is no longer captain.
@@ -174,11 +185,13 @@ test.describe('Team Roster Management', () => {
     await expect(page.locator('.v-chip').filter({ hasText: 'Left' }).first()).toBeVisible()
   })
 
-  test('owner transfers team ownership; edit access moves to new owner', async ({ page }) => {
-    // Frontend has no transfer-ownership UI yet (checked: no button in
-    // TeamEditPage, no store action). Drive the transfer via API and assert
-    // the UI reflects the new owner by checking who can access
-    // `/teams/{id}/edit` and who sees the "Edit Team" button.
+  test('owner transfers team ownership; edit access moves to new owner (API — no transfer-ownership UI exists)', async ({ page }) => {
+    // Verified 2026-07-22: the frontend has NO transfer-ownership control
+    // anywhere. `POST /v1/league-teams/{team_id}/transfer-ownership` appears
+    // only in the generated client (`src/api/types.ts:1786-1796`); no store
+    // action wraps it (nothing in stores/leagueTeams.ts) and no component
+    // references it. Drive the transfer via API and assert the UI reflects
+    // the new owner by checking who can reach `/teams/{id}/edit`.
     const scenario = await createTeamWithMembers({ leagueId, seasonId, memberCount: 1 })
     const [newOwner] = scenario.members
 
@@ -189,6 +202,8 @@ test.describe('Team Roster Management', () => {
     }
 
     // Act: transfer ownership via API.
+    // coverage-plan-exempt: no transfer-ownership UI exists anywhere in the app
+    // (see the note above); this is a deliberate API-level action.
     await transferTeamOwnership(scenario.owner.token, scenario.teamId, newOwner.playerId)
 
     // Assert (API): backend has updated owner_player_id.

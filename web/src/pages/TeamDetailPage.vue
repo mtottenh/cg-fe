@@ -75,12 +75,28 @@
 
           <!-- Pending Invitations (Captain Only) -->
           <v-card v-if="isCaptain && teamSeasonId" class="mb-4">
-            <v-card-title>
+            <v-card-title class="d-flex align-center">
               <v-icon start>mdi-email-outline</v-icon>
-              Pending Invitations
+              <span>Pending Invitations</span>
               <v-chip v-if="invitations.length > 0" size="small" color="info" class="ml-2">
                 {{ invitations.length }}
               </v-chip>
+              <v-spacer />
+              <!--
+                Captain-facing entry point to the shared invite modal
+                (COVERAGE-PLAN §9b P-12). Before this, a captain's only way to
+                invite was to find the player's own profile page; the modal was
+                mounted exclusively from the admin surface.
+              -->
+              <v-btn
+                color="primary"
+                variant="tonal"
+                size="small"
+                prepend-icon="mdi-account-plus"
+                @click="showInviteModal = true"
+              >
+                Invite Player
+              </v-btn>
             </v-card-title>
             <v-divider />
             <v-list v-if="invitations.length > 0">
@@ -232,6 +248,14 @@
       </v-card>
     </v-dialog>
 
+    <!-- Invite Player (captain only; needs a seasonal roster to invite onto) -->
+    <LeagueTeamInviteModal
+      v-if="isCaptain && teamSeasonId"
+      v-model="showInviteModal"
+      :team-season-id="teamSeasonId"
+      @invited="handlePlayerInvited"
+    />
+
     <!-- Confirm Dialog -->
     <ConfirmDialogHost :dialog="confirmDialog" />
 
@@ -252,6 +276,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useTeamContext } from '@/composables/useTeamContext'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import LeagueTeamInviteModal from '@/components/team/LeagueTeamInviteModal.vue'
 import { teamRoleMap, teamStatusMap, getStatusColor as mapStatusColor } from '@/utils/statusMaps'
 import type { components } from '@/api/types'
 
@@ -291,6 +316,7 @@ const successMessage = ref('')
 const showApplyDialog = ref(false)
 const applyMessage = ref('')
 const applyingToTeam = ref(false)
+const showInviteModal = ref(false)
 
 const canApplyToTeam = computed(() => {
   if (!authStore.isAuthenticated || !teamSeasonId.value) return false
@@ -419,6 +445,23 @@ function confirmLeaveTeam() {
       router.push('/leagues')
     },
   })
+}
+
+/**
+ * The invite POST response does not carry the invited player's display name —
+ * only the list endpoint hydrates it (`get_team_invitations`,
+ * portal-api/src/handlers/league_teams/invitation.rs:188-208) — so the store's
+ * optimistic append would render "Unknown player". Refetch instead.
+ */
+async function handlePlayerInvited() {
+  successMessage.value = 'Invitation sent'
+  showSuccess.value = true
+  if (!teamSeasonId.value) return
+  try {
+    await teamsStore.fetchTeamInvitations(teamSeasonId.value)
+  } catch {
+    error.value = teamsStore.error || 'Failed to refresh invitations'
+  }
 }
 
 async function handleCancelInvitation(invitationId: string) {

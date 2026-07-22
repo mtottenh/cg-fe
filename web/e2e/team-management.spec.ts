@@ -765,14 +765,17 @@ test.describe('Team Invitation Lifecycle', () => {
    * membership are exactly the state these tests mutate, and `fullyParallel`
    * lets two tests in the same worker share a `beforeAll` scenario.
    *
-   * NOTE on the invite UI surfaces:
-   *   - `LeagueTeamInviteModal` (components/admin/) is only reachable from
-   *     admin surfaces: `/admin/teams` and `/admin/leagues` ->
-   *     LeagueDetailModal. It has no captain-facing entry point.
-   *   - the captain-facing invite flow lives on `PlayerDetailPage`
-   *     ("Invite to Team", PlayerDetailPage.vue:53-62 / :294-312).
-   * Both are covered below because they are different components hitting the
-   * same store action.
+   * NOTE on the invite UI surfaces — there are now THREE, all driving
+   * `leagueTeamsStore.invitePlayer`:
+   *   - admin: `components/admin/LeagueTeamDetailModal.vue:325` mounts the
+   *     shared `LeagueTeamInviteModal` (now `components/team/`), reached from
+   *     /admin/teams and /admin/leagues.
+   *   - captain, own team page: `pages/TeamDetailPage.vue` mounts the same
+   *     modal from an "Invite Player" button on the Pending Invitations card.
+   *     Added for COVERAGE-PLAN §9b P-12 — this surface did not exist before.
+   *   - captain, another player's profile: `PlayerDetailPage.vue:53-62 / :294-312`
+   *     ("Invite to Team"), a different component with its own dialog.
+   * All three are covered below.
    */
 
   async function buildInviteFixture(): Promise<{
@@ -833,7 +836,15 @@ test.describe('Team Invitation Lifecycle', () => {
 
     // Roster tab is the default; "Invite Player" opens LeagueTeamInviteModal
     // (LeagueTeamDetailModal.vue:62-71).
-    await expect(page.getByRole('button', { name: 'Invite Player' })).toBeVisible()
+    //
+    // COVERAGE-PLAN §9b P-11: this season's roster_lock_status is `open`, so
+    // the lock chip must NOT render and the button must be ENABLED. The fix
+    // for P-11 made those controls actually respond to the lock value, so an
+    // over-strict mapping (e.g. treating a null/open value as locked) would
+    // now dead-end the admin here rather than passing unnoticed.
+    await expect(page.getByText('Roster Locked')).toHaveCount(0)
+    await expect(page.getByText('Roster Soft-Locked')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Invite Player' })).toBeEnabled()
     await page.getByRole('button', { name: 'Invite Player' }).click()
     await expect(page.getByText('Invite Player to Team')).toBeVisible()
 
@@ -911,6 +922,145 @@ test.describe('Team Invitation Lifecycle', () => {
     const invite = pending.find((i) => i.player_id === fixture.invitee.playerId)
     expect(invite, 'captain invitation should be pending on the backend').toBeDefined()
     expect(invite!.status.toLowerCase()).toBe('pending')
+  })
+
+  /**
+   * COVERAGE-PLAN §9b P-12. Before this surface existed, a captain who wanted
+   * to invite someone had to already know who they were and open that player's
+   * profile page — `LeagueTeamInviteModal` was mounted only from the admin
+   * `LeagueTeamDetailModal`.
+   */
+  test('captain invites a player from their own team page', async ({ page }) => {
+    const fixture = await buildInviteFixture()
+
+    await loginAsUser(page, {
+      email: fixture.team.owner.email,
+      password: fixture.team.owner.password,
+    })
+    await page.goto(`/teams/${fixture.team.teamId}?season=${fixture.team.teamSeasonId}`)
+    await page.waitForLoadState('networkidle')
+
+    // The invite button lives on the captain-only Pending Invitations card
+    // (TeamDetailPage.vue:77-101). Pin the card by its TITLE — `filter({ hasText })`
+    // on `.v-card` matches any ancestor whose subtree contains the words.
+    const invitationsCard = page
+      .locator('.v-card')
+      .filter({ has: page.locator('.v-card-title', { hasText: 'Pending Invitations' }) })
+      .first()
+    await expect(invitationsCard).toBeVisible({ timeout: 10_000 })
+    await expect(invitationsCard.getByText('No pending invitations')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Invite Player' }).click()
+
+    // Same shared modal the admin flow drives (components/team/LeagueTeamInviteModal.vue).
+    await expect(page.getByText('Invite Player to Team')).toBeVisible()
+
+    // Player search is a prefix match on the normalised display name
+    // (portal-db/src/adapters/user.rs:441), so search the full display name.
+    // getByLabel('Search Player') also matches the autocomplete's
+    // "Clear Search Player" icon button, so pin to the combobox input.
+    const search = page.getByRole('combobox', { name: /Search Player/ })
+    await search.click()
+    await search.fill(fixture.invitee.displayName)
+    const option = page.getByRole('option').filter({ hasText: fixture.invitee.displayName })
+    await expect(option).toBeVisible({ timeout: 10_000 })
+    await option.click()
+
+    const send = page.getByRole('button', { name: 'Send Invitation' })
+    await expect(send).toBeEnabled()
+    await send.click()
+
+    // UI assertion 1: the page's success snackbar (TeamDetailPage `handlePlayerInvited`).
+    await expect(page.locator('.v-snackbar').getByText('Invitation sent')).toBeVisible()
+
+    // UI assertion 2: the invitation now renders in the captain's Pending
+    // Invitations list, with the invited player's display name and a count
+    // chip (TeamDetailPage.vue:86-135). The name only appears because
+    // `handlePlayerInvited` refetches — the POST response does not hydrate it.
+    await expect(invitationsCard.getByText(fixture.invitee.displayName)).toBeVisible({
+      timeout: 10_000,
+    })
+    await expect(invitationsCard.getByText('No pending invitations')).toHaveCount(0)
+
+    // Backend assertion.
+    const pending = await listPendingInvitations(
+      fixture.team.owner.token,
+      fixture.team.teamSeasonId,
+    )
+    const invite = pending.find((i) => i.player_id === fixture.invitee.playerId)
+    expect(invite, 'invitation should be pending on the backend').toBeDefined()
+    expect(invite!.status.toLowerCase()).toBe('pending')
+    expect(invite!.role.toLowerCase()).toBe('player')
+  })
+
+  /**
+   * COVERAGE-PLAN §9b P-11 asked for "a hard-locked season blocks the invite
+   * path". That exact test CANNOT be written honestly today: nothing can put a
+   * season into `hard_lock`. `PATCH /v1/league-seasons/{id}` accepts and
+   * validates `roster_lock_status`, but `LeagueSeasonService::update_season`
+   * (portal-domain/src/services/league_team/season.rs:145-166) never forwards
+   * it to `UpdateLeagueSeason` (repositories/league_team.rs:119-133), which has
+   * no such field — and `update_roster_lock`, which would do the job, has no
+   * HTTP route. So the lock column is permanently `open`.
+   *
+   * What IS reachable is the other half of the same backend predicate:
+   * `allows_primary_roster_changes() = status.allows_roster_changes() && lock.allows_primary_changes()`
+   * (portal-domain/src/entities/league_team.rs:105-108), and
+   * `SeasonStatus::allows_roster_changes()` is true only for draft/registration
+   * (portal-core/src/types/league_team.rs:72-74). Advancing the season to
+   * `active` therefore trips the *same* guard in `create_invitation`
+   * (portal-domain/src/services/league_team/invitation.rs:85-89) and proves the
+   * invite path is genuinely blocked and that the UI surfaces the rejection.
+   */
+  test('invite is rejected in the UI once the season no longer allows roster changes', async ({
+    page,
+  }) => {
+    const adminToken = await getAdminToken()
+    const fixture = await buildInviteFixture()
+
+    // The team is registered while the season is still in `registration`;
+    // advance it afterwards so only the roster rule (not registration) differs.
+    await advanceSeason(
+      adminToken,
+      { seasonId: fixture.seasonId, status: 'registration' },
+      'active',
+    )
+
+    await loginAsUser(page, {
+      email: fixture.team.owner.email,
+      password: fixture.team.owner.password,
+    })
+    await page.goto(`/teams/${fixture.team.teamId}?season=${fixture.team.teamSeasonId}`)
+    await page.waitForLoadState('networkidle')
+
+    await page.getByRole('button', { name: 'Invite Player' }).click()
+    await expect(page.getByText('Invite Player to Team')).toBeVisible()
+
+    const search = page.getByRole('combobox', { name: /Search Player/ })
+    await search.click()
+    await search.fill(fixture.invitee.displayName)
+    const option = page.getByRole('option').filter({ hasText: fixture.invitee.displayName })
+    await expect(option).toBeVisible({ timeout: 10_000 })
+    await option.click()
+
+    await page.getByRole('button', { name: 'Send Invitation' }).click()
+
+    // UI assertion: the modal shows the API's reason instead of closing.
+    // `DomainError::InvalidState` -> 400 "Invalid state: {msg}"
+    // (portal-api/src/error.rs:277); the modal renders `ApiError.detail`
+    // (LeagueTeamInviteModal.vue error alert).
+    await expect(page.getByText(/roster is locked for primary member invitations/i)).toBeVisible({
+      timeout: 10_000,
+    })
+    await expect(page.getByText('Invite Player to Team')).toBeVisible()
+    await expect(page.locator('.v-snackbar').getByText('Invitation sent')).toHaveCount(0)
+
+    // Backend assertion: nothing was created.
+    const pending = await listPendingInvitations(
+      fixture.team.owner.token,
+      fixture.team.teamSeasonId,
+    )
+    expect(pending.find((i) => i.player_id === fixture.invitee.playerId)).toBeUndefined()
   })
 
   test('invited player accepts from the invitations page and joins the roster', async ({

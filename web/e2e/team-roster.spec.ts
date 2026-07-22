@@ -227,10 +227,11 @@ test.describe('Team Roster Management', () => {
     expect(page.url()).toMatch(/\/teams\/.+\/edit/)
     const editHeader = page.getByText(/Edit Team Settings/i)
     const ownerErrorAlert = page.getByText(/Only the team owner can edit/i)
-    // Either the form renders OR a "not owner" alert is shown. The new
-    // owner should see the form, not the alert.
+    // The new owner sees the form, not the alert — and the form is populated,
+    // which is what distinguishes "owner" from the P-13 blank-form bug below.
     await expect(editHeader).toBeVisible({ timeout: 5000 })
     await expect(ownerErrorAlert).toHaveCount(0)
+    await expect(page.getByLabel('Team Name')).toHaveValue(scenario.teamName)
 
     // And the old owner should no longer be able to use the edit page.
     await loginAsUser(page, {
@@ -240,5 +241,14 @@ test.describe('Team Roster Management', () => {
     await page.goto(`/teams/${scenario.teamId}/edit`)
     await page.waitForLoadState('networkidle')
     await expect(page.getByText(/Only the team owner can edit/i)).toBeVisible({ timeout: 5000 })
+
+    // COVERAGE-PLAN §9b P-13: the non-owner must get the notice INSTEAD of the
+    // form. Previously `onMounted` returned before populating `form` while the
+    // template's `v-if="team"` was already satisfied, so the old owner saw a
+    // complete, blank, editable team form sitting under the "you are not the
+    // owner" message. `TeamEditPage.vue` now gates the form on `isOwner`.
+    await expect(editHeader).toHaveCount(0)
+    await expect(page.getByLabel('Team Name')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Save Changes' })).toHaveCount(0)
   })
 })

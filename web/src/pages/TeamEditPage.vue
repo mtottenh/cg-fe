@@ -15,7 +15,20 @@
       Team created! Now you can add a logo, banner, and customize your team's appearance.
     </v-alert>
 
-    <template v-if="team">
+    <!--
+      Non-owners get this notice INSTEAD of the form (COVERAGE-PLAN §9b P-13).
+      `onMounted` bails before populating `form` for a non-owner, so gating the
+      form on `team` alone rendered a full, blank, editable form next to the
+      "not the owner" message. Ownership is the render gate, and it is a
+      computed rather than a one-shot flag so it stays correct if the store's
+      `currentTeam` changes underneath us (e.g. ownership transferred in
+      another tab, or a route change reusing this component).
+    -->
+    <v-alert v-if="!loading && team && !isOwner" type="warning" class="mb-4">
+      Only the team owner can edit team settings
+    </v-alert>
+
+    <template v-if="team && isOwner">
       <v-row>
         <v-col cols="12" md="8">
           <v-card class="mb-4">
@@ -277,9 +290,11 @@ onMounted(async () => {
   try {
     await leagueTeamsStore.fetchTeam(teamId.value)
 
-    // Check if user is the team owner
+    // Non-owner: leave `form` unpopulated and let the template render the
+    // ownership notice instead of the form. `error` is reserved for genuine
+    // load failures — using it here produced two competing messages once the
+    // notice became its own alert.
     if (!isOwner.value) {
-      error.value = 'Only the team owner can edit team settings'
       return
     }
 

@@ -1,3 +1,17 @@
+<!--
+  Invite a player onto a team's seasonal roster.
+
+  SHARED between two surfaces, which is why it lives under `components/team/`
+  rather than `components/admin/` (COVERAGE-PLAN §9b P-12):
+    - admin: `components/admin/LeagueTeamDetailModal.vue` (from /admin/teams
+      and /admin/leagues), which knows the season and passes `rosterLockStatus`
+    - captain: `pages/TeamDetailPage.vue`, the captain's own team page
+
+  The endpoint behind it (`POST /v1/league-team-seasons/{id}/invitations`) is
+  captain-or-admin (`require_captain_or_admin`,
+  portal-api/src/handlers/league_teams/invitation.rs:50), so nothing here was
+  ever admin-specific.
+-->
 <template>
   <v-dialog
     v-model="open"
@@ -66,6 +80,8 @@
                 label="Role"
                 variant="outlined"
                 density="comfortable"
+                :hint="roleHint ?? undefined"
+                :persistent-hint="!!roleHint"
               />
             </v-col>
 
@@ -114,6 +130,11 @@ import { api, ApiError } from '@/api'
 import { unwrapApi } from '@/stores/helpers'
 import { useFormRules } from '@/composables/useFormRules'
 import {
+  allowsPrimaryRosterChanges,
+  allowsSubstituteChanges,
+  rosterLockHint,
+} from '@/utils/rosterLock'
+import {
   useLeagueTeamsStore,
   type InviteToLeagueTeamRequest,
 } from '@/stores/leagueTeams'
@@ -125,6 +146,13 @@ interface PlayerSearchResult {
 }
 
 const props = defineProps<{  teamSeasonId: string
+  /**
+   * The season's `roster_lock_status` (`open` / `soft_lock` / `hard_lock`).
+   * Optional: surfaces that cannot see it (e.g. the captain's own team page,
+   * whose `LeagueTeamResponse` carries no season fields) omit it and get the
+   * unrestricted role list — the API still enforces the lock.
+   */
+  rosterLockStatus?: string | null
 }>()
 
 const emit = defineEmits<{  invited: []
@@ -155,11 +183,35 @@ const form = ref<{
   message: '',
 })
 
-const roleOptions = [
-  { value: 'player', label: 'Player' },
-  { value: 'substitute', label: 'Substitute' },
-  { value: 'captain', label: 'Captain' },
-]
+/**
+ * Roles the season's roster lock still permits inviting for.
+ *
+ * `captain` and `player` are PRIMARY roles (`LeagueTeamRole::is_primary`,
+ * portal-core/src/types/league_team.rs:311) and are rejected by
+ * `LeagueTeamInvitationService::create_invitation`
+ * (portal-domain/src/services/league_team/invitation.rs:85-89) unless the
+ * season allows primary roster changes. Offering them under a soft lock would
+ * be offering a guaranteed 400.
+ */
+const roleOptions = computed(() => {
+  const all = [
+    { value: 'player', label: 'Player' },
+    { value: 'substitute', label: 'Substitute' },
+    { value: 'captain', label: 'Captain' },
+  ]
+  const primaryAllowed = allowsPrimaryRosterChanges(props.rosterLockStatus)
+  const substitutesAllowed = allowsSubstituteChanges(props.rosterLockStatus)
+  return all.filter((option) =>
+    option.value === 'substitute' ? substitutesAllowed : primaryAllowed,
+  )
+})
+
+/** First still-permitted role; `player` whenever the roster is open. */
+const defaultRole = computed(() => roleOptions.value[0]?.value ?? 'player')
+
+const roleHint = computed(() =>
+  allowsPrimaryRosterChanges(props.rosterLockStatus) ? null : rosterLockHint(props.rosterLockStatus),
+)
 
 const rules = useFormRules()
 
@@ -197,7 +249,7 @@ watch(open, (isOpen) => {
   if (isOpen) {
     form.value = {
       player_id: null,
-      role: 'player',
+      role: defaultRole.value,
       message: '',
     }
     playerSearch.value = ''

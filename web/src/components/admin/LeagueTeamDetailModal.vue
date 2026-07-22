@@ -51,12 +51,13 @@
                   {{ members.length }} / {{ team?.team_size_max || '?' }} members
                 </span>
                 <v-chip
-                  v-if="team?.roster_lock_status === 'locked'"
+                  v-if="rosterLockChip"
                   size="x-small"
-                  color="error"
+                  :color="rosterLockChipColor"
                   class="ml-2"
+                  :title="rosterLockTitle ?? undefined"
                 >
-                  Roster Locked
+                  {{ rosterLockChip }}
                 </v-chip>
               </div>
               <v-btn
@@ -64,7 +65,8 @@
                 variant="tonal"
                 prepend-icon="mdi-account-plus"
                 size="small"
-                :disabled="team?.roster_lock_status === 'locked'"
+                :disabled="!canChangeRosterAtAll"
+                :title="canChangeRosterAtAll ? undefined : (rosterLockTitle ?? undefined)"
                 @click="inviteModalOpen = true"
               >
                 Invite Player
@@ -125,7 +127,8 @@
                       size="small"
                       variant="text"
                       v-bind="activatorProps"
-                      :disabled="team?.roster_lock_status === 'locked'"
+                      :disabled="!canChangeRosterAtAll"
+                      :title="canChangeRosterAtAll ? undefined : (rosterLockTitle ?? undefined)"
                     >
                       <v-icon>mdi-dots-vertical</v-icon>
                     </v-btn>
@@ -146,6 +149,8 @@
                     <v-divider />
                     <v-list-item
                       class="text-error"
+                      :disabled="!canRemoveMember(item)"
+                      :title="canRemoveMember(item) ? undefined : (rosterLockTitle ?? undefined)"
                       @click="removeMember(item)"
                     >
                       <v-list-item-title>Remove from Team</v-list-item-title>
@@ -311,6 +316,7 @@
     <LeagueTeamInviteModal
       v-model="inviteModalOpen"
       :team-season-id="team?.team_season_id || ''"
+      :roster-lock-status="team?.roster_lock_status"
       @invited="onPlayerInvited"
     />
   </v-dialog>
@@ -320,12 +326,20 @@
 import { useDisplay } from 'vuetify'
 import { computed, ref, watch } from 'vue'
 import type { components } from '@/api/types'
-import LeagueTeamInviteModal from './LeagueTeamInviteModal.vue'
+import LeagueTeamInviteModal from '../team/LeagueTeamInviteModal.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useFormRules } from '@/composables/useFormRules'
 import { formatDate } from '@/utils/formatters'
 import { teamRoleMap, teamInvitationStatusMap, getStatusColor, formatRole } from '@/utils/statusMaps'
+import {
+  allowsAnyRosterChanges,
+  allowsPrimaryRosterChanges,
+  allowsSubstituteChanges,
+  rosterLockColor,
+  rosterLockHint,
+  rosterLockLabel,
+} from '@/utils/rosterLock'
 import {
   useLeagueTeamsStore,
   type LeagueTeamMemberWithPlayer,
@@ -366,6 +380,42 @@ const loadingMembers = computed(() => leagueTeamsStore.fetchMembersState.loading
 const loadingInvitations = computed(() => leagueTeamsStore.fetchTeamInvitationsState.loading)
 
 const inviteModalOpen = ref(false)
+
+// ---------------------------------------------------------------------------
+// Roster lock (COVERAGE-PLAN §9b P-11)
+//
+// These three controls used to compare `roster_lock_status` against the string
+// `'locked'`, which the schema cannot produce — the CHECK constraint permits
+// only open / soft_lock / hard_lock — so the chip never rendered and nothing
+// was ever disabled. Semantics now mirror the backend exactly
+// (portal-core/src/types/league_team.rs:119-137):
+//
+//   hard_lock  no roster changes at all -> Invite Player and the whole
+//              member-action menu are disabled.
+//   soft_lock  substitutes only -> inviting stays available but the invite
+//              modal offers the `substitute` role only, and "Remove from Team"
+//              is disabled for primary members (captain/player), which is
+//              exactly what `remove_member_authorized`
+//              (portal-domain/src/services/league_team/team.rs:488-499) rejects.
+//
+// Promote/demote are intentionally NOT gated on soft_lock: the backend does not
+// lock-check role changes at all (`promote_to_captain` / `demote_from_captain`,
+// team.rs:526-600), so disabling them under a soft lock would block something
+// the API permits. They ARE unavailable under hard_lock because the activator
+// itself is disabled — see the report note on that backend gap.
+// ---------------------------------------------------------------------------
+const rosterLock = computed(() => props.team?.roster_lock_status)
+const canChangeRosterAtAll = computed(() => allowsAnyRosterChanges(rosterLock.value))
+const rosterLockChip = computed(() => rosterLockLabel(rosterLock.value))
+const rosterLockChipColor = computed(() => rosterLockColor(rosterLock.value))
+const rosterLockTitle = computed(() => rosterLockHint(rosterLock.value))
+
+/** A member can be removed only if the lock permits changes for their role. */
+function canRemoveMember(member: TeamMember): boolean {
+  return member.role === 'substitute'
+    ? allowsSubstituteChanges(rosterLock.value)
+    : allowsPrimaryRosterChanges(rosterLock.value)
+}
 
 // Settings
 const settingsFormRef = ref()

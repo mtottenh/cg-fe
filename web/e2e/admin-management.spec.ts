@@ -298,8 +298,11 @@ test.describe('Admin Management', () => {
 
       await page.goto('/admin/bans')
 
-      // Wait for loading to complete
-      await expect(page.locator('.v-progress-circular')).not.toBeVisible({ timeout: 10000 })
+      // Wait for the table itself to render. This used to wait on
+      // `.v-progress-circular`, which now resolves to TWO elements on this
+      // page, so the wait died on a Playwright strict-mode violation before
+      // the test's real assertion ever ran.
+      await expect(page.locator('.v-data-table')).toBeVisible({ timeout: 10_000 })
 
       // Build the empty state instead of hoping for it: filter to a ban type
       // no test in this suite ever creates. (This test previously wrapped its

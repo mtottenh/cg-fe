@@ -101,13 +101,19 @@
             </div>
           </template>
 
+          <!--
+            The label used to be `{{ item.team_status }}` — the raw
+            `LeagueTeamStatus` enum — even though this file already imported
+            `teamStatusMap` and used its COLOR half. Same half-used-map defect
+            as P-10 on the admin registrations table.
+          -->
           <template v-slot:item.team_status="{ item }">
             <v-chip
               :color="getStatusColor(item.team_status)"
               size="small"
               variant="flat"
             >
-              {{ item.team_status }}
+              {{ getStatusLabel(teamStatusMap, item.team_status) }}
             </v-chip>
           </template>
 
@@ -167,7 +173,7 @@ import { useLeaguesStore, type UserLeagueMembership } from '@/stores/leagues'
 import { useLeagueSeasonsStore, type LeagueSeasonResponse } from '@/stores/leagueSeasons'
 import { useLeagueTeamsStore, type LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
 import LeagueTeamDetailModal from '@/components/admin/LeagueTeamDetailModal.vue'
-import { teamStatusMap, getStatusColor as mapStatusColor } from '@/utils/statusMaps'
+import { teamStatusMap, getStatusColor as mapStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import type { components } from '@/api/types'
 

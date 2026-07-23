@@ -97,8 +97,16 @@
                 </div>
               </template>
 
+              <!--
+                The three aria-labels here used to be rotated one position out
+                of step with the handlers they sit on: the button announced as
+                "Manage permissions" was the one wired to `confirmDeleteRole`.
+                A screen-reader user asking to manage permissions would have
+                been given the destructive action instead. Each label now names
+                what its own @click does, matching the visible `title`.
+              -->
               <template v-slot:item.actions="{ item }">
-                <v-btn aria-label="Edit role"
+                <v-btn aria-label="Manage permissions"
                   icon
                   size="small"
                   variant="text"
@@ -107,7 +115,7 @@
                 >
                   <v-icon>mdi-shield-key</v-icon>
                 </v-btn>
-                <v-btn aria-label="Delete role"
+                <v-btn aria-label="Edit role"
                   icon
                   size="small"
                   variant="text"
@@ -116,7 +124,7 @@
                 >
                   <v-icon>mdi-pencil</v-icon>
                 </v-btn>
-                <v-btn aria-label="Manage permissions"
+                <v-btn aria-label="Delete role"
                   v-if="!item.is_system"
                   icon
                   size="small"

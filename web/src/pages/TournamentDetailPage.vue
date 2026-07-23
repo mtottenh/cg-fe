@@ -29,6 +29,7 @@
         :my-registration="myRegistration"
         :loading="registering"
         :has-eligible-teams="hasEligibleTeams"
+        :is-invited="isInvited"
         class="mb-6"
         @register="handleRegister"
         @withdraw="handleWithdraw"
@@ -383,7 +384,7 @@ const {
 } = storeToRefs(tournamentsStore)
 
 const {
-  isOrganizer, isTeamTournament, myRegistration, hasEligibleTeams,
+  isOrganizer, isTeamTournament, myRegistration, hasEligibleTeams, isInvited,
   loadOrganizerRoles,
 } = useTournamentContext(tournament)
 
@@ -655,6 +656,18 @@ async function fetchData() {
       // Load organizer roles for non-admin users
       if (authStore.isAuthenticated) {
         fetchPromises.push(loadOrganizerRoles())
+      }
+
+      // P-51: for invite-only tournaments, load the invite list so the
+      // registration card knows whether THIS viewer is invited. The endpoint
+      // self-scopes — a non-organiser receives only their own invitation — so
+      // this is safe to call for any authenticated viewer. Non-critical:
+      // failure just falls back to the soft gate.
+      if (
+        tournamentsStore.currentTournament.registration_type === 'invite_only' &&
+        authStore.isAuthenticated
+      ) {
+        fetchPromises.push(tournamentsStore.fetchInvitations(id).catch(() => []))
       }
 
       await Promise.all(fetchPromises)

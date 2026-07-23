@@ -105,12 +105,20 @@ async function buildTeamScenario(): Promise<TeamScenario> {
   return { adminToken, leagueId: league.leagueId, seasonId: league.seasonId, team }
 }
 
-/** The captain-only card at TeamDetailPage.vue:77-146. */
+/** The captain-only "Pending Invitations" card (captain-sent invites). */
 function invitationsCard(page: Page) {
   return page
     .locator('.v-card')
     .filter({ has: page.locator('.v-card-title', { hasText: 'Pending Invitations' }) })
     .first()
+}
+
+/**
+ * P-49: the captain-only "Join Requests" card — player-sent requests, rendered
+ * separately from invites with accept/decline affordances.
+ */
+function joinRequestsCard(page: Page) {
+  return page.locator('[data-testid="join-requests-card"]')
 }
 
 test.describe('Team join requests', () => {
@@ -180,7 +188,8 @@ test.describe('Team join requests', () => {
       expect(roster.find((m) => m.player_id === applicant.playerId)).toBeUndefined()
 
       // The other side, in its own session: the captain's team page surfaces
-      // the request with the applicant's display name.
+      // the request in the dedicated "Join Requests" card with accept/decline —
+      // NOT mislabelled as a "Pending Invitation" the captain can only cancel.
       const captainPage = await captainContext.newPage()
       await loginAsUser(captainPage, {
         email: scenario.team.owner.email,
@@ -191,19 +200,48 @@ test.describe('Team join requests', () => {
       )
       await captainPage.waitForLoadState('networkidle')
 
-      const card = invitationsCard(captainPage)
-      await expect(card).toBeVisible({ timeout: 10_000 })
-      await expect(card.getByText(applicant.displayName)).toBeVisible()
-      await expect(card.getByText('No pending invitations')).toHaveCount(0)
+      // P-49: the request lands in the Join Requests card, and the captain-sent
+      // "Pending Invitations" card does NOT claim it as one of theirs.
+      const requestsCard = joinRequestsCard(captainPage)
+      await expect(requestsCard).toBeVisible({ timeout: 10_000 })
+      const requestRow = requestsCard
+        .locator('.v-list-item')
+        .filter({ hasText: applicant.displayName })
+      await expect(requestRow).toBeVisible()
+      await expect(invitationsCard(captainPage).getByText(applicant.displayName)).toHaveCount(0)
 
-      // NOT ASSERTED, deliberately: what the captain can DO with the request.
-      // The card offers only "Cancel Invitation" — see the reported finding:
-      // `get_team_invitations` returns requests and invites alike
-      // (api/crates/portal-db/src/adapters/league_team/invitation.rs:122 does
-      // not filter on `invitation_type`) but TeamDetailPage.vue:102-141 renders
-      // them identically, and `acceptApplication` (stores/leagueTeams.ts:240)
-      // is wired up only from the admin-only `LeagueTeamDetailModal`. Asserting
-      // the absence of an approve button would certify that gap.
+      // The captain's affordances are Accept / Decline (a request is answered,
+      // not cancelled). Accept it.
+      await expect(requestRow.getByRole('button', { name: 'Accept join request' })).toBeVisible()
+      await expect(requestRow.getByRole('button', { name: 'Decline join request' })).toBeVisible()
+      await requestRow.getByRole('button', { name: 'Accept join request' }).click()
+
+      // UI: the snackbar from `handleAcceptRequest`, and the request drops out
+      // of the card (which then disappears, having no more requests).
+      await expect(
+        captainPage.locator('.v-snackbar').getByText('Join request accepted'),
+      ).toBeVisible()
+      await expect(joinRequestsCard(captainPage)).toHaveCount(0)
+
+      // UI: the applicant now appears on the roster the captain sees.
+      const rosterCard = captainPage
+        .locator('.v-card')
+        .filter({ has: captainPage.locator('.v-card-title', { hasText: 'Roster' }) })
+        .first()
+      await expect(rosterCard.getByText(applicant.displayName)).toBeVisible({ timeout: 10_000 })
+
+      // Backend: the applicant is really on the roster, and the request is no
+      // longer pending.
+      const rosterAfter = await listTeamMembers(scenario.team.teamSeasonId)
+      expect(
+        rosterAfter.find((m) => m.player_id === applicant.playerId),
+        'accepted applicant is now a roster member',
+      ).toBeDefined()
+      const afterAccept = await listTeamInvitations(
+        scenario.team.owner.token,
+        scenario.team.teamSeasonId,
+      )
+      expect(afterAccept.find((i) => i.player_id === applicant.playerId)).toBeUndefined()
     } finally {
       await applicantContext.close()
       await captainContext.close()

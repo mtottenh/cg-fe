@@ -101,7 +101,15 @@
                nobody is invited to walk into a 403; what is offered instead
                states its own precondition. -->
           <template v-else-if="needsInvitation">
-            <div class="text-right" data-testid="invite-only-gate">
+            <!-- P-51: known-uninvited -> hard block, no register affordance. -->
+            <div v-if="invitationHardBlock" class="text-right" data-testid="invite-only-gate">
+              <v-chip color="warning" size="large" data-testid="invitation-required-block">
+                <v-icon start>mdi-email-lock-outline</v-icon>
+                Not Invited
+              </v-chip>
+            </div>
+            <!-- Invite state not yet knowable -> soft conditional affordance. -->
+            <div v-else class="text-right" data-testid="invite-only-gate">
               <v-btn
                 color="warning"
                 variant="tonal"
@@ -148,12 +156,29 @@ import { computed } from 'vue'
 import type { TournamentResponse, TournamentRegistrationResponse } from '@/stores/tournaments'
 import { formatDateTime } from '@/utils/formatters'
 
-const props = defineProps<{
-  tournament: TournamentResponse
-  myRegistration: TournamentRegistrationResponse | null | undefined
-  loading?: boolean
-  hasEligibleTeams?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    tournament: TournamentResponse
+    myRegistration: TournamentRegistrationResponse | null | undefined
+    loading?: boolean
+    hasEligibleTeams?: boolean
+    /**
+     * P-51: whether THIS viewer holds a pending invitation to an invite-only
+     * tournament. `true` -> the invite-only gate opens (register affordance).
+     * `false` -> hard block (the gate states the invitation is required and
+     * offers no register button — the prior soft P-47 behaviour let an uninvited
+     * caller click through to a guaranteed 403). `undefined` -> not knowable
+     * (not invite-only, or the invite list has not loaded); falls back to the
+     * old conditional affordance so nothing regresses when the signal is absent.
+     *
+     * `withDefaults(..., { isInvited: undefined })` is load-bearing: without it
+     * Vue's boolean-prop casting coerces an absent prop to `false`, which would
+     * silently turn every not-yet-known case into a hard block.
+     */
+    isInvited?: boolean
+  }>(),
+  { isInvited: undefined },
+)
 
 defineEmits<{
   register: []
@@ -165,9 +190,12 @@ const canRegister = computed(() => {
   if (!props.tournament.is_registration_open) return false
   if (props.myRegistration) return false
   if (isTeamTournament.value && props.hasEligibleTeams === false) return false
-  // Invite-only entry is not open registration: it is conditional on an invite
-  // list. `needsInvitation` renders the conditional affordance instead.
-  if (isInviteOnly.value) return false
+  // Invite-only entry is conditional on an invite list. P-51: when the viewer's
+  // own invitation is known to exist (`isInvited === true`) the gate opens and
+  // the normal register affordance is offered. Otherwise `needsInvitation`
+  // renders either a hard block (known-uninvited) or the soft conditional
+  // affordance (invite state not yet knowable).
+  if (isInviteOnly.value) return props.isInvited === true
   return true
 })
 
@@ -191,16 +219,29 @@ const isInviteOnly = computed(() => props.tournament.registration_type === 'invi
  * offers an explicitly conditional one instead, with the precondition stated
  * before the click rather than as a 403 afterwards.
  *
- * Making this a hard block needs an invitee-readable signal from the API
- * (leagues already have one: `GET /v1/users/me/league-invitations`).
+ * P-51 RESOLUTION — the invite state IS now knowable: `list_invitations`
+ * self-scopes, so `isInvited` tells this component whether the viewer holds an
+ * invitation. When `isInvited === true`, `canRegister` opens and this gate does
+ * not render. When `isInvited === false`, the gate is a HARD block (no register
+ * button — see `invitationHardBlock`). When `isInvited === undefined` (invite
+ * list not loaded), it degrades to the original soft conditional affordance.
  */
 const needsInvitation = computed(() => {
   if (!isInviteOnly.value) return false
   if (!props.tournament.is_registration_open) return false
   if (props.myRegistration) return false
   if (isTeamTournament.value && props.hasEligibleTeams === false) return false
+  // A known invitation is handled by `canRegister`, not the gate.
+  if (props.isInvited === true) return false
   return true
 })
+
+/**
+ * The viewer is definitively NOT invited (self-scoped invite list loaded and
+ * carried no invitation for them). The gate offers no register button at all —
+ * clicking through would be a guaranteed 403.
+ */
+const invitationHardBlock = computed(() => needsInvitation.value && props.isInvited === false)
 
 // Registration hasn't opened yet (tournament is published but registration not open)
 const isRegistrationComingSoon = computed(() => {

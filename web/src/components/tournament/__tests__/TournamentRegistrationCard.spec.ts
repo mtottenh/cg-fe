@@ -81,6 +81,7 @@ function mountCard(props: {
   tournament: TournamentResponse
   myRegistration?: TournamentRegistrationResponse | null
   hasEligibleTeams?: boolean
+  isInvited?: boolean
 }) {
   wrapper = mount(TournamentRegistrationCard, {
     props: {
@@ -189,5 +190,30 @@ describe('TournamentRegistrationCard invite-only gate', () => {
     await w.find('[data-testid="register-with-invitation"]').trigger('click')
 
     expect(w.emitted('register')).toHaveLength(1)
+  })
+
+  // P-51: with a self-scoped invite signal, the gate becomes a real block.
+  it('hard-blocks a known-uninvited viewer: no register affordance at all', () => {
+    const w = mountCard({
+      tournament: makeTournament({ registration_type: 'invite_only' }),
+      isInvited: false,
+    })
+
+    expect(w.text()).toContain('Invitation Required')
+    // Neither the plain CTA nor the soft "I Have an Invitation" button is offered.
+    expect(w.find('[data-testid="register-with-invitation"]').exists()).toBe(false)
+    expect(w.find('[data-testid="invitation-required-block"]').exists()).toBe(true)
+    expect(buttonLabels(w)).not.toContain('Register Team')
+  })
+
+  it('opens the register CTA for a known-invited viewer', () => {
+    const w = mountCard({
+      tournament: makeTournament({ registration_type: 'invite_only' }),
+      isInvited: true,
+    })
+
+    expect(w.text()).not.toContain('Invitation Required')
+    expect(buttonLabels(w)).toContain('Register Team')
+    expect(w.find('[data-testid="register-with-invitation"]').exists()).toBe(false)
   })
 })

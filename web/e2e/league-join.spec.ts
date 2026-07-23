@@ -233,14 +233,25 @@ test.describe('League join / apply', () => {
       await expect(dialog).toHaveCount(0)
       await expect(applicantPage.getByText('Failed to apply to league')).toHaveCount(0)
 
-      // NOT ASSERTED, deliberately: the "Your application is pending review by
-      // a league admin." alert (:99-102). It can never render — see the
-      // reported finding on `list_pending_for_user`
-      // (api/crates/portal-db/src/adapters/league.rs:747) filtering
-      // `invitation_type = 'invite'`, which leaves `myApplications`
-      // (stores/leagues.ts:162) permanently empty. Asserting the button is
-      // still there instead would certify the bug, so this test asserts only
-      // what is true AND desirable.
+      // UI assertion 2 (P-48 fix): the applicant now SEES their own pending
+      // application. Previously dead: `list_pending_for_user`
+      // (api/crates/portal-db/src/adapters/league.rs) filtered
+      // `invitation_type = 'invite'`, so `myApplications` (stores/leagues.ts)
+      // stayed empty and this alert (LeagueDetailPage.vue:99-102) could never
+      // render. `applyToLeague` refetches applications, `hasPendingApplication`
+      // recomputes, and the "Apply to Join" CTA is replaced by the pending
+      // notice WITHOUT a reload.
+      await expect(
+        applicantPage.getByText('Your application is pending review by a league admin.'),
+      ).toBeVisible({ timeout: 10_000 })
+      await expect(applicantPage.getByRole('button', { name: 'Apply to Join' })).toHaveCount(0)
+
+      // UI assertion 3 (P-48): the pending state is server-derived — it
+      // survives a reload rather than being transient local store state.
+      await openLeaguePage(applicantPage, league.leagueId)
+      await expect(
+        applicantPage.getByText('Your application is pending review by a league admin.'),
+      ).toBeVisible({ timeout: 10_000 })
 
       // Applying is NOT joining: still no membership banner, still no CTA.
       await expect(membershipBanner(applicantPage)).toHaveCount(0)

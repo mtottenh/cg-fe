@@ -31,18 +31,17 @@ import { listRegistrations } from './fixtures/team-tournament-extra.fixture'
  * consume the result. No invitation here is seeded over HTTP — every one is
  * created by clicking.
  *
- * FINDING (recorded, not worked around) — the invite state is NOT knowable by
- * the invitee. All three invitation endpoints require
- * `tournament.participants.manage`
- * (api/crates/portal-api/src/handlers/tournaments/registration.rs:118, :180,
- * :225) and no field on `TournamentResponse` carries the viewer's own
- * invitation, so the frontend cannot distinguish an invited captain from an
- * uninvited one. Leagues have the invitee-side view tournaments lack
- * (`GET /v1/users/me/league-invitations`). Consequence: the card can withhold
- * the *unconditional* "Register Team" affordance and state the precondition
- * up front, but it cannot hard-block the uninvited — the final refusal is
- * still the API's 403. The revoke test below asserts exactly that residual
- * behaviour rather than pretending it is gone.
+ * P-51 (RESOLVED) — the invite state IS now knowable by the invitee.
+ * `GET /v1/tournaments/{id}/invitations` self-scopes: a caller without
+ * `tournament.participants.manage` receives only the invitations that target
+ * them, instead of a 403 (registration.rs `list_invitations`). The frontend
+ * loads that list for invite-only tournaments, `useTournamentContext.isInvited`
+ * derives whether THIS viewer is invited, and `TournamentRegistrationCard`
+ * turns the old soft precondition into a real gate:
+ *   - uninvited captain → HARD block, no register affordance at all;
+ *   - invited captain   → the ordinary "Register Team" call to action.
+ * These tests drive both sides through the real UI, and the revoke test asserts
+ * the door shuts at the UI (not merely at the API's 403).
  */
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
@@ -188,13 +187,23 @@ async function inviteTeamThroughUi(page: Page, scenario: InviteOnlyScenario): Pr
   await expect(row.locator('.v-chip')).toHaveText('pending')
 }
 
-/** Captain path: take the invite-only affordance through to a submitted registration. */
+/** Captain path: take the register affordance through to a submitted registration. */
 async function submitTeamRegistration(
   page: Page,
   scenario: InviteOnlyScenario,
   participantName: string,
 ): Promise<void> {
-  await registrationCard(page).getByTestId('register-with-invitation').click()
+  // P-51: an invited captain gets the ordinary "Register Team" CTA
+  // (`canRegister` opens once `isInvited` is true); the soft
+  // `register-with-invitation` affordance only appears when invite state is
+  // unknown. Click whichever the card is showing.
+  const card = registrationCard(page)
+  const softGate = card.getByTestId('register-with-invitation')
+  if ((await softGate.count()) > 0) {
+    await softGate.click()
+  } else {
+    await card.getByRole('button', { name: /Register Team|Register Now/ }).click()
+  }
 
   const modal = page.getByRole('dialog')
   await expect(modal).toBeVisible()
@@ -212,7 +221,7 @@ async function submitTeamRegistration(
 }
 
 test.describe('Invite-only tournament registration', () => {
-  test('warns an uninvited captain before they submit, instead of after', async ({ page }) => {
+  test('hard-blocks an uninvited captain: no register affordance at all', async ({ page }) => {
     test.setTimeout(120_000)
 
     const adminToken = await getAdminToken()
@@ -222,20 +231,22 @@ test.describe('Invite-only tournament registration', () => {
 
     const card = registrationCard(page)
 
-    // The card names the gate up front...
+    // P-51: the self-scoped invite list tells the card this captain holds no
+    // invitation, so the gate is a real block — it names the precondition and
+    // offers NO way to submit.
     await expect(card.getByText('Invitation Required')).toBeVisible({ timeout: 15_000 })
     await expect(
       card.getByText('This tournament is invite only. Only teams the organiser has invited'),
     ).toBeVisible()
+    await expect(card.getByTestId('invitation-required-block')).toBeVisible()
 
-    // ...and the unconditional call to action — the one that used to promise
-    // entry it could not deliver — is gone. What remains states its own
-    // precondition.
+    // Neither the unconditional CTA nor the old soft "I Have an Invitation"
+    // button is offered — clicking through could only end in a 403.
     await expect(card.getByRole('button', { name: 'Register Team' })).toHaveCount(0)
     await expect(card.getByRole('button', { name: 'Register Now' })).toHaveCount(0)
-    await expect(card.getByTestId('register-with-invitation')).toBeVisible()
+    await expect(card.getByTestId('register-with-invitation')).toHaveCount(0)
 
-    // Nothing was written: the captain was told, not submitted.
+    // Nothing was written: the captain was blocked, not submitted.
     expect(await listRegistrations(adminToken, scenario.tournamentId)).toHaveLength(0)
   })
 
@@ -253,6 +264,15 @@ test.describe('Invite-only tournament registration', () => {
     // 2. The invited captain registers through the normal captain flow.
     await loginAsUser(page, scenario.captain)
     await openTournament(page, scenario)
+
+    // P-51: the invited captain sees the ordinary register affordance, NOT the
+    // "Invitation Required" block — the self-scoped invite list surfaced their
+    // own invitation.
+    const preCard = registrationCard(page)
+    await expect(preCard.getByRole('button', { name: 'Register Team' })).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(preCard.getByTestId('invitation-required-block')).toHaveCount(0)
 
     const participantName = `Invited ${uniqueId()}`
     await submitTeamRegistration(page, scenario, participantName)
@@ -293,16 +313,17 @@ test.describe('Invite-only tournament registration', () => {
     await expect(row.locator('.v-chip')).toHaveText('revoked', { timeout: 15_000 })
     await expect(row.getByRole('button', { name: 'Revoke' })).toHaveCount(0)
 
-    // 2. The revoked team is refused. The captain cannot be told before
-    //    submitting (see the FINDING at the top of this file) — they meet the
-    //    refusal where the API raises it, on the failure snackbar.
+    // 2. The revoked team is refused at the UI now (P-51): the self-scoped
+    //    invite list returns the invitation with status `revoked`, which is not
+    //    a live invitation, so the card hard-blocks — no register affordance is
+    //    offered at all, rather than letting the captain click into a 403.
     await loginAsUser(page, scenario.captain)
     await openTournament(page, scenario)
-    await submitTeamRegistration(page, scenario, `Revoked ${uniqueId()}`)
 
-    await expect(
-      page.locator('.v-snackbar').getByText('Failed to register team: Tournament is invite-only'),
-    ).toBeVisible({ timeout: 15_000 })
+    const card = registrationCard(page)
+    await expect(card.getByTestId('invitation-required-block')).toBeVisible({ timeout: 15_000 })
+    await expect(card.getByRole('button', { name: 'Register Team' })).toHaveCount(0)
+    await expect(card.getByTestId('register-with-invitation')).toHaveCount(0)
 
     // And nothing was persisted — the door really is shut, not merely styled shut.
     expect(await listRegistrations(adminToken, scenario.tournamentId)).toHaveLength(0)

@@ -246,6 +246,22 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     }, 'Failed to accept application')
   }
 
+  // Captain/admin-side decline of a pending team join REQUEST (P-49). The
+  // backend's decline endpoint authorizes a captain for `request`-type rows
+  // (invitation.rs decline_invitation), same as accept. Distinct from
+  // `declineInvitation`, which is the invitee declining their own invite and
+  // updates `myInvitations`; this updates the team-facing `invitations` list.
+  const declineApplicationState = createActionState()
+  async function declineApplication(invitationId: string, message?: string): Promise<void> {
+    return withActionState(declineApplicationState, async () => {
+      await unwrapApi(api.POST('/v1/league-team-invitations/{invitation_id}/decline', {
+        params: { path: { invitation_id: invitationId } },
+        body: { message: message ?? null },
+      }))
+      invitations.value = invitations.value.filter(i => i.id !== invitationId)
+    }, 'Failed to decline application')
+  }
+
   // ==================== Viewed Player's Data ====================
 
   async function fetchPlayerLeagueTeams(playerId: string): Promise<PlayerLeagueTeamMembershipResponse[]> {
@@ -370,6 +386,8 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     cancelInvitation,
     acceptApplication,
     acceptApplicationState,
+    declineApplication,
+    declineApplicationState,
 
     // Viewed player
     fetchPlayerLeagueTeams,

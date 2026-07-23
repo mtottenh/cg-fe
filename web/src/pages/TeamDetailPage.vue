@@ -73,13 +73,83 @@
             </v-card-text>
           </v-card>
 
-          <!-- Pending Invitations (Captain Only) -->
+          <!-- Join Requests (Captain Only) — players who asked to join. -->
+          <v-card v-if="isCaptain && teamSeasonId && joinRequests.length > 0" class="mb-4" data-testid="join-requests-card">
+            <v-card-title class="d-flex align-center">
+              <v-icon start>mdi-account-arrow-right</v-icon>
+              <span>Join Requests</span>
+              <v-chip size="small" color="warning" class="ml-2">
+                {{ joinRequests.length }}
+              </v-chip>
+            </v-card-title>
+            <v-divider />
+            <v-list>
+              <v-list-item
+                v-for="request in joinRequests"
+                :key="request.id"
+                :data-testid="`join-request-${request.id}`"
+              >
+                <template v-slot:prepend>
+                  <v-avatar color="grey" size="36">
+                    <v-img
+                      v-if="request.player_avatar_url"
+                      :src="request.player_avatar_url"
+                      :alt="request.player_display_name ?? 'Applicant'"
+                    />
+                    <v-icon v-else>mdi-account</v-icon>
+                  </v-avatar>
+                </template>
+                <v-list-item-title>
+                  {{ request.player_display_name || 'Unknown player' }}
+                </v-list-item-title>
+                <v-list-item-subtitle>
+                  <v-chip size="x-small" :color="getRoleColor(request.role)">
+                    {{ request.role }}
+                  </v-chip>
+                  <span class="text-caption ml-2">
+                    Requested {{ formatRelativeTime(request.created_at) }}
+                  </span>
+                  <span v-if="request.message" class="text-caption ml-2 font-italic">
+                    &ldquo;{{ request.message }}&rdquo;
+                  </span>
+                </v-list-item-subtitle>
+                <template v-slot:append>
+                  <v-btn
+                    aria-label="Accept join request"
+                    color="success"
+                    variant="tonal"
+                    size="small"
+                    class="mr-2"
+                    :loading="respondingToRequest === request.id"
+                    :data-testid="`accept-request-${request.id}`"
+                    @click="handleAcceptRequest(request.id)"
+                  >
+                    <v-icon start>mdi-check</v-icon>
+                    Accept
+                  </v-btn>
+                  <v-btn
+                    aria-label="Decline join request"
+                    color="error"
+                    variant="text"
+                    size="small"
+                    :loading="respondingToRequest === request.id"
+                    :data-testid="`decline-request-${request.id}`"
+                    @click="handleDeclineRequest(request.id)"
+                  >
+                    Decline
+                  </v-btn>
+                </template>
+              </v-list-item>
+            </v-list>
+          </v-card>
+
+          <!-- Pending Invitations (Captain Only) — invites the captain sent. -->
           <v-card v-if="isCaptain && teamSeasonId" class="mb-4">
             <v-card-title class="d-flex align-center">
               <v-icon start>mdi-email-outline</v-icon>
               <span>Pending Invitations</span>
-              <v-chip v-if="invitations.length > 0" size="small" color="info" class="ml-2">
-                {{ invitations.length }}
+              <v-chip v-if="pendingInvites.length > 0" size="small" color="info" class="ml-2">
+                {{ pendingInvites.length }}
               </v-chip>
               <v-spacer />
               <!--
@@ -99,9 +169,9 @@
               </v-btn>
             </v-card-title>
             <v-divider />
-            <v-list v-if="invitations.length > 0">
+            <v-list v-if="pendingInvites.length > 0">
               <v-list-item
-                v-for="invitation in invitations"
+                v-for="invitation in pendingInvites"
                 :key="invitation.id"
               >
                 <template v-slot:prepend>
@@ -294,6 +364,16 @@ const error = ref<string | null>(null)
 const team = ref<LeagueTeamResponse | null>(null)
 const { members, invitations } = storeToRefs(teamsStore)
 
+// P-49: the team-season invitations endpoint returns BOTH captain-sent invites
+// and player-sent join requests, each tagged with `invitation_type`. They must
+// be presented differently — a request is something the captain accepts/declines,
+// an invite is something the captain cancels. Rendering both as "Pending
+// Invitations" with only a Cancel ✕ mislabelled a player's application as an
+// invitation the captain had sent, and the sole affordance rejected it.
+const joinRequests = computed(() => invitations.value.filter(i => i.invitation_type === 'request'))
+const pendingInvites = computed(() => invitations.value.filter(i => i.invitation_type === 'invite'))
+const respondingToRequest = ref<string | null>(null)
+
 // Route params
 const teamId = computed(() => route.params.id as string)
 // team_season_id can come from query param or we need to look it up
@@ -483,6 +563,37 @@ async function handleCancelInvitation(invitationId: string) {
     error.value = teamsStore.error || 'Failed to cancel invitation'
   } finally {
     cancellingInvitation.value = null
+  }
+}
+
+// P-49: captain accepts a player's join request. Reuses the shared accept
+// endpoint (the backend authorizes a captain for `request`-type rows), then
+// refreshes the roster so the newly-seated player appears.
+async function handleAcceptRequest(invitationId: string) {
+  respondingToRequest.value = invitationId
+  try {
+    await teamsStore.acceptApplication(invitationId)
+    successMessage.value = 'Join request accepted'
+    showSuccess.value = true
+    if (teamSeasonId.value) await teamsStore.fetchMembers(teamSeasonId.value)
+  } catch {
+    error.value = teamsStore.error || 'Failed to accept join request'
+  } finally {
+    respondingToRequest.value = null
+  }
+}
+
+// P-49: captain declines a player's join request.
+async function handleDeclineRequest(invitationId: string) {
+  respondingToRequest.value = invitationId
+  try {
+    await teamsStore.declineApplication(invitationId)
+    successMessage.value = 'Join request declined'
+    showSuccess.value = true
+  } catch {
+    error.value = teamsStore.error || 'Failed to decline join request'
+  } finally {
+    respondingToRequest.value = null
   }
 }
 

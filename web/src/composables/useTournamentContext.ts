@@ -42,6 +42,35 @@ export function useTournamentContext(tournament: Ref<TournamentResponse | null>)
 
   const isParticipant = computed(() => !!myRegistration.value)
 
+  /**
+   * P-51: whether the current viewer holds a pending invitation to this
+   * tournament. Backed by `GET /v1/tournaments/{id}/invitations`, which now
+   * self-scopes (a non-organiser sees only invitations addressed to them). We
+   * still match against the viewer's own identity so this stays correct even
+   * when an organiser loads the full list: a pending row is "mine" when it
+   * targets my user_id, or a team-season I captain/manage.
+   *
+   * `undefined` when the answer is not yet knowable (not invite-only) so callers
+   * can distinguish "not invited" from "unknown". This is the signal the
+   * registration-card gate needs to turn the invite-only precondition from a
+   * soft prompt (P-47) into a hard block.
+   */
+  const isInvited = computed((): boolean | undefined => {
+    if (tournament.value?.registration_type !== 'invite_only') return undefined
+    if (!authStore.isAuthenticated) return false
+    const myTeamSeasonIds = new Set(
+      leagueTeamsStore.myTeams
+        .filter(t => ['captain', 'manager'].includes(t.role))
+        .map(t => t.team_season_id),
+    )
+    return tournamentsStore.invitations.some(inv => {
+      if (inv.status !== 'pending') return false
+      if (inv.user_id && inv.user_id === authStore.user?.id) return true
+      if (inv.team_season_id && myTeamSeasonIds.has(inv.team_season_id)) return true
+      return false
+    })
+  })
+
   /** Whether the current user has eligible teams they could register (captain/manager, not already registered). */
   const hasEligibleTeams = computed((): boolean | undefined => {
     if (!isTeamTournament.value || !tournament.value) return undefined
@@ -119,6 +148,7 @@ export function useTournamentContext(tournament: Ref<TournamentResponse | null>)
     isTeamTournament,
     myRegistration,
     isParticipant,
+    isInvited,
     hasEligibleTeams,
 
     // Organizer

@@ -444,7 +444,13 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 45 found · **25 fixed** · 20 open.
+**Status:** 45 found · **27 fixed** · 18 open.
+
+Fixed: P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
+
+Open: P-1, P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-27, P-28, P-29, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
+deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
+them in isolation.
 
 Fixed: P-2, P-4, P-5, P-7, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
 
@@ -465,8 +471,8 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-5 | Display name: signup allows dupes, save rejects | user trap | **fixed** `a3c1876` |
 | P-6 | Result history stale after dispute | suspected | open |
 | P-7 | Veto side-select unreachable in UI | feature dead | **fixed** |
-| P-8 | Can propose a past time, then hard-fails | dead end | open |
-| P-9 | Proposer cannot withdraw own proposal | API gap | **API done** `a3c1876`, UI open |
+| P-8 | Can propose a past time, then hard-fails | dead end | **fixed** `4b7edb4` |
+| P-9 | Proposer cannot withdraw own proposal | API gap | **fixed** `a3c1876`+`4b7edb4` |
 | P-10 | Admin registrations table prints raw enum | user-facing | **fixed** `f2694b0` |
 | P-11 | Roster lock never enforced in admin UI | enforcement | **fixed** `ce732a0` |
 | P-12 | No captain entry point to invite modal | blocks flow | **resolved** `ce732a0` |
@@ -628,6 +634,7 @@ Each entry below was independently re-verified (not taken on the agent's word).
       the picker). One-line frontend change; the backend is already correct.
 
 ### P-8 — Calendar mode lets you propose a time in the PAST, then hard-fails  ⚠️ user-facing dead end
+- ✅ **FIXED** in `4b7edb4`, at both ends: the calendar cannot be paged into the past (`weekOffset <= 0` disables Previous, `isPastCell` marks past cells inert) and `allTimesInFuture` gates submission in **both** view modes and for counter-proposals, so no path can arm a proposal the backend is guaranteed to reject.
 - **Symptom:** page back a week in the scheduling calendar, click a slot, and **Send Proposal is
   enabled** — then the API rejects it with a hard 400 *"Proposed times must be in the future"*.
 - **Root cause:** `components/match/MatchSchedulingPanel.vue:205-209` deliberately skips the

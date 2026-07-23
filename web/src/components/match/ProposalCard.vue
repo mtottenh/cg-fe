@@ -133,15 +133,29 @@
           </div>
         </template>
 
-        <!-- Proposer Actions -->
+        <!-- Proposer Actions. The proposer has no accept/reject/counter — the
+             one thing they can do is withdraw their own pending proposal
+             (POST /schedule/cancel), which reopens scheduling immediately
+             instead of leaving a mistyped time to block it for the full TTL. -->
         <template v-else>
           <v-divider class="mb-4" />
-          <v-alert type="info" variant="tonal" density="compact">
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
             <template v-slot:prepend>
               <v-icon>mdi-clock-outline</v-icon>
             </template>
             Waiting for your opponent to respond...
           </v-alert>
+          <div class="d-flex ga-2 flex-wrap">
+            <v-btn
+              variant="outlined"
+              color="error"
+              :loading="loading"
+              @click="openWithdrawDialog"
+            >
+              <v-icon start>mdi-undo</v-icon>
+              Withdraw Proposal
+            </v-btn>
+          </div>
         </template>
       </template>
 
@@ -191,6 +205,33 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Withdraw Dialog: withdrawing is destructive (the opponent loses the
+         times they were about to answer), so it is confirmed rather than
+         one-click. -->
+    <v-dialog v-model="withdrawDialogOpen" max-width="480">
+      <v-card>
+        <v-card-title>Withdraw Proposal</v-card-title>
+        <v-card-text>
+          <p class="mb-0">
+            Withdraw these proposed times? Your opponent will no longer be able to
+            respond to them, and you can propose a new time straight away.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="withdrawDialogOpen = false">Keep Proposal</v-btn>
+          <v-btn
+            color="error"
+            variant="flat"
+            :loading="loading"
+            @click="confirmWithdraw"
+          >
+            Withdraw
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-card>
 </template>
 
@@ -216,11 +257,13 @@ const emit = defineEmits<{
   accept: [time: string]
   reject: [reason?: string]
   counter: []
+  withdraw: []
 }>()
 
 const selectedTime = ref<string | null>(null)
 const rejectDialogOpen = ref(false)
 const rejectReason = ref('')
+const withdrawDialogOpen = ref(false)
 
 const isExpired = computed(() => isProposalExpired(props.proposal))
 const timeUntilExpiration = computed(() => getTimeUntilExpiration(props.proposal))
@@ -230,6 +273,7 @@ const statusLabel = computed(() => getProposalStatusLabel(props.proposal.status)
 const cardColor = computed(() => {
   if (props.proposal.status === 'accepted') return 'success'
   if (props.proposal.status === 'rejected') return 'error'
+  if (props.proposal.status === 'cancelled') return 'grey'
   if (isExpired.value) return 'grey'
   return 'warning'
 })
@@ -248,5 +292,14 @@ function openRejectDialog() {
 function confirmReject() {
   emit('reject', rejectReason.value.trim() || undefined)
   rejectDialogOpen.value = false
+}
+
+function openWithdrawDialog() {
+  withdrawDialogOpen.value = true
+}
+
+function confirmWithdraw() {
+  emit('withdraw')
+  withdrawDialogOpen.value = false
 }
 </script>

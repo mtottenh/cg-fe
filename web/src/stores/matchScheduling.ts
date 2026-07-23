@@ -9,9 +9,11 @@ import { proposalStatusMap, getStatusColor as getMapColor, getStatusLabel as get
 type ScheduleProposalResponse = components['schemas']['ScheduleProposalResponse']
 type AcceptScheduleProposalRequest = components['schemas']['AcceptScheduleProposalRequest']
 type RejectScheduleProposalRequest = components['schemas']['RejectScheduleProposalRequest']
+type CancelScheduleProposalRequest = components['schemas']['CancelScheduleProposalRequest']
 
-// Proposal status enum
-export const PROPOSAL_STATUSES = ['pending', 'accepted', 'rejected', 'expired', 'counter_proposed'] as const
+// Proposal status enum. `cancelled` is set when the PROPOSER withdraws their
+// own pending proposal (POST /schedule/cancel) and by admin_schedule.
+export const PROPOSAL_STATUSES = ['pending', 'accepted', 'rejected', 'expired', 'counter_proposed', 'cancelled'] as const
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number]
 
 export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
@@ -26,10 +28,12 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
   const acceptProposalState = createActionState()
   const rejectProposalState = createActionState()
   const counterProposeState = createActionState()
+  const cancelProposalState = createActionState()
 
   const { loading, error } = aggregateActionStates([
     fetchActiveProposalState, fetchProposalHistoryState, proposeScheduleState,
     acceptProposalState, rejectProposalState, counterProposeState,
+    cancelProposalState,
   ])
 
   // ==================== Proposal CRUD ====================
@@ -126,6 +130,32 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
     }, 'Failed to counter propose')
   }
 
+  /**
+   * Withdraw a pending proposal the CALLER made themselves.
+   *
+   * Backend rules (portal-api handlers/tournaments/scheduling.rs:191):
+   * 400 when the proposal is no longer pending, 403 when the caller is not the
+   * proposer, 404 for an unknown proposal or one belonging to another match.
+   * On success the proposal moves to `cancelled` and `/schedule/active`
+   * returns null, so scheduling reopens immediately.
+   */
+  async function cancelProposal(
+    tournamentId: string,
+    matchId: string,
+    request: CancelScheduleProposalRequest,
+  ): Promise<ScheduleProposalResponse> {
+    return withActionState(cancelProposalState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/cancel', {
+        params: { path: { tournament_id: tournamentId, match_id: matchId } },
+        body: request,
+      }))
+      // Withdrawing leaves no live proposal — clear it so the propose form
+      // comes back without waiting for the refetch.
+      activeProposal.value = null
+      return result.data
+    }, 'Failed to withdraw proposal')
+  }
+
   // ==================== Utility ====================
 
   function clear() {
@@ -152,6 +182,7 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
     acceptProposalState,
     rejectProposalState,
     counterProposeState,
+    cancelProposalState,
 
     // Actions
     fetchActiveProposal,
@@ -160,6 +191,7 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
     acceptProposal,
     rejectProposal,
     counterPropose,
+    cancelProposal,
 
     // Utility
     clear,
@@ -168,7 +200,12 @@ export const useMatchSchedulingStore = defineStore('matchScheduling', () => {
 })
 
 // Re-export types for convenience
-export type { ScheduleProposalResponse, AcceptScheduleProposalRequest, RejectScheduleProposalRequest }
+export type {
+  ScheduleProposalResponse,
+  AcceptScheduleProposalRequest,
+  RejectScheduleProposalRequest,
+  CancelScheduleProposalRequest,
+}
 
 // Helper functions
 export function getProposalStatusColor(status: string): string {

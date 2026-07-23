@@ -32,11 +32,10 @@ import {
 // ---------------------------------------------------------------------------
 // Read-only backend cross-checks for the negotiation tests.
 //
-// `match-workflow-extra.fixture.ts` exports `proposeScheduleViaApi`, but that
-// is a WRITE and the propose action is exactly what these tests must drive
-// through the UI, so it is deliberately unused here. No shared fixture reads
-// the proposal endpoints, and `fixtures/` belongs to another workstream, so
-// the readers live locally.
+// No fixture proposes a schedule any more: `proposeScheduleViaApi` was
+// deleted from `match-workflow-extra.fixture.ts` because proposing is the
+// action under test here and must be a click. No shared fixture READS the
+// proposal endpoints either, so the readers live locally.
 //
 // `/schedule/active` and `/schedule/history` take no auth extractor
 // (api/crates/portal-api/src/handlers/tournaments/scheduling.rs:273 and :309),
@@ -51,6 +50,12 @@ interface ScheduleProposal {
   selected_time?: string
   status: string
   rejection_reason?: string
+  /**
+   * "Who took the terminal action" — NOT "the opponent". On a withdrawal it is
+   * the proposer themselves (see COVERAGE-PLAN P-9), which is why the UI never
+   * labels it as a responder.
+   */
+  responded_by_user_id?: string | null
 }
 
 interface ScheduledMatch {
@@ -145,6 +150,42 @@ async function expectMatchScheduledAt(page: Page, iso: string): Promise<void> {
   await expect(page.getByText('Match Scheduled')).toBeVisible({ timeout: 15000 })
   const label = await page.evaluate((value: string) => new Date(value).toLocaleString(), iso)
   await expect(page.getByText(label).first()).toBeVisible()
+}
+
+/**
+ * Send one proposal through MatchSchedulingPanel's MANUAL picker and assert the
+ * POST landed. Manual rather than calendar because it needs no seeded
+ * availability, and it exercises the `pickerValid` gate.
+ */
+async function proposeViaManualPicker(
+  page: Page,
+  matchId: string,
+  daysAhead: number,
+  hour: number,
+): Promise<void> {
+  const panel = page.locator('.v-card').filter({ hasText: 'Schedule Match' }).first()
+  await expect(panel).toBeVisible({ timeout: 20000 })
+
+  await panel.getByRole('button', { name: 'Manual' }).click()
+  await expect(panel.getByText('Custom Times')).toBeVisible()
+  await panel
+    .locator('input[type="datetime-local"]')
+    .first()
+    .fill(localDateTimeInput(daysAhead, hour))
+
+  const sendProposal = panel.getByRole('button', { name: 'Send Proposal' })
+  await expect(sendProposal).toBeEnabled()
+
+  const proposeCall = page.waitForResponse(
+    (res) =>
+      res.url().includes(`/matches/${matchId}/schedule/propose`) &&
+      res.request().method() === 'POST',
+    { timeout: 20000 },
+  )
+  await sendProposal.click()
+  const proposeRes = await proposeCall
+  expect(proposeRes.ok(), `POST /schedule/propose returned ${proposeRes.status()}`).toBe(true)
+  await expect(page.getByText('Your Proposal')).toBeVisible({ timeout: 15000 })
 }
 
 test.describe('Match browsing and navigation', () => {
@@ -345,6 +386,36 @@ test.describe('Match scheduling panel (self-scheduled)', () => {
   // submitted, so `submitProposal` had no coverage. The cell click and that
   // same summary assertion are now the opening moves of the end-to-end
   // negotiation below, which then actually sends the proposal.
+
+  // P-8 regression. The overlay's week at offset 0 already starts TOMORROW
+  // (useAvailabilityOverlay.ts:46-53), so every earlier week is entirely in the
+  // past — yet "Previous week" was ungated and past weeks rendered identical
+  // bookable `cell-mutual` slots (weekly-recurring windows repeat backwards).
+  // Clicking one left "Send Proposal" enabled all the way to the backend's hard
+  // 400 "Proposed times must be in the future". Paging back is now blocked at
+  // the boundary, which is the only reachable route into that state.
+  test('the availability calendar cannot be paged into the past', async ({ page }) => {
+    await openMatchAsP1(page)
+    await expect(page.getByText('Schedule Match')).toBeVisible({ timeout: 20000 })
+
+    const previousWeek = page.getByRole('button', { name: 'Previous week' })
+    const nextWeek = page.getByRole('button', { name: 'Next week' })
+    const thisWeek = page.getByRole('button', { name: 'This Week' })
+
+    // At the boundary: nothing earlier is proposable, so there is no way back.
+    await expect(previousWeek).toBeDisabled()
+    await expect(thisWeek).toHaveCount(0)
+
+    // Forward is always allowed, and re-enables the return trip.
+    await nextWeek.click()
+    await expect(previousWeek).toBeEnabled()
+    await expect(thisWeek).toBeVisible()
+
+    // Coming back re-arms the boundary rather than sailing past it.
+    await previousWeek.click()
+    await expect(previousWeek).toBeDisabled()
+    await expect(thisWeek).toHaveCount(0)
+  })
 
   test('manual mode shows the ScheduleTimePicker with quick select and custom times', async ({ page }) => {
     await openMatchAsP1(page)
@@ -677,6 +748,160 @@ test.describe('Schedule negotiation (two browser contexts)', () => {
       expect(rejected?.rejection_reason).toBe(rejectReason)
 
       // The match never left `ready`, so the pair can negotiate again.
+      const stillReady = await getScheduledMatch(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(stillReady.status).toBe('ready')
+      expect(stillReady.scheduled_at ?? null).toBeNull()
+    } finally {
+      await contextP1.close()
+      await contextP2.close()
+    }
+  })
+
+  // P-9. Withdrawing is the proposer's ONLY control over a live proposal: a
+  // mistyped time used to block scheduling for the full 48h TTL unless the
+  // opponent happened to answer.
+  test('P1 withdraws their own pending proposal, which the opponent cannot do, and then proposes again', async ({
+    browser,
+  }) => {
+    test.setTimeout(180_000)
+    const adminToken = await getAdminToken()
+    const scenario = await createSelfScheduledScenario(adminToken)
+
+    const matchUrl = `/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`
+    const contextP1 = await browser.newContext()
+    const contextP2 = await browser.newContext()
+
+    try {
+      const pageP1 = await contextP1.newPage()
+      const pageP2 = await contextP2.newPage()
+      await primeAuthStorage(pageP1, scenario.p1.token, scenario.p1.userId)
+      await primeAuthStorage(pageP2, scenario.p2.token, scenario.p2.userId)
+
+      // --- P1 proposes ----------------------------------------------------
+      await pageP1.goto(matchUrl)
+      await pageP1.waitForLoadState('networkidle')
+      await proposeViaManualPicker(pageP1, scenario.matchId, 3, 18)
+
+      const original = await getActiveProposal(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(original?.status).toBe('pending')
+      expect(original?.proposed_by_user_id).toBe(scenario.p1.userId)
+
+      // --- The affordance is proposer-only --------------------------------
+      const p1Panel = pageP1.locator('.v-card').filter({ hasText: 'Schedule Match' }).first()
+      const withdrawButton = p1Panel.getByRole('button', { name: 'Withdraw Proposal' })
+      await expect(withdrawButton).toBeVisible()
+      // The proposer answers nothing — those three belong to the opponent.
+      await expect(p1Panel.getByRole('button', { name: 'Accept' })).toHaveCount(0)
+      await expect(p1Panel.getByRole('button', { name: 'Counter-Propose' })).toHaveCount(0)
+      await expect(p1Panel.getByRole('button', { name: 'Reject' })).toHaveCount(0)
+
+      await pageP2.goto(matchUrl)
+      await pageP2.waitForLoadState('networkidle')
+      await expect(pageP2.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
+      await expect(pageP2.getByRole('button', { name: 'Counter-Propose' })).toBeVisible()
+      await expect(pageP2.getByRole('button', { name: 'Withdraw Proposal' })).toHaveCount(0)
+
+      // The backend enforces the same rule independently of the missing button.
+      // coverage-plan-exempt: RBAC 403 has no UI surface — the opponent has no
+      // withdraw control to click, which is asserted directly above.
+      const forbidden = await fetch(
+        `${API_URL}/v1/tournaments/${scenario.tournamentId}/matches/${scenario.matchId}/schedule/cancel`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${scenario.p2.token}`,
+          },
+          body: JSON.stringify({ proposal_id: original?.id }),
+        },
+      )
+      expect(forbidden.status, 'only the proposer may withdraw').toBe(403)
+
+      // --- P1 withdraws through the confirm dialog ------------------------
+      await withdrawButton.click()
+      const withdrawDialog = pageP1.getByRole('dialog')
+      await expect(withdrawDialog.getByText('Withdraw Proposal')).toBeVisible()
+
+      const cancelCall = pageP1.waitForResponse(
+        (res) =>
+          res.url().includes(`/matches/${scenario.matchId}/schedule/cancel`) &&
+          res.request().method() === 'POST',
+        { timeout: 20000 },
+      )
+      // exact: the card's own "Withdraw Proposal" button is still mounted behind
+      // the dialog; inside it only "Keep Proposal" and "Withdraw" exist.
+      await withdrawDialog.getByRole('button', { name: 'Withdraw', exact: true }).click()
+      const cancelRes = await cancelCall
+      expect(cancelRes.ok(), `POST /schedule/cancel returned ${cancelRes.status()}`).toBe(true)
+
+      // UI: the propose form is back and the withdrawal is on the timeline.
+      await expect(pageP1.getByText(/Propose times for this match/)).toBeVisible({
+        timeout: 15000,
+      })
+      await expect(pageP1.getByText('Waiting for your opponent to respond...')).toHaveCount(0)
+      await expect(pageP1.getByText('Scheduling History')).toBeVisible()
+      await expect(pageP1.getByText('Cancelled').first()).toBeVisible()
+
+      // Backend: no live proposal, and the row is `cancelled` — attributed to
+      // P1, because `responded_by_user_id` records who ENDED the proposal, not
+      // who was asked to respond.
+      const afterWithdraw = await getActiveProposal(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(afterWithdraw).toBeNull()
+
+      const history = await getProposalHistory(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      const withdrawn = history.find((p) => p.id === original?.id)
+      expect(withdrawn?.status).toBe('cancelled')
+      expect(withdrawn?.responded_by_user_id).toBe(scenario.p1.userId)
+
+      // --- Scheduling really did reopen -----------------------------------
+      await proposeViaManualPicker(pageP1, scenario.matchId, 5, 19)
+
+      const replacement = await getActiveProposal(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(replacement?.status).toBe('pending')
+      expect(replacement?.id).not.toBe(original?.id)
+      const replacementTime = replacement?.proposed_times[0] ?? ''
+
+      // And the opponent is offered the replacement, not the withdrawn times.
+      await pageP2.reload()
+      await pageP2.waitForLoadState('networkidle')
+      await expect(pageP2.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
+      const choices = pageP2.getByRole('radio')
+      await expect(choices).toHaveCount(1)
+
+      const replacementLabel = await pageP2.evaluate(
+        (value: string) =>
+          new Date(value).toLocaleString(undefined, {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        replacementTime,
+      )
+      await expect(pageP2.getByText(replacementLabel).first()).toBeVisible()
+
+      // The match itself never moved off `ready`.
       const stillReady = await getScheduledMatch(
         adminToken,
         scenario.tournamentId,

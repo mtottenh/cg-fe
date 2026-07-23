@@ -121,6 +121,7 @@
         @accept="handleAccept"
         @reject="handleReject"
         @counter="handleCounter"
+        @withdraw="handleWithdraw"
       />
 
       <!-- Check-in Panel (when scheduled or check-in is open) -->
@@ -612,6 +613,27 @@ async function handleCounter(times: string[], notes?: string) {
     {
       success: 'Counter-proposal sent!',
       failureFallback: 'Failed to send counter-proposal',
+      errorSource: schedulingStore,
+      after: fetchAll,
+    },
+  )
+}
+
+/**
+ * Withdraw the viewer's own pending proposal (P-9). Only reachable from the
+ * proposer branch of ProposalCard; the backend independently enforces
+ * "caller must be the proposer" with a 403.
+ */
+async function handleWithdraw() {
+  if (!tournament.value || !match.value || !activeProposal.value) return
+  const proposalId = activeProposal.value.id
+  await feedback.run(
+    () => schedulingStore.cancelProposal(tournament.value!.id, match.value!.id, {
+      proposal_id: proposalId,
+    }),
+    {
+      success: 'Proposal withdrawn',
+      failureFallback: 'Failed to withdraw proposal',
       errorSource: schedulingStore,
       after: fetchAll,
     },

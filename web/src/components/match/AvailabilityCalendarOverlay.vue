@@ -4,7 +4,19 @@
     <v-card-title class="d-flex justify-space-between align-center">
       <span class="text-body-1 font-weight-medium">Availability</span>
       <div class="d-flex align-center ga-1">
-        <v-btn aria-label="Previous week" icon variant="text" size="small" @click="overlay.previousWeek()">
+        <!-- P-8: the week at offset 0 already starts TOMORROW
+             (useAvailabilityOverlay.ts:46-53), so every earlier week is
+             entirely in the past. Paging back there produced cells that
+             looked bookable and then hard-failed on the backend's
+             "proposed times must be in the future" rule. -->
+        <v-btn
+          aria-label="Previous week"
+          icon
+          variant="text"
+          size="small"
+          :disabled="overlay.weekOffset.value <= 0"
+          @click="overlay.previousWeek()"
+        >
           <v-icon>mdi-chevron-left</v-icon>
         </v-btn>
         <span class="text-body-2">{{ overlay.weekLabel.value }}</span>
@@ -60,7 +72,8 @@
                   `cell-${day.cells.get(timeKey) || 'empty'}`,
                   {
                     'cell-selected': isSelected(day.date, timeKey),
-                    'cell-clickable': isCellClickable(day.cells.get(timeKey) || 'empty'),
+                    'cell-clickable': isCellClickable(day.date, timeKey, day.cells.get(timeKey) || 'empty'),
+                    'cell-past': isPastCell(day.date, timeKey),
                   },
                 ]"
                 @click="handleCellClick(day.date, timeKey, day.cells.get(timeKey) || 'empty')"
@@ -98,7 +111,8 @@
                   `cell-${currentMobileDay.cells.get(timeKey)}`,
                   {
                     'cell-selected': isSelected(currentMobileDay.date, timeKey),
-                    'cell-clickable': isCellClickable(currentMobileDay.cells.get(timeKey) || 'empty'),
+                    'cell-clickable': isCellClickable(currentMobileDay.date, timeKey, currentMobileDay.cells.get(timeKey) || 'empty'),
+                    'cell-past': isPastCell(currentMobileDay.date, timeKey),
                   },
                 ]"
                 @click="handleCellClick(currentMobileDay.date, timeKey, currentMobileDay.cells.get(timeKey) || 'empty')"
@@ -237,12 +251,23 @@ function isSelected(date: string, timeKey: string): boolean {
   return selectedKeys.value.has(`${date}|${timeKey}`)
 }
 
-function isCellClickable(status: OverlayCellStatus): boolean {
+/**
+ * A cell whose start instant has already passed. Weekly-recurring availability
+ * repeats backwards forever, so without this every past week renders bookable
+ * mutual cells (P-8). Re-evaluated on each render, which is enough: the grid
+ * re-renders whenever the week or either player's availability changes.
+ */
+function isPastCell(date: string, timeKey: string): boolean {
+  return new Date(`${date}T${timeKey}:00`).getTime() <= Date.now()
+}
+
+function isCellClickable(date: string, timeKey: string, status: OverlayCellStatus): boolean {
+  if (isPastCell(date, timeKey)) return false
   return status === 'mutual' || status === 'suggested'
 }
 
 function handleCellClick(date: string, timeKey: string, status: OverlayCellStatus) {
-  if (!isCellClickable(status)) return
+  if (!isCellClickable(date, timeKey, status)) return
 
   const iso = overlay.cellToIso(date, timeKey)
   const key = `${date}|${timeKey}`
@@ -382,6 +407,12 @@ watch(() => props.opponentPlayerId, () => overlay.fetchWeek())
 
 .cell-clickable:hover {
   filter: brightness(0.92);
+}
+
+/* Past slots are unbookable — render them inert so it reads as such. */
+.cell-past {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 /* Status colors */

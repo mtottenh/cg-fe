@@ -10,17 +10,17 @@
  *     MatchSchedulingPanel / AvailabilityCalendarOverlay UI only renders for
  *     self-scheduled tournaments, and every existing builder leaves the
  *     backend default (`live`).
- *  2. Correct schedule-proposal and result-claim endpoints. The shared
- *     match.fixture.ts targets `/scheduling/proposals` and
+ *  2. Correct result-claim endpoints. The shared match.fixture.ts targets
  *     `/matches/{id}/results`, but the backend (verified against
- *     `/api/crates/portal-api/src/routes/{tournaments,matches}.rs`) serves:
+ *     `/api/crates/portal-api/src/routes/matches.rs`) serves:
  *
- *       POST /v1/tournaments/{tid}/matches/{mid}/schedule/propose
- *            body: { proposed_times: string[] }
  *       POST /v1/matches/{match_id}/result
  *            body: { claimed_winner_registration_id, participant1_score,
  *                    participant2_score }
  *       POST /v1/matches/{match_id}/result/{claim_id}/confirm
+ *
+ *     Scheduling proposals are deliberately NOT helped here — the negotiation
+ *     is the flow under test and must be clicked, not POSTed.
  *
  * Per the conversion ground rules, shared fixtures must not be edited, so
  * the corrected helpers live here.
@@ -28,7 +28,7 @@
 
 import { uniqueId, CS2_MAP_POOL } from './test-data'
 import { createTestUser } from './checkin.fixture'
-import { registerPlayer, approveRegistration } from './tournament-lifecycle.fixture'
+import { registerPlayer } from './tournament-lifecycle.fixture'
 import { startTournament, listMatches } from './tournament-seeding.fixture'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
@@ -97,6 +97,35 @@ async function postAdminAction(
 }
 
 /**
+ * Ensure a registration is approved, whether or not it already is.
+ *
+ * `tournament-lifecycle.fixture.approveRegistration` treats only 409 as
+ * already-approved, but since P-2 landed (api a3c1876) an open-registration
+ * tournament auto-approves on signup and a second approve returns
+ * **400 "Cannot approve registration in approved status"** — so that helper now
+ * throws on every open-registration scenario. `fixtures/` outside this file
+ * belongs to another workstream, so the tolerant version lives here.
+ */
+async function ensureApproved(
+  adminToken: string,
+  tournamentId: string,
+  registrationId: string,
+): Promise<void> {
+  const resp = await fetch(
+    `${API_URL}/v1/tournaments/${tournamentId}/registrations/${registrationId}/approve`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    },
+  )
+  if (resp.ok || resp.status === 409) return
+
+  const text = await resp.text()
+  if (resp.status === 400 && text.includes('approved status')) return
+  throw new Error(`Approve registration failed (${resp.status}): ${text}`)
+}
+
+/**
  * Build a fully self-contained SELF-SCHEDULED tournament with two approved
  * players and a generated round-1 match left in `ready` status — exactly the
  * state where MatchDetailPage shows the scheduling panel (self_scheduled +
@@ -145,8 +174,8 @@ export async function createSelfScheduledScenario(
 
   const p1RegId = await registerPlayer(p1User.token, tournamentId, p1Name)
   const p2RegId = await registerPlayer(p2User.token, tournamentId, p2Name)
-  await approveRegistration(adminToken, tournamentId, p1RegId)
-  await approveRegistration(adminToken, tournamentId, p2RegId)
+  await ensureApproved(adminToken, tournamentId, p1RegId)
+  await ensureApproved(adminToken, tournamentId, p2RegId)
 
   await startTournament(adminToken, tournamentId)
 
@@ -182,34 +211,11 @@ export async function createSelfScheduledScenario(
   }
 }
 
-/**
- * Propose a match schedule as a participant via the REAL propose endpoint
- * (`/schedule/propose`). Throws on failure so specs never silently proceed
- * without the proposal they depend on.
- */
-export async function proposeScheduleViaApi(
-  token: string,
-  tournamentId: string,
-  matchId: string,
-  times: string[],
-): Promise<{ id: string; status: string; proposed_times: string[] }> {
-  const resp = await fetch(
-    `${API_URL}/v1/tournaments/${tournamentId}/matches/${matchId}/schedule/propose`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ proposed_times: times }),
-    },
-  )
-  const body = await jsonOrThrow<ApiResult<{ id: string; status: string; proposed_times: string[] }>>(
-    resp,
-    'Propose schedule',
-  )
-  return body.data
-}
+// NOTE: `proposeScheduleViaApi` used to live here. It was deleted, not
+// deprecated: proposing is the action under test in
+// `match-workflow.spec.ts`'s negotiation describe, so a fixture that performs
+// it via HTTP is exactly the shortcut §3 ground rule 1 forbids. Its last
+// caller went away when that describe was rewritten to click through the UI.
 
 export interface MatchDetails {
   id: string

@@ -78,6 +78,7 @@
           @accept="(time) => $emit('accept', time)"
           @reject="(reason) => $emit('reject', reason)"
           @counter="openCounterDialog"
+          @withdraw="$emit('withdraw')"
         />
       </template>
 
@@ -186,6 +187,7 @@ const emit = defineEmits<{
   accept: [time: string]
   reject: [reason?: string]
   counter: [times: string[], notes?: string]
+  withdraw: []
 }>()
 
 // Proposal form state
@@ -199,17 +201,39 @@ const counterTimes = ref<string[]>(['', ''])
 const counterNotes = ref('')
 const counterPickerValid = ref(false)
 
-// The calendar overlay only offers valid cells (error-proof by construction);
-// the manual picker must additionally pass its field rules — a past datetime
-// shows a red error and must NOT leave the submit button enabled.
+/**
+ * Every filled slot parses and lands in the future.
+ *
+ * P-8: calendar mode used to skip validation entirely on the theory that "the
+ * overlay only offers valid cells". It didn't — the overlay's Previous-week
+ * button was ungated, past weeks rendered identically (weekly-recurring
+ * windows repeat backwards), and Send Proposal stayed enabled right up to the
+ * backend's hard 400 "Proposed times must be in the future"
+ * (services/tournament/scheduling.rs:94-100). The overlay now refuses past
+ * cells; this is the second line, so no view mode can arm a proposal the
+ * backend is guaranteed to reject.
+ */
+function allTimesInFuture(times: string[]): boolean {
+  const filled = times.filter((t) => t !== '')
+  if (filled.length === 0) return false
+  const now = Date.now()
+  return filled.every((t) => {
+    const ms = new Date(t).getTime()
+    return Number.isFinite(ms) && ms > now
+  })
+}
+
+// The manual picker must additionally pass its own field rules (`:min` of
+// now + 1h, ScheduleTimePicker.vue:172-176) — a past datetime shows a red
+// error and must NOT leave the submit button enabled.
 const hasValidTime = computed(() => {
-  const nonEmpty = proposedTimes.value.some((t) => t !== '')
-  if (viewMode.value === 'calendar') return nonEmpty
-  return nonEmpty && pickerValid.value
+  if (!allTimesInFuture(proposedTimes.value)) return false
+  if (viewMode.value === 'calendar') return true
+  return pickerValid.value
 })
 
 const hasValidCounterTime = computed(() => {
-  return counterTimes.value.some((t) => t !== '') && counterPickerValid.value
+  return allTimesInFuture(counterTimes.value) && counterPickerValid.value
 })
 
 function submitProposal() {

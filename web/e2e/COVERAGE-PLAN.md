@@ -404,7 +404,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 32 found · **14 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
+**Status:** 33 found · **16 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
 1 decision pending UI (P-12) · 5 deliberately deferred to the lineup redesign (P-15, P-18, P-23,
 P-25, P-26 — see `api/docs/lineup-design.md`; do not fix these in isolation).
 
@@ -444,8 +444,9 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | open |
 | P-30 | Season edit Save disabled when max_teams is null | user-facing | **fixed** `9816346` |
-| P-31 | **API declares ~no enums — root cause of the status-drift class** | **architectural** | **class closed** `cf87c03`/`b76ae7b`; 7/41 fields |
+| P-31 | **API declares ~no enums — root cause of the status-drift class** | **architectural** | **class closed**; 18/41 fields, 12 enums published |
 | P-32 | `AdHoc` serialises as `ad_hoc`, everything else says `adhoc` | wire format | **fixed** `62f6726` |
+| P-33 | Roster unreachable unless live season is one of 3 newest | user-facing | **fixed** `19241cf` |
 
 **P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
 blocked on the same missing table, and **P-15/P-18 are superseded in part** by the
@@ -931,7 +932,10 @@ tests to never leave a form dirty.
       reintroducing the exact P-19 bug (`t.status === 'registration_open'`) now fails
       compilation with `TS2367 ... have no overlap`. **The defect class behind P-4, P-10,
       P-11, P-19, P-20, P-21 and P-22 is closed at its source.**
-- [ ] Retype the remaining ~34 String status fields (league_team 12, result 3, evidence 2,
+- [x] **league_team: 11 fields retyped** (`56020d2`). Spec enum count **7 → 12**;
+      `RosterLockStatus` now publishes `open|soft_lock|hard_lock`. Regenerating immediately
+      surfaced **P-33**, a bug the manual sweep had missed.
+- [ ] Retype the remaining ~23 String status fields (result 3, evidence 2,
       game 2, league 2, result_review 2, veto 2, and singles in availability/award/demo/
       dispute/user + 4 more in tournament.rs).
 - [ ] Type the 41 DTO `status` fields as the real enums (start with tournament + match, the
@@ -954,6 +958,21 @@ tests to never leave a form dirty.
 - ✅ **FIXED** in `62f6726` with an explicit `#[serde(rename = "adhoc")]`.
 - **Lesson:** `rename_all` is a guess about every variant. Any acronym or compound
   (`AdHoc`, `IGL`, `HSPercentage`) is where it silently guesses wrong.
+
+---
+
+### P-33 — Team roster unreachable unless the live season is one of the 3 newest
+- **Symptom:** `resolveSeasonFromLeague` (`src/pages/TeamDetailPage.vue:339`) ranks "active"
+  seasons first via `status === 'in_progress'`. **`in_progress` is a TOURNAMENT status, not a
+  season one** — `SeasonStatus` is `draft|registration|active|playoffs|completed|cancelled`.
+  Both sides were always false, so the sort key was always `0` and the prioritisation was a
+  **no-op**. What remained is "3 most recently created" (`ranked.slice(0, 3)`), so a team's
+  roster could not be resolved at all whenever its live season was not among the 3 newest.
+- ✅ **FIXED** in `19241cf` (ranks `active` and `playoffs`).
+- **⭐ Found by the COMPILER, not by the manual sweep.** The §9c audit read every status
+  comparison in `src/` and missed this one; `tsc` flagged it on the first regeneration after
+  `SeasonStatus` gained a union type. **This is the P-31 argument in one finding:** type-level
+  discovery is cheaper than auditing 26k lines by hand, and it does not get tired or skim.
 
 ---
 

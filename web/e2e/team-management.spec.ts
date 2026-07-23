@@ -110,6 +110,8 @@ interface TeamRecord {
   description: string | null
   status: string
   owner_player_id: string
+  primary_color: string | null
+  secondary_color: string | null
 }
 
 async function fetchTeamRecord(teamId: string): Promise<TeamRecord> {
@@ -126,6 +128,18 @@ async function getMyPlayerId(token: string): Promise<string> {
 /** A Vuetify `v-btn` renders as `<a>` when it carries `:to`, so match on class. */
 function vBtn(scope: Page | Locator, label: string) {
   return scope.locator('.v-btn').filter({ hasText: label })
+}
+
+/**
+ * The edit form's card title (TeamEditPage.vue:35-38). Pinned to `.v-card-title`
+ * because plain text matching is substring + case-insensitive, so
+ * `getByText('Edit Team Settings')` ALSO matches the non-owner alert "Only the
+ * team owner can edit team settings" — which silently turned a
+ * "form is absent for non-owners" assertion into one that could never hold
+ * (see team-roster.spec.ts:188).
+ */
+function editSettingsTitle(scope: Page | Locator) {
+  return scope.locator('.v-card-title').filter({ hasText: 'Edit Team Settings' })
 }
 
 test.describe('League Team Management Flows', () => {
@@ -346,6 +360,97 @@ test.describe('League Team Management Flows', () => {
 
       const record = await fetchTeamRecord(created!.team_id)
       expect(record.description).toBe('Team created by the E2E create-team flow')
+    })
+
+    /**
+     * COVERAGE-PLAN §7 Tier 1 — `LeagueTeamCreateModal.save`. This is a
+     * DIFFERENT component from the create-team dialog on the public league page
+     * driven above: `components/admin/LeagueTeamCreateModal.vue` is mounted only
+     * by `components/admin/LeagueDetailModal.vue:96`, reached from
+     * /admin/leagues, and it is the only surface that can set a team's brand
+     * colours. Nothing exercised it.
+     */
+    test('admin creates a team with branding from the league management modal', async ({
+      page,
+    }) => {
+      // Own league + season: the creator becomes the team's captain, and a
+      // player may only be the primary member of one team per season.
+      const adminToken = await getAdminToken()
+      const own = await createLeagueSeasonScenario(adminToken)
+      const adminPlayerId = await getMyPlayerId(adminToken)
+
+      const suffix = uniqueId()
+      const teamName = `E2E Admin Team ${suffix}`
+      const teamTag = suffix.substring(0, 4).toUpperCase()
+      const primaryColor = '#FF5500'
+      const secondaryColor = '#001133'
+
+      await page.goto('/admin/leagues')
+      await page.waitForLoadState('networkidle')
+      await expect(page.getByRole('heading', { name: 'Leagues' })).toBeVisible()
+
+      // AdminLeaguesPage.vue:17-27 — search narrows the per-game expansion
+      // panels, whose tables page at 10 rows (the admin owns ~50 leagues).
+      await page.getByLabel('Search leagues...').fill(own.leagueName)
+      const leagueRow = page.locator('tr').filter({ hasText: own.leagueName })
+      await expect(leagueRow).toBeVisible({ timeout: 10_000 })
+      await leagueRow.getByRole('button', { name: 'Manage seasons and teams' }).click()
+
+      // LeagueDetailModal auto-selects the league's first season on open
+      // (:185-196), then the Teams tab renders LeagueTeamsPanel.
+      const detailModal = page.getByRole('dialog').filter({ hasText: own.leagueName })
+      await expect(detailModal).toBeVisible()
+      await detailModal.getByRole('tab', { name: /Teams/ }).click()
+      await expect(detailModal.locator('.v-select').filter({ hasText: 'Season' })).toContainText(
+        own.seasonName,
+      )
+
+      await detailModal.getByRole('button', { name: 'Create Team' }).click()
+
+      const createModal = page.getByRole('dialog').filter({ hasText: 'Create New Team' })
+      await expect(createModal).toBeVisible()
+
+      // `:disabled="!formValid"` (LeagueTeamCreateModal.vue:112) — required
+      // name/tag are empty on open.
+      const submit = createModal.getByRole('button', { name: 'Create Team' })
+      await expect(submit).toBeDisabled()
+
+      await createModal.getByLabel('Team Name').fill(teamName)
+      await createModal.getByLabel('Team Tag').fill(teamTag)
+      await createModal.getByLabel('Description').fill('Created from the admin league modal')
+      await createModal.getByLabel('Primary Color').fill(primaryColor)
+      await createModal.getByLabel('Secondary Color').fill(secondaryColor)
+
+      await expect(submit).toBeEnabled()
+      await submit.click()
+
+      // UI assertion 1: the create dialog closes and the parent modal raises
+      // its snackbar (LeagueDetailModal.onTeamCreated, :246-250).
+      await expect(createModal).toBeHidden()
+      await expect(page.locator('.v-snackbar').getByText('Team created successfully')).toBeVisible()
+
+      // UI assertion 2: `onTeamCreated` refetches, so the new team must appear
+      // in the panel's table with its tag and a 1-member roster.
+      const teamRow = detailModal.locator('tr').filter({ hasText: teamName })
+      await expect(teamRow).toBeVisible({ timeout: 10_000 })
+      await expect(teamRow.getByText(`[${teamTag}]`)).toBeVisible()
+
+      // Backend assertions: registered in the season, admin seated as captain,
+      // and the branding fields — which ONLY this modal can set — persisted.
+      const seasonTeams = await listSeasonTeams(own.seasonId)
+      const created = seasonTeams.find((t) => t.team_name === teamName)
+      expect(created, 'created team should be registered in the season').toBeDefined()
+      expect(created!.team_tag).toBe(teamTag)
+
+      const members = await getTeamMembers(created!.team_season_id, adminToken)
+      const captainRow = members.find((m) => m.player_id === adminPlayerId)
+      expect(captainRow, 'creator should be on the roster').toBeDefined()
+      expect(captainRow!.role.toLowerCase()).toBe('captain')
+
+      const record = await fetchTeamRecord(created!.team_id)
+      expect(record.description).toBe('Created from the admin league modal')
+      expect(record.primary_color).toBe(primaryColor)
+      expect(record.secondary_color).toBe(secondaryColor)
     })
   })
 
@@ -675,7 +780,7 @@ test.describe('League Team Management Flows', () => {
       await vBtn(page, 'Edit Team').click()
 
       await expect(page).toHaveURL(new RegExp(`/teams/${roster.teamId}/edit`))
-      await expect(page.getByText('Edit Team Settings')).toBeVisible({ timeout: 10_000 })
+      await expect(editSettingsTitle(page)).toBeVisible({ timeout: 10_000 })
     })
 
     test('should display the edit form pre-filled with current values', async ({ page }) => {
@@ -689,7 +794,7 @@ test.describe('League Team Management Flows', () => {
       await page.goto(`/teams/${roster.teamId}/edit`)
       await page.waitForLoadState('networkidle')
 
-      await expect(page.getByText('Edit Team Settings')).toBeVisible({ timeout: 10_000 })
+      await expect(editSettingsTitle(page)).toBeVisible({ timeout: 10_000 })
       await expect(page.getByLabel('Team Name')).toHaveValue(roster.teamName)
       await expect(page.getByLabel('Team Tag')).toHaveValue(roster.teamTag)
       await expect(page.getByLabel('Description')).toHaveValue(record.description ?? '')

@@ -225,7 +225,12 @@ test.describe('Team Roster Management', () => {
     // for the Edit Team Settings header or, at minimum, confirm we weren't
     // redirected off the edit route.
     expect(page.url()).toMatch(/\/teams\/.+\/edit/)
-    const editHeader = page.getByText(/Edit Team Settings/i)
+    // Pin the form's CARD TITLE (TeamEditPage.vue:35-38). A plain
+    // `getByText(/Edit Team Settings/i)` also matches the non-owner alert
+    // "Only the team owner can EDIT TEAM SETTINGS" — text matching is
+    // substring + case-insensitive — so the `toHaveCount(0)` check below could
+    // never pass, and the whole non-owner half of this test was permanently red.
+    const editHeader = page.locator('.v-card-title').filter({ hasText: 'Edit Team Settings' })
     const ownerErrorAlert = page.getByText(/Only the team owner can edit/i)
     // The new owner sees the form, not the alert — and the form is populated,
     // which is what distinguishes "owner" from the P-13 blank-form bug below.

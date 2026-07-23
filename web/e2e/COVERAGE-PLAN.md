@@ -21,7 +21,7 @@ from this document's own state.
    **Fix:** add the `CASE` to the select list (keep `DISTINCT` — the `OR` join genuinely
    duplicates). Then un-swallow `fetchMyMatches`, and restore the `MatchHistoryList` e2e test
    dropped for this. ~1 hour, and it un-blocks a shipped fix.
-2. **P-27 · `invite_only` tournaments accept anyone.** No invite check exists; the setting is
+2. ✅ **DONE** (`c3e0949`) — ~~P-27 · `invite_only` tournaments accept anyone.~~ **Follow-up: P-47.** No invite check exists; the setting is
    decorative while the *league* equivalent is enforced. An organiser running a closed event
    gets no protection from the setting that promises it. Decide: real invite list, or remove
    the variant as a false promise.
@@ -533,7 +533,13 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 45 found · **29 fixed** · 16 open.
+**Status:** 47 found · **30 fixed** · 17 open.
+
+Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
+
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-47, P-28, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
+deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
+them in isolation.
 
 Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
 
@@ -591,7 +597,9 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-24 | **Check-in has no authz — anyone can start any match** (+forfeit, +reg check-in) | **security** | **fixed** `98c8f48` |
 | P-25 | Benched players credited with matches; ringer stats count | integrity | open |
 | P-26 | "Sub can't face own team" never enforced | integrity | open |
-| P-27 | `invite_only` tournaments accept anyone | trust | open |
+| P-27 | `invite_only` tournaments accept anyone | trust | **fixed** `c3e0949` |
+| P-46 | invite-only refusal: 403 tournaments vs 400 leagues | inconsistent | open |
+| P-47 | **No frontend invite-only awareness; no organiser invite UI** | feature unusable | open |
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | **fixed** `8ce0f0a` |
 | P-30 | Season edit Save disabled when max_teams is null | user-facing | **fixed** `9816346` |
@@ -1026,6 +1034,51 @@ tests to never leave a form dirty.
 ---
 
 ### P-27 — `invite_only` tournaments accept anyone (leagues enforce it; tournaments don't)
+- ✅ **FIXED by implementing the invite list** (`c3e0949`), not by deleting the setting.
+  Migration `0078_tournament_invitations.sql` targets *either* a user or a team-season
+  (`num_nonnulls(...) = 1`, mirroring `tournament_registrations`), with partial unique indexes
+  giving one live invitation per target while retaining revoked rows. Both register paths
+  enforce it; registering **consumes** the invitation (`pending → accepted`) so there is no
+  separate accept step. Organiser endpoints are gated on `tournament.participants.manage`, and
+  revoke resolves the tournament from the invitation row so an organiser of A cannot revoke
+  B's. Row→entity conversion **fails closed** (unknown status ⇒ `Revoked`) since that field is
+  what admits someone.
+- **Why implement rather than delete:** the promise is made in three user-visible places
+  (the create form's "Only invited participants can register", the DB CHECK, and the public
+  `RegistrationType` schema), and removing it would itself have needed a data migration
+  (`invite_only` → `approval`) for strictly less product than adding the storage.
+- ⚠️ **Returns 403 where leagues return 400** for the same conceptual refusal. Defensible —
+  the request is well-formed and the tournament *is* open, the caller simply may not enter —
+  but it is now **the same "two paths disagree" pattern this campaign keeps finding**. Worth
+  reconciling; recorded as **P-46**.
+
+---
+
+### P-46 — `invite_only` refusal returns 403 for tournaments, 400 for leagues
+- `DomainError::TournamentInviteOnly` → 403 (`portal-api/src/error.rs:298`);
+  `DomainError::LeagueInviteOnly` → 400 (`:276`). Same concept, same refusal, different code.
+- Either is defensible in isolation; the inconsistency is not, and a client cannot handle both
+  with one branch.
+- [ ] Pick one (403 reads more correct) and align the other.
+
+---
+
+### P-47 — The frontend has no invite-only awareness at all
+- **`TournamentRegistrationCard.canRegister`
+  (`src/components/tournament/TournamentRegistrationCard.vue:143-148`) keys only off
+  `is_registration_open`**, so an uninvited captain is still shown "Register Team" and only
+  discovers they cannot enter *after submitting* — a dead end of the P-8 family.
+- **There is no organiser UI for issuing invitations at all.** The invite list is API-only,
+  which is why the e2e seeds invitations over raw HTTP.
+- ⚠️ So P-27 is enforced but not yet *usable*: an organiser cannot run a closed event through
+  the UI. **This is the follow-up that makes the feature real.**
+- [ ] Surface invite state on the registration card (hide/disable + explain).
+- [ ] Build the organiser invitation panel, then regenerate `src/api/types.ts` (not yet done —
+      nothing in the frontend calls the new endpoints).
+
+---
+
+
 - **Symptom:** `register_team` (`portal-domain/src/services/tournament/service.rs:451`) and
   `register_player` (`:505`) check only `is_registration_open()`. There is **no invite check**,
   so an `invite_only` tournament behaves exactly like `approval`: anyone may register, an

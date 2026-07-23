@@ -25,7 +25,7 @@ from this document's own state.
    decorative while the *league* equivalent is enforced. An organiser running a closed event
    gets no protection from the setting that promises it. Decide: real invite list, or remove
    the variant as a false promise.
-3. **P-1 · per-map breakdown is dead on every finished match.** Its own comment calls it "the
+3. ✅ **DONE** — ~~P-1 · per-map breakdown is dead on every finished match.~~ Its own comment calls it "the
    primary artifact of a finished series". The render condition and the data source are
    mutually exclusive: it needs `status === 'completed'` **and** a claim that the endpoint
    only returns while `pending`.
@@ -533,7 +533,13 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 45 found · **28 fixed** · 17 open.
+**Status:** 45 found · **29 fixed** · 16 open.
+
+Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
+
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-27, P-28, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
+deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
+them in isolation.
 
 Fixed: P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
 
@@ -559,7 +565,7 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 
 | # | Finding | Severity | State |
 |---|---|---|---|
-| P-1 | `MapResultsSummary` never renders | data hidden | open |
+| P-1 | `MapResultsSummary` never renders (+admin results tab) | data hidden | **fixed** |
 | P-2 | Open registration never auto-approves | blocks flow | **fixed** `a3c1876` |
 | P-3 | `checkInRequired` alone can't open check-in | minor | open |
 | P-4 | Tournament **header** shows raw status | user-facing | **fixed** |
@@ -624,6 +630,26 @@ that passes anyway.** Drop the assertion, record the finding here, and keep goin
 Each entry below was independently re-verified (not taken on the agent's word).
 
 ### P-1 — `MapResultsSummary` can never render (per-map breakdown is dead on finished matches)
+- ✅ **FIXED at the API.** `find_pending_by_match` → `find_current_by_match`:
+  `WHERE status IN ('pending','confirmed') ORDER BY (status = 'pending') DESC, created_at DESC
+  LIMIT 1` — the pending claim while one awaits action, otherwise the confirmed claim that
+  settled the series. `disputed`/`superseded`/`cancelled` stay excluded; `/result/history`
+  already serves those.
+- **Why the API and not the frontend:** the endpoint is *named and documented* as the match's
+  current result but resolved pending-only, and confirming a claim flips it to `confirmed`
+  **and** completes the match in one transaction — so it 404'd from the instant a match
+  finished. Sourcing the data elsewhere in the page would have left the same defect in every
+  other consumer. **It had a second victim:**
+  `components/admin/match-detail/MatchResultsTab.vue:80` rendered *"No result claim for this
+  match"* on every completed match in the ADMIN view, for exactly this reason. The API fix
+  repaired it without touching that file.
+- **Live flow verified untouched:** every consumer needing pending semantics already tests
+  `status === 'pending'` explicitly (`useMatchDetail.ts:110,124`), and `canSubmitResult` is
+  only reachable in `in_progress`/`awaiting_result`/disputed — none of which can carry a
+  confirmed claim.
+- E2E asserts the **real map name** (chosen dynamically from the pool, not hardcoded) and the
+  **real per-map scoreline `16:10`**, distinct from the `1-0` series score, on a *cold load*
+  of the completed match. Proven red before green at both layers.
 - **Symptom:** the per-map result breakdown — "the primary artifact of a finished series",
   per its own comment — never appears on a completed match.
 - **Root cause:** the render condition is mutually exclusive with the data it needs.

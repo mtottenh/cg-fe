@@ -78,6 +78,11 @@ interface TeamRegistrationScenario {
  * League (open) + season in `registration` + a one-person team whose owner is
  * its captain + a league/season-scoped TEAM tournament left in `registration`.
  *
+ * `registrationType` matters since P-2 landed: `open` tournaments auto-approve
+ * on signup (portal-domain/src/services/tournament/registration.rs,
+ * `initial_registration_status`), so a test that needs a *pending*
+ * registration to act on must ask for `approval`.
+ *
  * The tournament body mirrors the proven one in
  * `fixtures/team-tournament-extra.fixture.ts:206-224` (participant_type=team,
  * team_size, league_id/season_id, open registration). It is built here rather
@@ -86,6 +91,7 @@ interface TeamRegistrationScenario {
  */
 async function createTeamRegistrationScenario(
   adminToken: string,
+  registrationType: 'open' | 'approval' = 'open',
 ): Promise<TeamRegistrationScenario> {
   const ls = await createLeagueSeasonScenario(adminToken)
   const roster = await createTeamWithMembers({
@@ -115,7 +121,7 @@ async function createTeamRegistrationScenario(
       team_size: TEAM_SIZE,
       min_participants: 2,
       max_participants: 8,
-      registration_type: 'open',
+      registration_type: registrationType,
       scheduling_mode: 'live',
       default_match_format: 'bo1',
       league_id: ls.leagueId,
@@ -307,12 +313,17 @@ test.describe('Team Tournament Registration', () => {
 
     await expect(modal).not.toBeVisible({ timeout: 10_000 })
 
-    // UI: the card flips to the pending state. Registrations always land in
-    // `pending` (DB default; see COVERAGE-PLAN.md §9b P-2), so the card shows
-    // the Awaiting Approval chip (TournamentRegistrationCard.vue:28-45).
+    // UI: the card flips to the registered state. This scenario is an `open`
+    // tournament, and since P-2 those auto-approve on signup
+    // (initial_registration_status), so the card shows the approved branch —
+    // "You're Registered" + the Registered chip
+    // (TournamentRegistrationCard.vue:69-87, 197-205) — NOT "Awaiting
+    // Approval". The organiser-approval path is covered by the Organizer test
+    // below, which asks for an `approval` tournament so a pending row exists.
     const card = registrationCard(page)
-    await expect(card.getByText('Registration Pending')).toBeVisible({ timeout: 15_000 })
-    await expect(card.locator('.v-chip').filter({ hasText: 'Awaiting Approval' })).toBeVisible()
+    await expect(card.getByText("You're Registered")).toBeVisible({ timeout: 15_000 })
+    await expect(card.locator('.v-chip').filter({ hasText: 'Registered' })).toBeVisible()
+    await expect(card.getByText('Awaiting Approval')).toHaveCount(0)
     await expect(card.getByRole('button', { name: 'Register Team' })).toHaveCount(0)
 
     // UI: and the team shows up in the Participants tab under the name we
@@ -320,14 +331,14 @@ test.describe('Team Tournament Registration', () => {
     await page.getByRole('tab', { name: /Participants/ }).click()
     const participantRow = page.locator('tr').filter({ hasText: participantName })
     await expect(participantRow).toBeVisible()
-    await expect(participantRow.locator('.v-chip').filter({ hasText: 'Pending' })).toBeVisible()
+    await expect(participantRow.locator('.v-chip').filter({ hasText: 'Approved' })).toBeVisible()
 
     // Backend: exactly one registration, bound to THIS team season.
     const regs = await listRegistrations(adminToken, scenario.tournamentId)
     expect(regs).toHaveLength(1)
     expect(regs[0]?.team_season_id).toBe(scenario.teamSeasonId)
     expect(regs[0]?.participant_name).toBe(participantName)
-    expect(regs[0]?.status).toBe('pending')
+    expect(regs[0]?.status).toBe('approved')
   })
 
   test('should show "No Eligible Teams" to a user who captains no team', async ({ page }) => {
@@ -426,7 +437,9 @@ test.describe('Team Tournament Organizer', () => {
     test.setTimeout(120_000)
 
     const adminToken = await getAdminToken()
-    const scenario = await createTeamRegistrationScenario(adminToken)
+    // `approval`, not `open`: since P-2 an open tournament auto-approves on
+    // signup, so there would be nothing pending for the organiser to approve.
+    const scenario = await createTeamRegistrationScenario(adminToken, 'approval')
     const participantName = `${scenario.teamTag} Squad ${uniqueId()}`
     const registrationId = await registerTeamViaApi(
       scenario.captain.token,

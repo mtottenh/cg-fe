@@ -404,7 +404,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 33 found · **16 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
+**Status:** 35 found · **19 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
 1 decision pending UI (P-12) · 5 deliberately deferred to the lineup redesign (P-15, P-18, P-23,
 P-25, P-26 — see `api/docs/lineup-design.md`; do not fix these in isolation).
 
@@ -444,9 +444,11 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | open |
 | P-30 | Season edit Save disabled when max_teams is null | user-facing | **fixed** `9816346` |
-| P-31 | **API declares ~no enums — root cause of the status-drift class** | **architectural** | **class closed**; 18/41 fields, 12 enums published |
+| P-31 | **API declares ~no enums — root cause of the status-drift class** | **architectural** | **class closed**; 25/41 fields, **17 enums published** |
 | P-32 | `AdHoc` serialises as `ad_hoc`, everything else says `adhoc` | wire format | **fixed** `62f6726` |
 | P-33 | Roster unreachable unless live season is one of 3 newest | user-facing | **fixed** `19241cf` |
+| P-34 | `LeagueSeasonParticipantStatus` serialises PascalCase | wire format | **fixed** `71830df` |
+| P-35 | **Result-review Decision Form never renders — approve/reject dead** | **feature dead** | **fixed** `5b39d88` |
 
 **P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
 blocked on the same missing table, and **P-15/P-18 are superseded in part** by the
@@ -935,7 +937,15 @@ tests to never leave a form dirty.
 - [x] **league_team: 11 fields retyped** (`56020d2`). Spec enum count **7 → 12**;
       `RosterLockStatus` now publishes `open|soft_lock|hard_lock`. Regenerating immediately
       surfaced **P-33**, a bug the manual sweep had missed.
-- [ ] Retype the remaining ~23 String status fields (result 3, evidence 2,
+- [x] **portal-domain enums covered too** (`71830df`): utoipa added, ToSchema on 36
+      unit-variant entity enums, mirror wire-compat guard over the 27 that derive Serialize
+      (it caught **P-34** immediately). Seven more fields retyped. **Spec enum count 1 → 17.**
+      Regenerating surfaced **P-35**, a dead admin workflow the manual sweep had *cleared*.
+- [ ] Remaining String status fields (game 2, league 2, veto 2, availability/award/user 3):
+      nine enums have **no `Serialize` impl** and reach clients only via `Display`, so each
+      needs a serde representation chosen first — the guard then verifies it. Lower value than
+      the 24 done; the high-traffic surfaces are all covered.
+- [ ] ~~result 3, evidence 2,~~
       game 2, league 2, result_review 2, veto 2, and singles in availability/award/demo/
       dispute/user + 4 more in tournament.rs).
 - [ ] Type the 41 DTO `status` fields as the real enums (start with tournament + match, the
@@ -973,6 +983,34 @@ tests to never leave a form dirty.
   comparison in `src/` and missed this one; `tsc` flagged it on the first regeneration after
   `SeasonStatus` gained a union type. **This is the P-31 argument in one finding:** type-level
   discovery is cheaper than auditing 26k lines by hand, and it does not get tired or skim.
+
+---
+
+### P-34 — `LeagueSeasonParticipantStatus` serialises as PascalCase; everything else is lowercase
+- **Symptom:** the enum carries **no `rename_all` attribute at all**, so serde emits
+  `"Registered"` while `Display`, `FromStr` and the DB `CHECK`
+  (`migrations/0026_restructure_league_teams.sql:354`) all use `"registered"`. **Every one of
+  the five variants disagreed** — worse than P-32, which was a single compound-word variant.
+- Latent only because the DTO round-trips through `String`. ✅ **FIXED** in `71830df`.
+- Found by the domain wire-compat guard on its first run, like P-32.
+
+---
+
+### P-35 — The result-review Decision Form can NEVER render: no admin can approve or reject  ⚠️⚠️ feature dead
+- **Symptom:** `ResultReviewDetailModal.vue:204` gated the whole Decision Form on
+  `review.status === 'pending'`. `ResultReviewStatus` is
+  `pending_acknowledgment | pending_admin_review | acknowledged | approved | rejected` —
+  there is no plain `pending`. The condition is **always false**, so the form never rendered
+  and **no admin could approve or reject a result review through the UI at all**. The status
+  banner (`:20`) had the same bug, colouring pending reviews red.
+- ✅ **FIXED** in `5b39d88`, mirroring `ResultReviewStatus::is_pending()`
+  (`portal-domain/src/entities/result_review.rs:47`).
+- **Explains a §7 entry:** `ResultReviewDetailModal.handleApprove` / `handleReject` are listed
+  there as untested. They were **unreachable**, not merely uncovered.
+- **⭐⭐ The §9c manual sweep listed this file under "Verified correct — no action."** A human
+  read it and cleared it. The compiler caught it on the first regeneration after
+  `ResultReviewStatus` became a union. Two findings now (P-33, P-35) that the audit missed and
+  types caught — one of which the audit had **actively certified as correct**.
 
 ---
 

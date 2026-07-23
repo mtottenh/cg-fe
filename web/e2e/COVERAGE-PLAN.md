@@ -444,9 +444,13 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 45 found · **26 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
-1 decision pending UI (P-12) · 5 deliberately deferred to the lineup redesign (P-15, P-18, P-23,
-P-25, P-26 — see `api/docs/lineup-design.md`; do not fix these in isolation).
+**Status:** 45 found · **25 fixed** · 20 open.
+
+Fixed: P-2, P-4, P-5, P-7, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
+
+Open: P-1, P-3, P-6, P-8, P-9, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-27, P-28, P-29, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
+deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
+them in isolation. P-9's API shipped, its UI is built (`4b7edb4`).
 
 **This register is authoritative.** Any product bug found by this work gets a P-number *here*,
 even if it also appears in a §9c sweep list — findings parked only in a checklist get lost.

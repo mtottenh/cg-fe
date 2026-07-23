@@ -404,7 +404,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 31 found · **13 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
+**Status:** 32 found · **14 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
 1 decision pending UI (P-12) · 5 deliberately deferred to the lineup redesign (P-15, P-18, P-23,
 P-25, P-26 — see `api/docs/lineup-design.md`; do not fix these in isolation).
 
@@ -444,7 +444,8 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | open |
 | P-30 | Season edit Save disabled when max_teams is null | user-facing | **fixed** `9816346` |
-| P-31 | **API declares ~no enums — root cause of the status-drift class** | **architectural** | mechanism proven `f106328`, 1/41 fields |
+| P-31 | **API declares ~no enums — root cause of the status-drift class** | **architectural** | **class closed** `cf87c03`/`b76ae7b`; 7/41 fields |
+| P-32 | `AdHoc` serialises as `ad_hoc`, everything else says `adhoc` | wire format | **fixed** `62f6726` |
 
 **P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
 blocked on the same missing table, and **P-15/P-18 are superseded in part** by the
@@ -917,11 +918,42 @@ tests to never leave a form dirty.
       status P-20 filtered on) is now a **compile error**. `portal-core` took a utoipa dep
       (not async, so layering holds); `schema_wire_compat_tests` asserts Display == Serialize
       for every variant so the wire format cannot drift silently.
-- [ ] Derive `ToSchema` on the REMAINING status enums in `portal-core/src/types/`.
+- [x] **`ToSchema` derived on all 34 wire enums** (`62f6726`), guarded by
+      `wire_compat_tests` asserting `Display == Serialize` for all 31 unit-variant enums.
+      **The guard immediately caught a real divergence**: `TournamentParticipantType::AdHoc`
+      — `Display`, `FromStr` and the DB CHECK all use `adhoc`, but
+      `rename_all = "snake_case"` renders it `ad_hoc`. Latent (the DTO was a round-tripped
+      `String`) but would have become a live wire break the instant that field was retyped.
+      Fixed with an explicit `serde(rename = "adhoc")`. **Recorded as P-32.**
+- [x] **Six tournament response fields retyped** (`cf87c03`): Tournament, TournamentSummary,
+      Stage, Bracket, Registration, ScheduleProposal. Spec enum count **1 → 7**.
+- [x] **Client regenerated with real unions** (`b76ae7b`) and **enforcement proven**:
+      reintroducing the exact P-19 bug (`t.status === 'registration_open'`) now fails
+      compilation with `TS2367 ... have no overlap`. **The defect class behind P-4, P-10,
+      P-11, P-19, P-20, P-21 and P-22 is closed at its source.**
+- [ ] Retype the remaining ~34 String status fields (league_team 12, result 3, evidence 2,
+      game 2, league 2, result_review 2, veto 2, and singles in availability/award/demo/
+      dispute/user + 4 more in tournament.rs).
 - [ ] Type the 41 DTO `status` fields as the real enums (start with tournament + match, the
       highest-traffic).
 - [ ] `npm run generate:api`, then fix the resulting type errors — each one is a latent bug.
 - [ ] Verify the spec's enum count goes from 1 to something sane, and keep a check on it.
+
+---
+
+### P-32 — `TournamentParticipantType::AdHoc` serialises as `ad_hoc`, but everything else says `adhoc`
+- **Symptom:** `Display`, `FromStr` and the DB `CHECK` constraint
+  (`migrations/0030_create_tournaments.sql:86`) all use `adhoc`. But the enum carries
+  `#[serde(rename_all = "snake_case")]`, which renders the variant as **`ad_hoc`** — serde was
+  the lone dissenter.
+- **Latent, not live:** the DTO field is a `String` round-tripped through
+  `.parse()`/`.to_string()`, so serde never touched it. It would have become a **live wire
+  break** the moment that field was retyped as the enum — which is exactly what P-31 does.
+- **Found by the guard, not by inspection:** `wire_compat_tests` (added in `62f6726`) asserts
+  `Display == Serialize` across all 31 unit-variant enums and failed on this one immediately.
+- ✅ **FIXED** in `62f6726` with an explicit `#[serde(rename = "adhoc")]`.
+- **Lesson:** `rename_all` is a guess about every variant. Any acronym or compound
+  (`AdHoc`, `IGL`, `HSPercentage`) is where it silently guesses wrong.
 
 ---
 

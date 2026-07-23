@@ -181,20 +181,26 @@ by asserting a deliberate type error and still getting exit 0; the correct comma
   as verified. Same failure mode as the vacuous tests this whole campaign exists to remove,
   and it fooled the person auditing for exactly that.
 - [x] Correct command identified and the masked error fixed.
-- [ ] Point the CI step and `e2e/README.md` at `npm run typecheck`.
-- [ ] Re-run the correct typecheck over the three status-sweep commits' source changes.
+- [x] **CI was ALREADY correct** — `.github/workflows/test.yml:41` runs `npm run typecheck`
+      and carries a comment describing this exact trap. **The defect was only in commands run
+      by hand**, by me and by three agents. Worth stating precisely: the pipeline was never
+      broken, the manual verification was. `e2e/README.md` now documents the correct commands
+      and the prove-it-can-fail rule.
+- [x] Re-run under `npm run typecheck`: clean across the whole tree, repeatedly, including
+      after each regeneration of `src/api/types.ts`. The one error it had masked
+      (`LeagueSeasonsPanel.spec.ts` using `Array.prototype.at`) is fixed.
 
 ---
 
 ## 4b. CI blockers found mid-campaign (fix before the next CI run)
 
-- [ ] **`e2e/global-setup.ts:233` finds the test league by scanning only page 1 of
+- [x] **FIXED `156c0f0`** — **`e2e/global-setup.ts:233` found the test league by scanning only page 1 of
       `/v1/leagues`** (no query params ⇒ 20 rows). The DB now holds 22 leagues, so on a fresh
       run `e2e-test-league` may not be on page 1; setup then tries to re-create it and 409s,
       failing every spec. **This is P-28's root cause inside the test harness** — the same
       "only sees the first page" defect. Fix: query by slug / `per_page`, not page 1. Owner: me
       (deferred until the admin-surface agent commits — `global-setup.ts` is a §11 contended file).
-- [ ] **Leftover temp file `web/playwright.noseed.tmp.config.ts`** — created by the player-facing
+- [x] **DELETED** — leftover temp file `web/playwright.noseed.tmp.config.ts` — created by the player-facing
       agent to work around the above; believed removed, still on disk. Delete.
 
 ---

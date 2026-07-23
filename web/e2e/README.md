@@ -49,3 +49,27 @@ Genuinely API-level checks (e.g. asserting a 403 for RBAC) are legitimate — ma
 ```ts
 // coverage-plan-exempt: RBAC 403 is an API contract, no UI surface exists
 ```
+
+## Verification commands (use these exact ones)
+
+| Purpose | Command |
+|---|---|
+| Type check | `npm run typecheck` |
+| Test-quality ratchet | `npm run test:quality` |
+| E2E | `npx playwright test e2e/<spec>` |
+
+⚠️ **Do NOT use `npx vue-tsc --noEmit -p tsconfig.json`.** `tsconfig.json` is a
+solution-style config (`"files": []`, project references only), so that invocation
+type-checks **zero files and always exits 0**. It was used as a verification gate across a
+whole phase of the coverage campaign before anyone noticed, and it had already masked a real
+error. CI has always used the correct `-p tsconfig.app.json` form — the defect was only in
+commands run by hand.
+
+**Prove a gate can fail before you trust it.** Feed it a known-bad input and confirm it
+reports the failure. A gate that cannot fail is worse than no gate: it launders unverified
+work as verified. See `COVERAGE-PLAN.md` §4a.
+
+**The ratchet baseline is `{}` — zero violations.** Any reintroduced
+`isVisible().catch()` guard, tautology, or `||` inside an assertion fails immediately. If you
+have a genuinely legitimate exception, mark it `// coverage-plan-exempt: <reason>` so it is
+visible rather than hidden.

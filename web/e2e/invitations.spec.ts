@@ -121,8 +121,19 @@ interface LeagueMemberRow {
   membership_type: string
 }
 
-async function listLeagueMembers(leagueId: string): Promise<LeagueMemberRow[]> {
-  const resp = await fetch(`${API_URL}/v1/leagues/${leagueId}/members`)
+/**
+ * `GET /v1/leagues/{league_id}/members`. Sent WITH the admin token even though
+ * the handler currently requires no auth at all — see the reported finding on
+ * that endpoint exposing member email addresses anonymously; when it is locked
+ * down these cross-checks should keep working.
+ */
+async function listLeagueMembers(
+  adminToken: string,
+  leagueId: string,
+): Promise<LeagueMemberRow[]> {
+  const resp = await fetch(`${API_URL}/v1/leagues/${leagueId}/members`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  })
   return jsonOrThrow<LeagueMemberRow[]>(resp, 'List league members')
 }
 
@@ -196,7 +207,7 @@ test.describe('League Invitations', () => {
     await expect(page.getByRole('button', { name: 'Create Team' }).first()).toBeVisible()
 
     // Backend assertions: membership created, invitation no longer pending.
-    const members = await listLeagueMembers(leagueId)
+    const members = await listLeagueMembers(adminToken, leagueId)
     const membership = members.find((m) => m.user_id === invitee.userId)
     expect(membership, 'invitee should now be a league member').toBeDefined()
     expect(membership!.membership_type).toBe('member')
@@ -244,7 +255,7 @@ test.describe('League Invitations', () => {
     await expect(page.getByRole('button', { name: 'Create Team' })).toHaveCount(0)
 
     // Backend assertions: no membership, invitation marked declined.
-    const members = await listLeagueMembers(leagueId)
+    const members = await listLeagueMembers(adminToken, leagueId)
     expect(members.find((m) => m.user_id === invitee.userId)).toBeUndefined()
 
     expect(await myLeagueInvitations(invitee.token)).toHaveLength(0)
@@ -308,7 +319,7 @@ test.describe('League Invitations', () => {
     await expect(page.getByRole('heading', { name: 'No Pending Invitations' })).toHaveCount(0)
 
     // Backend: the league membership landed and the team invitation is still pending.
-    const members = await listLeagueMembers(leagueId)
+    const members = await listLeagueMembers(adminToken, leagueId)
     expect(members.find((m) => m.user_id === player.userId)).toBeDefined()
 
     const stillPending = await fetch(

@@ -63,7 +63,9 @@ function rosterCellText(w: VueWrapper, rowIndex = 0): string {
   const headers = w.findAll('thead th').map((th) => th.text().trim())
   const column = headers.indexOf('Roster')
   expect(column, 'Roster column present in the seasons table').toBeGreaterThanOrEqual(0)
-  const cells = w.findAll('tbody tr').at(rowIndex)!.findAll('td')
+  // Index access rather than `.at()`: the app tsconfig's lib target predates
+  // ES2022, so `Array.prototype.at` is not in scope for this project.
+  const cells = w.findAll('tbody tr')[rowIndex]!.findAll('td')
   return cells[column]!.text().trim()
 }
 

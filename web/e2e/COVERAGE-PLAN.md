@@ -127,6 +127,31 @@ tournament-team 5), independently confirming §2.
 
 ---
 
+## 4a. ⚠️ VERIFICATION DEFECT — "typecheck clean" was vacuous for most of this campaign
+
+**`npx vue-tsc --noEmit -p tsconfig.json` checks NOTHING and always exits 0.**
+`tsconfig.json` is a solution-style config — `"files": []` with only project references
+— so that invocation type-checks zero files.
+
+**This command was used as a verification gate by me and by all three web agents in the
+status-sweep phase.** Every "vue-tsc clean" reported in that phase was meaningless. Proven
+by asserting a deliberate type error and still getting exit 0; the correct command reports it.
+
+- **Correct command: `npm run typecheck`** (= `vue-tsc --noEmit -p tsconfig.app.json`), or
+  `vue-tsc -b`. Use only these.
+- **It had already masked a real error**: `LeagueSeasonsPanel.spec.ts:66` used
+  `Array.prototype.at`, which is outside this project's lib target. Fixed; the tree is now
+  genuinely clean under the correct command.
+- **Lesson for §3:** a verification gate must be proven to *fail* on a known-bad input before
+  it is trusted. A gate that cannot fail is worse than no gate — it launders unverified work
+  as verified. Same failure mode as the vacuous tests this whole campaign exists to remove,
+  and it fooled the person auditing for exactly that.
+- [x] Correct command identified and the masked error fixed.
+- [ ] Point the CI step and `e2e/README.md` at `npm run typecheck`.
+- [ ] Re-run the correct typecheck over the three status-sweep commits' source changes.
+
+---
+
 ## 4b. CI blockers found mid-campaign (fix before the next CI run)
 
 - [ ] **`e2e/global-setup.ts:233` finds the test league by scanning only page 1 of
@@ -379,7 +404,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 31 found · **12 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
+**Status:** 31 found · **13 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
 1 decision pending UI (P-12) · 5 deliberately deferred to the lineup redesign (P-15, P-18, P-23,
 P-25, P-26 — see `api/docs/lineup-design.md`; do not fix these in isolation).
 
@@ -418,8 +443,8 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-27 | `invite_only` tournaments accept anyone | trust | open |
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | open |
-| P-30 | Season edit Save disabled when max_teams is null | user-facing | open |
-| P-31 | **API declares ~no enums — root cause of the status-drift class** | **architectural** | open |
+| P-30 | Season edit Save disabled when max_teams is null | user-facing | **fixed** `9816346` |
+| P-31 | **API declares ~no enums — root cause of the status-drift class** | **architectural** | mechanism proven `f106328`, 1/41 fields |
 
 **P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
 blocked on the same missing table, and **P-15/P-18 are superseded in part** by the
@@ -886,7 +911,13 @@ tests to never leave a form dirty.
   error** instead of a silent `default:` branch.
 - **Sequencing:** this rewrites the call sites the status sweep just touched, so it must run
   **solo**, after that sweep — not alongside it.
-- [ ] Derive `ToSchema` on the status enums in `portal-core/src/types/`.
+- [x] **Mechanism PROVEN end-to-end** in `f106328` for `TournamentMatchStatus`: spec emits all
+      11 values → `openapi-typescript` generates a real union →
+      `TournamentMatchResponse.status` references it → assigning `"scheduling"` (the fake
+      status P-20 filtered on) is now a **compile error**. `portal-core` took a utoipa dep
+      (not async, so layering holds); `schema_wire_compat_tests` asserts Display == Serialize
+      for every variant so the wire format cannot drift silently.
+- [ ] Derive `ToSchema` on the REMAINING status enums in `portal-core/src/types/`.
 - [ ] Type the 41 DTO `status` fields as the real enums (start with tournament + match, the
       highest-traffic).
 - [ ] `npm run generate:api`, then fix the resulting type errors — each one is a latent bug.

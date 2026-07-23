@@ -533,7 +533,13 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 57 found · **35 fixed** · 22 open (1 mitigated).
+**Status:** 57 found · **38 fixed** · 19 open (1 mitigated).
+
+Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-51, P-52, P-48, P-49, P-50, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
+
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-38, P-39, P-40, P-41, P-53, P-56, P-57, P-54, P-55 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
+deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`, now
+decision-complete); do not fix them in isolation.
 
 Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-52, P-50, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
 
@@ -624,10 +630,10 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-27 | `invite_only` tournaments accept anyone | trust | **fixed** `c3e0949` |
 | P-46 | invite-only refusal: 403 tournaments vs 400 leagues | inconsistent | open |
 | P-47 | **No frontend invite-only awareness; no organiser invite UI** | feature unusable | **fixed** `616a2d6` |
-| P-51 | Invitee cannot read own invite state (gate is soft) | design gap | open |
+| P-51 | Invitee cannot read own invite state (gate is soft) | design gap | **fixed** `c7d395e` |
 | P-52 | Duplicate `operationId` broke the generated client | build | **fixed** `098832a` |
-| P-48 | User cannot see their own pending league application | user-facing | open |
-| P-49 | Captain cannot approve a join request from the team page | blocks flow | open |
+| P-48 | User cannot see their own pending league application | user-facing | **fixed** `c7d395e` |
+| P-49 | Captain cannot approve a join request from the team page | blocks flow | **fixed** `c7d395e` |
 | P-50 | **Result auto-confirms in 15min; opponent never notified** | **integrity/trust** | **fixed** `2f94b47` |
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | **fixed** `9f87495` |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | **fixed** `8ce0f0a` |
@@ -1447,6 +1453,7 @@ tests to never leave a form dirty.
 ---
 
 ### P-48 — A user can never see their own pending league application
+- ✅ **FIXED** (api `c7d395e`). Dropped the `invitation_type = 'invite'` filter in `list_pending_for_user`; the DTO already carried `invitation_type` and the frontend was already wired to split invites from applications, so the dead "pending review" branch became reachable with **no frontend change**.
 - `find_pending_by_user` filters `invitation_type = 'invite'`
   (`portal-db/src/adapters/league.rs:747`), so `GET /v1/users/me/league-invitations` returns
   `[]` for applications. Verified live: apply → 201, then list → `[]`.
@@ -1461,6 +1468,7 @@ tests to never leave a form dirty.
 ---
 
 ### P-49 — A captain cannot approve a join request from their own team page
+- ✅ **FIXED** (web `c7d395e`, frontend-only). The endpoint already returned both requests and invites and the service already authorised captain accept/decline — `TeamDetailPage` just rendered everything as a "Pending Invitation" with only Cancel. Now split into a captain-only **Join Requests** card (Accept/Decline via `acceptApplication` + new `declineApplication`) vs **Pending Invitations** (Cancel). No new backend.
 - `GET /v1/league-team-seasons/{id}/invitations` returns invites **and** requests (no
   `invitation_type` filter — `portal-db/src/adapters/league_team/invitation.rs:122`), but
   `src/pages/TeamDetailPage.vue:102-141` renders every row identically under **"Pending
@@ -1475,6 +1483,7 @@ tests to never leave a form dirty.
 ---
 
 ### P-51 — An invitee cannot learn their own invitation state (invite-only is unblockable client-side)
+- ✅ **FIXED** (api+web `c7d395e`). `GET /v1/tournaments/{id}/invitations` now **self-scopes**: a caller without `tournament.participants.manage` receives only invitations targeting them (own user_id, or a team-season they captain) instead of 403; organisers still get the full list. `TournamentRegistrationCard` now **hard-blocks** the uninvited. The `registration.rs:995` 403 assertion was reversed to 200-with-empty-list, documented with P-51. (`withDefaults(isInvited: undefined)` is load-bearing — Vue boolean casting would otherwise collapse "unknown" into a block.)
 - All three tournament-invitation endpoints require `tournament.participants.manage`
   (`portal-api/src/handlers/tournaments/registration.rs:118,180,225`) and no field on
   `TournamentResponse` carries the viewer's invitation. **The frontend cannot distinguish an

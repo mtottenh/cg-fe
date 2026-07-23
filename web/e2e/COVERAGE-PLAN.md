@@ -404,7 +404,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 35 found · **19 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
+**Status:** 41 found · **23 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
 1 decision pending UI (P-12) · 5 deliberately deferred to the lineup redesign (P-15, P-18, P-23,
 P-25, P-26 — see `api/docs/lineup-design.md`; do not fix these in isolation).
 
@@ -425,8 +425,8 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-9 | Proposer cannot withdraw own proposal | API gap | **API done** `a3c1876`, UI open |
 | P-10 | Admin registrations table prints raw enum | user-facing | **fixed** `f2694b0` |
 | P-11 | Roster lock never enforced in admin UI | enforcement | **fixed** `ce732a0` |
-| P-12 | No captain entry point to invite modal | blocks flow | decided |
-| P-13 | `TeamEditPage` blank form to non-owners | confusing | open |
+| P-12 | No captain entry point to invite modal | blocks flow | **resolved** `ce732a0` |
+| P-13 | `TeamEditPage` blank form to non-owners | confusing | **fixed** `ce732a0` |
 | P-14 | **Roster lock cannot be set via API at all** | feature dead | open |
 | P-15 | Invitation path bypasses the lock check | inconsistent | open |
 | P-16 | Role changes not lock-checked | enforcement | open |
@@ -449,6 +449,12 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-33 | Roster unreachable unless live season is one of 3 newest | user-facing | **fixed** `19241cf` |
 | P-34 | `LeagueSeasonParticipantStatus` serialises PascalCase | wire format | **fixed** `71830df` |
 | P-35 | **Result-review Decision Form never renders — approve/reject dead** | **feature dead** | **fixed** `5b39d88` |
+| P-36 | Approve returned 400 for already-approved registrations | blocker | **fixed** `e5773f7` |
+| P-37 | **League members endpoint unauthenticated, leaked emails** | **security/PII** | **fixed** `a0e1b98` |
+| P-38 | League invitation never says which league | user-facing | open |
+| P-39 | Admin cannot see answered league invitations | admin gap | open |
+| P-40 | Decline confirmation guards the wrong action | minor | open |
+| P-41 | Two create-team forms disagree on validation | inconsistent | open |
 
 **P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
 blocked on the same missing table, and **P-15/P-18 are superseded in part** by the
@@ -633,6 +639,7 @@ Each entry below was independently re-verified (not taken on the agent's word).
       for each) and add a test that a hard-locked season blocks invites.
 
 ### P-12 — No captain-facing entry point to the team invite modal
+- ✅ **RESOLVED** (`ce732a0`, verified): `TeamDetailPage.vue:252` mounts the shared `LeagueTeamInviteModal` behind a captain-only "Invite Player" button, driven end-to-end at `team-management.spec.ts:1029`. The modal moved `admin/` → `components/team/`.
 - **Symptom:** a captain cannot invite from their own team page. `LeagueTeamInviteModal` lives in
   `components/admin/` and is only mounted by `LeagueTeamDetailModal` (`:311`), reachable from
   `/admin/teams` and `/admin/leagues`. `TeamDetailPage.vue` shows a captain-only "Pending
@@ -645,6 +652,7 @@ Each entry below was independently re-verified (not taken on the agent's word).
       `TeamDetailPage` (today the modal is admin-only). (Wave 3)
 
 ### P-13 — `TeamEditPage` renders a blank editable form to non-owners
+- ✅ **FIXED** (`ce732a0`, verified): `TeamEditPage.vue:31` gates the form on `team && isOwner`; non-owners get only the warning alert.
 - **Symptom:** a non-owner sees the full edit form with empty fields next to "Only the team owner
   can edit team settings".
 - **Root cause:** `onMounted` sets the error and `return`s (`pages/TeamEditPage.vue:281-284`)
@@ -1011,6 +1019,74 @@ tests to never leave a form dirty.
   read it and cleared it. The compiler caught it on the first regeneration after
   `ResultReviewStatus` became a union. Two findings now (P-33, P-35) that the audit missed and
   types caught — one of which the audit had **actively certified as correct**.
+
+---
+
+### P-36 — Approving an already-approved registration returned 400 (broke the harness AND admins)
+- **Symptom:** `POST …/registrations/{id}/approve` returned
+  `400 Cannot approve registration in approved status` for anything not `Pending`.
+- **P-2 made this reachable in production:** open tournaments now auto-approve on signup, so a
+  registration an organiser *sees in the list* is already approved and pressing **Approve**
+  always 400s. Same for a double-click, or two organisers acting at once.
+- **Blast radius in tests:** five shared fixtures tolerate 409 on a double-approve but not 400
+  (`tournament-lifecycle.fixture.ts:173`, `checkin.fixture.ts:256`, `tournament-seeding`,
+  `tournament-formats`, `team-tournament-extra`). **13 of 19 match-workflow tests died in
+  `beforeAll`.**
+- ✅ **FIXED at the root** in `e5773f7` — approve is now idempotent for an already-approved
+  registration. Fixing the API rather than the five fixtures was the call because the harness
+  was *right*: a real admin hitting that 400 is a genuine bug.
+- Deliberately narrow: only `Approved` short-circuits; withdrawn/rejected/disqualified still
+  error, pinned by a second test. Both tests proven to fail without the fix.
+
+---
+
+### P-37 — League member list was UNAUTHENTICATED and leaked every member's email  ⚠️⚠️ SECURITY / PII
+- **Symptom:** `GET /v1/leagues/{id}/members` (`portal-api/src/handlers/leagues.rs:307`) took
+  **no auth extractor at all**, and `LeagueMemberResponse` always included `pub email: String`
+  (`dto/responses/league.rs:57`). **Reproduced live**: an anonymous `curl` with no
+  `Authorization` header returned **200** and `admin@example.com`.
+- **Impact:** anonymous PII disclosure and account enumeration.
+- ✅ **FIXED** in `a0e1b98`. The endpoint now requires authentication, and `email` is
+  `Option<String>` populated only for callers holding `league.members.manage` (or an admin
+  override). The admin members modal is the field's only consumer and still works.
+- Regression test covers anonymous / authenticated-non-manager / manager and was proven to
+  fail without the fix, printing the leaked address.
+
+---
+
+### P-38 — A league invitation never says which league it is for
+- **Symptom:** `InvitationsPage.vue:43` renders a hardcoded "League Invitation" because
+  `LeagueInvitationResponse` carries only `league_id` — no name. With two pending invites they
+  are **indistinguishable**, and accept/decline is a blind choice.
+- Team invitations render `team_name` / `league_name` / `season_name`, so the asymmetry is
+  clearly unintended.
+- [ ] Add `league_name` to the DTO (or look it up in the page).
+
+---
+
+### P-39 — An admin cannot see answered league invitations
+- **Symptom:** `list_invitations` calls `get_pending_by_league_authorized`
+  (`handlers/leagues.rs:613`), so accepted and declined rows vanish from the only admin
+  listing, and no endpoint reports an invitation's terminal status. **An admin cannot tell
+  "they declined" from "never invited".**
+- [ ] Return terminal invitations (filterable), or expose status on a detail endpoint.
+
+---
+
+### P-40 — Confirmation guard is on the wrong action in the invitations UI
+- Declining a **team** invite goes through `ConfirmDialog` (`InvitationsPage.vue:159,274-290`);
+  declining a **league** invite fires immediately (`:80` → `handleDeclineLeague:245`).
+- The unguarded one is the **less recoverable**: only an admin can re-invite you to an
+  `invite_only` league. Minor, but inverted.
+- [ ] Guard the league decline too.
+
+---
+
+### P-41 — Two create-team forms disagree on validation for the same endpoint
+- Admin modal: `minLength(2)` / `maxLength(100)` (`LeagueTeamCreateModal.vue:24`).
+  Public page: `minLength(3)` / `maxLength(50)` (`LeagueDetailPage.vue:314`).
+- A name accepted by one surface is rejected by the other for the same API.
+- [ ] Reconcile against the backend's actual constraint.
 
 ---
 

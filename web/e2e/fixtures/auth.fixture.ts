@@ -142,12 +142,6 @@ export async function getAdminToken(): Promise<string> {
 /**
  * Check if user is currently logged in.
  */
-export async function isLoggedIn(page: Page): Promise<boolean> {
-  // Check for presence of authenticated user elements
-  // Adjust based on actual UI indicators
-  const userIndicator = page.locator('[data-testid="user-indicator"]')
-  return userIndicator.isVisible().catch(() => false)
-}
 
 // Extended test fixture with authentication helpers
 interface AuthFixtures {

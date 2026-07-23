@@ -1,9 +1,1 @@
-{
-  "fixtures/auth.fixture.ts": {
-    "visibilityGuard": 1
-  },
-  "uploads.spec.ts": {
-    "visibilityGuard": 2,
-    "orAssertion": 1
-  }
-}
+{}

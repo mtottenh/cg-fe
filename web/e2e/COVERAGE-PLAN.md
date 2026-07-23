@@ -111,9 +111,18 @@ Landing these first stops the debt from being re-created while we pay it down.
 - [x] Exemption mechanism: `// coverage-plan-exempt: <reason>` on the line — honoured by the
       ratchet, for genuinely API-level checks (e.g. RBAC 403) with no UI surface.
 
-**Progress:** Wave 1 cut this from **112 → 79 violations (10 → 7 files)**.
+**Progress:** 112 → 79 → 4 → **0**. The baseline file is now `{}`.
 
-**Baseline originally recorded (2026-07-22):** 112 violations across 10 files —
+**✅ THE ANTI-PATTERN IS ERADICATED.** Every one of the 112 original violations is gone, and
+the ratchet now fails on the *first* reintroduction rather than allowing drift back toward a
+tolerated number. Notably the last one resolved itself: `uploads.spec.ts` hedged
+`expect(brandingVisible === false || errorVisible === true)` because the behaviour was
+genuinely ambiguous under **P-13** (a blank editable form for non-owners). Fixing P-13 made the
+outcome determinate, so the disjunction became two exact assertions. **Fixing the product
+retired the hedge** — which is the thesis of this whole document in one line.
+The other was `isLoggedIn` in `fixtures/auth.fixture.ts`: dead code, referenced nowhere.
+
+**Baseline originally recorded (2026-07-22), now cleared:** 112 violations across 10 files —
 `visibilityGuard` 93, `orAssertion` 17, `tautology` 1. The guard counts reproduce the
 manual audit exactly (team-management 42 · tournament-public 25 · tournament-admin 16 ·
 tournament-team 5), independently confirming §2.

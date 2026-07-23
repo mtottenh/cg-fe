@@ -178,23 +178,21 @@ test.describe('Image uploads', () => {
 
       await page.goto(`/teams/${teamId}/edit`)
 
-      // Either the page surfaces an "only the team owner can edit" error, or
-      // the branding UI is never rendered (owner guard hides the form). Both
-      // are acceptable — the invariant is that a non-owner cannot upload.
+      // This used to accept EITHER outcome (error shown, or branding merely
+      // absent) behind two visibility guards and an or-assertion, because the
+      // behaviour was genuinely ambiguous: P-13 meant TeamEditPage rendered a
+      // blank editable form to non-owners.
+      //
+      // P-13 is fixed — `TeamEditPage.vue:31` gates the form on `team && isOwner`
+      // and non-owners get only the warning alert — so the outcome is now
+      // determinate and this asserts BOTH halves exactly. The disjunction could
+      // not distinguish "correctly blocked" from "branding failed to render for
+      // an unrelated reason", which is precisely the §2 anti-pattern.
       const ownerError = page.getByText(/only the team owner can edit/i)
       const brandingHeader = page.getByText('Team Branding')
 
-      await Promise.race([
-        ownerError.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => null),
-        brandingHeader.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => null),
-      ])
-
-      const brandingVisible = await brandingHeader.isVisible().catch(() => false)
-      const errorVisible = await ownerError.isVisible().catch(() => false)
-
-      // Exactly one of the two outcomes should hold: blocked via message or
-      // branding UI absent.
-      expect(brandingVisible === false || errorVisible === true).toBe(true)
+      await expect(ownerError).toBeVisible({ timeout: 10_000 })
+      await expect(brandingHeader).toBeHidden()
     })
   })
 

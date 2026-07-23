@@ -17,7 +17,7 @@
 
       <v-card-text class="pa-4">
         <!-- Status Banner -->
-        <v-alert :type="review.status === 'pending' ? 'warning' : review.status === 'approved' ? 'success' : 'error'" variant="tonal" class="mb-4" density="compact">
+        <v-alert :type="isPending ? 'warning' : review.status === 'approved' ? 'success' : 'error'" variant="tonal" class="mb-4" density="compact">
           <div class="d-flex align-center ga-2">
             <v-chip :color="getReviewStatusColor(review.status)" size="small">
               {{ getReviewStatusLabel(review.status) }}
@@ -201,7 +201,7 @@
         </v-card>
 
         <!-- Decision Form (if pending) -->
-        <div v-if="review.status === 'pending'">
+        <div v-if="isPending">
           <div class="text-subtitle-1 mb-2">Decision</div>
           <v-textarea
             v-model="decisionNotes"
@@ -263,6 +263,19 @@ const snackbar = useSnackbar()
 const decisionNotes = ref('')
 
 const review = computed(() => store.currentReview)
+
+// Mirrors `ResultReviewStatus::is_pending()` (portal-domain result_review.rs:47)
+// = PendingAcknowledgment | PendingAdminReview.
+//
+// This template compared `review.status === 'pending'`, which is NOT a value the
+// backend can emit -- the statuses are pending_acknowledgment, pending_admin_review,
+// acknowledged, approved, rejected. So the Decision Form was gated on an
+// always-false condition and NEVER RENDERED: no admin could approve or reject a
+// result review through this modal at all. Found by the compiler once
+// ResultReviewStatus became a real union (P-35).
+const PENDING_REVIEW_STATUSES = ['pending_acknowledgment', 'pending_admin_review']
+const isPending = computed(() => PENDING_REVIEW_STATUSES.includes(review.value?.status ?? ''))
+
 
 watch(() => props.reviewId, async (id) => {
   if (id && open.value) {

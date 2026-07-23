@@ -4511,6 +4511,11 @@ export interface components {
             /** @description Tournament ID. */
             tournament_id: string;
         };
+        /**
+         * @description Status of a result claim.
+         * @enum {string}
+         */
+        ClaimStatus: "pending" | "confirmed" | "disputed" | "superseded" | "cancelled";
         /** @description Request to counter-propose new times. */
         CounterProposeRequest: {
             /** @description Optional message to the opponent about the counter-proposal. */
@@ -5327,7 +5332,7 @@ export interface components {
                  */
                 stats_fetched_at?: string | null;
                 /** @description Processing status. */
-                status: string;
+                status: components["schemas"]["DemoStatus"];
                 /**
                  * Format: uuid
                  * @description Associated tournament ID.
@@ -5556,7 +5561,7 @@ export interface components {
                 /** @description Result claim ID (if disputing a specific claim). */
                 result_claim_id?: string | null;
                 /** @description Current status. */
-                status: string;
+                status: components["schemas"]["DisputeStatus"];
                 /**
                  * Format: date-time
                  * @description Last update timestamp.
@@ -5618,7 +5623,7 @@ export interface components {
                 match_id: string;
                 mime_type?: string | null;
                 name: string;
-                status: string;
+                status: components["schemas"]["EvidenceStatus"];
                 storage_type: string;
                 /** Format: uuid */
                 uploaded_by_registration_id?: string | null;
@@ -6505,7 +6510,7 @@ export interface components {
                 /** @description Match ID. */
                 match_id: string;
                 /** @description Current claim status. */
-                status: string;
+                status: components["schemas"]["ClaimStatus"];
                 /**
                  * @description Display name of the player who submitted the claim (enriched by
                  *     history/list handlers; absent when the player could not be resolved).
@@ -6554,7 +6559,7 @@ export interface components {
                 /** @description The confirmed result claim. */
                 claim: components["schemas"]["ResultClaimResponse"];
                 /** @description Updated match status. */
-                match_status: string;
+                match_status: components["schemas"]["TournamentMatchStatus"];
                 /** @description The review ID if one was created. */
                 review_id?: string | null;
                 /** @description Whether a review is pending (demo validation found issues). */
@@ -6570,7 +6575,7 @@ export interface components {
                 /** @description The disputed result claim. */
                 claim: components["schemas"]["ResultClaimResponse"];
                 /** @description Updated match status. */
-                match_status: string;
+                match_status: components["schemas"]["TournamentMatchStatus"];
                 /** @description Whether admin intervention is required. */
                 requires_admin: boolean;
             };
@@ -6641,7 +6646,7 @@ export interface components {
                 /** @description Whether there's a score mismatch. */
                 score_mismatch: boolean;
                 /** @description Current status. */
-                status: string;
+                status: components["schemas"]["ResultReviewStatus"];
                 /** @description Unrecognized players from the demo. */
                 unrecognized_players: components["schemas"]["UnrecognizedPlayerResponse"][];
                 validation_result?: null | components["schemas"]["DemoValidationResultResponse"];
@@ -7505,7 +7510,7 @@ export interface components {
                  */
                 stats_fetched_at?: string | null;
                 /** @description Processing status. */
-                status: string;
+                status: components["schemas"]["DemoStatus"];
                 /**
                  * Format: uuid
                  * @description Associated tournament ID.
@@ -7559,7 +7564,7 @@ export interface components {
                 /** Format: uuid */
                 id: string;
                 name: string;
-                status: string;
+                status: components["schemas"]["EvidenceStatus"];
                 validated: boolean;
             }[];
             /** @description Response metadata. */
@@ -8109,7 +8114,7 @@ export interface components {
                 /** @description Match ID. */
                 match_id: string;
                 /** @description Current claim status. */
-                status: string;
+                status: components["schemas"]["ClaimStatus"];
                 /**
                  * @description Display name of the player who submitted the claim (enriched by
                  *     history/list handlers; absent when the player could not be resolved).
@@ -9035,7 +9040,7 @@ export interface components {
              */
             stats_fetched_at?: string | null;
             /** @description Processing status. */
-            status: string;
+            status: components["schemas"]["DemoStatus"];
             /**
              * Format: uuid
              * @description Associated tournament ID.
@@ -9083,6 +9088,11 @@ export interface components {
              */
             total_rounds: number;
         };
+        /**
+         * @description Processing status for demo files.
+         * @enum {string}
+         */
+        DemoStatus: "pending" | "processing" | "ready" | "failed" | "archived";
         /** @description Response for demo status counts (admin dashboard). */
         DemoStatusCountsResponse: {
             /**
@@ -9325,7 +9335,7 @@ export interface components {
             /** @description Result claim ID (if disputing a specific claim). */
             result_claim_id?: string | null;
             /** @description Current status. */
-            status: string;
+            status: components["schemas"]["DisputeStatus"];
             /**
              * Format: date-time
              * @description Last update timestamp.
@@ -9339,6 +9349,11 @@ export interface components {
             /** @description Reason for the dispute. */
             reason: string;
         };
+        /**
+         * @description Status of a dispute.
+         * @enum {string}
+         */
+        DisputeStatus: "pending" | "under_review" | "resolved" | "cancelled";
         /** @description Response for a dispute with its message thread. */
         DisputeWithThreadResponse: {
             /** @description The dispute. */
@@ -9468,7 +9483,7 @@ export interface components {
             match_id: string;
             mime_type?: string | null;
             name: string;
-            status: string;
+            status: components["schemas"]["EvidenceStatus"];
             storage_type: string;
             /** Format: uuid */
             uploaded_by_registration_id?: string | null;
@@ -9478,6 +9493,11 @@ export interface components {
             /** Format: date-time */
             validated_at?: string | null;
         };
+        /**
+         * @description Status of evidence.
+         * @enum {string}
+         */
+        EvidenceStatus: "pending" | "active" | "expired" | "deleted" | "quarantined";
         /** @description Summary response for evidence list. */
         EvidenceSummaryResponse: {
             /** Format: date-time */
@@ -9486,7 +9506,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
-            status: string;
+            status: components["schemas"]["EvidenceStatus"];
             validated: boolean;
         };
         /** @description Extracted result from evidence. */
@@ -11566,7 +11586,7 @@ export interface components {
             /** @description Match ID. */
             match_id: string;
             /** @description Current claim status. */
-            status: string;
+            status: components["schemas"]["ClaimStatus"];
             /**
              * @description Display name of the player who submitted the claim (enriched by
              *     history/list handlers; absent when the player could not be resolved).
@@ -11605,7 +11625,7 @@ export interface components {
             /** @description The confirmed result claim. */
             claim: components["schemas"]["ResultClaimResponse"];
             /** @description Updated match status. */
-            match_status: string;
+            match_status: components["schemas"]["TournamentMatchStatus"];
             /** @description The review ID if one was created. */
             review_id?: string | null;
             /** @description Whether a review is pending (demo validation found issues). */
@@ -11616,7 +11636,7 @@ export interface components {
             /** @description The disputed result claim. */
             claim: components["schemas"]["ResultClaimResponse"];
             /** @description Updated match status. */
-            match_status: string;
+            match_status: components["schemas"]["TournamentMatchStatus"];
             /** @description Whether admin intervention is required. */
             requires_admin: boolean;
         };
@@ -11677,13 +11697,18 @@ export interface components {
             /** @description Whether there's a score mismatch. */
             score_mismatch: boolean;
             /** @description Current status. */
-            status: string;
+            status: components["schemas"]["ResultReviewStatus"];
             /** @description Unrecognized players from the demo. */
             unrecognized_players: components["schemas"]["UnrecognizedPlayerResponse"][];
             validation_result?: null | components["schemas"]["DemoValidationResultResponse"];
             /** @description Whether there's a winner mismatch. */
             winner_mismatch: boolean;
         };
+        /**
+         * @description Status of a result review.
+         * @enum {string}
+         */
+        ResultReviewStatus: "pending_acknowledgment" | "pending_admin_review" | "acknowledged" | "approved" | "rejected";
         /** @description Summary of a result review for list views. */
         ResultReviewSummaryResponse: {
             /**
@@ -11700,7 +11725,7 @@ export interface components {
             /** @description Whether there's a score mismatch. */
             score_mismatch: boolean;
             /** @description Status. */
-            status: string;
+            status: components["schemas"]["ResultReviewStatus"];
             /** @description Whether there's a winner mismatch. */
             winner_mismatch: boolean;
         };

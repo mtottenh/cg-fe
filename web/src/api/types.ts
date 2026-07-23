@@ -9906,7 +9906,13 @@ export interface components {
         };
         /** @description Response DTO for a league member (with user info, for listings). */
         LeagueMemberResponse: {
-            email: string;
+            /**
+             * @description Member email. **Only populated for callers holding
+             *     `league.members.manage` on this league.** It was previously always
+             *     present on an endpoint that required no authentication at all, so any
+             *     anonymous caller could enumerate member email addresses (P-37).
+             */
+            email?: string | null;
             id: string;
             /** Format: date-time */
             joined_at: string;

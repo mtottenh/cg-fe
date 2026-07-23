@@ -95,6 +95,27 @@
             </v-chip>
           </template>
 
+          <!-- Invite-only: registration is gated on an invite list this viewer
+               cannot read (see FINDING in the script block). The plain
+               "Register Team" / "Register Now" call to action is withheld so
+               nobody is invited to walk into a 403; what is offered instead
+               states its own precondition. -->
+          <template v-else-if="needsInvitation">
+            <div class="text-right" data-testid="invite-only-gate">
+              <v-btn
+                color="warning"
+                variant="tonal"
+                size="large"
+                :loading="loading"
+                data-testid="register-with-invitation"
+                @click="$emit('register')"
+              >
+                <v-icon start>mdi-email-check-outline</v-icon>
+                I Have an Invitation
+              </v-btn>
+            </div>
+          </template>
+
           <!-- Registration Coming Soon -->
           <template v-else-if="isRegistrationComingSoon">
             <v-chip color="info">
@@ -144,11 +165,41 @@ const canRegister = computed(() => {
   if (!props.tournament.is_registration_open) return false
   if (props.myRegistration) return false
   if (isTeamTournament.value && props.hasEligibleTeams === false) return false
+  // Invite-only entry is not open registration: it is conditional on an invite
+  // list. `needsInvitation` renders the conditional affordance instead.
+  if (isInviteOnly.value) return false
   return true
 })
 
 const isTeamTournament = computed(() => {
   return props.tournament.participant_type === 'team'
+})
+
+const isInviteOnly = computed(() => props.tournament.registration_type === 'invite_only')
+
+/**
+ * Invite-only, registration open, and this viewer is not already in.
+ *
+ * FINDING (P-47 follow-up) — the invite state is NOT knowable here.
+ * All three invitation endpoints require `tournament.participants.manage`
+ * (`api/crates/portal-api/src/handlers/tournaments/registration.rs:118`, `:180`,
+ * `:225`), and no field on `TournamentResponse` carries the viewer's own
+ * invitation. A captain therefore cannot be told whether *they* are invited —
+ * only that an invitation is required. So this component does the one honest
+ * thing available: it withholds the unconditional "Register" call to action
+ * (which promised entry it cannot deliver — the P-8 dead-end family) and
+ * offers an explicitly conditional one instead, with the precondition stated
+ * before the click rather than as a 403 afterwards.
+ *
+ * Making this a hard block needs an invitee-readable signal from the API
+ * (leagues already have one: `GET /v1/users/me/league-invitations`).
+ */
+const needsInvitation = computed(() => {
+  if (!isInviteOnly.value) return false
+  if (!props.tournament.is_registration_open) return false
+  if (props.myRegistration) return false
+  if (isTeamTournament.value && props.hasEligibleTeams === false) return false
+  return true
 })
 
 // Registration hasn't opened yet (tournament is published but registration not open)
@@ -170,6 +221,7 @@ const cardColor = computed(() => {
   if (props.myRegistration?.checked_in) return 'success'
   if (props.myRegistration?.status === 'approved') return 'primary'
   if (props.myRegistration?.status === 'pending') return 'warning'
+  if (needsInvitation.value) return 'warning'
   if (props.tournament.is_registration_open) return 'success'
   if (isRegistrationComingSoon.value) return 'info'
   return 'grey'
@@ -179,6 +231,7 @@ const iconColor = computed(() => {
   if (props.myRegistration?.checked_in) return 'success'
   if (props.myRegistration?.status === 'approved') return 'primary'
   if (props.myRegistration?.status === 'pending') return 'warning'
+  if (needsInvitation.value) return 'warning'
   if (props.tournament.is_registration_open) return 'success'
   if (isRegistrationComingSoon.value) return 'info'
   return 'grey'
@@ -189,6 +242,7 @@ const icon = computed(() => {
   if (props.myRegistration?.status === 'approved' && canCheckIn.value) return 'mdi-checkbox-marked-circle-outline'
   if (props.myRegistration?.status === 'approved') return 'mdi-check'
   if (props.myRegistration?.status === 'pending') return 'mdi-clock-outline'
+  if (needsInvitation.value) return 'mdi-email-lock-outline'
   if (props.tournament.is_registration_open) return 'mdi-account-plus'
   if (isRegistrationComingSoon.value) return 'mdi-calendar-clock'
   return 'mdi-lock'
@@ -199,6 +253,7 @@ const title = computed(() => {
   if (props.myRegistration?.status === 'approved' && canCheckIn.value) return 'Check-in Now Open'
   if (props.myRegistration?.status === 'approved') return "You're Registered"
   if (props.myRegistration?.status === 'pending') return 'Registration Pending'
+  if (needsInvitation.value) return 'Invitation Required'
   if (props.tournament.is_registration_open) return 'Join This Tournament'
   if (isRegistrationComingSoon.value) return 'Registration Opens Soon'
   return 'Registration Closed'
@@ -209,6 +264,11 @@ const subtitle = computed(() => {
   if (props.myRegistration?.status === 'approved' && canCheckIn.value) return 'Check in now to confirm your participation'
   if (props.myRegistration?.status === 'approved') return 'Check-in will open before the tournament starts'
   if (props.myRegistration?.status === 'pending') return 'Your registration is awaiting admin approval'
+  if (needsInvitation.value) {
+    return isTeamTournament.value
+      ? 'This tournament is invite only. Only teams the organiser has invited can register — ask them for an invitation if you have not had one.'
+      : 'This tournament is invite only. Only players the organiser has invited can register — ask them for an invitation if you have not had one.'
+  }
   if (props.tournament.is_registration_open) {
     return isTeamTournament.value ? 'Register your team to compete' : 'Sign up now to compete'
   }

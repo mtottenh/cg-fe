@@ -2369,7 +2369,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the current result claim for a match. */
+        /**
+         * Get the current result claim for a match.
+         * @description Returns the claim that currently speaks for the match: the pending one
+         *     while the series is live, and the confirmed one once it has settled. Only
+         *     serving the pending claim made the result of a finished match unreachable
+         *     here (P-1) — the per-map breakdown of a completed series could never load.
+         */
         get: operations["get_result_claim"];
         put?: never;
         /** Submit a result claim for a match. */
@@ -3186,6 +3192,46 @@ export interface paths {
         /** Finalize a tournament. */
         post: operations["finalize_tournament"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a tournament's invitations. */
+        get: operations["list_tournament_invitations"];
+        put?: never;
+        /**
+         * Invite a user or team to an invite-only tournament.
+         * @description The invite list is what makes `registration_type = "invite_only"` mean
+         *     anything: before audit P-27 no invite concept existed and an invite-only
+         *     tournament accepted registrations from anybody.
+         */
+        post: operations["create_invitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/invitations/{invitation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a tournament invitation. */
+        delete: operations["revoke_invitation"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4754,6 +4800,21 @@ export interface components {
              * @example 50
              */
             priority?: number | null;
+        };
+        /**
+         * @description Request to invite a user or team to an invite-only tournament.
+         *
+         *     Exactly one target must be supplied: `user_id` for individual
+         *     tournaments, `team_season_id` for team tournaments. Sending both, or
+         *     neither, is a 400.
+         */
+        CreateTournamentInvitationRequest: {
+            /** @description Optional note shown to the invitee. */
+            message?: string | null;
+            /** @description Team-season to invite (team tournaments). */
+            team_season_id?: string | null;
+            /** @description User to invite (individual tournaments). */
+            user_id?: string | null;
         };
         /** @description Request to create a new tournament. */
         CreateTournamentRequest: {
@@ -6830,6 +6891,33 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_TournamentInvitationResponse: {
+            /**
+             * @description Response DTO for a tournament invitation.
+             *
+             *     The invite list behind `registration_type = "invite_only"` (audit P-27).
+             */
+            data: {
+                /** Format: date-time */
+                accepted_at?: string | null;
+                /** Format: date-time */
+                created_at: string;
+                id: string;
+                invited_by: string;
+                message?: string | null;
+                /** Format: date-time */
+                revoked_at?: string | null;
+                status: components["schemas"]["TournamentInvitationStatus"];
+                /** @description Invited team-season — set for team tournaments. */
+                team_season_id?: string | null;
+                tournament_id: string;
+                /** @description Invited user — set for individual tournaments. */
+                user_id?: string | null;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_TournamentMapPoolResponse: {
             /** @description Response DTO for a tournament's effective map pool. */
             data: {
@@ -8331,6 +8419,28 @@ export interface components {
                 tournament_id: string;
                 /** Format: date-time */
                 updated_at: string;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_TournamentInvitationResponse: {
+            data: {
+                /** Format: date-time */
+                accepted_at?: string | null;
+                /** Format: date-time */
+                created_at: string;
+                id: string;
+                invited_by: string;
+                message?: string | null;
+                /** Format: date-time */
+                revoked_at?: string | null;
+                status: components["schemas"]["TournamentInvitationStatus"];
+                /** @description Invited team-season — set for team tournaments. */
+                team_season_id?: string | null;
+                tournament_id: string;
+                /** @description Invited user — set for individual tournaments. */
+                user_id?: string | null;
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -12224,6 +12334,34 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /**
+         * @description Response DTO for a tournament invitation.
+         *
+         *     The invite list behind `registration_type = "invite_only"` (audit P-27).
+         */
+        TournamentInvitationResponse: {
+            /** Format: date-time */
+            accepted_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            invited_by: string;
+            message?: string | null;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            status: components["schemas"]["TournamentInvitationStatus"];
+            /** @description Invited team-season — set for team tournaments. */
+            team_season_id?: string | null;
+            tournament_id: string;
+            /** @description Invited user — set for individual tournaments. */
+            user_id?: string | null;
+        };
+        /**
+         * @description Lifecycle of a tournament invitation (the invite list behind
+         *     `RegistrationType::InviteOnly`).
+         * @enum {string}
+         */
+        TournamentInvitationStatus: "pending" | "accepted" | "revoked";
         /** @description Response DTO for a tournament's effective map pool. */
         TournamentMapPoolResponse: {
             /** @description Map IDs in the pool. */
@@ -21255,7 +21393,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Current result claim */
+            /** @description Current result claim: the pending claim while one is open, otherwise the confirmed claim */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -21264,7 +21402,7 @@ export interface operations {
                     "application/json": components["schemas"]["DataResponse_ResultClaimResponse"];
                 };
             };
-            /** @description No pending claim found */
+            /** @description Match has no pending or confirmed claim */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -23936,6 +24074,180 @@ export interface operations {
                 };
             };
             /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_tournament_invitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_TournamentInvitationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    create_invitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTournamentInvitationRequest"];
+            };
+        };
+        responses: {
+            /** @description Invitation created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentInvitationResponse"];
+                };
+            };
+            /** @description Invalid invite target */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target already invited */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    revoke_invitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Invitation ID */
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitation revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentInvitationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invitation not found */
             404: {
                 headers: {
                     [name: string]: unknown;

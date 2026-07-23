@@ -41,6 +41,18 @@
           :loading="tournamentsStore.generateNextRoundState.loading" @click="handleAdvanceRound">
           Generate Next Round
         </v-btn>
+        <!-- Invite list. Only `invite_only` gates on it, but the panel stays
+             reachable for every type so an organiser can inspect (and revoke)
+             invitations issued before the registration type was changed. -->
+        <v-btn
+          :color="isInviteOnly ? 'primary' : undefined"
+          variant="tonal"
+          prepend-icon="mdi-email-outline"
+          data-testid="manage-invitations"
+          @click="invitationsModalOpen = true"
+        >
+          Invitations
+        </v-btn>
         <!-- Always available -->
         <v-btn variant="tonal" prepend-icon="mdi-pencil" @click="$emit('edit')">
           Edit
@@ -60,12 +72,20 @@
 
     <!-- Cancel Confirmation Dialog -->
     <ConfirmDialogHost :dialog="confirmDialog" />
+
+    <!-- Invite list management -->
+    <TournamentInvitationsModal
+      v-model="invitationsModalOpen"
+      :tournament="tournament"
+      @changed="$emit('action-complete')"
+    />
   </v-card>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useTournamentsStore, type TournamentResponse } from '@/stores/tournaments'
+import TournamentInvitationsModal from '@/components/tournament/TournamentInvitationsModal.vue'
 import { useTournamentContext } from '@/composables/useTournamentContext'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
@@ -92,6 +112,9 @@ const {
 } = useTournamentContext(tournamentRef)
 
 const confirmDialog = useConfirmDialog()
+
+const invitationsModalOpen = ref(false)
+const isInviteOnly = computed(() => props.tournament.registration_type === 'invite_only')
 
 async function handlePublish() {
   await tournamentsStore.publishTournament(props.tournament.id)

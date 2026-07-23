@@ -5,6 +5,7 @@ import { tournamentStatusMap, getStatusColor as getMapColor, getStatusLabel as g
 
 import { createLifecycleSlice } from './tournament/_lifecycle'
 import { createRegistrationsSlice } from './tournament/_registrations'
+import { createInvitationsSlice } from './tournament/_invitations'
 import { createMatchesSlice } from './tournament/_matches'
 import { createSeedingSlice } from './tournament/_seeding'
 import { createStagesSlice } from './tournament/_stages'
@@ -23,6 +24,8 @@ type RegisterTeamRequest = components['schemas']['RegisterTeamRequest']
 type RegisterPlayerRequest = components['schemas']['RegisterPlayerRequest']
 type SeededParticipantResponse = components['schemas']['SeededParticipantResponse']
 type CheckInStatusResponse = components['schemas']['CheckInStatusResponse']
+type TournamentInvitationResponse = components['schemas']['TournamentInvitationResponse']
+type CreateTournamentInvitationRequest = components['schemas']['CreateTournamentInvitationRequest']
 
 // ==================== Enum/constant exports ====================
 
@@ -103,6 +106,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
   })
 
   const registrationsSlice = createRegistrationsSlice()
+  const invitationsSlice = createInvitationsSlice()
   const seedingSlice = createSeedingSlice()
   const stagesSlice = createStagesSlice()
 
@@ -114,6 +118,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
   const actionStates: ActionState[] = [
     ...Object.values(lifecycle),
     ...Object.values(registrationsSlice),
+    ...Object.values(invitationsSlice),
     ...Object.values(matchesSlice),
     ...Object.values(seedingSlice),
     ...Object.values(stagesSlice),
@@ -124,6 +129,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
   function clearCurrent() {
     lifecycle.clearCurrent()
     registrationsSlice.clear()
+    invitationsSlice.clear()
     matchesSlice.clear()
     seedingSlice.clear()
     stagesSlice.clear()
@@ -140,6 +146,8 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     ...lifecycle,
     // Registrations
     ...registrationsSlice,
+    // Invitations (invite-only tournaments)
+    ...invitationsSlice,
     // Matches + brackets + admin match actions
     ...matchesSlice,
     // Seeding + map pool
@@ -170,6 +178,8 @@ export type {
   RegisterPlayerRequest,
   SeededParticipantResponse,
   CheckInStatusResponse,
+  TournamentInvitationResponse,
+  CreateTournamentInvitationRequest,
 }
 
 // ==================== Helper functions ====================

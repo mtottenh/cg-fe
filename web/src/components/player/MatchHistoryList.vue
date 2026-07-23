@@ -9,6 +9,23 @@
 
     <v-progress-linear v-if="loading" indeterminate />
 
+    <!--
+      P-29 — `GET /v1/users/me/matches` 500'd for every caller and this card
+      rendered the empty state, so a broken endpoint was indistinguishable from
+      a player with no matches. A failed fetch must say so.
+    -->
+    <v-alert
+      v-if="error"
+      type="error"
+      variant="tonal"
+      class="ma-4"
+      closable
+      data-testid="match-history-error"
+      @click:close="playersStore.fetchMyMatchesState.error = null"
+    >
+      {{ error }}
+    </v-alert>
+
     <v-list v-if="matches.length > 0" lines="two" density="compact">
       <v-list-item
         v-for="match in matches"
@@ -49,7 +66,11 @@
       </v-list-item>
     </v-list>
 
-    <v-card-text v-else-if="!loading" class="text-center text-medium-emphasis py-8">
+    <v-card-text
+      v-else-if="!loading && !error"
+      class="text-center text-medium-emphasis py-8"
+      data-testid="match-history-empty"
+    >
       <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-sword-cross</v-icon>
       <p>No matches yet</p>
     </v-card-text>
@@ -68,6 +89,7 @@ type MatchResponse = components['schemas']['TournamentMatchResponse']
 const playersStore = usePlayersStore()
 
 const loading = computed(() => playersStore.fetchMyMatchesState.loading)
+const error = computed(() => playersStore.fetchMyMatchesState.error)
 const { myMatches: matches } = storeToRefs(playersStore)
 
 function matchRoute(match: MatchResponse) {
@@ -105,7 +127,11 @@ function formatDate(dateStr: string | null | undefined): string {
   return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-onMounted(() => {
-  playersStore.fetchMyMatches({ limit: 10 })
+onMounted(async () => {
+  try {
+    await playersStore.fetchMyMatches({ limit: 10 })
+  } catch {
+    // Error captured in store state and rendered by the alert above.
+  }
 })
 </script>

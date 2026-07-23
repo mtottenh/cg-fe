@@ -243,23 +243,63 @@ test.describe('Home page — Upcoming Matches', () => {
 })
 
 /*
- * NO TEST for the profile's "Recent Matches" card (MatchHistoryList.vue), which
- * printed `match.status` verbatim and is fixed in this change.
+ * P-29 — the profile's "Recent Matches" card (MatchHistoryList.vue) could not
+ * be populated by anyone: `GET /v1/users/me/matches` returned 500 to every
+ * caller. `list_by_player`
+ * (api/crates/portal-db/src/adapters/tournament/match_.rs) did
+ * `SELECT DISTINCT tm.*` and then ordered by a `CASE tm.status::text … END`
+ * expression that was not in the select list, which Postgres rejects outright
+ * ("for SELECT DISTINCT, ORDER BY expressions must appear in select list").
+ * The ranking is now selected as a named column and ordered by that name.
  *
- * The card CANNOT be populated: `GET /v1/users/me/matches` returns 500 for every
- * caller — "for SELECT DISTINCT, ORDER BY expressions must appear in select
- * list". `list_by_player`
- * (api/crates/portal-db/src/adapters/tournament/match_.rs:807-837) does
- * `SELECT DISTINCT tm.*` and then orders by a `CASE tm.status::text … END`
- * expression that is not in the select list, which Postgres rejects outright.
- * Reproduced against a live stack with both an admin and a participant token.
- * `stores/players.ts:fetchMyMatches` swallows the failure into an action-state
- * error the card never reads, so the UI just says "No matches yet".
- *
- * Recorded as a product finding rather than tested around — a test written
- * against the current behaviour would assert the empty state and certify the
- * bug. See COVERAGE-PLAN.md §9b.
+ * The card also rendered the empty state on failure, so the 500 was
+ * indistinguishable from "no matches"; it now shows an error alert instead.
+ * These tests therefore assert PRESENCE of the match (the 500), the absence of
+ * the error alert (the endpoint really answered), and the humanised status
+ * label (the raw-enum leak).
  */
+test.describe('Player Profile — Recent Matches', () => {
+  test('shows a participant their match in Recent Matches', async ({ page }) => {
+    const adminToken = await getAdminToken()
+    const { scenario } = await liveMatchInStatus(adminToken, 'in_progress')
+
+    await primeAuthStorage(page, scenario.p1.token, scenario.p1.userId)
+    await page.goto('/profile')
+    await page.waitForLoadState('networkidle')
+
+    const card = page.locator('.v-card').filter({ hasText: 'Recent Matches' }).first()
+    await expect(card).toBeVisible()
+
+    // A failed fetch renders this alert instead of any rows — its absence is
+    // what distinguishes "the endpoint answered" from "the endpoint 500'd".
+    await expect(card.getByTestId('match-history-error')).toHaveCount(0)
+    await expect(card.getByTestId('match-history-empty')).toHaveCount(0)
+
+    const row = card.locator('.v-list-item').filter({ hasText: scenario.p1.username })
+    await expect(row).toBeVisible({ timeout: 10000 })
+    await expect(row).toContainText(scenario.p2.username)
+    await expect(row).toContainText('In Progress')
+    await expect(row).not.toContainText('in_progress')
+  })
+
+  test('renders a humanised status label for a match awaiting a result', async ({ page }) => {
+    const adminToken = await getAdminToken()
+    const { scenario } = await liveMatchInStatus(adminToken, 'in_progress')
+    await transitionMatch(adminToken, scenario.tournamentId, scenario.matchId, 'awaiting_result')
+
+    await primeAuthStorage(page, scenario.p2.token, scenario.p2.userId)
+    await page.goto('/profile')
+    await page.waitForLoadState('networkidle')
+
+    const card = page.locator('.v-card').filter({ hasText: 'Recent Matches' }).first()
+    await expect(card.getByTestId('match-history-error')).toHaveCount(0)
+
+    const row = card.locator('.v-list-item').filter({ hasText: scenario.p2.username })
+    await expect(row).toBeVisible({ timeout: 10000 })
+    await expect(row).toContainText('Awaiting Result')
+    await expect(row).not.toContainText('awaiting_result')
+  })
+})
 
 test.describe('Player Profile', () => {
   test.describe('Profile Viewing', () => {

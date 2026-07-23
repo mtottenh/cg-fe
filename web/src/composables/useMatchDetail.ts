@@ -292,10 +292,25 @@ export function useMatchDetail() {
         if (gen !== fetchGen) return
         match.value = fetched
 
-        // Fetch registrations to resolve userRegistrationId for result submission
+        // Fetch registrations to resolve userRegistrationId for result submission.
+        //
+        // useMatchContext / useTournamentContext resolve the caller's (and the
+        // opponent's) registration by SCANNING this list. With the default
+        // page size of 20 a participant whose registration sits past row 20
+        // could not be resolved and therefore could not submit a result at all
+        // — routine, since max_participants defaults to 64 (P-53).
+        //
+        // STOPGAP: request the maximum page size (the API caps per_page at 100,
+        // see PaginationParams::limit). This only raises the ceiling from 20 to
+        // 100; tournaments with more than 100 participants remain broken. The
+        // real fix is a targeted lookup (a `GET .../registrations/me` endpoint,
+        // or a caller/registration-id filter on the list) so resolution is O(1)
+        // and independent of participant count — that needs a new API surface.
         if (authStore.playerId && tournamentsStore.currentTournament) {
           const fetchPromises: Promise<unknown>[] = [
-            tournamentsStore.fetchRegistrations(tournamentsStore.currentTournament.id),
+            tournamentsStore.fetchRegistrations(tournamentsStore.currentTournament.id, {
+              per_page: 100,
+            }),
           ]
           // Fetch user's teams for team tournaments so useMatchContext can resolve registration
           if (tournamentsStore.currentTournament.participant_type === 'team') {

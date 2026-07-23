@@ -176,6 +176,12 @@ export async function createApprovalTournament(
  * `registration_type=approval`. Returns the full player + registration
  * payload so the spec can approve / reject specific rows by name.
  */
+/**
+ * ⚠️ Only yields PENDING rows on a tournament whose `registration_type` is
+ * `approval` / `invite_only` / `qualification`. Since P-2 an `open` tournament
+ * auto-approves on signup, so callers wanting pending rows must create the
+ * tournament with `registrationType: 'approval'`.
+ */
 export async function registerPendingPlayers(
   tournamentId: string,
   count: number,

@@ -36,6 +36,12 @@ export interface CreateTournamentOptions {
   minParticipants?: number
   maxParticipants?: number
   checkInRequired?: boolean
+  /**
+   * Defaults to `open`. Since P-2, an `open` tournament AUTO-APPROVES on
+   * signup, so pass `'approval'` when a test needs a genuinely `pending`
+   * registration to look at.
+   */
+  registrationType?: 'open' | 'approval' | 'invite_only' | 'qualification'
 }
 
 export interface TournamentSummary {
@@ -98,6 +104,7 @@ export async function createDraftTournament(
     min_participants: opts.minParticipants ?? 2,
     max_participants: opts.maxParticipants ?? 4,
     check_in_required: opts.checkInRequired ?? false,
+    registration_type: opts.registrationType ?? 'open',
   }
 
   const resp = await fetch(`${API_URL}/v1/tournaments`, {

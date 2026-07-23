@@ -40,11 +40,14 @@ import {
  * unconditional. No visibility guards remain in this file.
  *
  * Backend facts these tests rely on (verified in the API repo):
- *  - `tournament_registrations.status` has DB default `'pending'`
- *    (migrations/0030_create_tournaments.sql:257) and the insert never
- *    overrides it, so a fresh self-registration is ALWAYS `pending`
- *    regardless of the tournament's `registration_type`. The "approved"
- *    states below are reached by an explicit admin approval.
+ *  - `tournament_registrations.status` is set from the tournament's
+ *    `registration_type` on insert (P-2): `open` AUTO-APPROVES, while
+ *    `approval` / `invite_only` / `qualification` land `pending`.
+ *    ⚠️ This comment previously claimed a fresh self-registration is ALWAYS
+ *    `pending` "regardless of registration_type" — that was true of the DB
+ *    default alone, and stopped being true when P-2 made the insert set the
+ *    status explicitly. Tests that need a pending row must therefore ask for
+ *    `registrationType: 'approval'`.
  *  - `Tournament::is_check_in_open()` needs `check_in_required` **and** a
  *    `check_in_start`/`check_in_end` window around now
  *    (portal-domain/src/entities/tournament.rs:140) — `createCheckInScenario`
@@ -524,7 +527,9 @@ test.describe('Tournament Public Flows', () => {
       test.setTimeout(60_000)
 
       const adminToken = await getAdminToken()
-      const tournament = await createOpenRegistrationTournament(adminToken)
+      const tournament = await createOpenRegistrationTournament(adminToken, {
+        registrationType: 'approval',
+      })
       const player = await registerAsRosterUser()
       await loginAsUser(page, player)
 
@@ -540,9 +545,10 @@ test.describe('Tournament Public Flows', () => {
       await modal.getByLabel('Display Name').fill(participantName)
       await modal.getByRole('button', { name: 'Register', exact: true }).click()
 
-      // UI: the card flips to the pending state. Self-registrations land in
-      // `pending` (DB default), so the card shows the Awaiting Approval chip
-      // plus the cancel affordance (TournamentRegistrationCard.vue:28-45).
+      // UI: the card flips to the pending state. This tournament is
+      // `registrationType: 'approval'` so the row genuinely lands `pending` —
+      // on an `open` tournament P-2 auto-approves and the card would instead
+      // read "You're Registered".
       const card = registrationCard(page)
       await expect(card.locator('.v-chip').filter({ hasText: 'Awaiting Approval' })).toBeVisible({
         timeout: 15_000,
@@ -566,7 +572,11 @@ test.describe('Tournament Public Flows', () => {
       test.setTimeout(60_000)
 
       const adminToken = await getAdminToken()
-      const tournament = await createOpenRegistrationTournament(adminToken)
+      // `approval`, not `open`: since P-2 an open tournament auto-approves, so
+      // there would be no pending state to render.
+      const tournament = await createOpenRegistrationTournament(adminToken, {
+        registrationType: 'approval',
+      })
       const player = await registerAsRosterUser()
       const participantName = `Pending ${uniqueId()}`
       // Seed the registration through the API — the UI submit path has its

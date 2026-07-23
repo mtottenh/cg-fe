@@ -300,7 +300,12 @@ test.describe('Tournament Admin Flows', () => {
     test('should show registrations tab with table', async ({ page }) => {
       test.setTimeout(60_000)
       const adminToken = await getAdminToken()
-      const tournament = await createOpenRegistrationTournament(adminToken)
+      // `approval`, not `open`: since P-2 an open tournament auto-approves on
+      // signup, so `registerPendingPlayers` would produce APPROVED rows and the
+      // pending-only actions asserted below would not render.
+      const tournament = await createOpenRegistrationTournament(adminToken, {
+        registrationType: 'approval',
+      })
       const [player] = await registerPendingPlayers(tournament.id, 1)
       const participantName = player.participantName
 

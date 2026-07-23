@@ -15,7 +15,7 @@ from this document's own state.
 
 ### Tier 1 — do first (hard failures, small fixes)
 
-1. **P-29 · `GET /users/me/matches` 500s for EVERY caller.** `SELECT DISTINCT` ordering by a
+1. ✅ **DONE** (`8ce0f0a`) — ~~P-29 · `GET /users/me/matches` 500s for EVERY caller.~~ `SELECT DISTINCT` ordering by a
    `CASE` expression not in the select list; Postgres rejects it unconditionally. The
    profile's Recent Matches card is permanently empty and the frontend *swallows* the error.
    **Fix:** add the `CASE` to the select list (keep `DISTINCT` — the `OR` join genuinely
@@ -533,7 +533,13 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 45 found · **27 fixed** · 18 open.
+**Status:** 45 found · **28 fixed** · 17 open.
+
+Fixed: P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
+
+Open: P-1, P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-27, P-28, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
+deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
+them in isolation.
 
 Fixed: P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
 
@@ -581,7 +587,7 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-26 | "Sub can't face own team" never enforced | integrity | open |
 | P-27 | `invite_only` tournaments accept anyone | trust | open |
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
-| P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | open |
+| P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | **fixed** `8ce0f0a` |
 | P-30 | Season edit Save disabled when max_teams is null | user-facing | **fixed** `9816346` |
 | P-31 | **API declares ~no enums — root cause of the status-drift class** | **architectural** | **class closed**; 25/41 fields, **17 enums published** |
 | P-32 | `AdHoc` serialises as `ad_hoc`, everything else says `adhoc` | wire format | **fixed** `62f6726` |
@@ -1011,6 +1017,18 @@ tests to never leave a form dirty.
 ---
 
 ### P-29 — `GET /v1/users/me/matches` returns HTTP 500 for every caller  ⚠️⚠️ backend, hard failure
+- ✅ **FIXED** — api `8ce0f0a`, web `87fa6a4`. The status ranking moved into the select list as
+  a named `status_rank` column, ordered by name. **`DISTINCT` was kept and proven load-bearing**:
+  with it removed, the new dedup test fails (a player reachable via BOTH an individual
+  registration and a team roster got the match twice). `ELSE 99` added so an unmapped status
+  sorts last deterministically rather than becoming NULL.
+- **Correction to this entry's original diagnosis:** `stores/players.ts` does NOT swallow the
+  error — `withActionState` records it and rethrows like every neighbouring action. The swallow
+  was purely at the render layer: `MatchHistoryList.vue` read `.loading` but never `.error`, and
+  fired its `onMounted` promise unawaited. The agent verified this and correctly declined to
+  change `players.ts`.
+- Restored the e2e test that was dropped for this, and it asserts the humanised label
+  (`In Progress`) **and** `not.toContainText('in_progress')`, so raw-enum leakage is caught too.
 - **Symptom:** the endpoint 500s unconditionally — reproduced live with both admin and
   participant tokens: `for SELECT DISTINCT, ORDER BY expressions must appear in select list`.
 - **Root cause:** `list_by_player`

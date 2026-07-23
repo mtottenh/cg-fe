@@ -127,6 +127,31 @@ tournament-team 5), independently confirming §2.
 
 ---
 
+## 4c. When changing a test assertion IS legitimate
+
+The §3 rule is *"never weaken an assertion to accommodate a bug."* It is not *"never change an
+assertion."* Two cases came up in this campaign and they are worth telling apart, because they
+look identical in a diff:
+
+**Legitimate — the specification changed.** `test_open_tournament_auto_approves_player_registration`
+asserted **400** on a second approve. Correct when written; **P-36 deliberately changed that
+behaviour** because P-2's auto-approve meant an organiser pressing Approve on a visible row
+always got a 400. The assertion is now 200, the comment says *why*, and the narrow case
+(terminal statuses still rejected) stays pinned by a separate test so nothing was quietly
+widened.
+
+**Also legitimate — the test was relying on a bug.** `leagues.rs:381,1043` called the members
+endpoint with the *anonymous* helper and passed only because the endpoint required no auth —
+i.e. they had absorbed the **P-37** leak as normal. Switched to `get_auth`; their actual intent
+was untouched.
+
+**The test to apply:** does the change make the assertion *weaker* about behaviour you still
+believe should hold? If yes, it is the forbidden kind. If the behaviour you believe in has
+changed, or the test was asserting the bug, changing it is correct — but **say so in the
+comment**, and keep a separate test pinning whatever you did NOT intend to relax.
+
+---
+
 ## 4a. ⚠️ VERIFICATION DEFECT — "typecheck clean" was vacuous for most of this campaign
 
 **`npx vue-tsc --noEmit -p tsconfig.json` checks NOTHING and always exits 0.**

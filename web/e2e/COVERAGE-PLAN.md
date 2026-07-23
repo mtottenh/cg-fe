@@ -533,7 +533,13 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 52 found · **32 fixed** · 20 open.
+**Status:** 55 found · **34 fixed** · 21 open.
+
+Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-52, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
+
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-51, P-48, P-49, P-50, P-38, P-39, P-40, P-41, P-53, P-54, P-55 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
+deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
+them in isolation.
 
 Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-52, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
 
@@ -617,7 +623,7 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-48 | User cannot see their own pending league application | user-facing | open |
 | P-49 | Captain cannot approve a join request from the team page | blocks flow | open |
 | P-50 | **Result auto-confirms in 15min; opponent never notified** | **integrity/trust** | open |
-| P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
+| P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | **fixed** `9f87495` |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | **fixed** `8ce0f0a` |
 | P-30 | Season edit Save disabled when max_teams is null | user-facing | **fixed** `9816346` |
 | P-31 | **API declares ~no enums — root cause of the status-drift class** | **architectural** | **class closed**; 25/41 fields, **17 enums published** |
@@ -632,7 +638,10 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-40 | Decline confirmation guards the wrong action | minor | open |
 | P-41 | Two create-team forms disagree on validation | inconsistent | open |
 | P-42 | **Auto-linked demos raise false reviews and stall brackets** | **pipeline** | **fixed** `f6778e7` |
-| P-43 | Review queue shows only the oldest 20, forever | user-facing | open |
+| P-43 | Review queue shows only the oldest 20, forever | user-facing | **fixed** `9f87495` |
+| P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | open |
+| P-54 | League members truncates at 20; client cannot paginate | user-facing | open |
+| P-55 | Review queue FIFO — newest escalation on the last page | admin friction | open |
 | P-44 | `resultReviewStatusMap` 3/5 wrong, leaks raw enum | user-facing | **fixed** `070d104` |
 | P-45 | Role-row aria-labels rotated; "Manage" wired to Delete | **a11y/safety** | **fixed** `fbe1500` |
 
@@ -1026,6 +1035,7 @@ tests to never leave a form dirty.
 ---
 
 ### P-28 — `/tournaments` search and filters only see the first 20 rows  ⚠️ user-facing
+- ✅ **FIXED** (`9f87495`). `search`/`game_id`/`status` now go to the API. The two multi-status tabs fire one request per status and merge, since `?status=` takes a single value. The only client-side predicate left is `is_registration_open`, which can only *remove* rows from a server-narrowed page, so nothing becomes unreachable.
 - **Symptom:** `fetchData` in `pages/TournamentsPage.vue` sends only `page` / `per_page`.
   Search text, game, status and every tab then filter **client-side over the 20 rows already
   fetched**. Any tournament past position 20 in the default ordering is **undiscoverable by
@@ -1375,6 +1385,7 @@ tests to never leave a form dirty.
 ---
 
 ### P-43 — `/admin/result-reviews` can only ever show the OLDEST 20 pending reviews
+- ✅ **FIXED** (`9f87495`): explicit pagination + a `v-pagination` control. ⚠️ Ordering is still FIFO — see **P-55**.
 - `src/stores/resultReviews.ts:37` calls the endpoint with no pagination params (default
   `per_page=20`), the page renders **no pagination control**, and the adapter orders
   `created_at ASC` (`portal-db/src/adapters/result_review.rs:193`). Past 20 pending reviews,
@@ -1485,6 +1496,37 @@ tests to never leave a form dirty.
   (`c5ea9e5`): a test walks all 266 operations and fails on any collision, naming the
   offenders. Proven to fail on a reintroduced collision.
 - **Lesson:** "regenerate later" defers a *latent* breakage rather than avoiding one.
+
+---
+
+### P-53 — A player past registration #20 CANNOT SUBMIT A RESULT  ⚠️⚠️ blocks core flow
+- `fetchRegistrations` is called with no filters (`src/composables/useMatchDetail.ts:298` →
+  `src/stores/tournament/_registrations.ts:38`), so the API's default `per_page = 20` applies.
+- **That list is what resolves the current user's `userRegistrationId` for result submission.**
+  A participant whose registration sits past row 20 therefore cannot be resolved and **cannot
+  submit a result at all** — and `max_participants` defaults to 64, so this is routine, not an
+  edge case.
+- Same class as P-28/P-43 but with a far worse consequence: not hidden data, a **blocked core
+  action**.
+- [ ] Resolve the registration by a targeted query rather than by scanning a paginated list.
+
+---
+
+### P-54 — `/v1/leagues/{id}/members` truncates at 20 and cannot be fixed from the client
+- `handlers/leagues.rs:311` takes `Query<PaginationParams>` (default 20), but its
+  `#[utoipa::path]` block **does not declare `page`/`per_page`**, so the generated types give
+  `query: never` — the frontend literally cannot pass them.
+- A league roster over 20 members is unreachable **by construction**. API-side fix required
+  (declare the params).
+- Same "spec disagrees with the handler" family as **P-52**.
+
+---
+
+### P-55 — The review queue is FIFO, so the newest escalation is always on the last page
+- `created_at ASC` (`portal-db/src/adapters/result_review.rs:193`), and the response carries a
+  bare `total` with no `PaginationMeta`. P-43's pager now *reaches* the newest review, but an
+  admin acting on a fresh escalation must page to the end to find it.
+- [ ] Order newest-first, or add a sort control.
 
 ---
 

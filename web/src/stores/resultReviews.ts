@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
@@ -12,12 +12,34 @@ import {
 type ResultReviewSummaryResponse = components['schemas']['ResultReviewSummaryResponse']
 type ResultReviewResponse = components['schemas']['ResultReviewResponse']
 
+/**
+ * The admin queue is paginated SERVER-side and ordered `created_at ASC`
+ * (portal-db/src/adapters/result_review.rs:193). This store used to send no
+ * pagination parameters at all, so it got the API default — the twenty OLDEST
+ * pending reviews — and the page rendered no pager. Past twenty, a newly raised
+ * review was permanently unreachable in the UI (P-43).
+ *
+ * `perPage` is explicit here rather than inherited from the API default so that
+ * changing it is a visible edit, and so `totalPages` below is computed from the
+ * same number the request used.
+ */
+const DEFAULT_PER_PAGE = 20
+
 export const useResultReviewsStore = defineStore('resultReviews', () => {
   // State
   const reviews = ref<ResultReviewSummaryResponse[]>([])
   const currentReview = ref<ResultReviewResponse | null>(null)
   const total = ref(0)
   const matchResultReview = ref<ResultReviewResponse | null>(null)
+
+  /** Which page of the admin queue `reviews` currently holds. */
+  const page = ref(1)
+  const perPage = ref(DEFAULT_PER_PAGE)
+  /**
+   * `ResultReviewListResponse` carries `total` but no `PaginationMeta`
+   * (portal-api/src/dto/result_review.rs), so the page count is derived.
+   */
+  const totalPages = computed(() => Math.max(1, Math.ceil(total.value / perPage.value)))
 
   // Per-action states
   const fetchReviewsState = createActionState()
@@ -32,11 +54,19 @@ export const useResultReviewsStore = defineStore('resultReviews', () => {
     fetchMatchResultReviewState, acknowledgeResultReviewState,
   ])
 
-  async function fetchReviews(): Promise<ResultReviewSummaryResponse[]> {
+  async function fetchReviews(
+    params: { page?: number; per_page?: number } = {},
+  ): Promise<ResultReviewSummaryResponse[]> {
+    const requestedPage = params.page ?? page.value
+    const requestedPerPage = params.per_page ?? perPage.value
     return withActionState(fetchReviewsState, async () => {
-      const result = await unwrapApi(api.GET('/v1/admin/result-reviews'))
+      const result = await unwrapApi(api.GET('/v1/admin/result-reviews', {
+        params: { query: { page: requestedPage, per_page: requestedPerPage } },
+      }))
       reviews.value = result.data.reviews
       total.value = result.data.total
+      page.value = requestedPage
+      perPage.value = requestedPerPage
       return reviews.value
     }, 'Failed to fetch result reviews')
   }
@@ -117,6 +147,8 @@ export const useResultReviewsStore = defineStore('resultReviews', () => {
     reviews.value = []
     currentReview.value = null
     total.value = 0
+    page.value = 1
+    perPage.value = DEFAULT_PER_PAGE
     error.value = null
   }
 
@@ -129,6 +161,9 @@ export const useResultReviewsStore = defineStore('resultReviews', () => {
     reviews,
     currentReview,
     total,
+    page,
+    perPage,
+    totalPages,
     loading,
     error,
 

@@ -34,9 +34,23 @@ export const useGamesStore = defineStore('games', () => {
   const setRankTiersState = createActionState()
   const updateTeamSizeState = createActionState()
 
+  /**
+   * The game catalog. Every caller treats this as "all the games" — it backs
+   * the game filter selects on `/tournaments`, `/leagues` and `/players` — but
+   * `GET /v1/games` is paginated server-side and the request carried no
+   * `per_page`, so it silently returned only the first 20
+   * (portal-api/src/handlers/games.rs:32 takes `Query<PaginationParams>`,
+   * default 20). The catalog is admin-curated and tiny today, so 100 — the
+   * server's hard cap (portal-api/src/dto/common.rs:47) — covers it with room
+   * to spare. Past 100 games this needs a real pager; there is no response
+   * `PaginationMeta` on this endpoint to detect that from, which is recorded in
+   * the sweep notes.
+   */
   async function fetchGames(): Promise<GameSummary[]> {
     return withActionState(fetchGamesState, async () => {
-      const result = await unwrapApi(api.GET('/v1/games'))
+      const result = await unwrapApi(api.GET('/v1/games', {
+        params: { query: { per_page: 100 } },
+      }))
       games.value = result.data
       return games.value
     }, 'Failed to fetch games')

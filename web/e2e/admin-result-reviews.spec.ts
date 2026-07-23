@@ -362,9 +362,52 @@ async function createPendingAdminReview(
   return { scenario, review }
 }
 
+/**
+ * The queue row for a match.
+ *
+ * Located by the `data-match-id` the page stamps on every row, NOT by the
+ * eight-character prefix the Match column prints: match ids are UUID v7, whose
+ * leading characters are a TIMESTAMP, so two matches created seconds apart share
+ * them and the old `filter({ hasText: matchId.slice(0, 8) })` resolved to two
+ * rows. That is a strict-mode failure, and it is what this file did whenever its
+ * two tests ran in parallel.
+ */
+function reviewRow(page: Page, matchId: string) {
+  return page.locator(`.v-data-table tbody tr[data-match-id="${matchId}"]`)
+}
+
+/** How many rows a queue page holds — `DEFAULT_PER_PAGE` in the store. */
+const QUEUE_PAGE_SIZE = 20
+
+/**
+ * Page the queue to wherever `reviewId` actually is, and return that page.
+ *
+ * The queue is ordered `created_at ASC`
+ * (api/crates/portal-db/src/adapters/result_review.rs:193), so a freshly raised
+ * review is the LAST row and, once more than twenty reviews are pending, it is
+ * on the LAST page. That is the residue of P-43: the fix makes a new review
+ * reachable, not first. These tests seed their own review and so must follow it.
+ *
+ * The rank is read from the API rather than guessed. `listPendingReviews` asks
+ * for `per_page=100` (the server's cap), so a queue deeper than 100 makes the
+ * rank lookup fail loudly rather than silently look at the wrong page.
+ */
+async function gotoReviewPage(page: Page, adminToken: string, reviewId: string): Promise<number> {
+  const queue = await listPendingReviews(adminToken)
+  const rank = queue.findIndex((r) => r.id === reviewId) + 1
+  expect(rank, 'the seeded review must be in the pending queue').toBeGreaterThan(0)
+
+  const targetPage = Math.ceil(rank / QUEUE_PAGE_SIZE)
+  if (targetPage > 1) {
+    await page.getByRole('button', { name: `Go to page ${targetPage}` }).click()
+    await expect(page.getByTestId('review-queue-count')).toContainText(`page ${targetPage} of`)
+  }
+  return targetPage
+}
+
 /** Open the review's row in the admin table and return its detail dialog. */
 async function openReviewDetail(page: Page, matchId: string) {
-  const row = page.locator('.v-data-table tbody tr').filter({ hasText: matchId.slice(0, 8) })
+  const row = reviewRow(page, matchId)
   await expect(row).toBeVisible({ timeout: 20_000 })
   // Mismatch column: this review was raised by a score disagreement.
   await expect(row.getByText('Score', { exact: true })).toBeVisible()
@@ -399,6 +442,7 @@ test.describe('Admin result reviews', () => {
     await loginAsAdmin(page)
     await page.goto('/admin/result-reviews')
     await expect(page.getByRole('heading', { name: 'Result Reviews' })).toBeVisible()
+    await gotoReviewPage(page, adminToken, review.id)
 
     const dialog = await openReviewDetail(page, scenario.matchId)
 
@@ -433,7 +477,7 @@ test.describe('Admin result reviews', () => {
     await expect(page.locator('.v-snackbar').getByText('Result approved')).toBeVisible()
     await expect(dialog).toBeHidden()
     await expect(
-      page.locator('.v-data-table tbody tr').filter({ hasText: scenario.matchId.slice(0, 8) }),
+      reviewRow(page, scenario.matchId),
     ).toHaveCount(0)
 
     // Backend: the decision, the notes and the reviewer are all persisted.
@@ -455,6 +499,8 @@ test.describe('Admin result reviews', () => {
 
     await loginAsAdmin(page)
     await page.goto('/admin/result-reviews')
+    await expect(page.getByRole('heading', { name: 'Result Reviews' })).toBeVisible()
+    await gotoReviewPage(page, adminToken, review.id)
 
     const dialog = await openReviewDetail(page, scenario.matchId)
 
@@ -476,13 +522,78 @@ test.describe('Admin result reviews', () => {
     await expect(page.locator('.v-snackbar').getByText('Result rejected')).toBeVisible()
     await expect(dialog).toBeHidden()
     await expect(
-      page.locator('.v-data-table tbody tr').filter({ hasText: scenario.matchId.slice(0, 8) }),
+      reviewRow(page, scenario.matchId),
     ).toHaveCount(0)
 
     const resolved = await getReview(adminToken, review.id)
     expect(resolved.status).toBe('rejected')
     expect(resolved.admin_notes).toBe(notes)
     expect(resolved.reviewed_at).not.toBeNull()
+  })
+
+  /**
+   * COVERAGE-PLAN.md §9b **P-43** — the pagination-blindness defect class.
+   *
+   * `useResultReviewsStore.fetchReviews` sent NO pagination parameters, so it
+   * got the API default of 20; the adapter orders `created_at ASC`
+   * (api/crates/portal-db/src/adapters/result_review.rs:193); and the page
+   * rendered no pager. Once twenty reviews were pending, every review raised
+   * after them was permanently unreachable — an admin could never act on a new
+   * one, and the queue could never drain below twenty from the UI.
+   *
+   * The fix passes explicit `page`/`per_page` and renders a `v-pagination`. This
+   * test seeds the queue past one page and demands that the newest review be
+   * reachable through it.
+   */
+  test('a review beyond the first page is reachable through the pager', async ({ page }) => {
+    test.setTimeout(600_000)
+
+    // Fill the queue to a comfortable margin over one page BEFORE creating the
+    // review under test, so its rank stays past row 20 even if the sibling
+    // tests in this file resolve a couple of reviews while this one runs.
+    const MIN_BACKLOG = 24
+    let backlog = (await listPendingReviews(adminToken)).length
+    while (backlog < MIN_BACKLOG) {
+      await createPendingAdminReview(adminToken)
+      backlog += 1
+    }
+
+    const { scenario, review } = await createPendingAdminReview(adminToken)
+
+    // Where the queue's own ordering puts it, read back from the API.
+    const queue = await listPendingReviews(adminToken)
+    const rank = queue.findIndex((r) => r.id === review.id) + 1
+    expect(rank, 'the seeded review must be in the pending queue').toBeGreaterThan(0)
+    expect(
+      rank,
+      'the review must sit past the first page or this test proves nothing',
+    ).toBeGreaterThan(20)
+    const targetPage = Math.ceil(rank / 20)
+
+    await loginAsAdmin(page)
+    await page.goto('/admin/result-reviews')
+    await expect(page.getByRole('heading', { name: 'Result Reviews' })).toBeVisible()
+
+    // Page 1 holds the twenty OLDEST reviews and does not hold this one — the
+    // state the old page was permanently stuck in.
+    await expect(page.locator('.v-data-table tbody tr').first()).toBeVisible()
+    await expect(reviewRow(page, scenario.matchId)).toHaveCount(0)
+    await expect(page.getByTestId('review-queue-count')).toContainText('page 1 of')
+
+    await page.getByRole('button', { name: `Go to page ${targetPage}` }).click()
+
+    const row = reviewRow(page, scenario.matchId)
+    await expect(row).toHaveCount(1)
+    await expect(row).toBeVisible()
+    await expect(page.getByTestId('review-queue-count')).toContainText(`page ${targetPage} of`)
+
+    // And it is a working row, not just a rendered one: it opens the decision
+    // dialog the admin has to act in.
+    await row.getByRole('button', { name: 'View review' }).click()
+    const dialog = page.getByRole('dialog').filter({ hasText: 'Result Review' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByText(scenario.matchId, { exact: true })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: 'Approve Result' })).toBeVisible()
   })
 
   test('the review queue is admin-only', async () => {

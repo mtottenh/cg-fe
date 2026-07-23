@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { getAdminToken } from './fixtures/auth.fixture'
 import { uniqueId } from './fixtures/test-data'
 import {
+  createDraftTournament,
   createOpenRegistrationTournament,
   registerPlayer,
   approveRegistration,
@@ -164,10 +165,10 @@ test.describe('Tournament Public Flows', () => {
     test('should narrow the grid to matching tournaments when searching by name', async ({ page }) => {
       await page.goto('/tournaments')
 
-      // The grid filters client-side over the fetched page
-      // (TournamentsPage.vue:203-211 `filteredTournaments`), so drive the
-      // query off a name that is actually on screen rather than one seeded
-      // tournament that may not be on page 1.
+      // Search is a server-side `?search=` since the P-28 fix. This test is
+      // about the grid NARROWING, so it drives the query off a name that is
+      // already on screen; the "can it reach past page 1" half is the dedicated
+      // test below.
       const cardTitles = page.locator('.tournament-card h3')
       await expect(cardTitles.first()).toBeVisible()
       const targetName = ((await cardTitles.first().textContent()) ?? '').trim()
@@ -186,6 +187,79 @@ test.describe('Tournament Public Flows', () => {
         ).length
       await expect.poll(nonMatching).toBe(0)
       expect((await cardTitles.allTextContents()).length).toBeGreaterThan(0)
+    })
+
+    /**
+     * COVERAGE-PLAN.md §9b **P-28** — the pagination-blindness defect class.
+     *
+     * `fetchData` used to send only `page`/`per_page`, and search, game, status
+     * and every tab filtered the twenty rows that request happened to return.
+     * Typing a tournament's EXACT name therefore returned "No Tournaments
+     * Found" whenever that tournament sat past row 20 — which, on a list
+     * ordered `starts_at DESC NULLS LAST`, is where every undated tournament
+     * lives. The fix pushes `search` (and `game_id`/`status`) into the query
+     * the API already accepts.
+     *
+     * The test seeds its own hay so it does not depend on how full the database
+     * happens to be, and asserts the precondition through the API: if the
+     * target were on page 1, the search would prove nothing.
+     */
+    test('should find a tournament by exact name when it is past the first page', async ({
+      page,
+    }) => {
+      test.setTimeout(120_000)
+      const adminToken = await getAdminToken()
+      const suffix = uniqueId()
+      const targetName = `E2E Deep Search Target ${suffix}`
+
+      // The needle: no `starts_at`, so the API's ORDER BY puts it in the NULLS
+      // LAST bucket, behind every dated tournament.
+      const target = await createDraftTournament(adminToken, {
+        name: targetName,
+        slug: `e2e-deep-search-${suffix}`,
+      })
+      await transitionTournament(adminToken, target.id, 'publish')
+
+      // The haystack: a full page and a bit of dated tournaments, all of which
+      // sort ahead of the needle. 25 > the API's default page size of 20.
+      for (let i = 0; i < 25; i++) {
+        const decoy = await createDraftTournament(adminToken, {
+          name: `E2E Deep Search Filler ${suffix} ${i}`,
+          slug: `e2e-deep-search-filler-${suffix}-${i}`,
+        })
+        await pinToTopOfTournamentList(adminToken, decoy.id)
+      }
+
+      // Precondition: the needle really is unreachable on page 1.
+      const firstPage = await fetch(`${API_URL}/v1/tournaments?page=1&per_page=20`)
+      const firstPageIds = (
+        (await firstPage.json()) as { data: Array<{ id: string }> }
+      ).data.map((t) => t.id)
+      expect(firstPageIds).toHaveLength(20)
+      expect(
+        firstPageIds,
+        'the target must be off the first page or this test proves nothing',
+      ).not.toContain(target.id)
+
+      await page.goto('/tournaments')
+      await expect(page.locator('.tournament-card').first()).toBeVisible()
+      await expect(tournamentCard(page, targetName)).toHaveCount(0)
+
+      // Armed before typing so the request can be inspected afterwards; the
+      // user-visible assertion is the one immediately below it.
+      const searchRequest = page.waitForRequest(
+        (req) => req.url().includes('/v1/tournaments?') && req.url().includes('search='),
+      )
+      await page.getByRole('textbox', { name: 'Search tournaments...' }).fill(targetName)
+
+      const card = tournamentCard(page, targetName)
+      await expect(card).toHaveCount(1)
+      await expect(card).toBeVisible()
+
+      // ...and it got there by asking the API, not by sieving a page already in
+      // memory, which is precisely what the bug was.
+      const sent = new URL((await searchRequest).url()).searchParams
+      expect(sent.get('search')).toBe(targetName)
     })
 
     test('should show empty state when no tournaments match filter', async ({ page }) => {

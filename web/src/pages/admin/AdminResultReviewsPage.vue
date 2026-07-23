@@ -6,6 +6,9 @@
         <p class="text-subtitle-1 text-medium-emphasis">
           Reviews flagged by demo validation requiring admin attention
         </p>
+        <p class="text-caption text-medium-emphasis" data-testid="review-queue-count">
+          {{ store.total }} pending · page {{ store.page }} of {{ store.totalPages }}
+        </p>
       </div>
       <v-btn
         color="primary"
@@ -25,6 +28,9 @@
           :headers="headers"
           :items="store.reviews"
           :loading="store.fetchReviewsState.loading"
+          :items-per-page="-1"
+          hide-default-footer
+          :row-props="rowProps"
           density="comfortable"
           @click:row="(_: Event, { item }: any) => openDetail(item)"
           hover
@@ -82,6 +88,20 @@
       </div>
     </v-card>
 
+    <!--
+      Server-side pager. The queue is ordered `created_at ASC`, so without this
+      the twenty OLDEST pending reviews were the only ones an admin could ever
+      see and every review raised after them was unreachable (P-43).
+    -->
+    <div v-if="store.totalPages > 1" class="d-flex justify-center mt-6">
+      <v-pagination
+        v-model="page"
+        :length="store.totalPages"
+        :total-visible="7"
+        rounded
+      />
+    </div>
+
     <!-- Detail Modal -->
     <ResultReviewDetailModal
       v-model="detailModalOpen"
@@ -93,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useResultReviewsStore, getReviewStatusColor, getReviewStatusLabel } from '@/stores/resultReviews'
 import type { ResultReviewSummaryResponse } from '@/stores/resultReviews'
 import ResultReviewDetailModal from '@/components/admin/ResultReviewDetailModal.vue'
@@ -114,13 +134,34 @@ const headers = [
   { title: '', key: 'actions', width: '60px', sortable: false },
 ]
 
+const page = ref(1)
+
+/**
+ * The Match column prints `match_id.slice(0, 8)`, and those ids are UUID v7 —
+ * the first eight characters are a TIMESTAMP, so two matches created seconds
+ * apart share them. Anything identifying a row by that prefix (tests included)
+ * can match the wrong row. Carry the full ids as attributes instead.
+ */
+function rowProps({ item }: { item: ResultReviewSummaryResponse }) {
+  return { 'data-match-id': item.match_id, 'data-review-id': item.id }
+}
+
 async function loadReviews() {
   try {
-    await store.fetchReviews()
+    await store.fetchReviews({ page: page.value })
+    // Approving/rejecting the last row of the last page shrinks the queue; step
+    // back rather than leaving the admin on an empty page they cannot leave.
+    if (page.value > store.totalPages) {
+      page.value = store.totalPages
+    }
   } catch {
     snackbar.show('Failed to load reviews', 'error')
   }
 }
+
+watch(page, () => {
+  loadReviews()
+})
 
 function openDetail(review: ResultReviewSummaryResponse) {
   selectedReviewId.value = review.id

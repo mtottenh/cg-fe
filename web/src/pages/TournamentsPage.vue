@@ -89,7 +89,7 @@
     <ErrorAlert :error="error" retryable @clear="clearError" @retry="fetchData" />
 
     <!-- Initial Load Skeleton -->
-    <v-row v-if="loading && tournaments.length === 0">
+    <v-row v-if="loading && filteredTournaments.length === 0">
       <v-col v-for="n in 8" :key="n" cols="12" sm="6" md="4" lg="3">
         <v-skeleton-loader type="card" />
       </v-col>
@@ -100,10 +100,10 @@
       v-else-if="filteredTournaments.length === 0"
       icon="mdi-tournament"
       title="No Tournaments Found"
-      :subtitle="tournaments.length === 0 ? 'Check back later for upcoming tournaments.' : 'No tournaments match your filters.'"
+      :subtitle="hasActiveFilters ? 'No tournaments match your filters.' : 'Check back later for upcoming tournaments.'"
     >
       <template #action>
-        <v-btn v-if="tournaments.length > 0" color="primary" variant="tonal" class="mt-4" @click="clearFilters">
+        <v-btn v-if="hasActiveFilters" color="primary" variant="tonal" class="mt-4" @click="clearFilters">
           Clear Filters
         </v-btn>
       </template>
@@ -130,7 +130,6 @@
         :length="totalPages"
         :total-visible="5"
         rounded
-        @update:model-value="fetchData"
       />
     </div>
   </v-container>
@@ -168,12 +167,30 @@ const filters = ref<{ game_id?: string; status?: string }>({
 })
 
 // Store-backed reactive refs
-const { tournaments, pagination } = storeToRefs(tournamentsStore)
 const { loading: tournamentsLoading, error } = storeToRefs(tournamentsStore)
 const { loading: gamesLoading } = storeToRefs(gamesStore)
 const loading = computed(() => tournamentsLoading.value || gamesLoading.value)
 const games = computed(() => gamesStore.games.filter((g) => g.status === 'active'))
-const totalPages = computed(() => pagination.value.total_pages || 1)
+
+/**
+ * The rows this page renders, and the page count that reaches the rest.
+ *
+ * These are page-local rather than `storeToRefs(tournamentsStore)` because a
+ * multi-status tab issues one request per status (see `fetchData`), and the
+ * store keeps only the LAST response. The merged result lives here.
+ */
+const items = ref<TournamentSummaryResponse[]>([])
+const totalPages = ref(1)
+
+const PER_PAGE = 20
+
+/**
+ * The generated status union, taken straight off the response DTO. Every status
+ * literal in this file is annotated with it, so a status that the backend does
+ * not have is a compile error instead of a filter that silently matches nothing
+ * (the P-19 failure mode).
+ */
+type TournamentStatus = TournamentSummaryResponse['status']
 
 /**
  * Statuses a tournament that has not started yet can be in.
@@ -193,18 +210,38 @@ const totalPages = computed(() => pagination.value.total_pages || 1)
  * `draft` is deliberately excluded: a draft is unpublished and must not be
  * advertised on a public tab.
  */
-const UPCOMING_TOURNAMENT_STATUSES = ['published', 'registration', 'scheduled']
+const UPCOMING_TOURNAMENT_STATUSES: TournamentStatus[] = ['published', 'registration', 'scheduled']
 
 /**
  * Terminal "it's over and there are results" statuses. `finalized` is the state
  * a tournament reaches after `completed` is verified, and it was missing here —
  * finalized tournaments vanished from the Completed tab.
  */
-const FINISHED_TOURNAMENT_STATUSES = ['completed', 'finalized']
+const FINISHED_TOURNAMENT_STATUSES: TournamentStatus[] = ['completed', 'finalized']
 
-// Values MUST be real backend statuses: the select feeds a strict equality
-// filter below, so a stale value silently yields zero results.
-const statusOptions = [
+/**
+ * Tab → the statuses the server must be asked for.
+ *
+ * Every tab predicate is a pure function of a single row, so restricting the
+ * QUERY to the tab's statuses and letting the server paginate is exactly
+ * equivalent to filtering the whole table — with the difference that every
+ * matching row is now reachable through the pager. Filtering an already-fetched
+ * page (what this page used to do) can only ever see 20 rows. See P-28.
+ */
+const TAB_STATUSES: Record<string, TournamentStatus[]> = {
+  all: [],
+  // `registration_open` is `status = registration` AND inside the registration
+  // window. The status half is the server's; the window half is refined below.
+  registration_open: ['registration'],
+  in_progress: ['in_progress'],
+  upcoming: UPCOMING_TOURNAMENT_STATUSES,
+  completed: FINISHED_TOURNAMENT_STATUSES,
+}
+
+// Values MUST be real backend statuses: the select feeds `?status=`, which the
+// API rejects with 400 for anything that is not a `TournamentStatus`. The
+// annotation makes a stale literal a compile error rather than a dead filter.
+const statusOptions: { value: TournamentStatus; label: string }[] = [
   { value: 'registration', label: 'Registration Open' },
   { value: 'scheduled', label: 'Starting Soon' },
   { value: 'in_progress', label: 'In Progress' },
@@ -213,52 +250,39 @@ const statusOptions = [
   { value: 'cancelled', label: 'Cancelled' },
 ]
 
-// Apply tab-based filtering
-const tabFilteredTournaments = computed(() => {
-  let result = tournaments.value
-
-  switch (activeTab.value) {
-    case 'registration_open':
-      // `is_registration_open` is the backend's own predicate: status is
-      // `registration` AND now is inside the registration window
-      // (portal-domain/src/entities/tournament.rs:109-129). It is strictly
-      // stronger than the `status === 'registration'` string compare this used
-      // to lean on, and it matches what gates the card's "Register Now" CTA.
-      result = result.filter((t) => t.is_registration_open)
-      break
-    case 'in_progress':
-      result = result.filter((t) => t.status === 'in_progress')
-      break
-    case 'upcoming':
-      result = result.filter((t) => UPCOMING_TOURNAMENT_STATUSES.includes(t.status))
-      break
-    case 'completed':
-      result = result.filter((t) => FINISHED_TOURNAMENT_STATUSES.includes(t.status))
-      break
-  }
-
-  return result
+/**
+ * The statuses to ask the server for, given the tab and the status select.
+ *
+ * `null` means "the tab and the select contradict each other" (e.g. the
+ * Completed tab with status=Registration Open): no row can satisfy both, so
+ * there is nothing to fetch.
+ */
+const serverStatuses = computed<TournamentStatus[] | null>(() => {
+  const tab = TAB_STATUSES[activeTab.value] ?? []
+  const selected = statusOptions.find((o) => o.value === filters.value.status)?.value
+  if (!selected) return tab
+  if (tab.length === 0) return [selected]
+  return tab.includes(selected) ? [selected] : null
 })
 
-// Apply search and other filters
-const filteredTournaments = computed(() => {
-  let result = tabFilteredTournaments.value
+const hasActiveFilters = computed(
+  () => Boolean(search.value) || Boolean(filters.value.game_id) || Boolean(filters.value.status) || activeTab.value !== 'all',
+)
 
-  if (search.value) {
-    const q = search.value.toLowerCase()
-    result = result.filter((t) => t.name.toLowerCase().includes(q) || t.slug.toLowerCase().includes(q))
-  }
-
-  if (filters.value.game_id) {
-    result = result.filter((t) => t.game_id === filters.value.game_id)
-  }
-
-  if (filters.value.status) {
-    result = result.filter((t) => t.status === filters.value.status)
-  }
-
-  return result
-})
+/**
+ * The only filtering left on the client, and the only one that is safe to do
+ * here: `is_registration_open` is the backend's own predicate — status is
+ * `registration` AND now is inside the registration window
+ * (portal-domain/src/entities/tournament.rs:109-129) — and it has no query
+ * parameter. It can only ever REMOVE rows from a page that the server already
+ * narrowed to `status = registration`, so no tournament becomes unreachable:
+ * every `registration` row still lands on exactly one page of the pager.
+ */
+const filteredTournaments = computed(() =>
+  activeTab.value === 'registration_open'
+    ? items.value.filter((t) => t.is_registration_open)
+    : items.value,
+)
 
 function clearFilters() {
   search.value = ''
@@ -274,24 +298,98 @@ function openTournament(tournament: TournamentSummaryResponse) {
   router.push({ name: 'tournament-detail', params: { slug: tournament.slug } })
 }
 
-async function fetchData() {
+/**
+ * Mirror the server's ordering (`ORDER BY starts_at DESC NULLS LAST,
+ * created_at DESC` — portal-db/src/adapters/tournament/tournament.rs:344) so a
+ * merged multi-status page reads the same way a single-status one does.
+ * `created_at` is not on the summary DTO, so name is the stable tie-break.
+ */
+function byStartsAtDesc(a: TournamentSummaryResponse, b: TournamentSummaryResponse): number {
+  if (a.starts_at && b.starts_at) {
+    if (a.starts_at !== b.starts_at) return a.starts_at < b.starts_at ? 1 : -1
+    return a.name.localeCompare(b.name)
+  }
+  if (a.starts_at) return -1
+  if (b.starts_at) return 1
+  return a.name.localeCompare(b.name)
+}
+
+// Requests are serialised and stamped: two overlapping fetches would otherwise
+// interleave their reads of the store's shared `pagination`, and a slow one
+// could overwrite a newer result.
+let fetchQueue: Promise<void> = Promise.resolve()
+let fetchToken = 0
+
+function fetchData(): Promise<void> {
+  const run = fetchQueue.then(runFetch, runFetch)
+  fetchQueue = run.catch(() => {})
+  return run
+}
+
+async function runFetch(): Promise<void> {
+  const token = ++fetchToken
+  const statuses = serverStatuses.value
+
+  if (statuses === null) {
+    items.value = []
+    totalPages.value = 1
+    return
+  }
+
+  // The API's `status` filter takes exactly ONE status
+  // (portal-api/src/handlers/tournaments/lifecycle.rs:229), so a tab that spans
+  // several is issued as one request per status at the same page number and the
+  // responses are merged. Page N of the tab is therefore page N of each status;
+  // that is not a globally sorted page, but it is exhaustive — every row shows
+  // up on exactly one page, which is the property the pager needs.
+  const queries: Array<{ status?: TournamentStatus }> =
+    statuses.length > 0 ? statuses.map((status) => ({ status })) : [{}]
+
+  const merged = new Map<string, TournamentSummaryResponse>()
+  let pages = 1
+
   try {
-    await Promise.all([
-      tournamentsStore.fetchTournaments({
+    for (const query of queries) {
+      const rows = await tournamentsStore.fetchTournaments({
+        ...query,
+        game_id: filters.value.game_id || undefined,
+        search: search.value || undefined,
         page: page.value,
-        per_page: 20,
-      }),
-      gamesStore.fetchGames(),
-    ])
+        per_page: PER_PAGE,
+      })
+      if (token !== fetchToken) return
+      for (const row of rows) merged.set(row.id, row)
+      pages = Math.max(pages, tournamentsStore.pagination.total_pages || 1)
+    }
   } catch {
-    // Errors are captured in stores
+    // Surfaced through the store's `error`, which drives <ErrorAlert>.
+    return
+  }
+
+  items.value = [...merged.values()].sort(byStartsAtDesc)
+  totalPages.value = pages
+}
+
+/**
+ * Any filter change resets to page 1 and refetches. Search is debounced so a
+ * burst of keystrokes costs one request.
+ */
+let searchDebounce: ReturnType<typeof setTimeout> | undefined
+
+function refetchFromFirstPage() {
+  if (page.value !== 1) {
+    page.value = 1 // the `page` watcher fetches
+  } else {
+    fetchData()
   }
 }
 
-// Refetch when tab changes (for server-side filtering in the future)
-watch(activeTab, () => {
-  page.value = 1
+watch(search, () => {
+  if (searchDebounce) clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(refetchFromFirstPage, 300)
 })
+
+watch([activeTab, filters], refetchFromFirstPage, { deep: true })
 
 // Push UI state into the URL.
 watch([search, activeTab, page, filters], () => {
@@ -328,6 +426,11 @@ watch(page, () => {
 })
 
 onMounted(() => {
+  // Games only feed the filter select, so they are fetched once — not on every
+  // keystroke-triggered refetch.
+  gamesStore.fetchGames().catch(() => {
+    // Surfaced through the games store's own error state.
+  })
   fetchData()
 })
 </script>

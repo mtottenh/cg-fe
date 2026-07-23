@@ -65,9 +65,9 @@ action), P-41 (two create-team forms disagree on validation).
 
 | Gap | Why it matters |
 |---|---|
-| `LeagueDetailPage.handleJoinLeague` / `handleApplyToLeague` | join paths — the entry point to everything |
-| `TeamDetailPage.handleApplyToTeam` / `handleCancelInvitation` | the other half of joining |
-| `CaptainActions*` widget/bell/item + store + composable | whole captain workflow surface, zero coverage |
+| ~~`LeagueDetailPage.handleJoinLeague` / `handleApplyToLeague`~~ ✅ `efbb45b` | covered, one test per access_type |
+| ~~`TeamDetailPage.handleApplyToTeam` / `handleCancelInvitation`~~ ✅ `efbb45b` | covered |
+| ~~`CaptainActions*` widget/bell/item + store + composable~~ ✅ `efbb45b` | covered incl. the visibilitychange refresh |
 | `AdminGamesPage` enable/disable | disabling a game is high-blast-radius |
 | `StagesTab.handleCreateStage` | tournament structure creation |
 | `AdminDemoDetailPage`, `DemoBrowser` | demo pipeline admin — and P-42 just showed it was broken |
@@ -533,7 +533,13 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 47 found · **30 fixed** · 17 open.
+**Status:** 50 found · **30 fixed** · 20 open.
+
+Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
+
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-47, P-48, P-49, P-50, P-28, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
+deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
+them in isolation.
 
 Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
 
@@ -600,6 +606,9 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-27 | `invite_only` tournaments accept anyone | trust | **fixed** `c3e0949` |
 | P-46 | invite-only refusal: 403 tournaments vs 400 leagues | inconsistent | open |
 | P-47 | **No frontend invite-only awareness; no organiser invite UI** | feature unusable | open |
+| P-48 | User cannot see their own pending league application | user-facing | open |
+| P-49 | Captain cannot approve a join request from the team page | blocks flow | open |
+| P-50 | **Result auto-confirms in 15min; opponent never notified** | **integrity/trust** | open |
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | open |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | **fixed** `8ce0f0a` |
 | P-30 | Season edit Save disabled when max_teams is null | user-facing | **fixed** `9816346` |
@@ -1382,6 +1391,56 @@ tests to never leave a form dirty.
   Sighted users were unaffected (the visible `title` was correct), which is exactly why it
   survived.
 - ✅ **FIXED** in `fbe1500`. Found because a test clicked "Delete role" and got the edit dialog.
+
+---
+
+### P-50 — A result auto-confirms in 15 minutes against an opponent who is NEVER told  ⚠️⚠️ integrity/trust
+- **Symptom:** submitting a result produces **no action item for the opponent**, yet a
+  15-minute auto-confirm clock starts immediately. Observed live: after P1 submitted, P2's
+  Action Items widget vanished entirely.
+- **Root cause — a status nothing ever sets.** The `confirm_result` action item requires
+  `mm.status = 'awaiting_result'` (`portal-db/src/repositories/action_item.rs:176`), but
+  **`AwaitingResult` is never assigned anywhere in the product.** Verified: it appears only in
+  `portal-core/src/types/tournament.rs` — the enum, its predicates, and its own tests. No
+  service or handler sets it. `submit_claim`
+  (`portal-domain/src/services/tournament/result.rs:222-245`) leaves the match `in_progress`,
+  and the `submit_result` action item is suppressed once a pending claim exists.
+- **Why it matters:** `auto_confirm_at` is now+15min (`result.rs:125`) and the background
+  sweeper confirms it (`portal-api/src/background/mod.rs:424-440`). **A player can submit a
+  false score and have it become official in 15 minutes while their opponent has no
+  in-product signal that anything happened.**
+- [ ] Either transition the match to `awaiting_result` on claim submission (the state exists
+      and the whole lifecycle expects it), or key the action item off the pending claim rather
+      than the match status.
+- [ ] Reconsider a 15-minute silent window even once notification works.
+
+---
+
+### P-48 — A user can never see their own pending league application
+- `find_pending_by_user` filters `invitation_type = 'invite'`
+  (`portal-db/src/adapters/league.rs:747`), so `GET /v1/users/me/league-invitations` returns
+  `[]` for applications. Verified live: apply → 201, then list → `[]`.
+- Consequently `myApplications` (`src/stores/leagues.ts:162`) is permanently empty,
+  `hasPendingApplicationForLeague` (`:173`) permanently false, and the
+  *"Your application is pending review by a league admin."* branch
+  (`src/pages/LeagueDetailPage.vue:99-102`) is **unreachable dead code**.
+- **User-visible effect:** they keep seeing *Apply to Join*; clicking again returns
+  409 "You already have a pending application" (verified live).
+- [ ] Return applications too (or add a dedicated endpoint) and revive the pending branch.
+
+---
+
+### P-49 — A captain cannot approve a join request from their own team page
+- `GET /v1/league-team-seasons/{id}/invitations` returns invites **and** requests (no
+  `invitation_type` filter — `portal-db/src/adapters/league_team/invitation.rs:122`), but
+  `src/pages/TeamDetailPage.vue:102-141` renders every row identically under **"Pending
+  Invitations"** with a single *Cancel Invitation* ✕.
+- So a player's application is **mislabelled as an invitation the captain sent**, and the
+  captain's only affordance **rejects** it. `acceptApplication`
+  (`src/stores/leagueTeams.ts:240`) is wired only from the site-admin modal.
+- Same family as **P-12** (no captain entry point) — captain-facing gaps in a flow that works
+  for admins.
+- [ ] Split requests from invitations in the UI and give the captain accept/decline.
 
 ---
 

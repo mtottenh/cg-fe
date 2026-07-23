@@ -533,7 +533,13 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 50 found · **30 fixed** · 20 open.
+**Status:** 52 found · **32 fixed** · 20 open.
+
+Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-52, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
+
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-51, P-48, P-49, P-50, P-28, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
+deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
+them in isolation.
 
 Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
 
@@ -605,7 +611,9 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-26 | "Sub can't face own team" never enforced | integrity | open |
 | P-27 | `invite_only` tournaments accept anyone | trust | **fixed** `c3e0949` |
 | P-46 | invite-only refusal: 403 tournaments vs 400 leagues | inconsistent | open |
-| P-47 | **No frontend invite-only awareness; no organiser invite UI** | feature unusable | open |
+| P-47 | **No frontend invite-only awareness; no organiser invite UI** | feature unusable | **fixed** `616a2d6` |
+| P-51 | Invitee cannot read own invite state (gate is soft) | design gap | open |
+| P-52 | Duplicate `operationId` broke the generated client | build | **fixed** `098832a` |
 | P-48 | User cannot see their own pending league application | user-facing | open |
 | P-49 | Captain cannot approve a join request from the team page | blocks flow | open |
 | P-50 | **Result auto-confirms in 15min; opponent never notified** | **integrity/trust** | open |
@@ -1073,6 +1081,8 @@ tests to never leave a form dirty.
 ---
 
 ### P-47 — The frontend has no invite-only awareness at all
+- ✅ **FIXED** — api `098832a`, web `616a2d6`. Organiser panel (`TournamentInvitationsModal.vue`, opened from `OrganizerToolbar`) issues/lists/revokes; teams are picked from the season roster rather than pasted as UUIDs (and it requests `per_page: 100`, consciously avoiding the P-28 family). `canRegister` no longer returns true for `invite_only`; the card explains the precondition. Precedence preserved: "No Eligible Teams", "Registration Opens Soon" and an existing registration still outrank the gate.
+- ⚠️ **Not a hard block** — see **P-51**: the client has no way to read its own invitation state.
 - **`TournamentRegistrationCard.canRegister`
   (`src/components/tournament/TournamentRegistrationCard.vue:143-148`) keys only off
   `is_registration_open`**, so an uninvited captain is still shown "Register Team" and only
@@ -1441,6 +1451,40 @@ tests to never leave a form dirty.
 - Same family as **P-12** (no captain entry point) — captain-facing gaps in a flow that works
   for admins.
 - [ ] Split requests from invitations in the UI and give the captain accept/decline.
+
+---
+
+### P-51 — An invitee cannot learn their own invitation state (invite-only is unblockable client-side)
+- All three tournament-invitation endpoints require `tournament.participants.manage`
+  (`portal-api/src/handlers/tournaments/registration.rs:118,180,225`) and no field on
+  `TournamentResponse` carries the viewer's invitation. **The frontend cannot distinguish an
+  invited captain from an uninvited one.**
+- **Consequence for P-47:** the uninvited captain is now warned *before* submitting (the
+  unconditional CTA is gone, replaced by a stated precondition), but the affordance **cannot be
+  a hard block** — the final refusal is still the API's 403. The e2e asserts that residual
+  behaviour explicitly rather than papering over it.
+- Leagues have the invitee-side view tournaments lack (`GET /v1/users/me/league-invitations`) —
+  the same asymmetry as **P-48**.
+- **Cheapest fix, no new route:** self-scope the existing `GET .../invitations` so a
+  non-organiser caller receives only rows targeting them. ⚠️ Note
+  `tests/integration/tournaments/registration.rs:995` currently asserts **403** there, so this
+  is a deliberate design reversal to make consciously, not a slip-in.
+- [ ] Decide and implement; then make the registration gate a true block.
+
+---
+
+### P-52 — Duplicate `operationId` produced a generated client that would not compile
+- `leagues::list_invitations` and `tournaments::list_invitations` both defaulted their
+  `operationId` to the handler name (utoipa derives it from the function name). The spec served
+  fine and every test passed, but `openapi-typescript` emitted
+  `TS2300: Duplicate identifier 'list_invitations'` — so **the invitation endpoints shipped in
+  `c3e0949` could not be typed at all**.
+- **Why it hid:** P-27 deliberately skipped regenerating `src/api/types.ts` because nothing
+  called the endpoints yet. The breakage lands on whoever regenerates next — which was P-47.
+- ✅ **FIXED** (`098832a`) with an explicit `operation_id`, and **the class is now guarded**
+  (`c5ea9e5`): a test walks all 266 operations and fails on any collision, naming the
+  offenders. Proven to fail on a reintroduced collision.
+- **Lesson:** "regenerate later" defers a *latent* breakage rather than avoiding one.
 
 ---
 

@@ -336,7 +336,16 @@ async function resolveSeasonFromLeague(leagueId: string): Promise<string | null>
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   )
   // Active seasons are the most likely home for the roster being looked at.
-  ranked.sort((a, b) => Number(b.status === 'in_progress') - Number(a.status === 'in_progress'))
+  //
+  // This compared against 'in_progress', which is NOT a season status (that is a
+  // TOURNAMENT status). SeasonStatus is draft|registration|active|playoffs|
+  // completed|cancelled, so both sides were always false, the sort key was always
+  // 0, and the prioritisation silently did nothing — leaving only "3 most recently
+  // created", so a team's roster was unreachable whenever its live season was not
+  // among the 3 newest. Found by the compiler once SeasonStatus became a real
+  // union (P-33). `playoffs` counts as live too.
+  const isLive = (s: (typeof ranked)[number]) => s.status === 'active' || s.status === 'playoffs'
+  ranked.sort((a, b) => Number(isLive(b)) - Number(isLive(a)))
   for (const season of ranked.slice(0, 3)) {
     const seasonTeams = await teamsStore.fetchTeamsInSeason(season.id).catch(() => [])
     const entry = seasonTeams.find((t) => t.team_id === teamId.value)

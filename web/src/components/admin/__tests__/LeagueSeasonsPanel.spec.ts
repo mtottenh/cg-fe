@@ -96,7 +96,14 @@ describe('LeagueSeasonsPanel roster-lock column', () => {
     // drifting away from the backend's vocabulary. For a control whose job is to
     // report that mutations are BLOCKED, an unknown state must not read as
     // "everything is permitted" — see src/utils/rosterLock.ts.
-    const w = mountPanel([makeSeason({ roster_lock_status: 'locked' })])
+    // The cast is deliberate and is the POINT of the test. Since P-31,
+    // `roster_lock_status` is the union 'open'|'soft_lock'|'hard_lock', so a
+    // drifted literal no longer type-checks — which is the fix working. But the
+    // server can still send something this client has never heard of (an older
+    // build, a newly added variant), and that is exactly the case this asserts.
+    // Casting here keeps the runtime guarantee under test without weakening the
+    // type anywhere in application code.
+    const w = mountPanel([makeSeason({ roster_lock_status: 'locked' as never })])
     expect(rosterCellText(w)).toBe('Roster Locked')
   })
 

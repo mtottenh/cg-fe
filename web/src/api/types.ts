@@ -5821,13 +5821,13 @@ export interface components {
                 registration_end?: string | null;
                 /** Format: date-time */
                 registration_start?: string | null;
-                roster_lock_status: string;
+                roster_lock_status: components["schemas"]["RosterLockStatus"];
                 /** Format: date-time */
                 season_end?: string | null;
                 /** Format: date-time */
                 season_start?: string | null;
                 slug: string;
-                status: string;
+                status: components["schemas"]["SeasonStatus"];
                 /** Format: int32 */
                 team_size_max?: number | null;
                 /** Format: int32 */
@@ -5857,7 +5857,7 @@ export interface components {
                 responded_at?: string | null;
                 response_message?: string | null;
                 role: string;
-                status: string;
+                status: components["schemas"]["LeagueTeamInvitationStatus"];
                 team_season_id: string;
             };
             /** @description Response metadata. */
@@ -5879,7 +5879,7 @@ export interface components {
                 position?: string | null;
                 role: string;
                 season_id: string;
-                status: string;
+                status: components["schemas"]["LeagueTeamMemberStatus"];
                 team_season_id: string;
             };
             /** @description Response metadata. */
@@ -5902,7 +5902,7 @@ export interface components {
                 owner_player_id: string;
                 primary_color?: string | null;
                 secondary_color?: string | null;
-                status: string;
+                status: components["schemas"]["LeagueTeamStatus"];
                 tag: string;
                 /** Format: date-time */
                 updated_at: string;
@@ -5933,7 +5933,7 @@ export interface components {
                 season_id: string;
                 /** Format: int32 */
                 seed?: number | null;
-                status: string;
+                status: components["schemas"]["LeagueTeamSeasonStatus"];
                 team_id: string;
                 /** Format: date-time */
                 updated_at: string;
@@ -7609,13 +7609,13 @@ export interface components {
                 registration_end?: string | null;
                 /** Format: date-time */
                 registration_start?: string | null;
-                roster_lock_status: string;
+                roster_lock_status: components["schemas"]["RosterLockStatus"];
                 /** Format: date-time */
                 season_end?: string | null;
                 /** Format: date-time */
                 season_start?: string | null;
                 slug: string;
-                status: string;
+                status: components["schemas"]["SeasonStatus"];
                 /** Format: int32 */
                 team_size_max?: number | null;
                 /** Format: int32 */
@@ -7644,7 +7644,7 @@ export interface components {
                 responded_at?: string | null;
                 response_message?: string | null;
                 role: string;
-                status: string;
+                status: components["schemas"]["LeagueTeamInvitationStatus"];
                 team_season_id: string;
             }[];
             /** @description Response metadata. */
@@ -7669,7 +7669,7 @@ export interface components {
                 role: string;
                 season_id: string;
                 season_name: string;
-                status: string;
+                status: components["schemas"]["LeagueTeamInvitationStatus"];
                 team_id: string;
                 team_logo_url?: string | null;
                 team_name: string;
@@ -7694,7 +7694,7 @@ export interface components {
                 player_id: string;
                 position?: string | null;
                 role: string;
-                status: string;
+                status: components["schemas"]["LeagueTeamMemberStatus"];
                 team_season_id: string;
             }[];
             /** @description Response metadata. */
@@ -7913,8 +7913,8 @@ export interface components {
                 role: string;
                 season_id: string;
                 season_name: string;
-                season_status: string;
-                status: string;
+                season_status: components["schemas"]["SeasonStatus"];
+                status: components["schemas"]["LeagueTeamMemberStatus"];
                 team_id: string;
                 team_logo_url?: string | null;
                 team_name: string;
@@ -9933,13 +9933,13 @@ export interface components {
             registration_end?: string | null;
             /** Format: date-time */
             registration_start?: string | null;
-            roster_lock_status: string;
+            roster_lock_status: components["schemas"]["RosterLockStatus"];
             /** Format: date-time */
             season_end?: string | null;
             /** Format: date-time */
             season_start?: string | null;
             slug: string;
-            status: string;
+            status: components["schemas"]["SeasonStatus"];
             /** Format: int32 */
             team_size_max?: number | null;
             /** Format: int32 */
@@ -9964,9 +9964,14 @@ export interface components {
             responded_at?: string | null;
             response_message?: string | null;
             role: string;
-            status: string;
+            status: components["schemas"]["LeagueTeamInvitationStatus"];
             team_season_id: string;
         };
+        /**
+         * @description Status of a league team invitation.
+         * @enum {string}
+         */
+        LeagueTeamInvitationStatus: "pending" | "accepted" | "declined" | "expired" | "cancelled";
         /** @description Response DTO for a league team invitation with team context. */
         LeagueTeamInvitationWithTeamResponse: {
             /** Format: date-time */
@@ -9985,7 +9990,7 @@ export interface components {
             role: string;
             season_id: string;
             season_name: string;
-            status: string;
+            status: components["schemas"]["LeagueTeamInvitationStatus"];
             team_id: string;
             team_logo_url?: string | null;
             team_name: string;
@@ -10006,9 +10011,14 @@ export interface components {
             position?: string | null;
             role: string;
             season_id: string;
-            status: string;
+            status: components["schemas"]["LeagueTeamMemberStatus"];
             team_season_id: string;
         };
+        /**
+         * @description Status of a league team member.
+         * @enum {string}
+         */
+        LeagueTeamMemberStatus: "active" | "inactive" | "left" | "removed";
         /** @description Response DTO for a league team member with player details. */
         LeagueTeamMemberWithPlayerResponse: {
             avatar_url?: string | null;
@@ -10023,7 +10033,7 @@ export interface components {
             player_id: string;
             position?: string | null;
             role: string;
-            status: string;
+            status: components["schemas"]["LeagueTeamMemberStatus"];
             team_season_id: string;
         };
         /** @description Response DTO for a league team (persistent identity). */
@@ -10041,7 +10051,7 @@ export interface components {
             owner_player_id: string;
             primary_color?: string | null;
             secondary_color?: string | null;
-            status: string;
+            status: components["schemas"]["LeagueTeamStatus"];
             tag: string;
             /** Format: date-time */
             updated_at: string;
@@ -10067,11 +10077,26 @@ export interface components {
             season_id: string;
             /** Format: int32 */
             seed?: number | null;
-            status: string;
+            status: components["schemas"]["LeagueTeamSeasonStatus"];
             team_id: string;
             /** Format: date-time */
             updated_at: string;
         };
+        /**
+         * @description Status of a team's participation in a season.
+         *
+         *     This tracks the team's status within a specific season (forming roster,
+         *     competing, eliminated, etc.)
+         * @enum {string}
+         */
+        LeagueTeamSeasonStatus: "forming" | "pending" | "registered" | "active" | "eliminated" | "disqualified" | "withdrawn";
+        /**
+         * @description Status of a league team (persistent identity).
+         *
+         *     This is the status of the team entity itself, not its seasonal participation.
+         * @enum {string}
+         */
+        LeagueTeamStatus: "active" | "inactive" | "disbanded";
         /** @description Summary response for listing teams in a season. */
         LeagueTeamSummaryResponse: {
             /** Format: int64 */
@@ -10095,7 +10120,7 @@ export interface components {
             team_size_max?: number | null;
             /** Format: int32 */
             team_size_min?: number | null;
-            team_status: string;
+            team_status: components["schemas"]["LeagueTeamStatus"];
             team_tag: string;
         };
         /** @description Combined response for team with season participation. */
@@ -10578,7 +10603,7 @@ export interface components {
                 team_size_max?: number | null;
                 /** Format: int32 */
                 team_size_min?: number | null;
-                team_status: string;
+                team_status: components["schemas"]["LeagueTeamStatus"];
                 team_tag: string;
             }[];
             /** @description Response metadata. */
@@ -10905,8 +10930,8 @@ export interface components {
             role: string;
             season_id: string;
             season_name: string;
-            season_status: string;
-            status: string;
+            season_status: components["schemas"]["SeasonStatus"];
+            status: components["schemas"]["LeagueTeamMemberStatus"];
             team_id: string;
             team_logo_url?: string | null;
             team_name: string;
@@ -11763,6 +11788,11 @@ export interface components {
             /** @description Permissions assigned to this role. */
             permissions: components["schemas"]["PermissionResponse"][];
         };
+        /**
+         * @description Roster lock status for a season.
+         * @enum {string}
+         */
+        RosterLockStatus: "open" | "soft_lock" | "hard_lock";
         /** @description Request to schedule a match. */
         ScheduleMatchRequest: {
             /**
@@ -11819,6 +11849,11 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * @description Status of a league season.
+         * @enum {string}
+         */
+        SeasonStatus: "draft" | "registration" | "active" | "playoffs" | "completed" | "cancelled";
         /** @description Individual seed assignment. */
         SeedAssignment: {
             /** @description Registration ID. */

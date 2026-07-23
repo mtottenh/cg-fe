@@ -22,12 +22,23 @@ import {
  * `ResultSubmissionPanel`, so it is either in the DOM or not, and `count()`
  * cannot hide a real failure the way the swallowed guard could. Callers
  * always await the panel being visible first.
+ *
+ * Returns the display name of the map that was chosen, so callers can assert
+ * the finished match reports back the same map. `null` when a veto already
+ * fixed the maps and no select was offered.
  */
-async function selectMapIfRequired(page: Page, panel: Locator, gameNumber = 1): Promise<void> {
+async function selectMapIfRequired(
+  page: Page,
+  panel: Locator,
+  gameNumber = 1,
+): Promise<string | null> {
   const mapSelect = panel.locator('.v-select').filter({ hasText: `Map for game ${gameNumber}` })
-  if ((await mapSelect.count()) === 0) return
+  if ((await mapSelect.count()) === 0) return null
   await mapSelect.click()
-  await page.getByRole('option').first().click()
+  const option = page.getByRole('option').first()
+  const label = (await option.innerText()).trim()
+  await option.click()
+  return label
 }
 
 /**
@@ -323,7 +334,7 @@ test.describe('Result Confirmation and Dispute UI', () => {
 })
 
 test.describe('Result Submission E2E', () => {
-  test('P1 submits scores via the UI, P2 confirms via the UI, match completes', async ({
+  test('P1 submits scores via the UI, P2 confirms via the UI, match completes with a per-map breakdown', async ({
     browser,
   }) => {
     test.setTimeout(180_000)
@@ -354,7 +365,11 @@ test.describe('Result Submission E2E', () => {
       const scoreInputs = panel.locator('input[type="number"]')
       await scoreInputs.first().fill('16')
       await scoreInputs.nth(1).fill('10')
-      await selectMapIfRequired(pageP1, panel)
+      const chosenMap = await selectMapIfRequired(pageP1, panel)
+      // The scenario tournament runs no veto, so the panel MUST have asked P1
+      // to name the map — that name is what the finished match has to report
+      // back below.
+      expect(chosenMap, 'the submission panel must ask P1 to pick a map').not.toBeNull()
 
       const submitResponse = pageP1.waitForResponse(
         (res) =>
@@ -400,6 +415,17 @@ test.describe('Result Submission E2E', () => {
       await expect(p2Header.getByText(/1\s*-\s*0/).first()).toBeVisible()
       await expect(pageP2.getByText('Opponent Submitted Result')).toHaveCount(0)
 
+      // P-1: the per-map breakdown is the primary artifact of a finished
+      // series, and it must carry the real map and the real map scoreline —
+      // 16:10 — not just the 1-0 series score already in the header. This
+      // could never render while `GET /matches/{id}/result` served pending
+      // claims only: completing the match deleted the very data the summary
+      // is gated on.
+      const p2Summary = pageP2.getByTestId('map-results-summary')
+      await expect(p2Summary).toBeVisible({ timeout: 15000 })
+      await expect(p2Summary).toContainText(chosenMap!)
+      await expect(p2Summary).toContainText(/16\s*:\s*10/)
+
       // Backend: match completed with P1 (participant 1, the 16) as winner.
       const completed = await getMatch(
         undefined,
@@ -417,6 +443,13 @@ test.describe('Result Submission E2E', () => {
       await expect(p1Header.getByText('Final').first()).toBeVisible({ timeout: 10000 })
       await expect(p1Header.getByText(/1\s*-\s*0/).first()).toBeVisible()
       await expect(pageP1.getByText('Awaiting Opponent Confirmation')).toHaveCount(0)
+
+      // ...and on a cold load of the completed match, not just the page that
+      // happened to be open when it finished.
+      const p1Summary = pageP1.getByTestId('map-results-summary')
+      await expect(p1Summary).toBeVisible({ timeout: 10000 })
+      await expect(p1Summary).toContainText(chosenMap!)
+      await expect(p1Summary).toContainText(/16\s*:\s*10/)
     } finally {
       await contextP1.close()
       await contextP2.close()

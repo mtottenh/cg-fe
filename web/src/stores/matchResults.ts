@@ -41,8 +41,15 @@ export const useMatchResultsStore = defineStore('matchResults', () => {
   // ==================== Result CRUD ====================
 
   /**
-   * Fetch the current pending result claim for a match.
-   * Returns null if no pending claim exists (which is a valid state).
+   * Fetch the current result claim for a match.
+   *
+   * "Current" is whichever claim speaks for the match right now: the pending
+   * claim while the series is live, and the confirmed claim once it has
+   * settled — so a completed match still resolves here and can show its
+   * per-map breakdown (P-1).
+   *
+   * Returns null when the match has neither (never claimed, or only
+   * disputed/superseded claims), which is a valid state.
    */
   async function fetchCurrentResult(matchId: string): Promise<ResultClaimResponse | null> {
     return withActionState(fetchCurrentResultState, async () => {

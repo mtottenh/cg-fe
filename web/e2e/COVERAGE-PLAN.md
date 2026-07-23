@@ -8,6 +8,77 @@ Tick the boxes as work lands. **Read "Ground rules" before changing any spec.**
 
 ---
 
+## 0. ▶ WHAT TO DO NEXT (prioritised, 2026-07-23)
+
+Derived from a verified audit of every open item — each was re-checked in source, not taken
+from this document's own state.
+
+### Tier 1 — do first (hard failures, small fixes)
+
+1. **P-29 · `GET /users/me/matches` 500s for EVERY caller.** `SELECT DISTINCT` ordering by a
+   `CASE` expression not in the select list; Postgres rejects it unconditionally. The
+   profile's Recent Matches card is permanently empty and the frontend *swallows* the error.
+   **Fix:** add the `CASE` to the select list (keep `DISTINCT` — the `OR` join genuinely
+   duplicates). Then un-swallow `fetchMyMatches`, and restore the `MatchHistoryList` e2e test
+   dropped for this. ~1 hour, and it un-blocks a shipped fix.
+2. **P-27 · `invite_only` tournaments accept anyone.** No invite check exists; the setting is
+   decorative while the *league* equivalent is enforced. An organiser running a closed event
+   gets no protection from the setting that promises it. Decide: real invite list, or remove
+   the variant as a false promise.
+3. **P-1 · per-map breakdown is dead on every finished match.** Its own comment calls it "the
+   primary artifact of a finished series". The render condition and the data source are
+   mutually exclusive: it needs `status === 'completed'` **and** a claim that the endpoint
+   only returns while `pending`.
+
+### Tier 2 — user-facing, same-day fixes
+
+4. **P-28 + P-43 · pagination blindness (one sweep, two sites).** `/tournaments` search only
+   sees the first 20 rows — an exact name past #20 returns nothing — and the review queue shows
+   only the oldest 20 forever. **Third instance of this family**; `global-setup` was the first.
+   Worth a codebase-wide grep for list calls that send no pagination.
+5. **P-38 · a league invitation never says which league it is for.** Two pending invites are
+   indistinguishable; accept/decline is a blind choice. Needs `league_name` on the DTO.
+6. **P-6 · confirm or kill.** Marked *suspected* since the first wave and never verified.
+
+### Tier 3 — the roster/lineup cluster: ONE decision retires SEVEN findings
+
+**P-14, P-15, P-16, P-18, P-23, P-25, P-26 are 39% of the open backlog and are all the same
+missing concept.** `api/docs/lineup-design.md` already contains the design, revised after the
+"subs may be any registered player" correction.
+
+Do **not** fix these individually — P-15 becomes structurally impossible under the redesign
+rather than fixed, and P-23/P-25/P-26 are unreachable until a lineup exists. The decision to
+make is §10 of that document (per-season substitute policy, appearance caps, forfeit
+semantics — the last is already settled as *forfeit*).
+
+⚠️ **P-25 is quietly the most serious open item in the whole register**: demo stats attribute
+by a bare global Steam-ID join with no eligibility predicate, so **a ringer's stats count**
+toward leaderboards and awards, and every rostered player is credited with matches they did
+not play. Pre-launch this is free to fix; post-launch the bad data is unfixable because
+lineups cannot be backfilled.
+
+### Tier 4 — minor / polish
+P-3, P-39 (admin can't see answered invitations), P-40 (decline confirmation on the wrong
+action), P-41 (two create-team forms disagree on validation).
+
+### Testing gaps — verified genuine, in priority order
+
+| Gap | Why it matters |
+|---|---|
+| `LeagueDetailPage.handleJoinLeague` / `handleApplyToLeague` | join paths — the entry point to everything |
+| `TeamDetailPage.handleApplyToTeam` / `handleCancelInvitation` | the other half of joining |
+| `CaptainActions*` widget/bell/item + store + composable | whole captain workflow surface, zero coverage |
+| `AdminGamesPage` enable/disable | disabling a game is high-blast-radius |
+| `StagesTab.handleCreateStage` | tournament structure creation |
+| `AdminDemoDetailPage`, `DemoBrowser` | demo pipeline admin — and P-42 just showed it was broken |
+| `AwardsTab.handleSaveEdit`, `SocialLinksEditor`, `AvailabilityOverridesManager`, `SteamTrackingCard`, `MapPoolPicker` | lower traffic |
+
+Also open: **§9 (10 items)** — tests whose *name* misrepresents what they verify, including one
+in `match-workflow.spec.ts` that asserts `hasText: 'ready'` and so was written to certify the
+raw enum; it survives only because Playwright matches case-insensitively.
+
+---
+
 ## 1. Why this exists
 
 `ResultDisputeModal.handleDispute` shipped a real defect — it fired a redundant

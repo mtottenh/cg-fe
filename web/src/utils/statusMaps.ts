@@ -233,8 +233,19 @@ export const leagueAccessTypeMap: StatusMap = {
   invite_only: { color: 'grey', label: 'Invite Only', icon: 'mdi-lock' },
 }
 
+// Values from `ResultReviewStatus` (portal-domain/src/entities/result_review.rs:24).
+// This map previously held `pending` -- which the backend CANNOT emit -- and omitted
+// pending_acknowledgment, pending_admin_review and acknowledged, so the admin table
+// and the modal chip both printed the raw enum. Same root cause as P-35, which gated
+// the Decision Form on that same impossible value.
 export const resultReviewStatusMap: StatusMap = {
-  pending: { color: 'warning', label: 'Pending', icon: 'mdi-clock-alert' },
+  pending_acknowledgment: {
+    color: 'warning',
+    label: 'Awaiting Captains',
+    icon: 'mdi-account-clock',
+  },
+  pending_admin_review: { color: 'warning', label: 'Needs Review', icon: 'mdi-clock-alert' },
+  acknowledged: { color: 'info', label: 'Acknowledged', icon: 'mdi-check-circle-outline' },
   approved: { color: 'success', label: 'Approved', icon: 'mdi-check' },
   rejected: { color: 'error', label: 'Rejected', icon: 'mdi-close' },
 }

@@ -346,12 +346,12 @@ Handlers with user-facing **mutating** actions that **no e2e test triggers throu
 Verified by enumerating every `page.goto()` in `e2e/*.spec.ts` against `src/router/index.ts`.
 No test ever loads these:
 
-- [ ] `/admin/result-reviews` — **and** `ResultReviewDetailModal.handleApprove/handleReject`
-- [ ] `/admin/permissions`
-- [ ] `/admin/players`
-- [ ] `/admin/settings`
-- [ ] `/admin/teams`
-- [ ] `/players` (list)
+- [x] **COVERED** (`fbe1500`) — `/admin/result-reviews` — **and** `ResultReviewDetailModal.handleApprove/handleReject`
+- [x] **COVERED** (`fbe1500`) — `/admin/permissions`
+- [x] **COVERED** (`fbe1500`) — `/admin/players`
+- [x] **COVERED** (`fbe1500`) — `/admin/settings`
+- [x] **COVERED** (`fbe1500`) — `/admin/teams`
+- [x] **COVERED** (`fbe1500`) — `/players` (list)
 
 Each needs at minimum a load + render assertion; those with mutating actions need a
 real action test (tracked in §7).
@@ -404,7 +404,7 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 41 found · **23 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
+**Status:** 45 found · **26 fixed** (P-4, P-7, P-2, P-5, P-19, P-21, P-20, P-24, P-10, P-11, P-17, P-22) · P-9 API shipped, UI open ·
 1 decision pending UI (P-12) · 5 deliberately deferred to the lineup redesign (P-15, P-18, P-23,
 P-25, P-26 — see `api/docs/lineup-design.md`; do not fix these in isolation).
 
@@ -455,6 +455,10 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-39 | Admin cannot see answered league invitations | admin gap | open |
 | P-40 | Decline confirmation guards the wrong action | minor | open |
 | P-41 | Two create-team forms disagree on validation | inconsistent | open |
+| P-42 | **Auto-linked demos raise false reviews and stall brackets** | **pipeline** | **fixed** |
+| P-43 | Review queue shows only the oldest 20, forever | user-facing | open |
+| P-44 | `resultReviewStatusMap` 3/5 wrong, leaks raw enum | user-facing | **fixed** |
+| P-45 | Role-row aria-labels rotated; "Manage" wired to Delete | **a11y/safety** | **fixed** `fbe1500` |
 
 **P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
 blocked on the same missing table, and **P-15/P-18 are superseded in part** by the
@@ -1087,6 +1091,60 @@ tests to never leave a form dirty.
   Public page: `minLength(3)` / `maxLength(50)` (`LeagueDetailPage.vue:314`).
 - A name accepted by one surface is rejected by the other for the same API.
 - [ ] Reconcile against the backend's actual constraint.
+
+---
+
+### P-42 — EVERY auto-linked demo raises a false score-mismatch review and STALLS the bracket  ⚠️⚠️ pipeline broken
+- **Symptom:** a perfectly correct claim is flagged as a score mismatch whenever its demo was
+  auto-linked. Observed: a BO1 claim submitted as **16-14** displays
+  `Claimed Score 1 - 0` and `Score mismatch: demo shows 13-7 but claim says 1-0`.
+- **Root cause — two halves that never met:**
+  - the auto-linker creates links with **`game_number: None`**
+    (`portal-domain/src/services/demo.rs:498`);
+  - `DemoValidatorAdapter::validate_match_demos`
+    (`portal-api/src/adapters/demo_validator.rs:82`) mapped claim→demo **only** via
+    `link.game_number`, so with `None` it fell through to the **series** score and compared it
+    against the demo's **per-map** score. Series `1-0` vs map `13-7` can never agree.
+  - `GameResult.demo_link_id` (`entities/result_claim.rs:208`) carried the mapping the whole
+    time and was ignored.
+- **Impact is not cosmetic:** the spurious review makes the completion saga return
+  `SagaPaused` (`services/tournament/match_completion.rs:409`), so **the winner does not
+  advance until an admin manually approves**. Any tournament using auto-linked demos stalls on
+  every match.
+- ✅ **FIXED** in `<commit>` — falls back to the game result whose `demo_link_id` is this link.
+  Verified genuine mismatches still raise reviews (`admin-result-reviews.spec.ts`, 3 passed),
+  so the fix suppresses only the false positives.
+- Compounds **P-43**: reviews it manufactures in bulk are then unreachable past the first 20.
+
+---
+
+### P-43 — `/admin/result-reviews` can only ever show the OLDEST 20 pending reviews
+- `src/stores/resultReviews.ts:37` calls the endpoint with no pagination params (default
+  `per_page=20`), the page renders **no pagination control**, and the adapter orders
+  `created_at ASC` (`portal-db/src/adapters/result_review.rs:193`). Past 20 pending reviews,
+  newly raised ones are **unreachable in the UI forever**.
+- Third instance of the pagination-blindness family (**P-28**, and global-setup in §4b).
+- [ ] Paginate the page, or at minimum order newest-first and raise the page size.
+
+---
+
+### P-44 — `resultReviewStatusMap` was 3/5 wrong, leaking the raw enum to admins
+- `src/utils/statusMaps.ts:236` held `pending` — a value `ResultReviewStatus` **cannot emit** —
+  and omitted `pending_acknowledgment`, `pending_admin_review` and `acknowledged`, so
+  `getStatusLabel` fell through and both the review table and the modal chip printed
+  `pending_admin_review` at admins.
+- **Same impossible literal as P-35**, which gated the Decision Form on it. One typo, two bugs.
+- ✅ **FIXED** in `<commit>`.
+
+---
+
+### P-45 — Admin role-row `aria-label`s were rotated one position out of step with their handlers
+- On `AdminPermissionsPage.vue` the three row actions announced the wrong operations: the
+  button labelled **"Manage permissions" was wired to `confirmDeleteRole`**.
+- **A screen-reader user asking to manage permissions was handed the destructive action.**
+  Sighted users were unaffected (the visible `title` was correct), which is exactly why it
+  survived.
+- ✅ **FIXED** in `fbe1500`. Found because a test clicked "Delete role" and got the edit dialog.
 
 ---
 

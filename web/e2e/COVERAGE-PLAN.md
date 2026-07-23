@@ -533,7 +533,13 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 55 found · **34 fixed** · 21 open.
+**Status:** 57 found · **35 fixed** · 22 open (1 mitigated).
+
+Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-52, P-50, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
+
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-51, P-48, P-49, P-38, P-39, P-40, P-41, P-53, P-56, P-57, P-54, P-55 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
+deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`, now
+decision-complete); do not fix them in isolation.
 
 Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-52, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
 
@@ -622,7 +628,7 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-52 | Duplicate `operationId` broke the generated client | build | **fixed** `098832a` |
 | P-48 | User cannot see their own pending league application | user-facing | open |
 | P-49 | Captain cannot approve a join request from the team page | blocks flow | open |
-| P-50 | **Result auto-confirms in 15min; opponent never notified** | **integrity/trust** | open |
+| P-50 | **Result auto-confirms in 15min; opponent never notified** | **integrity/trust** | **fixed** `2f94b47` |
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | **fixed** `9f87495` |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | **fixed** `8ce0f0a` |
 | P-30 | Season edit Save disabled when max_teams is null | user-facing | **fixed** `9816346` |
@@ -639,7 +645,9 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-41 | Two create-team forms disagree on validation | inconsistent | open |
 | P-42 | **Auto-linked demos raise false reviews and stall brackets** | **pipeline** | **fixed** `f6778e7` |
 | P-43 | Review queue shows only the oldest 20, forever | user-facing | **fixed** `9f87495` |
-| P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | open |
+| P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | 🟡 mitigated `7775a19` |
+| P-56 | >100-participant tournaments still can't submit (P-53 ceiling) | blocks core flow | open |
+| P-57 | 15-min auto-confirm window too short for humans | trust | open |
 | P-54 | League members truncates at 20; client cannot paginate | user-facing | open |
 | P-55 | Review queue FIFO — newest escalation on the last page | admin friction | open |
 | P-44 | `resultReviewStatusMap` 3/5 wrong, leaks raw enum | user-facing | **fixed** `070d104` |
@@ -1416,6 +1424,7 @@ tests to never leave a form dirty.
 ---
 
 ### P-50 — A result auto-confirms in 15 minutes against an opponent who is NEVER told  ⚠️⚠️ integrity/trust
+- ✅ **FIXED** (api `2f94b47`). `submit_claim` now transitions the match `in_progress → awaiting_result` on first submission, via the audited `MatchLifecycleService` path (a `MatchStatusTransitioner` seam mirroring the existing `MapPoolProvider` pattern), so the opponent's `confirm_result` action item — keyed off `awaiting_result` — finally fires. Fallout checked: the edge was already legal, the completion tx already accepts both states, no reader depends on staying `in_progress`. ⚠️ **The 15-minute window is now safe but still short** — folded into P-57.
 - **Symptom:** submitting a result produces **no action item for the opponent**, yet a
   15-minute auto-confirm clock starts immediately. Observed live: after P1 submitted, P2's
   Action Items widget vanished entirely.
@@ -1500,6 +1509,7 @@ tests to never leave a form dirty.
 ---
 
 ### P-53 — A player past registration #20 CANNOT SUBMIT A RESULT  ⚠️⚠️ blocks core flow
+- 🟡 **MITIGATED** (web `7775a19`): `per_page: 100` raises the ceiling from 20 to 100. **Not a full fix** — see **P-56**; >100 participants still broken, and the real fix is a targeted endpoint.
 - `fetchRegistrations` is called with no filters (`src/composables/useMatchDetail.ts:298` →
   `src/stores/tournament/_registrations.ts:38`), so the API's default `per_page = 20` applies.
 - **That list is what resolves the current user's `userRegistrationId` for result submission.**
@@ -1527,6 +1537,28 @@ tests to never leave a form dirty.
   bare `total` with no `PaginationMeta`. P-43's pager now *reaches* the newest review, but an
   admin acting on a fresh escalation must page to the end to find it.
 - [ ] Order newest-first, or add a sort control.
+
+---
+
+### P-56 — P-53's fix is a stopgap: tournaments over 100 participants still cannot submit  ⚠️
+- P-53's `per_page: 100` only raises the ceiling — `PaginationParams::limit()` caps `per_page` at
+  100 (`api/crates/portal-db/.../dto/common.rs:47`), so **seed-101+ players in a >100-participant
+  tournament still cannot resolve their `userRegistrationId` and cannot submit a result.**
+- The list also drives `opponentPlayerId`, so a proper fix should resolve **both** participants
+  by id (both are known from the match) rather than by scanning a page.
+- **Proper fix needs a new API surface** — e.g. `GET /v1/tournaments/{id}/registrations/me`, a
+  GET-by-id, or a `registration_id` filter — making resolution O(1) and count-independent. That
+  requires `openapi.rs` registration (orchestrator to add). P-53 is downgraded from "fixed" to
+  "mitigated" until then.
+
+---
+
+### P-57 — The 15-minute result auto-confirm window is aggressive for human players
+- Now that P-50 makes the opponent actually get notified, the remaining risk is timing: a submit
+  at a bad hour still auto-confirms **unseen** in 15 minutes (`result.rs:129`, `15 * 60`), and
+  the countdown starts at submission, not at first view.
+- [ ] Raise the default, and/or only start the countdown once the opponent has loaded the action
+      item. Trust-sensitive since auto-confirm makes a score official.
 
 ---
 

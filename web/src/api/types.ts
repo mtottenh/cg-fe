@@ -908,6 +908,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log out: revoke the presented refresh token.
+         * @description The refresh token is the credential here, exactly as for `refresh` — no
+         *     `Authorization` header is required, so a client whose access token has
+         *     already expired can still terminate its session. The token is read from
+         *     the body when present, otherwise from the `refresh_token` httpOnly cookie.
+         *
+         *     Idempotent and non-enumerable: an unknown, already-revoked or expired
+         *     token still returns 200 so this endpoint cannot be used to probe which
+         *     token values exist.
+         */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/logout-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log out everywhere: revoke every refresh token for the authenticated user.
+         * @description Requires a valid access token — unlike `logout`, this affects sessions the
+         *     caller did not present a token for, so it must be bound to the user
+         *     identity rather than to a single token value. Use after a suspected
+         *     compromise; residual access is then capped at the 15-minute access-token
+         *     lifetime.
+         */
+        post: operations["logout_all"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -3219,7 +3270,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Check in for a match. */
+        /**
+         * Check in for a match.
+         * @description The caller must be able to act for `registration_id` — captain, team
+         *     owner, active veto delegate, the registered player (individual
+         *     tournaments), or tournament staff. See
+         *     [`require_registration_actor`].
+         */
         post: operations["match_check_in"];
         delete?: never;
         options?: never;
@@ -3261,7 +3318,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Forfeit a match. */
+        /**
+         * Forfeit a match.
+         * @description Same authority model as check-in (P-24): forfeiting is *conceding on
+         *     behalf of a participant*, so an arbitrary authenticated caller must
+         *     not be able to hand someone else's match away.
+         */
         post: operations["forfeit_match"];
         delete?: never;
         options?: never;
@@ -3314,6 +3376,23 @@ export interface paths {
         get: operations["get_active_proposal"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a schedule proposal you made yourself. */
+        post: operations["cancel_schedule_proposal"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3618,7 +3697,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Check in for a tournament. */
+        /**
+         * Check in for a tournament.
+         * @description Carried the same hole as match check-in (P-24): the caller must now
+         *     be able to act for the registration — see
+         *     [`require_registration_actor`]. Staff wanting to check someone in
+         *     out-of-band still have the dedicated `admin-check-in` endpoint,
+         *     which additionally bypasses the check-in window.
+         */
         post: operations["check_in"];
         delete?: never;
         options?: never;
@@ -4368,6 +4454,19 @@ export interface components {
             errors: components["schemas"]["BatchCatalogErrorResponse"][];
             /** @description Demos that already existed. */
             existing: components["schemas"]["DemoResponse"][];
+        };
+        /**
+         * @description Status of a tournament bracket.
+         * @enum {string}
+         */
+        BracketStatus: "pending" | "active" | "completed" | "cancelled";
+        /** @description Request to withdraw a schedule proposal you made yourself. */
+        CancelScheduleProposalRequest: {
+            /**
+             * @description ID of the proposal to withdraw. Must be a pending proposal on this
+             *     match that the caller proposed.
+             */
+            proposal_id: string;
         };
         /** @description Request to catalog a new demo from S3. */
         CatalogDemoRequest: {
@@ -5880,6 +5979,24 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_LogoutResponse: {
+            /**
+             * @description Response for logout / logout-all.
+             *
+             *     Deliberately carries no detail about *which* tokens existed — logout is
+             *     idempotent and must not become an oracle for guessing valid tokens.
+             */
+            data: {
+                /**
+                 * @description Whether the session(s) are now revoked. Always `true` on success.
+                 * @example true
+                 */
+                logged_out: boolean;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_MapInfoResponse: {
             /** @description Map information. */
             data: {
@@ -5989,7 +6106,7 @@ export interface components {
                  */
                 selected_time?: string | null;
                 /** @description Current status. */
-                status: string;
+                status: components["schemas"]["ProposalStatus"];
                 /**
                  * Format: date-time
                  * @description Last update timestamp.
@@ -6651,7 +6768,7 @@ export interface components {
                  */
                 selected_time?: string | null;
                 /** @description Current status. */
-                status: string;
+                status: components["schemas"]["ProposalStatus"];
                 /**
                  * Format: date-time
                  * @description Last update timestamp.
@@ -6767,7 +6884,7 @@ export interface components {
                 stage_id: string;
                 /** Format: date-time */
                 started_at?: string | null;
-                status: string;
+                status: components["schemas"]["TournamentMatchStatus"];
                 stream_url?: string | null;
                 tournament_id: string;
                 /** Format: date-time */
@@ -6799,7 +6916,7 @@ export interface components {
                 seed?: number | null;
                 /** Format: int32 */
                 seed_rating?: number | null;
-                status: string;
+                status: components["schemas"]["TournamentRegistrationStatus"];
                 team_season_id?: string | null;
                 tournament_id: string;
                 /** Format: date-time */
@@ -6862,7 +6979,7 @@ export interface components {
                 started_at?: string | null;
                 /** Format: date-time */
                 starts_at?: string | null;
-                status: string;
+                status: components["schemas"]["TournamentStatus"];
                 /** Format: int32 */
                 team_size?: number | null;
                 timezone_hint?: string | null;
@@ -6894,7 +7011,7 @@ export interface components {
                 stage_order: number;
                 /** Format: date-time */
                 starts_at?: string | null;
-                status: string;
+                status: components["schemas"]["StageStatus"];
                 tournament_id: string;
                 /** Format: date-time */
                 updated_at: string;
@@ -8120,7 +8237,7 @@ export interface components {
                  */
                 selected_time?: string | null;
                 /** @description Current status. */
-                status: string;
+                status: components["schemas"]["ProposalStatus"];
                 /**
                  * Format: date-time
                  * @description Last update timestamp.
@@ -8203,7 +8320,7 @@ export interface components {
                 id: string;
                 name: string;
                 stage_id: string;
-                status: string;
+                status: components["schemas"]["BracketStatus"];
                 /** Format: int32 */
                 total_rounds: number;
                 tournament_id: string;
@@ -8257,7 +8374,7 @@ export interface components {
                 stage_id: string;
                 /** Format: date-time */
                 started_at?: string | null;
-                status: string;
+                status: components["schemas"]["TournamentMatchStatus"];
                 stream_url?: string | null;
                 tournament_id: string;
                 /** Format: date-time */
@@ -8288,7 +8405,7 @@ export interface components {
                 seed?: number | null;
                 /** Format: int32 */
                 seed_rating?: number | null;
-                status: string;
+                status: components["schemas"]["TournamentRegistrationStatus"];
                 team_season_id?: string | null;
                 tournament_id: string;
                 /** Format: date-time */
@@ -8319,7 +8436,7 @@ export interface components {
                 stage_order: number;
                 /** Format: date-time */
                 starts_at?: string | null;
-                status: string;
+                status: components["schemas"]["StageStatus"];
                 tournament_id: string;
                 /** Format: date-time */
                 updated_at: string;
@@ -10118,6 +10235,19 @@ export interface components {
              */
             username: string;
         };
+        /**
+         * @description Response for logout / logout-all.
+         *
+         *     Deliberately carries no detail about *which* tokens existed — logout is
+         *     idempotent and must not become an oracle for guessing valid tokens.
+         */
+        LogoutResponse: {
+            /**
+             * @description Whether the session(s) are now revoked. Always `true` on success.
+             * @example true
+             */
+            logged_out: boolean;
+        };
         /** @description Response for loser result. */
         LoserResultResponse: {
             /** @enum {string} */
@@ -10507,7 +10637,7 @@ export interface components {
                 seed?: number | null;
                 /** Format: int32 */
                 seed_rating?: number | null;
-                status: string;
+                status: components["schemas"]["TournamentRegistrationStatus"];
                 team_season_id?: string | null;
                 tournament_id: string;
                 /** Format: date-time */
@@ -10538,7 +10668,7 @@ export interface components {
                 slug: string;
                 /** Format: date-time */
                 starts_at?: string | null;
-                status: string;
+                status: components["schemas"]["TournamentStatus"];
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -11028,6 +11158,11 @@ export interface components {
             updated_standings_count: number;
             winner_advancement?: null | components["schemas"]["AdvancementResponse"];
         };
+        /**
+         * @description Status of a schedule proposal in the negotiation workflow.
+         * @enum {string}
+         */
+        ProposalStatus: "pending" | "accepted" | "rejected" | "counter_proposed" | "expired" | "cancelled";
         /** @description Request to propose match times. */
         ProposeScheduleRequest: {
             /** @description Optional message to the opponent about the proposal. */
@@ -11677,7 +11812,7 @@ export interface components {
              */
             selected_time?: string | null;
             /** @description Current status. */
-            status: string;
+            status: components["schemas"]["ProposalStatus"];
             /**
              * Format: date-time
              * @description Last update timestamp.
@@ -11810,6 +11945,11 @@ export interface components {
              */
             youtube?: string | null;
         };
+        /**
+         * @description Status of a tournament stage.
+         * @enum {string}
+         */
+        StageStatus: "pending" | "active" | "completed" | "cancelled";
         /** @description Query parameters for award standings. */
         StandingsQueryParams: {
             /**
@@ -12011,7 +12151,7 @@ export interface components {
             id: string;
             name: string;
             stage_id: string;
-            status: string;
+            status: components["schemas"]["BracketStatus"];
             /** Format: int32 */
             total_rounds: number;
             tournament_id: string;
@@ -12071,7 +12211,7 @@ export interface components {
             stage_id: string;
             /** Format: date-time */
             started_at?: string | null;
-            status: string;
+            status: components["schemas"]["TournamentMatchStatus"];
             stream_url?: string | null;
             tournament_id: string;
             /** Format: date-time */
@@ -12080,6 +12220,11 @@ export interface components {
             vod_url?: string | null;
             winner_registration_id?: string | null;
         };
+        /**
+         * @description Status of a tournament match.
+         * @enum {string}
+         */
+        TournamentMatchStatus: "pending" | "ready" | "scheduled" | "checking_in" | "pick_ban" | "in_progress" | "awaiting_result" | "completed" | "cancelled" | "forfeit" | "disputed";
         /** @description Response DTO for a tournament registration. */
         TournamentRegistrationResponse: {
             checked_in: boolean;
@@ -12098,7 +12243,7 @@ export interface components {
             seed?: number | null;
             /** Format: int32 */
             seed_rating?: number | null;
-            status: string;
+            status: components["schemas"]["TournamentRegistrationStatus"];
             team_season_id?: string | null;
             tournament_id: string;
             /** Format: date-time */
@@ -12106,6 +12251,11 @@ export interface components {
             /** Format: date-time */
             withdrawn_at?: string | null;
         };
+        /**
+         * @description Status of a tournament registration.
+         * @enum {string}
+         */
+        TournamentRegistrationStatus: "pending" | "approved" | "checked_in" | "active" | "eliminated" | "disqualified" | "withdrawn" | "no_show";
         /** @description Response DTO for a tournament. */
         TournamentResponse: {
             banner_url?: string | null;
@@ -12156,7 +12306,7 @@ export interface components {
             started_at?: string | null;
             /** Format: date-time */
             starts_at?: string | null;
-            status: string;
+            status: components["schemas"]["TournamentStatus"];
             /** Format: int32 */
             team_size?: number | null;
             timezone_hint?: string | null;
@@ -12183,7 +12333,7 @@ export interface components {
             stage_order: number;
             /** Format: date-time */
             starts_at?: string | null;
-            status: string;
+            status: components["schemas"]["StageStatus"];
             tournament_id: string;
             /** Format: date-time */
             updated_at: string;
@@ -12221,6 +12371,11 @@ export interface components {
             /** Format: double */
             win_rate?: number | null;
         };
+        /**
+         * @description Status of a tournament.
+         * @enum {string}
+         */
+        TournamentStatus: "draft" | "published" | "registration" | "scheduled" | "in_progress" | "completed" | "finalized" | "cancelled";
         /** @description Summary response for listing tournaments. */
         TournamentSummaryResponse: {
             format: string;
@@ -12237,7 +12392,7 @@ export interface components {
             slug: string;
             /** Format: date-time */
             starts_at?: string | null;
-            status: string;
+            status: components["schemas"]["TournamentStatus"];
         };
         /** @description Request to transfer team ownership to another player. */
         TransferOwnershipRequest: {
@@ -16063,6 +16218,68 @@ export interface operations {
             };
         };
     };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Session revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_LogoutResponse"];
+                };
+            };
+            /** @description No refresh token supplied */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    logout_all: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All sessions revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_LogoutResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     refresh: {
         parameters: {
             query?: never;
@@ -16136,7 +16353,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Username or email already exists */
+            /** @description Username, email or display name already taken */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -20652,6 +20869,24 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a match participant */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Match or evidence not found */
             404: {
                 headers: {
@@ -20704,6 +20939,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not a match participant */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -20874,6 +21118,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not the uploader of this evidence */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23935,6 +24188,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Not authorized to check in this participant */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Match not found */
             404: {
                 headers: {
@@ -24099,6 +24361,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Not authorized to forfeit for this participant */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Match not found */
             404: {
                 headers: {
@@ -24246,6 +24517,71 @@ export interface operations {
                 };
             };
             /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    cancel_schedule_proposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelScheduleProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Proposal withdrawn */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_ScheduleProposalResponse"];
+                };
+            };
+            /** @description Proposal is no longer pending */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Only the proposer may withdraw */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Proposal not found on this match */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -25184,6 +25520,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not authorized to check in this participant */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

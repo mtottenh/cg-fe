@@ -495,9 +495,9 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-39 | Admin cannot see answered league invitations | admin gap | open |
 | P-40 | Decline confirmation guards the wrong action | minor | open |
 | P-41 | Two create-team forms disagree on validation | inconsistent | open |
-| P-42 | **Auto-linked demos raise false reviews and stall brackets** | **pipeline** | **fixed** |
+| P-42 | **Auto-linked demos raise false reviews and stall brackets** | **pipeline** | **fixed** `f6778e7` |
 | P-43 | Review queue shows only the oldest 20, forever | user-facing | open |
-| P-44 | `resultReviewStatusMap` 3/5 wrong, leaks raw enum | user-facing | **fixed** |
+| P-44 | `resultReviewStatusMap` 3/5 wrong, leaks raw enum | user-facing | **fixed** `070d104` |
 | P-45 | Role-row aria-labels rotated; "Manage" wired to Delete | **a11y/safety** | **fixed** `fbe1500` |
 
 **P-14/15/16/17/18 are one cluster** (roster lock). **P-23/P-25/P-26 are a second cluster**, all
@@ -1151,7 +1151,7 @@ tests to never leave a form dirty.
   `SagaPaused` (`services/tournament/match_completion.rs:409`), so **the winner does not
   advance until an admin manually approves**. Any tournament using auto-linked demos stalls on
   every match.
-- ✅ **FIXED** in `<commit>` — falls back to the game result whose `demo_link_id` is this link.
+- ✅ **FIXED** in `f6778e7` — falls back to the game result whose `demo_link_id` is this link.
   Verified genuine mismatches still raise reviews (`admin-result-reviews.spec.ts`, 3 passed),
   so the fix suppresses only the false positives.
 - Compounds **P-43**: reviews it manufactures in bulk are then unreachable past the first 20.
@@ -1174,7 +1174,7 @@ tests to never leave a form dirty.
   `getStatusLabel` fell through and both the review table and the modal chip printed
   `pending_admin_review` at admins.
 - **Same impossible literal as P-35**, which gated the Decision Form on it. One typo, two bugs.
-- ✅ **FIXED** in `<commit>`.
+- ✅ **FIXED** in `070d104`.
 
 ---
 

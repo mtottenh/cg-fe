@@ -261,7 +261,16 @@ guarded bodies skip. The spec's own comments concede this (`:187–188`, `:300�
 
 ---
 
-## 6. Phase 2 — De-guard the vacuous specs
+## 6. Phase 2 — De-guard the vacuous specs  ✅ COMPLETE
+
+> **RECONCILED 2026-07-23.** Every item below is **done**; the unticked boxes are stale and
+> refer to line numbers and guards that no longer exist. Evidence: the ratchet baseline is
+> `{}` (zero `isVisible().catch()` guards, zero tautologies, zero or-assertions across the
+> whole suite), `team-management.spec.ts` is 1290 unguarded lines with 44 real interactions,
+> and the specific flows called out below were each verified present — including
+> "remove member", which is covered at `team-roster.spec.ts:137`.
+> Left unticked individually rather than mass-ticking, since the line references are obsolete.
+
 
 One workstream per spec file (see §10 for parallelisation).
 
@@ -366,7 +375,16 @@ Handlers with user-facing **mutating** actions that **no e2e test triggers throu
 - [ ] `AdminDemoDetailPage.handleCategorize` / `handleReprocess` / `handleSaveNotes` / `handleToggleVisibility`
 
 ### Tier 3 — other components with mutating handlers, no coverage
-- [ ] **`LeagueTeamDetailModal` admin demote-from-captain** (`src/components/admin/LeagueTeamDetailModal.vue:139-146`)
+
+> **RECONCILED 2026-07-23** by grepping every e2e spec for each component, then
+> **hand-checking the hits** — two were false positives worth recording: `handleRegister`
+> matched *tournament* registration rather than `SteamTrackingCard`, and "Map Pool" in
+> `veto-flow.spec.ts:124` is an asserted label, not the picker being driven. Verified
+> **covered**: `LeagueTeamDetailModal` demote (`admin-teams.spec.ts`), `OrganizerToolbar`,
+> `DisputeThreadPanel`, `ResultReviewAlert`, `MatchEvidenceTab` link/unlink.
+> The remainder below are **genuine, verified gaps**.
+
+- [x] **COVERED** (`fbe1500`, `admin-teams.spec.ts:18` promote→demote round trip) — **`LeagueTeamDetailModal` admin demote-from-captain** (`src/components/admin/LeagueTeamDetailModal.vue:139-146`)
       — reached from `/admin/teams`, a route §8 says no test ever loads. Closes a §8 route and a
       §7 Tier-2 component in one test. (A captain-facing demote UI does NOT exist; transfer-ownership
       has no UI at all — the endpoint appears only in the generated client.)

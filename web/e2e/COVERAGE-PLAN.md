@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **93 product findings** from what
+*"what should happen here?"* — and that question surfaced **101 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **93 findings · 50 fixed** → the status-drift defect class closed at the source
+112 → 0) → **101 findings · 51 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -117,14 +117,19 @@ not see).
   batch API (`dc5136c`) + web half, P-59 gate (`930f8c9`, red-proven). Combined gate at
   landing: **686 passed / 0 failed**, fmt/clippy clean, ratchet `{}`, 6/6 on the touched specs.
 
-### Parallel F wave 2 — IN FLIGHT (2026-07-24). Do not pick these up.
+### Parallel F wave 2 — COMPLETE (2026-07-24). All four lanes landed.
+
+**15 findings (P-87..P-101) from 4 agents.** Wave 2 was killed mid-flight and relaunched; every
+lane inherited uncommitted, never-executed partial work and **most of it failed on first run**
+(Lane 7: 3 of 4; Lane 8: 3 of 5; Lane 6: both new tests). Lesson for any future handover:
+unrun test code is a draft, not progress — the relaunch brief must say so explicitly, and did.
 
 | Lane | Instance | Owns (only these files) | §4-F rows claimed |
 |---|---|---|---|
 | ~~5~~ | ~~`-i 1`~~ | **LANDED** `e50ec9c` — 4 tests green, red-proven | yielded **P-87..P-92** |
-| 6 | `-i 2` | `e2e/tournament-admin.spec.ts` · `e2e/awards.spec.ts` | `StagesTab.handleCreateStage` · `handleClearSeeding` · `AwardsTab.handleSaveEdit` + void |
+| ~~6~~ | ~~`-i 2`~~ | **LANDED** `5bad7ef` — 21/21 green (17 pre-existing), red-proven | yielded **P-98..P-101** |
 | ~~7~~ | ~~`-i 3`~~ | **LANDED** `331887e` — 8 tests green, red-proven | yielded **P-93** |
-| 8 | `-i 4` | `e2e/admin-modal-saves.spec.ts` (new) + `fixtures/modal-saves.fixture.ts` | `LeagueCreateModal` · `LeagueEditModal` · `LeagueSeasonCreateModal` · `InviteUserModal` · `BanDetailModal` |
+| ~~8~~ | ~~`-i 4`~~ | **LANDED** `b181e85` — 5 tests green, two probes | yielded **P-94..P-97** |
 
 Same standing rules as wave 1 (below). P-81 and P-86 both landed first, so wave 2 writes
 specs that are actually typechecked and whose status literals are compile-locked.
@@ -237,11 +242,13 @@ take one row each without contending; tick a row only when the test is red-prove
 - [ ] While here: `MatchResultsTab` is presentational with **zero** handlers → that is P-72
 
 *Admin — tournament & league:*
-- [ ] `StagesTab.handleCreateStage` · `AdminTournamentDetailPage.handleClearSeeding`
-- [ ] `AwardsTab.handleSaveEdit` + void (author→standings→finalize is covered by
-      `awards.spec.ts:53`; edit and void are not)
-- [ ] Modal saves: `LeagueCreateModal` · `LeagueEditModal` · `LeagueSeasonCreateModal` ·
-      `InviteUserModal` · `DemoCatalogModal` · `BanDetailModal`
+- [x] **LANE 6 landed** (`5bad7ef`) — `StagesTab.handleCreateStage` (blocked the no-format
+      path → **P-98**, dead option → **P-99**) · `AdminTournamentDetailPage.handleClearSeeding`
+      (with the positive control its predecessor lacked → **P-101**)
+- [x] **LANE 6** — `AwardsTab.handleSaveEdit` + void
+- [x] **LANE 8 landed** (`b181e85`) — `LeagueCreateModal` · `LeagueEditModal` ·
+      `LeagueSeasonCreateModal` · `InviteUserModal` (message discarded → **P-94**; UUID-only
+      → **P-95**) · `BanDetailModal`. `DemoCatalogModal` was covered by Lane 4
 
 *Admin — game config:*
 - [x] **LANE 5 landed** (`e50ec9c`, `admin-games-config.spec.ts`, 4 tests) — enable/disable ·
@@ -265,8 +272,10 @@ take one row each without contending; tick a row only when the test is red-prove
 - [ ] `MapPoolPicker` · `DemoBrowser` — deferred to wave 3
 
 *Names & honesty:*
-- [ ] `match-workflow.spec.ts:253` asserts `hasText: 'ready'` (certifies the raw enum; survives
-      only via case-insensitive matching) — assert the human label
+- [x] **`match-workflow.spec.ts:253` fixed** — was `hasText: 'ready'`, which passed identically
+      whether the chip showed the mapped label or leaked the raw enum, because Playwright text
+      matching is case-insensitive. Now `getByText('Ready', { exact: true })` (case-sensitive),
+      so it distinguishes `matchStatusMap`'s label from the enum. Verified green.
 - [ ] Product decisions embedded, to settle as their tests are written: P-62 (transfer
       ownership), P-70 (role assignment), P-71 (season re-registration) — each is a handler
       whose control does not exist. Decide, build the control, then test.
@@ -283,9 +292,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 93 found · 50 fixed · 43 open** (P-53 mitigated).
+**Status (derived): 101 found · 51 fixed · 50 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-93.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-93, P-94, P-95, P-96, P-97, P-98, P-99, P-100.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -386,6 +395,14 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | open |
 | P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
 | P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | **fixed** `e06ff8f` |
+| P-94 | `InviteUserModal` message collected, validated, then discarded | user-facing | open |
+| P-95 | **Invite-only league is un-invitable — needs a UUID no surface shows** | feature unusable | open |
+| P-96 | League invitations/applications tables print the raw enum | user-facing | open |
+| P-97 | Every league silently gets an unconfigured "Season 1" | product question | open |
+| P-98 | Stage "Format (optional)" is mandatory — blank is a 400 | user trap | open |
+| P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | open |
+| P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | open |
+| P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `PENDING101` |
 | P-93 | **Date overrides saved one day early in every positive UTC offset** | **data corruption** | open |
 | P-87 | **Every game-config WRITE 404s — handler passes UUID to a slug-keyed update** | **feature dead** | open |
 | P-88 | A disabled game vanishes from admin and can never be re-enabled | **traps admin** | open |
@@ -609,6 +626,79 @@ belong to the §4-G P-31 remnant batch.
 **Lesson recorded for ground rule 10:** the probe that matters is the one aimed at the
 *claim*, not the mechanism. Probe A ("does the gate run?") passed and would have been enough
 to call P-81 done; Probe B ("does the gate deliver what I said it would?") is what found P-86.
+
+**P-94 — the invitation message is collected, validated, then thrown away.**
+`InviteUserModal.vue:33-42` renders "Message (Optional)" with `rules.maxLength(500)`, then calls
+`sendInvitation(props.leagueId, form.value.user_id)` — and `stores/leagues.ts:238-245` sends
+`body: { user_id: userId }` only. The backend *does* accept it
+(`handlers/leagues.rs:597` forwards `req.message`), and `LeagueMembersModal.vue:204-209` renders
+a Message column that can therefore never be populated for an invite. Identical shape to P-84.
+Lane 8 fills the field to drive the modal and asserts nothing about it in either direction —
+asserting either way would certify the defect. → D, with P-84.
+
+**P-95 — an invite-only league cannot be invited to by a human.** `InviteUserModal` demands a
+raw UUID typed by hand (`rules.uuid`, hint "Enter the UUID of the user to invite",
+`InviteUserModal.vue:23-27`), while the sibling `BanCreateModal` on the same admin surface uses
+`UserSearchAutocomplete`. **Nowhere in the product displays a user's UUID**: the members table
+shows username/email but not the id, and the invitations/applications tables truncate to 8
+chars (`LeagueMembersModal.vue:147`, `:201`). The endpoint is live and correct; the control is
+unusable. So P-47 ("no frontend invite-only awareness", fixed `616a2d6`) is only half-closed —
+the organiser can now see invite-only leagues but still cannot invite to one. Lane 8's test
+passes only because it seeds the account over the API and knows the id. Fix = swap in
+`UserSearchAutocomplete`. → D.
+
+**P-96 — league invitations/applications tables print the wire enum.**
+`LeagueMembersModal.vue:150-154` and `:211-215` render `{{ item.status }}` raw, while the same
+modal maps roles through `formatRole`. P-10/P-44/P-76/P-91 family — this class keeps
+reappearing in newly-built tables, which argues for a lint rule rather than another one-off
+fix. Lane 8 asserts the row's Cancel action instead of the chip. → E.
+
+**P-97 — every league silently gets a "Season 1" nobody configured.**
+`trg_leagues_create_default_season` (`migrations/0028_fix_league_season_trigger.sql:49-53`,
+`AFTER INSERT ON leagues`) creates a season in status **`registration`** with team sizes copied
+from league defaults. Nothing in `LeagueCreateModal` mentions it, so an admin who creates a
+league immediately has an **open-registration** season they never set up and may not know
+exists. Recorded as a product question rather than a defect — it may well be intended
+onboarding — but it should be either surfaced in the create flow or dropped. It cost Lane 8 a
+run (its precondition asserted zero seasons) and is now pinned by the test rather than assumed
+away. → D, decide.
+
+**P-98 — the stage dialog's "Format (optional)" is mandatory.** `StagesTab.vue:45` labels the
+select *"Format (optional)"* and `handleCreateStage` sends `format: newStage.format ?? ''`
+(`:109`); the backend's `format` is a required string parsed into `StageFormat`
+(`dto/requests/tournament.rs:525-528`), and `""` does not parse. Verified live against the
+ephemeral API: `{"format":""}` → **400 "Invalid stage format"**. An organiser who believes the
+field's own label gets a hard failure. Fix = drop "(optional)" and mark it required, or default
+it. → E.
+
+**P-99 — `groups_and_playoffs` is a dead option, and the one valid value is missing.**
+`StagesTab.vue:44` offers `single_elimination | double_elimination | round_robin | swiss |
+groups_and_playoffs`, but `StageFormat::from_str` accepts
+`single_elimination | double_elimination | round_robin | swiss | **group_stage**`
+(`portal-core/src/types/tournament.rs:669-678`). Verified live: `groups_and_playoffs` → **400**,
+control `swiss` → **201**. So the picker offers a value that always fails *and* omits the only
+one that would work. Same class as P-82. → D.
+
+**P-100 — Vuetify `v-select` exposes no accessible name, app-wide.** The aria snapshot shows
+the label as a plain node and the combobox unnamed, so `getByLabel(...)` cannot reach any
+select in the application; the sibling `v-text-field` *does* get one (and doubles it — see the
+§2 trap). Every lane that has touched a select hit this and worked around it positionally
+(`admin-match-overrides.spec.ts:93-98`, `admin-management.spec.ts:225`, and Lane 6 again). It
+is logged as a test-authoring trap in §2, but the underlying fact is an **a11y defect**: a
+screen-reader user cannot tell what any select in the app is for. Belongs with the P-89
+aria-label sweep. → D.
+
+**P-101 — the seeding fixture blessed a comparison that cannot be true. FIXED.**
+`TournamentRegistrationResponse.seed` is `skip_serializing_if = "Option::is_none"`
+(`dto/responses/tournament.rs:393`), so a **cleared** seed returns as an *absent key*, not
+`null`. The generated client says `seed?: number | null` and is correct;
+`fixtures/tournament-seeding.fixture.ts` declared `seed: number | null` **non-optional**, which
+type-blessed `r.seed === null` — false for `undefined`. A wrong fixture type is worse than no
+type: it makes the compiler vouch for a broken assertion, which is the P-81/P-86 lesson
+appearing a third time in a different guise. Both interfaces are now optional with the
+serialisation documented in place. Lane 6 also added the positive control its predecessor
+lacked (`seedsBefore = [1,2,3,4]`), without which the post-clear assertion would have passed
+even if `seed` were never serialised at all.
 
 **P-93 — a date override is saved one day early for every player east of Greenwich.**
 `AvailabilityOverridesManager.vue:334-335` does
@@ -891,6 +981,8 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
 | `admin-match-overrides.spec.ts` (F Lane 1) | 6 | 6 | – | – | – | [x] | red-proven; yielded P-82..P-85 |
 | `admin-games-config.spec.ts` (F Lane 5) | 4 | 4 | – | – | – | [x] | serial-mode; red-proven; yielded P-87..P-92 |
 | `player-steam-tracking` + `player-availability` (F Lane 7) | 8 | 8 | – | – | – | [x] | red-proved via a lying backend; yielded P-93 |
+| `admin-modal-saves.spec.ts` (F Lane 8) | 5 | 5 | – | – | – | [x] | two probes; yielded P-94..P-97 |
+| `tournament-admin` + `awards` (F Lane 6) | 21 | 21 | – | – | – | [x] | 17 pre-existing kept green; yielded P-98..P-101 |
 
 ## 8. Definition of done
 

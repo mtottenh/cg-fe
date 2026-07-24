@@ -53,15 +53,21 @@ export interface PendingPlayer {
 export interface SeedEntry {
   registration_id: string
   participant_name: string
-  seed: number | null
-  seed_rating: number | null
+  // P-101: `seed`/`seed_rating` are `skip_serializing_if = "Option::is_none"` on the DTO
+  // (dto/responses/tournament.rs:393), so a CLEARED seed comes back as an ABSENT KEY, not
+  // null. Declaring these non-optional type-blessed `r.seed === null`, which is false for
+  // `undefined` — the generated client says `seed?: number | null` and is right. Normalise
+  // with `?? null` at the comparison.
+  seed?: number | null
+  seed_rating?: number | null
 }
 
 export interface RegistrationRow {
   id: string
   status: TournamentRegistrationStatus
   participant_name: string
-  seed: number | null
+  /** Absent (not null) when cleared — see the P-101 note above. */
+  seed?: number | null
   checked_in: boolean
 }
 

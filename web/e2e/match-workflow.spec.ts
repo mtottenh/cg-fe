@@ -246,11 +246,19 @@ test.describe('Match browsing and navigation', () => {
     // Tournament header chip: the tournament started, so it shows Live Now.
     await expect(page.getByText('Live Now').first()).toBeVisible({ timeout: 15000 })
 
-    // Match card status chip: freshly generated matches sit in `ready`.
+    // Match card status chip: freshly generated matches sit in `ready`, which
+    // `matchStatusMap` renders as the human label "Ready"
+    // (statusMaps.ts:47, via TournamentMatchCard.vue:92).
+    //
+    // This assertion used to read `hasText: 'ready'` and survived only because
+    // Playwright text matching is case-insensitive — so it passed identically
+    // whether the chip showed the mapped label or leaked the raw enum, which is
+    // exactly the P-4/P-10/P-21/P-44 defect class this suite exists to catch.
+    // `exact: true` is case-sensitive, so it now distinguishes the two.
     await page.getByRole('tab', { name: 'Matches' }).click()
     const matchCard = page.locator('.match-card').first()
     await expect(matchCard).toBeVisible()
-    await expect(matchCard.locator('.v-chip').filter({ hasText: 'ready' })).toBeVisible()
+    await expect(matchCard.locator('.v-chip').getByText('Ready', { exact: true })).toBeVisible()
   })
 
   test('bracket tab renders the bracket view', async ({ page }) => {

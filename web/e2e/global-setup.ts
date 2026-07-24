@@ -5,9 +5,10 @@
  */
 
 import { writeFileSync, mkdirSync } from 'fs'
-import { dirname, join } from 'path'
+import { dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { testUsers, CS2_MAP_POOL } from './fixtures/test-data'
+import { SEEDED_STATE_PATH } from './seeded-state-path'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -27,8 +28,6 @@ export interface SeededState {
   seasonId: string | null
   teamId: string | null
 }
-
-const SEEDED_STATE_PATH = join(THIS_DIR, '.seeded-state.json')
 
 function persistSeededState(state: SeededState): void {
   mkdirSync(THIS_DIR, { recursive: true })

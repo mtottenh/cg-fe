@@ -3,15 +3,8 @@
  * Provides tournament IDs, match IDs, and player tokens to test specs.
  */
 import { readFileSync, existsSync } from 'fs'
-import { dirname, join } from 'path'
-import { fileURLToPath } from 'url'
 import type { SeededState } from '../global-setup'
-
-// The e2e harness runs as `"type": "module"` (see package.json), so
-// `__dirname` isn't defined. Resolve the fixture directory from the
-// module URL instead.
-const THIS_DIR = dirname(fileURLToPath(import.meta.url))
-const SEEDED_STATE_PATH = join(THIS_DIR, '..', '.seeded-state.json')
+import { E2E_INSTANCE, SEEDED_STATE_PATH } from '../seeded-state-path'
 
 let _state: SeededState | null = null
 
@@ -20,8 +13,10 @@ export function getSeededState(): SeededState {
 
   if (!existsSync(SEEDED_STATE_PATH)) {
     throw new Error(
-      `Seeded state file not found at ${SEEDED_STATE_PATH}. ` +
-      'Did global-setup.ts run successfully?'
+      `Seeded state file not found at ${SEEDED_STATE_PATH} (E2E_INSTANCE=${E2E_INSTANCE}). ` +
+      'Did global-setup.ts run successfully? If you are running a parallel ' +
+      'instance, the runner and the tests must agree on E2E_INSTANCE — ' +
+      'launch via `./scripts/e2e-ephemeral.sh -i <N>`, which exports it for both.'
     )
   }
 

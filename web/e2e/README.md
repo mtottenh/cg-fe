@@ -14,6 +14,27 @@ npm run test:e2e:ephemeral    # self-contained stack on its own ports
 npm run test:quality          # the "can this test even fail?" ratchet
 ```
 
+### Several agents at once
+
+Give every concurrent agent its own instance id:
+
+```bash
+./scripts/e2e-ephemeral.sh -i 1 e2e/awards.spec.ts
+./scripts/e2e-ephemeral.sh -i 2 e2e/dispute-resolution.spec.ts   # different agent
+```
+
+`-i N` namespaces the postgres container and port, api port, web port, api log,
+seeded-state file, and the playwright report/results directories. It preflights
+for clashes and refuses to start rather than half-building a stack on top of
+someone else's. `-i` must come first; everything after it is passed to playwright.
+Instance 0 is the default and keeps every historical path, so the npm scripts
+above are unchanged.
+
+Not isolated, whatever you do: the `api/` checkout and its cargo target dir — all
+instances build and run whatever Rust source is on disk. Don't edit `api/` while
+parallel runs are in flight. (`git worktree` on `web/` won't help: `web`, `api`,
+`steam_bot`, `demoparser` and `demo-stats-service` are separate repos.)
+
 ## The rules that matter
 
 A test earns its place only if it **can fail**. Concretely:

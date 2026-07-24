@@ -413,8 +413,8 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | open |
 | P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
 | P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | **fixed** `e06ff8f` |
-| P-102 | **`lineup.spec.ts` read an env var nothing sets — wrote to the DEV database** | **test integrity** | **fixed** `PENDING102` |
-| P-103 | P-57 landed without updating the test that depended on the old window | test rot | **fixed** `PENDING102` |
+| P-102 | **`lineup.spec.ts` read an env var nothing sets — wrote to the DEV database** | **test integrity** | **fixed** `172b46f` |
+| P-103 | P-57 landed without updating the test that depended on the old window | test rot | **fixed** `172b46f` |
 | P-104 | Edit modal's empty-pool gate is decorative; the pool edit is discarded | **feature dead** | open |
 | P-105 | A failed map-pool reset is swallowed and reported as success | trust | open |
 | P-106 | `MapPoolPicker` cards are unlabelled clickable divs | a11y | open |

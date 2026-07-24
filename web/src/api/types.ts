@@ -3204,7 +3204,18 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List a tournament's invitations. */
+        /**
+         * List a tournament's invitations.
+         * @description P-51: this endpoint is self-scoping. An organiser (holder of
+         *     `tournament.participants.manage`, or an `admin.tournaments.manage_any`
+         *     override) receives the full invite list. Any other caller receives ONLY the
+         *     invitations that target them — their own `user_id`, or a team-season they
+         *     captain — rather than a 403. This is the invitee-readable signal the
+         *     registration-card gate needs to turn the invite-only precondition from a soft
+         *     prompt (P-47) into a hard block: a caller with no invitation gets an empty
+         *     list and no register affordance. The full list is still not public — a
+         *     non-invited, non-organiser caller learns nothing about who else was invited.
+         */
         get: operations["list_tournament_invitations"];
         put?: never;
         /**
@@ -3371,6 +3382,45 @@ export interface paths {
          *     not be able to hand someone else's match away.
          */
         post: operations["forfeit_match"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/matches/{match_id}/lineup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Declare (or replace) the provisional lineup for a registration in a match. */
+        post: operations["declare_match_lineup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/matches/{match_id}/lineups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the lineups for a match.
+         * @description A lineup's player list is shown when it is `locked` (opponent-visible) OR
+         *     the caller may act for that registration OR is tournament staff. Otherwise
+         *     the lineup metadata is returned with `players_visible = false` and no players.
+         */
+        get: operations["list_match_lineups"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6095,6 +6145,47 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_MatchLineupResponse: {
+            /**
+             * @description A lineup for one registration, with its player rows.
+             *
+             *     `players` is omitted (empty) when the viewer is not permitted to see it —
+             *     a provisional lineup is opponent-visible only once `locked` (§0 Q3).
+             */
+            data: {
+                /**
+                 * Format: date-time
+                 * @description When the provisional lineup was declared.
+                 */
+                declared_at?: string | null;
+                /** @description User who declared the lineup. */
+                declared_by?: string | null;
+                /** @description Lineup ID. */
+                id: string;
+                /**
+                 * Format: date-time
+                 * @description When the lineup locked (match start).
+                 */
+                locked_at?: string | null;
+                /** @description Match ID. */
+                match_id: string;
+                /** @description Optional captain note. */
+                notes?: string | null;
+                /** @description The player rows (empty when `players_visible` is false). */
+                players: components["schemas"]["MatchLineupPlayerResponse"][];
+                /** @description Whether the caller is permitted to see the player list. */
+                players_visible: boolean;
+                /** @description Registration ID this lineup belongs to. */
+                registration_id: string;
+                /** @description Whether the lineup is below the required team size. */
+                short_handed: boolean;
+                /** @description Lifecycle status (draft/submitted/locked). */
+                status: components["schemas"]["LineupStatus"];
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_MatchStatusDetailsResponse: {
             /** @description Response DTO for match status details. */
             data: {
@@ -7851,6 +7942,41 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_MatchLineupResponse: {
+            data: {
+                /**
+                 * Format: date-time
+                 * @description When the provisional lineup was declared.
+                 */
+                declared_at?: string | null;
+                /** @description User who declared the lineup. */
+                declared_by?: string | null;
+                /** @description Lineup ID. */
+                id: string;
+                /**
+                 * Format: date-time
+                 * @description When the lineup locked (match start).
+                 */
+                locked_at?: string | null;
+                /** @description Match ID. */
+                match_id: string;
+                /** @description Optional captain note. */
+                notes?: string | null;
+                /** @description The player rows (empty when `players_visible` is false). */
+                players: components["schemas"]["MatchLineupPlayerResponse"][];
+                /** @description Whether the caller is permitted to see the player list. */
+                players_visible: boolean;
+                /** @description Registration ID this lineup belongs to. */
+                registration_id: string;
+                /** @description Whether the lineup is below the required team size. */
+                short_handed: boolean;
+                /** @description Lifecycle status (draft/submitted/locked). */
+                status: components["schemas"]["LineupStatus"];
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_Vec_MatchStatusLogResponse: {
             data: {
                 /** @description Status before the transition. */
@@ -8835,6 +8961,23 @@ export interface components {
             date: string;
             is_blocked: boolean;
             notes: string[];
+        };
+        /**
+         * @description Request to declare a provisional lineup for a match.
+         *
+         *     The lineup is a captain's *promise* of who will play, for opponent
+         *     visibility and an advisory eligibility pre-check. It is optional; the
+         *     authoritative lineup is derived from the demo after the match is played.
+         */
+        DeclareLineupRequest: {
+            /** @description Optional captain note. */
+            notes?: string | null;
+            /** @description Player IDs expected to play (up to 20). */
+            player_ids: string[];
+            /** @description Registration ID this lineup is for (must be a participant in the match). */
+            registration_id: string;
+            /** @description If true the lineup is marked `submitted`; otherwise left `draft`. */
+            submit?: boolean;
         };
         /** @description Demo download URL response. */
         DemoDownloadResponse: {
@@ -10272,6 +10415,25 @@ export interface components {
              */
             reason?: string | null;
         };
+        /**
+         * @description Provenance of a lineup player row (§0a).
+         *
+         *     This is the load-bearing distinction of the two-phase model:
+         *     `Declared` rows are a captain's provisional promise; the rest are
+         *     authoritative records of who actually played, best-to-worst automation.
+         * @enum {string}
+         */
+        LineupSource: "declared" | "demo" | "evidence" | "admin";
+        /**
+         * @description Lifecycle status of a lineup (§0 Q2).
+         *
+         *     A captain declares a provisional lineup (`draft`), submits it (`submitted`),
+         *     and it becomes read-only when the match starts (`locked`, stamped on the
+         *     `PickBan`/`InProgress` transition). A lineup is only opponent-visible once
+         *     `locked` (§0 Q3).
+         * @enum {string}
+         */
+        LineupStatus: "draft" | "submitted" | "locked";
         /** @description Request to link a demo to a match as evidence. */
         LinkDemoRequest: {
             /**
@@ -10544,6 +10706,62 @@ export interface components {
              * @description Offset for pagination.
              */
             offset?: number | null;
+        };
+        /** @description A single player row in a lineup. */
+        MatchLineupPlayerResponse: {
+            /**
+             * Format: int32
+             * @description Per-map game number (demo rows); null for match-level declared rows.
+             */
+            game_number?: number | null;
+            /** @description Lineup-player row ID. */
+            id: string;
+            /** @description Whether this player is a substitute (not on the team roster). */
+            is_substitute: boolean;
+            /** @description How the player participated. */
+            participation_status: components["schemas"]["ParticipationStatus"];
+            /** @description Player ID. */
+            player_id: string;
+            /** @description Where this row came from (declared/demo/evidence/admin). */
+            source: components["schemas"]["LineupSource"];
+            /** @description Snapshot of roster membership at declaration/ingestion. */
+            was_rostered: boolean;
+        };
+        /**
+         * @description A lineup for one registration, with its player rows.
+         *
+         *     `players` is omitted (empty) when the viewer is not permitted to see it —
+         *     a provisional lineup is opponent-visible only once `locked` (§0 Q3).
+         */
+        MatchLineupResponse: {
+            /**
+             * Format: date-time
+             * @description When the provisional lineup was declared.
+             */
+            declared_at?: string | null;
+            /** @description User who declared the lineup. */
+            declared_by?: string | null;
+            /** @description Lineup ID. */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When the lineup locked (match start).
+             */
+            locked_at?: string | null;
+            /** @description Match ID. */
+            match_id: string;
+            /** @description Optional captain note. */
+            notes?: string | null;
+            /** @description The player rows (empty when `players_visible` is false). */
+            players: components["schemas"]["MatchLineupPlayerResponse"][];
+            /** @description Whether the caller is permitted to see the player list. */
+            players_visible: boolean;
+            /** @description Registration ID this lineup belongs to. */
+            registration_id: string;
+            /** @description Whether the lineup is below the required team size. */
+            short_handed: boolean;
+            /** @description Lifecycle status (draft/submitted/locked). */
+            status: components["schemas"]["LineupStatus"];
         };
         /** @description Response DTO for match status details. */
         MatchStatusDetailsResponse: {
@@ -10899,6 +11117,14 @@ export interface components {
              */
             per_page?: number;
         };
+        /**
+         * @description How a player participated in the match (§0a).
+         *
+         *     `Substituted`/`LeftEarly` are reachable through the demo path but are not
+         *     written by any producer yet (deferred — see the task boundary).
+         * @enum {string}
+         */
+        ParticipationStatus: "confirmed" | "no_show" | "left_early" | "substituted" | "removed";
         /** @description Request to perform a veto action (ban or pick). */
         PerformVetoActionRequest: {
             /** @description Map ID to ban or pick. */
@@ -24096,7 +24322,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Invitations */
+            /** @description Invitations (full list for organisers; own invitations only otherwise) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -24107,15 +24333,6 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -24741,6 +24958,114 @@ export interface operations {
             };
             /** @description Not authorized to forfeit for this participant */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    declare_match_lineup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeclareLineupRequest"];
+            };
+        };
+        responses: {
+            /** @description Lineup declared */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_MatchLineupResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not authorized to declare for this participant */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_match_lineups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Match lineups */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_MatchLineupResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

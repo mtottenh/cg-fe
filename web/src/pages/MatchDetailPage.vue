@@ -192,6 +192,14 @@
           <v-alert v-else type="info" variant="tonal" density="compact">
             You've checked in. Waiting for opponent...
           </v-alert>
+
+          <!-- Provisional lineup declaration (§0b) — declare who's playing. -->
+          <LineupDeclarePanel
+            :tournament-id="tournament.id"
+            :match-id="match.id"
+            :user-registration-id="userRegistrationId"
+            class="mt-4"
+          />
         </v-card-text>
       </v-card>
 
@@ -428,6 +436,7 @@ import MapResultsSummary from '@/components/match/results/MapResultsSummary.vue'
 import EvidenceDisplay from '@/components/match/evidence/EvidenceDisplay.vue'
 import VetoPanel from '@/components/match/veto/VetoPanel.vue'
 import LineupPanel from '@/components/match/LineupPanel.vue'
+import LineupDeclarePanel from '@/components/match/LineupDeclarePanel.vue'
 import LobbyChatPanel from '@/components/match/LobbyChatPanel.vue'
 import LobbyPresenceBar from '@/components/match/LobbyPresenceBar.vue'
 import DisputeThreadPanel from '@/components/match/DisputeThreadPanel.vue'

@@ -348,7 +348,11 @@ test.describe('League join / apply', () => {
         method: 'POST',
         headers: { Authorization: `Bearer ${outsider.token}` },
       })
-      expect(joinResp.status).toBe(400)
+      // 403 since P-46 (was 400): the request is well-formed — the caller simply may
+      // not enter without an invitation. Deliberate spec change aligning leagues with
+      // tournaments (ground rule 1.9: the specification changed, not the assertion's
+      // honesty); the invite-only refusal itself is unchanged.
+      expect(joinResp.status).toBe(403)
 
       // And nothing was created behind the UI's back.
       const members = await listLeagueMembers(adminToken, league.leagueId)

@@ -165,7 +165,7 @@ test.describe('League Invitations', () => {
   test('invited player accepts a league invitation and becomes a league member', async ({
     page,
   }) => {
-    const { adminToken, leagueId, invitee, message } = await seedLeagueInvitation()
+    const { adminToken, leagueId, leagueName, invitee, message } = await seedLeagueInvitation()
 
     await loginAsUser(page, { email: invitee.email, password: invitee.password })
     await page.goto('/invitations')
@@ -180,8 +180,13 @@ test.describe('League Invitations', () => {
     // The card carries the inviter's message (:49-53). It is also the only
     // text that identifies WHICH league this is — see the report note on the
     // missing league name.
-    const card = page.locator('.v-card').filter({ hasText: message }).first()
+    // P-38 fixed: the card now names its league, so locate by the league name —
+    // the honest locator (two pending invites are distinguishable by it).
+    const card = page.locator('.v-card').filter({ hasText: leagueName }).first()
     await expect(card).toBeVisible()
+    // exact: the seeded message also embeds the league name, so a substring
+    // match is ambiguous; the card TITLE is the exact name (P-38).
+    await expect(card.getByText(leagueName, { exact: true })).toBeVisible()
     await expect(card.getByText('League Invitation')).toBeVisible()
 
     await card.getByRole('button', { name: 'Accept' }).click()
@@ -224,7 +229,7 @@ test.describe('League Invitations', () => {
   test('invited player declines a league invitation and stays outside the league', async ({
     page,
   }) => {
-    const { adminToken, leagueId, invitee, message } = await seedLeagueInvitation()
+    const { adminToken, leagueId, leagueName, invitee, message } = await seedLeagueInvitation()
 
     await loginAsUser(page, { email: invitee.email, password: invitee.password })
     await page.goto('/invitations')
@@ -233,10 +238,13 @@ test.describe('League Invitations', () => {
     const card = page.locator('.v-card').filter({ hasText: message }).first()
     await expect(card).toBeVisible({ timeout: 10_000 })
 
-    // NOTE: unlike the team-invitation decline (which routes through
-    // ConfirmDialog, InvitationsPage.vue:274-290), `handleDeclineLeague` fires
-    // immediately on click — there is no confirmation step to drive.
+    // P-40 fixed: the league decline now routes through ConfirmDialog like the
+    // team decline (it is the LESS recoverable of the two). Drive the dialog:
+    // click Decline on the card, then confirm in the dialog.
     await card.getByRole('button', { name: 'Decline' }).click()
+    const dialog = page.getByRole('dialog').filter({ hasText: 'Decline League Invitation?' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: 'Decline' }).click()
 
     // UI assertion 1: the snackbar raised by `handleDeclineLeague` (:249).
     await expect(page.locator('.v-snackbar').getByText('League invitation declined')).toBeVisible()

@@ -40,8 +40,12 @@
                   <v-icon>mdi-trophy</v-icon>
                 </v-avatar>
               </template>
-              <v-card-title>League Invitation</v-card-title>
+              <!-- P-38: the card previously said only "League Invitation" — with two
+                   pending invites they were indistinguishable and accept/decline was a
+                   blind choice. The DTO now carries league_name. -->
+              <v-card-title>{{ invitation.league_name || 'League Invitation' }}</v-card-title>
               <v-card-subtitle>
+                <span v-if="invitation.league_name" class="text-caption d-block">League Invitation</span>
                 <span class="text-caption">Received {{ formatRelativeTime(invitation.created_at) }}</span>
               </v-card-subtitle>
             </v-card-item>
@@ -77,7 +81,7 @@
                 variant="outlined"
                 :loading="decliningLeague === invitation.id"
                 :disabled="processing"
-                @click="handleDeclineLeague(invitation.id)"
+                @click="confirmDeclineLeague(invitation)"
               >
                 <v-icon start>mdi-close</v-icon>
                 Decline
@@ -240,6 +244,19 @@ async function handleAcceptLeague(invitationId: string) {
   } finally {
     acceptingLeague.value = null
   }
+}
+
+function confirmDeclineLeague(invitation: { id: string; league_name?: string | null }) {
+  // P-40: the TEAM decline had a confirm dialog while the LEAGUE decline fired
+  // immediately — inverted, since declining a league invite is the less
+  // recoverable action (only an admin can re-invite to an invite-only league).
+  confirmDialog.confirm({
+    title: 'Decline League Invitation?',
+    message: `Are you sure you want to decline the invitation to join ${invitation.league_name || 'this league'}? Only a league admin can re-invite you.`,
+    action: 'Decline',
+    color: 'error',
+    handler: () => handleDeclineLeague(invitation.id),
+  })
 }
 
 async function handleDeclineLeague(invitationId: string) {

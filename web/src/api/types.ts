@@ -1979,7 +1979,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List pending invitations for a league. */
+        /** List invitations for a league, filterable by status. */
         get: operations["list_invitations"];
         put?: never;
         /** Invite a user to join a league. */
@@ -10141,6 +10141,13 @@ export interface components {
             invitation_type: string;
             invited_by?: string | null;
             league_id: string;
+            /**
+             * @description Name of the league the invitation is for. Without it, two pending
+             *     invitations are indistinguishable on the invitations page and
+             *     accept/decline is a blind choice (P-38) — team invitations already
+             *     carry `team_name`/`league_name`, so the asymmetry was unintended.
+             */
+            league_name: string;
             message?: string | null;
             /** Format: date-time */
             responded_at?: string | null;
@@ -20317,7 +20324,17 @@ export interface operations {
     };
     list_invitations: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Filter by invitation status: `pending` (default), `accepted`,
+                 *     `rejected`, `expired`, or `all` for every status.
+                 *
+                 *     The default stays pending-only for backward compatibility; admin
+                 *     surfaces that need to distinguish "declined" from "never invited"
+                 *     should request `all` (P-39).
+                 */
+                status?: string | null;
+            };
             header?: never;
             path: {
                 /** @description League ID */
@@ -20334,6 +20351,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeagueInvitationResponse"][];
+                };
+            };
+            /** @description Invalid status filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Unauthorized */
@@ -20537,7 +20563,12 @@ export interface operations {
     };
     list_members: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Page number (1-indexed). */
+                page?: number;
+                /** @description Number of items per page. */
+                per_page?: number;
+            };
             header?: never;
             path: {
                 /** @description League ID */
@@ -25122,6 +25153,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Requires admin.tournaments.manage_any — participants use the schedule/propose flow */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

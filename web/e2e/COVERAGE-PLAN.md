@@ -10,9 +10,20 @@ Tick the boxes as work lands. **Read "Ground rules" before changing any spec.**
 
 ## 0.5 ▶ LINEUP SYSTEM — implementation status (updated 2026-07-24)
 
-The lineup redesign (`api/docs/lineup-design.md`) is **built end-to-end for the core**, verified,
-and **proven through the UI by e2e**. The integrity payoff that motivated it is now REAL:
-**P-25 is closed** — a ringer no longer accrues stats.
+> ⚠️ **CORRECTION (2026-07-24, supersedes the "Done & verified" wording below):** the
+> attribution *gating* this section describes as verified was subsequently identified as a
+> **model bug** — the user caught it. Per the corrected `lineup-design.md` §0b: **attribution
+> follows registration, never lineup membership.** A registered player in a demo is attributed
+> full stop (non-rostered ⇒ tagged substitute); only unregistered players stay NULL — which the
+> base Steam-ID join already guarantees, since your definition of ringer is "no site account".
+> `restrict_attribution_to_lineup` (which stripped registered non-lineup players, and dropped
+> un-sideable ones via `infer_side → None`) is being removed/reworked, the §0.4 rules become
+> review-raisers an admin can waive (§0c), and **P-26 is being wired** — all in flight with the
+> implementation agent now. `test_attribution_gated_to_lineup` asserted the bug and is being
+> rewritten. Verify on landing: a registered non-declared sub KEEPS stats + gets the sub tag.
+
+The lineup redesign (`api/docs/lineup-design.md`) is built end-to-end for the core and proven
+through the UI by e2e (declare at check-in; opponent-visibility-at-lock).
 
 **Done & verified:**
 - **A** (`3b3eef0`) schema · **B** (`5516a8e`) provisional declaration write path (RBAC, OpenAPI,
@@ -425,10 +436,8 @@ probably isn't in. All are strictly dominated by `tournament-seeding.spec.ts:44`
 - [ ] (assertion fixes tracked in §5.3)
 
 ### 6.7 Smaller items
-- [ ] `veto-bo3.spec.ts:244` — **class B**: name says "the opponent selects the side" but the
-      write is `selectSide()` at `:300`; the CT/T buttons are only asserted visible `:284–289`.
-      Click the button instead; keep the backend cross-check `:303–308`
-- [ ] `match-checkin.spec.ts:74–93` — the one UI click has a silent API fallback; remove it
+- [x] **STALE-DONE (verified 2026-07-24)** — `veto-bo3.spec.ts` was rewritten; no `selectSide()` API write remains (coin_flip mode with a documented header rationale).
+- [x] **STALE-DONE (verified 2026-07-24)** — no `catch`/API fallback remains in `match-checkin.spec.ts`.
 - [ ] `team-roster.spec.ts` — demote/transfer are API-driven because **no UI exists**;
       confirm that's intended (if UI is planned, add tests then)
 - [x] `auth.spec.ts:171` — dead test (also in §5.3)
@@ -553,7 +562,7 @@ Actively misleading — rename or fix (most are also tracked above).
 - [x] `player-profile.spec.ts:158` "should **update bio successfully**" → asserts its own input
 - [x] `player-profile.spec.ts:302` "should **create** availability window" → asserts a heading
 - [ ] `tournament-team.spec.ts:87` / `:137` / `:200` → `expect(.v-card).toBeVisible()`
-- [ ] `veto-bo3.spec.ts:244` "**the opponent selects the side**" → `selectSide()` REST call
+- [x] stale-done — spec rewritten, no REST side-select
 
 **Honest-by-name API tests — leave as-is** (each still marks a UI path needing its own test):
 `team-roster.spec.ts:86`, `match-results.spec.ts:306` ("via API" — being replaced in §5.1),
@@ -564,77 +573,15 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 58 found · **40 fixed** · 18 open (1 mitigated). **Lineup system core built + e2e-proven (§0.5); P-25 closed.**
+**Status (derived from the table below — the table is the single source of truth):**
+58 found · **40 fixed** · 18 open (P-53 mitigated).
 
-Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-23, P-24, P-25, P-27, P-47, P-51, P-52, P-48, P-49, P-50, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-26, P-46, P-38, P-39, P-40, P-41, P-53, P-56, P-57, P-58, P-54, P-55.
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-26, P-46, P-38, P-39, P-40, P-41, P-53, P-56, P-57, P-58, P-54, P-55. Roster-lock remnants **P-15/P-18/P-26** are sequenced LAST
-per lineup-design §9 (roster-lock rework after the feature proves out).
-
-Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-51, P-52, P-48, P-49, P-50, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
-
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-38, P-39, P-40, P-41, P-53, P-56, P-57, P-58, P-54, P-55 — **P-15/16/23/25/26** are the lineup cluster, now partially
-built (§0.5); P-25/P-26 are scaffolded but the integrity payoff is not yet delivered.
-
-Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-51, P-52, P-48, P-49, P-50, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
-
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-38, P-39, P-40, P-41, P-53, P-56, P-57, P-54, P-55 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
-deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`, now
-decision-complete); do not fix them in isolation.
-
-Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-52, P-50, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
-
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-51, P-48, P-49, P-38, P-39, P-40, P-41, P-53, P-56, P-57, P-54, P-55 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
-deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`, now
-decision-complete); do not fix them in isolation.
-
-Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-52, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
-
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-51, P-48, P-49, P-50, P-38, P-39, P-40, P-41, P-53, P-54, P-55 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
-deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
-them in isolation.
-
-Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-52, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
-
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-51, P-48, P-49, P-50, P-28, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
-deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
-them in isolation.
-
-Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
-
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-47, P-48, P-49, P-50, P-28, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
-deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
-them in isolation.
-
-Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
-
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-47, P-28, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
-deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
-them in isolation.
-
-Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
-
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-27, P-28, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
-deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
-them in isolation.
-
-Fixed: P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
-
-Open: P-1, P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-27, P-28, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
-deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
-them in isolation.
-
-Fixed: P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
-
-Open: P-1, P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-27, P-28, P-29, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
-deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
-them in isolation.
-
-Fixed: P-2, P-4, P-5, P-7, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-44, P-45.
-
-Open: P-1, P-3, P-6, P-8, P-9, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-27, P-28, P-29, P-38, P-39, P-40, P-41, P-43 — of which **P-15, P-18, P-23, P-25, P-26 are deliberately
-deferred** to the substitute/lineup redesign (`api/docs/lineup-design.md`); do not fix
-them in isolation. P-9's API shipped, its UI is built (`4b7edb4`).
+> ⚠️ **Register hygiene note (2026-07-24):** this section previously accumulated ~12
+> stacked, contradictory "Fixed:/Open:" snapshots — each update replaced only the first
+> paragraph and left the older ones behind. They are deleted; only the table is
+> authoritative, and this summary is recomputed from it, never hand-edited.
 
 **This register is authoritative.** Any product bug found by this work gets a P-number *here*,
 even if it also appears in a §9c sweep list — findings parked only in a checklist get lost.
@@ -1160,23 +1107,6 @@ tests to never leave a form dirty.
 - [ ] Surface invite state on the registration card (hide/disable + explain).
 - [ ] Build the organiser invitation panel, then regenerate `src/api/types.ts` (not yet done —
       nothing in the frontend calls the new endpoints).
-
----
-
-
-- **Symptom:** `register_team` (`portal-domain/src/services/tournament/service.rs:451`) and
-  `register_player` (`:505`) check only `is_registration_open()`. There is **no invite check**,
-  so an `invite_only` tournament behaves exactly like `approval`: anyone may register, an
-  organiser must approve.
-- **The inconsistency is the tell:** leagues *do* enforce it —
-  `portal-domain/src/services/league.rs:218` returns `DomainError::LeagueInviteOnly`
-  (mapped to 400 at `portal-api/src/error.rs:276`). The same concept is enforced for leagues
-  and decorative for tournaments.
-- **Impact:** an organiser running a closed/invited event gets no protection from the setting
-  that promises it — the tournament is silently public. Found while implementing P-2, which
-  touches the same `RegistrationType` match but does not change this.
-- [ ] Decide whether tournaments need a real invite list (leagues have one) or whether
-      `InviteOnly` should be removed from `RegistrationType` as a false promise.
 
 ---
 
@@ -1758,7 +1688,7 @@ already generated, but the spec declares **1 enum across 366 schemas**, so it ca
 | `veto-flow.spec.ts` | 3 | 3 | – | – | – | [x] | [x] | Exemplary — reference |
 | `veto-realtime.spec.ts` | 1 | 1 | – | – | – | [x] | [x] | Exemplary — reference (2-context) |
 | `veto-realtime-full.spec.ts` | 3 | 3 | – | – | – | [x] | [x] | Exemplary |
-| `veto-bo3.spec.ts` | – | – | 1 | – | – | [x] | [ ] | §6.7 — side-select via API `:300` |
+| `veto-bo3.spec.ts` | – | – | 1 | – | – | [x] | [x] | rewritten; no API side-select (verified) |
 | `tournament-seeding.spec.ts` | 3 | 3 | – | – | – | [x] | [x] | Exemplary — reference |
 | `tournament-lifecycle.spec.ts` | 4 | 4 | – | – | – | [x] | [x] | Exemplary — reference |
 | `uploads.spec.ts` | 7 | 7 | – | – | – | [x] | [x] | Exemplary (incl. negative validation) |
@@ -1772,16 +1702,16 @@ already generated, but the spec declares **1 enum across 366 schemas**, so it ca
 | `steam-auth.spec.ts` | 4 | 3 | – | 1 | – | [x] | [x] | 1 honest redirect test |
 | `dispute-resolution.spec.ts` | 3 | 2 | – | 1 | – | [x] | [x] | Fixed in `31c2a3e` |
 | `auth.spec.ts` | 13 | 12 | – | – | 1 | [x] | [x] | §5.3 done — `2c26cc2` |
-| `match-checkin.spec.ts` | 3 | 2 | – | 1 | – | [x] | [ ] | §6.7 — silent API fallback |
-| `team-roster.spec.ts` | 4 | 2 | 2 | – | – | [x] | [ ] | §6.7 — demote/transfer have no UI |
+| `match-checkin.spec.ts` | 3 | 2 | – | 1 | – | [x] | [x] | fallback removed (verified 2026-07-24) |
+| `team-roster.spec.ts` | 4 | 2 | 2 | – | – | [x] | [~] | admin demote UI covered (`fbe1500`); captain transfer-ownership still has NO UI — decide |
 | `match-results.spec.ts` | 15 | 13 | 1 | – | 1 | [x] | [x] | §5.1 done — `9283af3` |
 | `player-profile.spec.ts` | 18 | 15 | – | 2 | 1 | [x] | [x] | §5.3 done — `2c26cc2` |
-| `match-workflow.spec.ts` | 18 | 15 | – | – | 3 | [x] | [ ] | §6.5 |
+| `match-workflow.spec.ts` | 18 | 15 | – | – | 3 | [x] | [~] | negotiation+withdraw done (`4b7edb4`); ONE item left: `:253` `hasText: 'ready'` (§9) |
 | `admin-management.spec.ts` | 23 | 18 | – | 2 | 3 | [x] | [x] | §5.3+§6.6 done — `2c26cc2`, now has mutations |
-| `tournament-admin.spec.ts` | 23 | 15 | – | – | 8 | [x] | [ ] | §6.3 — 16 guards |
-| `tournament-team.spec.ts` | 18 | 6 | – | 9 | 3 | [x] | [ ] | §6.4 — smoke tests |
+| `tournament-admin.spec.ts` | 23 | 15 | – | – | 8 | [x] | [x] | 0 guards (ratchet {}); P-2 staleness fixed `d338038` |
+| `tournament-team.spec.ts` | 18 | 6 | – | 9 | 3 | [x] | [x] | 0 guards; stale P-2 tests fixed by invite-only wave |
 | `tournament-public.spec.ts` | 21 | 8 | – | 4 | 9 | [x] | [x] | §5.2 done — `975874f`, guards 25→0 |
-| `team-management.spec.ts` | 34 | 6 | 1 | 6 | 21 | [x] | [ ] | §6.1 — 42 guards, worst file |
+| `team-management.spec.ts` | 34 | 6 | 1 | 6 | 21 | [x] | [x] | rebuilt: 0 guards, 1290 lines (§6 reconciliation) |
 
 ---
 
@@ -1808,10 +1738,10 @@ a single serialized pass (Wave 0) so downstream agents build on a stable base.
 - [x] **Wave 1 (parallel, P0):** **Done** — `9283af3`, `975874f`, `2c26cc2`. one agent each →
       `match-results.spec.ts` (§5.1) · `tournament-public.spec.ts` (§5.2) ·
       `admin-management.spec.ts` + `auth.spec.ts` + `player-profile.spec.ts` (§5.3)
-- [ ] **Wave 2 (parallel, de-guard):** one agent each →
+- [x] **Wave 2 — DONE** (§6 reconciliation; ratchet `{}`): one agent each →
       `team-management.spec.ts` · `tournament-admin.spec.ts` · `tournament-team.spec.ts` ·
       `match-workflow.spec.ts` · (`veto-bo3` + `match-checkin` + `team-roster` as one small stream)
-- [ ] **Wave 3 (parallel, new coverage):** Phase 3 handlers + Phase 4 routes, grouped by area
+- [x] **Wave 3 — substantially done** (`fbe1500`, `efbb45b`, `39220e1`, `d51a611`, `ce732a0`; remainder tracked in §7 Tier 2/3): Phase 3 handlers + Phase 4 routes, grouped by area
       (admin-bans · organizer-toolbar · dispute-resolutions · result-reviews · profile/steam · captain-actions)
 
 ### Definition of done per workstream
@@ -1827,10 +1757,10 @@ a single serialized pass (Wave 0) so downstream agents build on a stable base.
 
 ## 12. Overall definition of done
 
-- [ ] Phase 0 guardrails merged and enforcing in CI
-- [ ] Zero vacuous guards across `web/e2e/`
+- [x] Phase 0 guardrails merged and enforcing in CI (ratchet in `test.yml`, baseline `{}`)
+- [x] Zero vacuous guards across `web/e2e/` (112 → 0, baseline `{}`)
 - [ ] Zero class-B tests (or renamed to honestly describe an API-level check)
 - [ ] Every Tier 1 handler (§7) exercised through the UI
-- [ ] Every route in §8 loaded by at least one test
+- [x] Every route in §8 loaded by at least one test (`fbe1500`)
 - [ ] Every misleading name in §9 fixed or renamed
 - [ ] Full suite green, and a deliberately broken component makes it **red** (spot-check the guarantee)

@@ -91,12 +91,10 @@ not see).
 - **Suite:** ratchet `{}` · web typecheck clean · api suite green (last full sequential run:
   681 passed / 0 failed / 1 ignored — the ignored test needs the demo service on `:3100`;
   count grows as agents add tests).
-- **In flight right now:**
-  1. **Lineup attribution correction + P-26** (implementation agent) — see §6.
-  2. **League-invitations API batch** (agent) — P-38, P-39, P-46, P-54, P-40.
-- **Uncommitted in the tree, deliberately:** the **P-59 gate** on `schedule_match`
-  (complete, in `match_lifecycle.rs`) — held because that file also carries the lineup
-  agent's in-flight edits; committing now would sweep them.
+- **Both in-flight agent streams LANDED 2026-07-24** (agents were stopped; work verified and
+  committed by the orchestrator): lineup attribution correction + P-26 (`29be78e`), league
+  batch API (`dc5136c`) + web half, P-59 gate (`930f8c9`, red-proven). Combined gate at
+  landing: **686 passed / 0 failed**, fmt/clippy clean, ratchet `{}`, 6/6 on the touched specs.
 
 ## 4. Roadmap — remaining work in order
 
@@ -116,10 +114,10 @@ not see).
 > were born) and move on.
 
 **A · The moment the lineup agent lands (contended-file queue):**
-- [ ] Verify the attribution correction end-to-end (a registered non-declared sub KEEPS
+- [x] Verify the attribution correction end-to-end (a registered non-declared sub KEEPS
       stats + gets the sub tag; unregistered stays NULL and raises the review; the rewritten
       `test_attribution_gated_to_lineup` asserts the corrected model; P-26 wired).
-- [ ] Commit the **P-59 gate** + red-proven 403 test.
+- [x] Commit the **P-59 gate** + red-proven 403 test (`930f8c9`).
 - [ ] **Admin manual-scheduling e2e** — `MatchAdminActionsTab.handleSchedule` exists and
       calls the properly-gated `/v1/admin/.../schedule`, but is untested (P-35-shaped risk).
       User-priority item.
@@ -208,11 +206,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 73 found · 41 fixed · 32 open** (P-53 mitigated, P-59 gated-pending-commit).
+**Status (derived): 73 found · 48 fixed · 25 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-26, P-38, P-39, P-40, P-41, P-46, P-53, P-54,
-P-55, P-56, P-58, P-59, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70,
-P-71, P-72, P-73.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73.
 
 | # | Finding | Severity | State |
 |---|---|---|---|
@@ -241,7 +237,7 @@ P-71, P-72, P-73.
 | P-23 | Roster-mismatch review built but unreachable | integrity | **fixed** `e166079` |
 | P-24 | **Check-in/forfeit/reg-check-in had no authz** | **security** | **fixed** `98c8f48` |
 | P-25 | **Ringer stats count / benched credited** | integrity | **fixed** `b388a77`; model corrected, see §6 |
-| P-26 | "Sub can't face own team" never enforced | integrity | 🟡 being wired (in-flight agent) |
+| P-26 | "Sub can't face own team" never enforced | integrity | **fixed** `29be78e` (review-raiser) |
 | P-27 | `invite_only` tournaments accept anyone | trust | **fixed** `c3e0949` |
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | **fixed** `9f87495` |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | **fixed** `8ce0f0a` |
@@ -253,15 +249,15 @@ P-71, P-72, P-73.
 | P-35 | **Result-review Decision Form never renders** | **feature dead** | **fixed** `5b39d88` |
 | P-36 | Approve returned 400 for already-approved registrations | blocker | **fixed** `e5773f7` |
 | P-37 | **League members endpoint unauthenticated, leaked emails** | **security/PII** | **fixed** `a0e1b98` |
-| P-38 | League invitation never says which league | user-facing | 🔵 agent in flight |
-| P-39 | Admin cannot see answered league invitations | admin gap | 🔵 agent in flight |
-| P-40 | Decline confirmation guards the wrong action | minor | 🔵 agent in flight |
+| P-38 | League invitation never says which league | user-facing | **fixed** `dc5136c`+web |
+| P-39 | Admin cannot see answered league invitations | admin gap | **fixed** `dc5136c` |
+| P-40 | Decline confirmation guards the wrong action | minor | **fixed** (web) |
 | P-41 | Two create-team forms disagree on validation | inconsistent | open |
 | P-42 | **Auto-linked demos raised false reviews, stalled brackets** | **pipeline** | **fixed** `f6778e7` |
 | P-43 | Review queue showed only the oldest 20, forever | user-facing | **fixed** `9f87495` |
 | P-44 | `resultReviewStatusMap` 3/5 wrong, leaked raw enum | user-facing | **fixed** `070d104` |
 | P-45 | Role-row aria-labels rotated; "Manage" wired to Delete | **a11y/safety** | **fixed** `fbe1500` |
-| P-46 | invite-only refusal: 403 tournaments vs 400 leagues | inconsistent | 🔵 agent in flight |
+| P-46 | invite-only refusal: 403 tournaments vs 400 leagues | inconsistent | **fixed** `dc5136c` (403) |
 | P-47 | No frontend invite-only awareness / organiser invite UI | feature unusable | **fixed** `616a2d6` |
 | P-48 | User cannot see their own pending league application | user-facing | **fixed** `c7d395e` |
 | P-49 | Captain cannot approve a join request from team page | blocks flow | **fixed** `c7d395e` |
@@ -269,12 +265,12 @@ P-71, P-72, P-73.
 | P-51 | Invitee cannot read own invite state (gate was soft) | design gap | **fixed** `c7d395e` |
 | P-52 | Duplicate `operationId` broke the generated client | build | **fixed** `098832a`; guarded `c5ea9e5` |
 | P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | 🟡 mitigated `7775a19` → P-56 |
-| P-54 | League members truncates at 20; client cannot paginate | user-facing | 🔵 agent in flight |
+| P-54 | League members truncates at 20; client cannot paginate | user-facing | **fixed** `dc5136c` |
 | P-55 | Review queue FIFO — newest escalation on the last page | admin friction | open |
 | P-56 | >100-participant tournaments still can't submit (P-53 ceiling) | blocks core flow | open |
 | P-57 | 15-min auto-confirm window too short for humans | trust | **fixed** `5590726` (24h) |
 | P-58 | Team matches credit participation to nobody | integrity | landed `3013f58`, verify post-§6 |
-| P-59 | **`schedule_match` direct-set: no authz → manufactured forfeits** | **security** | 🟡 gated in tree, commit pending |
+| P-59 | **`schedule_match` direct-set: no authz → manufactured forfeits** | **security** | **fixed** `930f8c9` (red-proven) |
 | P-60 | Logout never revokes the session server-side | security gap | open |
 | P-61 | UI disqualify doesn't cascade; strands matches | admin gap | open |
 | P-62 | Transfer team ownership has no UI | product gap | open |
@@ -490,10 +486,10 @@ demo-derived materialization with sub auto-tagging · ringer detection raising t
 two-captain review · team participation crediting (P-58) · store + `LineupPanel` +
 check-in declaration picker · e2e: declare-through-UI + opponent-visibility-at-lock.
 
-**In flight (agent):** the attribution **correction** — the first implementation wrongly
-hard-gated attribution on lineup membership and dropped un-sideable registered players;
-being reworked to the model above, P-26 wired, `test_attribution_gated_to_lineup` rewritten
-(it asserted the bug). **Verify on landing** (Roadmap A).
+**Correction LANDED and verified (`29be78e`):** the gate is removed; a registered
+non-declared sub keeps attribution (rewritten test asserts it, with the old assertion called
+out as the bug); un-sideable players keep stats and raise a SIDE-UNASSIGNED review; P-26,
+majority and elo are review-raisers. Roadmap-A verification item complete.
 
 **Deferred with extension points:** evidence ladder + admin manual entry (Roadmap B — decided
 scope) · §0c waivers (B) · retiring the `substitute` role / collapsing `RosterLockStatus`

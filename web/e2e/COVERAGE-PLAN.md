@@ -8,6 +8,50 @@ Tick the boxes as work lands. **Read "Ground rules" before changing any spec.**
 
 ---
 
+## 0.5 ▶ LINEUP SYSTEM — implementation status (2026-07-24)
+
+The lineup redesign (`api/docs/lineup-design.md`, decision-complete) is **partially built**.
+Backend core landed and is verified (676 passed / 0 failed on a sequential run); frontend is a
+slice; e2e not started. **P-15/P-16 are now retired by construction where enforced; P-23, P-25,
+P-26 are scaffolded but NOT yet closed** — see the precise boundary below.
+
+**Done & verified:**
+- **Phase A** (`3b3eef0`) — `migrations/0079_match_lineups.sql`, faithful to §0a; `lineup_required`
+  opt-in flag (default off, nothing changes until a season enables it).
+- **Phase B** (`5516a8e`) — provisional declaration write path: full three-layer types, RBAC via
+  the P-24 `require_registration_actor` model, OpenAPI registered, wire-compat test for the new
+  enum, 6 integration tests. Locks on the PickBan/InProgress transition.
+- **Phase D partial** (`e166079`) — P-23's `unrecognized_players` producer is populated: a demo
+  player with no site account now raises the two-captain `roster_mismatch` review even on a
+  clean score. Ringer *detection* works.
+- **Phase E slice** (`311d241`,`6a6fb1e`) — `useLineupsStore` + `LineupPanel.vue` showing lineups
+  with substitute tags and per-map numbers, honouring opponent-visible-at-lock. 3 store tests.
+
+**⚠️ Scaffolded but NOT closed (the integrity payoff is not delivered yet):**
+- **P-25 — a ringer STILL accrues stats today.** Phase C built `materialize_demo_lineup`
+  (tested) but deliberately left the bare Steam-ID attribution gating in place
+  (`portal-db/src/adapters/demo.rs:899`, `demo_stats.rs:118`) and did **not** wire materialization
+  into ingestion (`services/demo.rs:296` `link_to_match`, `:495` `try_auto_link`) — gating without
+  the wiring would break the common no-lineup path. **The machinery to stop ringers exists; the
+  stop does not.**
+- **P-26 / majority-rule enforcement** — `substitutes_are_minority` + elo caps are built but not
+  yet invoked; they need the Phase C materialized lineup as input.
+
+**Deferred by instruction (§9 last):** retiring the `substitute` role, collapsing
+`RosterLockStatus`, waivers (§0c), the evidence ladder beyond `demo`, mid-match
+`participation_status`, and the Phase E declaration picker UI. Phase F e2e not started.
+
+### P-58 — team matches credit participation to NOBODY today
+- `StatsUpdaterAdapter` (`api/crates/portal-api/src/adapters/stats_updater.rs:171-207`) credits
+  participation only for **individual** registrations; team matches credit no one
+  (*"team stats aggregation would require looking up team members"*).
+- **Reframes §4/P-25:** the design assumed participation is credited to the *whole roster* for
+  teams; in fact it is credited to **no one**. So lineup-based crediting for teams is a **new
+  feature to add**, not a bug to fix — but the leaderboards/awards gap it implies is real.
+- [ ] Credit team participation from the (demo-derived) lineup when Phase C wiring lands.
+
+---
+
 ## 0. ▶ WHAT TO DO NEXT (prioritised, 2026-07-23)
 
 Derived from a verified audit of every open item — each was re-checked in source, not taken
@@ -533,7 +577,12 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 57 found · **38 fixed** · 19 open (1 mitigated).
+**Status:** 58 found · **38 fixed** · 20 open (1 mitigated). **Lineup system partially built — see §0.5.**
+
+Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-51, P-52, P-48, P-49, P-50, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
+
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-23, P-25, P-26, P-46, P-38, P-39, P-40, P-41, P-53, P-56, P-57, P-58, P-54, P-55 — **P-15/16/23/25/26** are the lineup cluster, now partially
+built (§0.5); P-25/P-26 are scaffolded but the integrity payoff is not yet delivered.
 
 Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-51, P-52, P-48, P-49, P-50, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
 
@@ -654,6 +703,7 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | 🟡 mitigated `7775a19` |
 | P-56 | >100-participant tournaments still can't submit (P-53 ceiling) | blocks core flow | open |
 | P-57 | 15-min auto-confirm window too short for humans | trust | open |
+| P-58 | Team matches credit participation to nobody | integrity | open |
 | P-54 | League members truncates at 20; client cannot paginate | user-facing | open |
 | P-55 | Review queue FIFO — newest escalation on the last page | admin friction | open |
 | P-44 | `resultReviewStatusMap` 3/5 wrong, leaks raw enum | user-facing | **fixed** `070d104` |

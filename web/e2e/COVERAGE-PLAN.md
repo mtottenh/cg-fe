@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **92 product findings** from what
+*"what should happen here?"* — and that question surfaced **93 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **92 findings · 50 fixed** → the status-drift defect class closed at the source
+112 → 0) → **93 findings · 50 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -83,6 +83,14 @@ not see).
   since P-2, `open` auto-approves. `CreateTournamentOptions.registrationType` exists for this.
 - **`createLeague` fixture hardcodes `access_type: 'open'`** — invite-only/application
   leagues need a spec-local builder (precedent in `league-join.spec.ts`).
+- **Vuetify `v-text-field` doubles its accessible name** (floating label + the input's own
+  aria-label), so the name is `"<label> <label>"` and
+  `getByRole('textbox', { name: 'Game Auth Code', exact: true })` matches **nothing**.
+  `exact: true` is unusable on Vuetify text fields — scope by container and match a substring.
+- **Parallel lanes share one scratchpad directory** — two lanes both writing `run1.log`
+  truncated each other mid-write, and one spent a cycle debugging the *other's* failures as
+  its own. `-i` namespaces ports and state files but NOT scratchpad paths: name yours
+  `run-<lane>-<n>.log`, or write under a per-lane subdirectory.
 - **Games are GLOBAL config and there is no create-game endpoint** — a spec that mutates one
   races every other spec that reads the games list. `playwright.config.ts` sets
   `fullyParallel: true`, so it races *itself* too: Lane 5's first run failed 2/4 when one
@@ -115,7 +123,7 @@ not see).
 |---|---|---|---|
 | ~~5~~ | ~~`-i 1`~~ | **LANDED** `e50ec9c` — 4 tests green, red-proven | yielded **P-87..P-92** |
 | 6 | `-i 2` | `e2e/tournament-admin.spec.ts` · `e2e/awards.spec.ts` | `StagesTab.handleCreateStage` · `handleClearSeeding` · `AwardsTab.handleSaveEdit` + void |
-| 7 | `-i 3` | `e2e/player-steam-tracking.spec.ts` (new) · `e2e/player-availability.spec.ts` (new) + `fixtures/player-surfaces.fixture.ts` | `SteamTrackingCard` · availability windows/overrides · `SocialLinksEditor` |
+| ~~7~~ | ~~`-i 3`~~ | **LANDED** `331887e` — 8 tests green, red-proven | yielded **P-93** |
 | 8 | `-i 4` | `e2e/admin-modal-saves.spec.ts` (new) + `fixtures/modal-saves.fixture.ts` | `LeagueCreateModal` · `LeagueEditModal` · `LeagueSeasonCreateModal` · `InviteUserModal` · `BanDetailModal` |
 
 Same standing rules as wave 1 (below). P-81 and P-86 both landed first, so wave 2 writes
@@ -250,9 +258,11 @@ take one row each without contending; tick a row only when the test is red-prove
       **`associate` → P-75**; the snackbar leak it declined to certify is **P-76**
 
 *Player:*
-- [ ] `SteamTrackingCard` (opt-in/opt-out — the entry point to the whole P-73 pipeline)
-- [ ] `AvailabilityOverridesManager` + availability windows create/update/delete
-- [ ] `SocialLinksEditor` · `MapPoolPicker` · `DemoBrowser`
+- [x] **LANE 7 landed** (`331887e`, 8 tests) — `SteamTrackingCard` enable/update/disable +
+      the no-Steam-ID refusal · availability windows edit/delete · overrides delete ·
+      `SocialLinksEditor` save. Window *create* was already covered at
+      `player-profile.spec.ts:601`. Override *create* could not be driven honestly → **P-93**
+- [ ] `MapPoolPicker` · `DemoBrowser` — deferred to wave 3
 
 *Names & honesty:*
 - [ ] `match-workflow.spec.ts:253` asserts `hasText: 'ready'` (certifies the raw enum; survives
@@ -273,9 +283,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 92 found · 50 fixed · 42 open** (P-53 mitigated).
+**Status (derived): 93 found · 50 fixed · 43 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-93.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -376,6 +386,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | open |
 | P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
 | P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | **fixed** `e06ff8f` |
+| P-93 | **Date overrides saved one day early in every positive UTC offset** | **data corruption** | open |
 | P-87 | **Every game-config WRITE 404s — handler passes UUID to a slug-keyed update** | **feature dead** | open |
 | P-88 | A disabled game vanishes from admin and can never be re-enabled | **traps admin** | open |
 | P-89 | `AdminGamesPage` aria-labels rotated by one — **P-45 recurrence** | **a11y/safety** | open |
@@ -598,6 +609,27 @@ belong to the §4-G P-31 remnant batch.
 **Lesson recorded for ground rule 10:** the probe that matters is the one aimed at the
 *claim*, not the mechanism. Probe A ("does the gate run?") passed and would have been enough
 to call P-81 done; Probe B ("does the gate deliver what I said it would?") is what found P-86.
+
+**P-93 — a date override is saved one day early for every player east of Greenwich.**
+`AvailabilityOverridesManager.vue:334-335` does
+`new Date(form.override_date).toISOString().split('T')[0]`. `v-date-picker` emits a
+**local-midnight** `Date`, so `toISOString()` re-reads that instant in UTC and rolls the
+calendar day *back* for any positive offset. Reproduced on this runner (Europe/London, BST =
+UTC+1): picking **Sat 15 Aug 2026** posts `override_date: 2026-08-14` and the list then renders
+"Fri, Aug 14, 2026". A player marking themselves unavailable for a match day is silently
+recorded as unavailable the day before — and available on the day they blocked out.
+
+Lane 7 wrote the create test, watched it fail on the picked-day assertion, and **dropped it
+rather than pin the runner to `TZ=UTC`** — which would have gone green forever while every
+European player's overrides landed on the wrong day. That is ground rule 8 applied to a test
+*environment* rather than an assertion, and it is the sharpest example the campaign has
+produced: the tempting fix was one env var. The dropped test and its repro are preserved
+verbatim in the spec header, ready to restore with the fix.
+
+The same `toISOString()` pattern drives three more places, so expect the same skew in the
+min-date guard and the past/future split: `AvailabilityOverridesManager.vue:255-258`, `:290`,
+and `stores/availability.ts:65`. Fix = format from local parts
+(`getFullYear`/`getMonth`/`getDate`), never `toISOString`, for a **calendar date**. → **D, high.**
 
 **P-87 — every game-config write 404s: a UUID handed to a slug-keyed update.**
 `GameRepository::update` is declared `update(&self, slug: &str, ...)` and documented "Update a
@@ -858,6 +890,7 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
 | `admin-demo-detail.spec.ts` (F Lane 4) | 5 | 5 | – | – | – | [x] | red-proven; yielded P-74/75/76 |
 | `admin-match-overrides.spec.ts` (F Lane 1) | 6 | 6 | – | – | – | [x] | red-proven; yielded P-82..P-85 |
 | `admin-games-config.spec.ts` (F Lane 5) | 4 | 4 | – | – | – | [x] | serial-mode; red-proven; yielded P-87..P-92 |
+| `player-steam-tracking` + `player-availability` (F Lane 7) | 8 | 8 | – | – | – | [x] | red-proved via a lying backend; yielded P-93 |
 
 ## 8. Definition of done
 

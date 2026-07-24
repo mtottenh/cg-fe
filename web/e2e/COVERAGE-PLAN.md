@@ -117,6 +117,19 @@ not see).
   batch API (`dc5136c`) + web half, P-59 gate (`930f8c9`, red-proven). Combined gate at
   landing: **686 passed / 0 failed**, fmt/clippy clean, ratchet `{}`, 6/6 on the touched specs.
 
+### Parallel F wave 3 — IN FLIGHT (2026-07-24). Do not pick these up.
+
+| Lane | Instance | Owns (only these files) | §4-F rows claimed |
+|---|---|---|---|
+| 9 | `-i 1` | `e2e/tournament-map-pool.spec.ts` (new) + `fixtures/map-pool.fixture.ts` | `MapPoolPicker` on `TournamentForm` → `PUT`/`DELETE /v1/tournaments/{id}/map-pool` |
+| 10 | `-i 2` | `e2e/match-demo-browser.spec.ts` (new) + `fixtures/demo-browser.fixture.ts` | `DemoBrowser` → `discoverDemos` · `linkDiscoveredDemo` · demo validation |
+
+`MapPoolPicker` mounts twice: `GameConfigDialog.vue:138` (game pool — **dead, P-87**) and
+`TournamentForm.vue:321` (tournament pool — live). Lane 9 drives the tournament one; the game
+one is already registered as a finding and must not be tested into a pass.
+
+This is the **last** wave: after it, every row in §4-F is either ticked or carries a P-number.
+
 ### Parallel F wave 2 — COMPLETE (2026-07-24). All four lanes landed.
 
 **15 findings (P-87..P-101) from 4 agents.** Wave 2 was killed mid-flight and relaunched; every
@@ -993,7 +1006,10 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
 - [ ] **Every mutating handler in `src/` exercised through the UI** (§4-F) — and every handler
       that cannot be, carrying a P-number that says why. This is now the lead objective
 - [ ] Store-action reachability scan clean: no `async function` in `src/stores/**` without a
-      UI consumer, except those explicitly retired in P-67
-- [ ] `match-workflow:253` name/assertion fixed (last misleading-name item)
-- [ ] Register drained to decided-wontfix or fixed (32 open as of 2026-07-24)
+      UI consumer, except those explicitly retired in P-67. **Re-run 2026-07-24 after waves
+      1-2: still 26, unchanged** — no new drift introduced, and every entry is accounted for
+      by P-67/P-70/P-71/P-74/P-92
+- [x] `match-workflow:253` name/assertion fixed (`c3d0122`) — the last misleading-name item
+- [ ] Register drained to decided-wontfix or fixed (**50 open** after waves 1-2; the
+      coverage wave is a finding *generator*, so this number rises before it falls)
 - [ ] Final spot-check: deliberately break a component and watch the suite go **red**

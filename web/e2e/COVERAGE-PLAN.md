@@ -12,7 +12,7 @@ began as a test-quality audit. The findings are the deliverable; the tests are t
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **111 findings · 53 fixed** → the status-drift defect class closed at the source
+112 → 0) → **111 findings · 54 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -75,6 +75,11 @@ not see).
 - **Playwright text matching is substring + case-insensitive** — `getByText(/Edit Team
   Settings/i)` also matched *"Only the team owner can edit team settings"*; `hasText:
   'ready'` matches "Ready". Assert exact human labels.
+- **`waitForLoadState('networkidle')` does not wait for a request you just triggered** — it
+  resolves after 500ms of quiet, so an already-idle page satisfies it *immediately*, before the
+  click's request is even dispatched. Assertions then read pre-mutation state. It passes
+  locally (server wins the race) and fails under load (server loses) — a CI-only flake whose
+  obvious diagnosis is wrong. Await the mutation: `page.waitForResponse(...)` on the endpoint.
 - **UUID v7 prefixes are timestamps** — two ids created seconds apart share their first 8
   chars; locate rows by full id (`data-testid`), never by prefix.
 - **`useUnsavedChanges` uses `window.confirm`** — Playwright auto-dismisses dialogs, so a
@@ -116,7 +121,9 @@ not see).
 
 ## 3. Current state
 
-- **Suite:** ratchet `{}` · web typecheck clean · api suite green (last full sequential run:
+- **Suite: FULL e2e run GREEN — 316 passed / 0 failed** (2026-07-25, `e2e-ephemeral.sh -i 5`,
+  47 specs). Verified by spot-check: regressing `matchStatusMap.ready` to the raw enum turned
+  it **red**, restoring turned it green. Ratchet `{}` · web typecheck clean (both passes) · api suite green (last full sequential run:
   681 passed / 0 failed / 1 ignored — the ignored test needs the demo service on `:3100`;
   count grows as agents add tests).
 - **Both in-flight agent streams LANDED 2026-07-24** (agents were stopped; work verified and
@@ -330,9 +337,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 111 found · 53 fixed · 58 open** (P-53 mitigated).
+**Status (derived): 111 found · 54 fixed · 57 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-93, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-107, P-108, P-109, P-110, P-111.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-93, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-108, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -442,7 +449,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-104 | Edit modal's empty-pool gate is decorative; the pool edit is discarded | **feature dead** | open |
 | P-105 | A failed map-pool reset is swallowed and reported as success | trust | open |
 | P-106 | `MapPoolPicker` cards are unlabelled clickable divs | a11y | open |
-| P-107 | **The full suite is red as a whole though every spec is green alone** | **suite integrity** | open |
+| P-107 | **The full suite is red as a whole though every spec is green alone** | **suite integrity** | **fixed** `PENDING107` |
 | P-94 | `InviteUserModal` message collected, validated, then discarded | user-facing | open |
 | P-95 | **Invite-only league is un-invitable — needs a UUID no surface shows** | feature unusable | open |
 | P-96 | League invitations/applications tables print the raw enum | user-facing | open |
@@ -790,10 +797,25 @@ This is a suite-integrity defect, not a product one, and it matters more than it
 suggests: **the campaign has been validating specs one at a time and calling that green.** CI
 runs `workers: 1`, which masks it. Candidate causes, in order: shared-identity state (the dev
 token is one identity — ground rule 6), the global game config Lane 5 documented, and
-action-item/roster state leaking between specs that share a seeded user. Needs a bisect —
-run the suite with `--workers=1` first to separate parallelism from ordering, then bisect the
-interfering spec. Until it is closed, **"the suite passes" may only be claimed from a full
-run**, never from a per-spec one. → **A**, ahead of further coverage work.
+action-item/roster state leaking between specs that share a seeded user. **FIXED — the suite is green: 316 passed / 0 failed** (2026-07-25, ephemeral instance 5).
+
+Neither remaining failure was cross-spec interference after all; that first diagnosis was
+wrong. `tournament-admin:664` cleared once P-102/P-103 landed. `team-roster:49` was a **latent
+race in the test**: it clicked Promote and then `waitForLoadState('networkidle')`, which
+resolves after 500ms of quiet — and if the request has not been *dispatched* yet, the
+already-idle page satisfies it **immediately**. The API cross-check then read the roster before
+the promote landed and saw `player`. It passed in isolation because the server won the race and
+failed under full-suite load because it lost.
+
+That is the dangerous shape: it would have passed locally forever and failed only in CI, and
+the obvious reading ("flaky — add a retry") would have been exactly wrong. Fixed by waiting on
+the mutation itself (`waitForResponse` on the promote POST, asserting 200), so the test is bound
+to the event it cares about rather than to a proxy for it. The menu locator was also scoped to
+the promotee's row — `.first()` on `.mdi-dots-vertical` was correct for a two-person roster but
+positional, which is what the UUID-prefix trap warns against.
+
+**Standing rule kept:** "the suite passes" may only be claimed from a full run.
+`waitForLoadState('networkidle')` after an action that triggers a request is now a §2 trap.
 
 **P-94 — the invitation message is collected, validated, then thrown away.**
 `InviteUserModal.vue:33-42` renders "Message (Optional)" with `rules.maxLength(500)`, then calls
@@ -1168,5 +1190,9 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
 - [x] `match-workflow:253` name/assertion fixed (`c3d0122`) — the last misleading-name item
 - [ ] Register drained to decided-wontfix or fixed (**50 open** after waves 1-2; the
       coverage wave is a finding *generator*, so this number rises before it falls)
-- [ ] **Full suite green in one run** (P-107) — first attempt 2026-07-24: 302/4/3
-- [ ] Final spot-check: deliberately break a component and watch the suite go **red**
+- [x] **Full suite green in one run** (P-107) — 316/0 on 2026-07-25 (first attempt was 302/4/3)
+- [x] Final spot-check: deliberately break a component and watch the suite go **red** —
+      regressed `matchStatusMap.ready.label` to the raw enum `'ready'`; `match-workflow:242`
+      failed (exit 1); restored; green (exit 0). Note the closed loop: **before the P-103-era
+      `:253` fix this exact regression would have passed**, because case-insensitive matching
+      could not tell `'Ready'` from `'ready'`.

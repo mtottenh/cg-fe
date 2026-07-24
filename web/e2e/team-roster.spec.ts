@@ -66,17 +66,36 @@ test.describe('Team Roster Management', () => {
     })
     await expect(page.getByText(promotee.displayName, { exact: false })).toBeVisible()
 
-    // Click the three-dots action menu on the non-owner member's row.
-    const menuTrigger = page.locator('.mdi-dots-vertical').first()
+    // P-107: scope the action menu to the PROMOTEE's own row rather than taking
+    // `.first()` of every three-dots icon on the page. The menu only renders for
+    // non-current-user rows (TeamDetailPage.vue:248), so `.first()` happened to be
+    // right for a two-person roster — but it is positional, and positional
+    // locators are what the UUID-prefix trap in §2 warns about. Scope it.
+    const promoteeRow = page
+      .locator('.v-list-item')
+      .filter({ hasText: promotee.displayName })
+      .first()
+    const menuTrigger = promoteeRow.getByRole('button', { name: 'Member actions' })
     await expect(menuTrigger).toBeVisible()
     await menuTrigger.click()
 
     const promoteOption = page.getByText(/Promote to Captain/i)
     await expect(promoteOption).toBeVisible()
-    await promoteOption.click()
 
-    // Wait for the optimistic role update + server round-trip.
-    await page.waitForLoadState('networkidle')
+    // P-107 (the actual full-suite failure): this used to
+    // `waitForLoadState('networkidle')` after clicking. networkidle resolves once
+    // the page has been quiet for 500ms — which, if the request has not been
+    // dispatched yet, is satisfied IMMEDIATELY by the already-idle page. The API
+    // cross-check below then read the roster before the promote landed and saw
+    // `player`. It passed in isolation because the server was fast enough, and
+    // failed only under full-suite load: a latent race, not a slow server.
+    // Wait for the mutation itself.
+    const promoteResponse = page.waitForResponse(
+      (res) =>
+        res.url().includes(`/members/${promotee.playerId}/promote`) && res.request().method() === 'POST',
+    )
+    await promoteOption.click()
+    expect((await promoteResponse).status()).toBe(200)
 
     // Assert — via API cross-check: the member is now a captain.
     const members = await getTeamMembers(scenario.teamSeasonId, scenario.owner.token)

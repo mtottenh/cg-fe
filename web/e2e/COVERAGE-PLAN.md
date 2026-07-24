@@ -574,9 +574,10 @@ Actively misleading — rename or fix (most are also tracked above).
 ## 9b. PRODUCT findings uncovered by this work
 
 **Status (derived from the table below — the table is the single source of truth):**
-58 found · **40 fixed** · 18 open (P-53 mitigated).
+67 found · **41 fixed** · 26 open (P-53 mitigated, P-59 gated-pending-commit).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-26, P-46, P-38, P-39, P-40, P-41, P-53, P-56, P-57, P-58, P-54, P-55.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-26, P-46, P-38, P-39, P-40, P-41, P-53, P-56, P-59, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-58, P-54, P-55.
+
 
 > ⚠️ **Register hygiene note (2026-07-24):** this section previously accumulated ~12
 > stacked, contradictory "Fixed:/Open:" snapshots — each update replaced only the first
@@ -586,6 +587,12 @@ Open: P-3, P-6, P-14, P-15, P-16, P-18, P-26, P-46, P-38, P-39, P-40, P-41, P-53
 **This register is authoritative.** Any product bug found by this work gets a P-number *here*,
 even if it also appears in a §9c sweep list — findings parked only in a checklist get lost.
 P-19..P-22 were promoted out of §9c for exactly that reason.
+
+**Inverse audit (2026-07-24) — the other half of this plan's purpose, now run:** all 268 spec
+operations were joined against actual `web/src/` consumers. **249 consumed · 19 not** — of the 19:
+9 product gaps (now P-59..P-64, P-66), 2 legitimate service endpoints, 8 superseded/dead (P-67).
+Also verified: the generated client matches the spec key-by-key (not stale), and the one
+`as never` cast that blamed the spec was right — the endpoint really is unregistered (P-65).
 
 | # | Finding | Severity | State |
 |---|---|---|---|
@@ -641,7 +648,16 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-43 | Review queue shows only the oldest 20, forever | user-facing | **fixed** `9f87495` |
 | P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | 🟡 mitigated `7775a19` |
 | P-56 | >100-participant tournaments still can't submit (P-53 ceiling) | blocks core flow | open |
-| P-57 | 15-min auto-confirm window too short for humans | trust | open |
+| P-57 | 15-min auto-confirm window too short for humans | trust | **fixed** `5590726` (24h) |
+| P-59 | **`schedule_match` direct-set: no authz, can manufacture forfeits** | **security** | 🟡 gated in tree, commit pending |
+| P-60 | Logout never revokes the session server-side | security gap | open |
+| P-61 | UI disqualify doesn't cascade; strands matches | admin gap | open |
+| P-62 | Transfer team ownership has no UI | product gap | open |
+| P-63 | Disband team has no UI | product gap | open |
+| P-64 | Demo auto-link backfill unreachable from UI | admin gap | open |
+| P-65 | `/users/me/action-items` missing from OpenAPI doc | build (P-52 family) | open |
+| P-66 | Match audit trail + stored suggestions invisible | minor | open |
+| P-67 | Dead-surface cleanup batch | hygiene | open |
 | P-58 | Team matches credit participation to nobody | integrity | open |
 | P-54 | League members truncates at 20; client cannot paginate | user-facing | open |
 | P-55 | Review queue FIFO — newest escalation on the last page | admin friction | open |
@@ -1540,6 +1556,81 @@ tests to never leave a form dirty.
   the countdown starts at submission, not at first view.
 - [ ] Raise the default, and/or only start the countdown once the opponent has loaded the action
       item. Trust-sensitive since auto-confirm makes a score official.
+
+---
+
+### P-59 — `schedule_match` direct-set has NO authorization: anyone can reschedule any match  ⚠️⚠️ SECURITY
+- `POST /v1/tournaments/{tid}/matches/{mid}/schedule` (`handlers/tournaments/match_lifecycle.rs:209`)
+  took only `AuthenticatedUser`; no check anywhere on the chain. It **direct-sets `scheduled_at`**,
+  which drives the check-in window and the no-show forfeit sweep — so any logged-in user could
+  reschedule a stranger's match and **manufacture forfeits**. P-24's exact family; found by the
+  inverse audit (the endpoint has zero frontend consumers).
+- **Participants are unaffected by gating it**: they schedule via the negotiation flow
+  (`schedule/propose|accept|counter|reject|cancel`), which carries proposer/opponent binding and
+  is fully UI-consumed. Admins already use the separately-gated `/v1/admin/.../schedule`
+  (consumed by `MatchAdminActionsTab.handleSchedule`).
+- 🟡 **Gated in the working tree** (staff-only, mirroring `admin_match_transition`) — commit
+  deferred: the handler file is contended with the in-flight lineup agent. Disposition after
+  landing: commit the gate; **delete the endpoint outright in the dead-surface wave** (P-67),
+  since it duplicates the consumed admin endpoint.
+- [ ] Commit gate + red-proven 403 test once the lineup agent lands.
+
+### P-60 — Logout never revokes the session server-side  ⚠️ security gap
+- The backend deliberately built `POST /v1/auth/logout` (revokes the presented refresh token,
+  `handlers/auth.rs:392`) and `POST /v1/auth/logout-all` ("log out everywhere" for compromise
+  response, `:446`). **The UI calls neither** — `stores/auth.ts:354` only clears localStorage, so
+  the refresh token stays valid after "logout", and logout-all has no UI at all.
+- [ ] Call `/v1/auth/logout` on sign-out; add a "log out of all devices" control.
+
+### P-61 — The UI's disqualify doesn't cascade; mid-tournament DQ strands matches
+- `admin_disqualify` (`handlers/forfeit.rs:200`) forfeits all the DQ'd team's remaining matches
+  and reports `matches_forfeited`. The UI's DQ button (`stores/tournament/_registrations.ts:131`)
+  calls the tournament-scoped status-flip variant instead — so a mid-tournament DQ through the
+  UI leaves the team's remaining matches dangling.
+- [ ] Use (or offer) the cascading endpoint for in-progress tournaments.
+
+### P-62 — Transfer team ownership has no UI
+- `POST /v1/league-teams/{id}/transfer-ownership` (`handlers/league_teams/team.rs:329`) works —
+  e2e proves it (`team-roster.spec.ts:188`) and explicitly documents that no UI control exists.
+- [ ] Owner-facing control on TeamEditPage/roster.
+
+### P-63 — Disband team has no UI
+- `DELETE /v1/league-teams/{id}` (`team.rs:275`, gated `team.settings.manage`). No delete-team
+  control anywhere — teams are permanently un-removable from the product.
+- [ ] Add to TeamEditPage (destructive-confirm) and/or admin teams surface.
+
+### P-64 — Demo auto-link backfill unreachable from the admin UI
+- `POST /v1/admin/demos/process-unlinked` (`handlers/demos.rs:653`): bounded batch auto-linking
+  of ready-but-unlinked demos. The admin page has the auto-link enable/disable toggle but no way
+  to run the backfill.
+- [ ] One button on `AdminDemosPage.vue`.
+
+### P-65 — `/v1/users/me/action-items` is served but missing from the OpenAPI document  (P-52 family)
+- Route live (`routes/users.rs:16`), handler fully annotated (`handlers/users.rs:140-151`) — but
+  **never registered in `openapi.rs`** (the users block lists only three ops; `ActionItemResponse`
+  absent from `components(schemas)`). The generated client therefore lacks it, and
+  `stores/captainActions.ts:56` works around it with an `as never` cast whose comment blames the
+  spec. Confirmed by the inverse audit against the dumped spec.
+- [ ] Register path + schema in `openapi.rs` (⚠️ contended file — after the lineup agent lands),
+      regenerate types, drop the cast. Also remove the now-stale `as never` casts in
+      `stores/lineups.ts:68-96` — those endpoints ARE in the spec; the casts predate registration.
+
+### P-66 — Minor unconsumed read surfaces (match audit trail; stored scheduling suggestions)
+- `GET .../matches/{mid}/status` + `/status-history` (transition log with actor/when) — the UI
+  timeline derives only from `match.status`; the audit trail is invisible. Useful for disputes.
+- `GET .../matches/{mid}/suggestions` — stored suggestions exist but the UI only shows freshly
+  generated ones, so they vanish on reload.
+- [ ] Fold into the dispute/admin views and the scheduling panel when convenient.
+
+### P-67 — Dead-surface cleanup batch (from the inverse audit)
+- Safe-to-remove candidates, each verified unconsumed anywhere: the hard-501
+  `GET /v1/matches/{id}/progression` stub; `DELETE /v1/tournaments/{tid}/registrations/{rid}`
+  (worse duplicate of the consumed POST withdraw — doesn't forfeit); orphaned
+  `GET /v1/admin/demos/pending` (public filtered list + internal scanner variant both in use);
+  five redundant single-getters; **P-59's `schedule_match` once gated**; dead e2e fixture helpers
+  in `fixtures/match.fixture.ts` targeting paths that no longer exist (`proposeSchedule`,
+  `submitResult`, the `results/{id}/{action}` helper — only `setAvailabilityWindow` is imported).
+- [ ] One cleanup wave: delete + de-register from `openapi.rs` + prune fixture dead code.
 
 ---
 

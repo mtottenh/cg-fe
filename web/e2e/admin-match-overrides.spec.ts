@@ -1,0 +1,455 @@
+import { test, expect, type Locator, type Page } from '@playwright/test'
+import { getAdminToken, loginAsAdmin } from './fixtures/auth.fixture'
+import {
+  completeMatchViaApi,
+  createStartedTournament,
+  getOverrideMatch,
+  listBracketIds,
+  matchAt,
+  matchesWon,
+  transitionMatchViaApi,
+} from './fixtures/admin-overrides.fixture'
+
+/**
+ * Admin match OVERRIDE paths — `AdminTournamentDetailPage` → Matches tab →
+ * match-detail modal.
+ *
+ * Covers the handlers that had no e2e coverage before this spec (COVERAGE-PLAN
+ * §4-F, "Admin — match & dispute"):
+ *
+ *   MatchOverviewTab.handleTransition          (:104)
+ *   MatchAdminActionsTab.handleSchedule        (:269)  — user-priority item
+ *   MatchAdminActionsTab.handleForfeit         (:280)
+ *   MatchAdminActionsTab.handleDoubleForfeit   (:300)
+ *   MatchAdminActionsTab.handleProcessProgression  (:318)
+ *   MatchAdminActionsTab.handleReapplyProgression  (:340)
+ *   MatchAdminActionsTab.handleRevertProgression   (:358)
+ *
+ * Every test seeds its own tournament via the API, performs the override
+ * through the real UI (including the confirm dialog), and asserts on BOTH the
+ * rendered result and the backend (§1.4).
+ *
+ * ---------------------------------------------------------------------------
+ * Why revert is exercised on a ROUND ROBIN bracket
+ *
+ * `ProgressionService::revert_progression`
+ * (`api/crates/portal-domain/src/services/tournament/progression.rs:846`)
+ * only rolls anything back for `RoundRobin | Swiss` brackets — it clears the
+ * recorded result and recomputes standings. For elimination brackets it logs
+ * "Would revert winner progression - needs implementation" (`:870-880`) and
+ * returns Ok, so the advanced participant stays in the downstream slot. The
+ * revert test therefore asserts the both-ways round trip on the bracket state
+ * that revert actually owns; the elimination no-op is reported as a finding
+ * rather than papered over with a weaker assertion (§1.8).
+ * ---------------------------------------------------------------------------
+ */
+
+/** The match-detail modal. Scoped by its title so it never collides with the
+ *  confirm dialog, which is a sibling overlay, not a descendant. */
+function matchDialog(page: Page): Locator {
+  return page.locator('.v-overlay--active').filter({ hasText: 'Match Detail' })
+}
+
+/** A `useConfirmDialog` overlay, located by its (unique) message body. The
+ *  titles are NOT unique — "Forfeit Match" is also the admin card heading, and
+ *  Playwright text matching is substring-based. */
+function confirmOverlay(page: Page, message: string): Locator {
+  return page.locator('.v-overlay--active').filter({ hasText: message })
+}
+
+/** The visible tab panel inside the modal. Inactive `v-window-item`s stay in
+ *  the DOM behind `v-show`, so unscoped lookups would match hidden controls. */
+function activePanel(dialog: Locator): Locator {
+  return dialog.locator('.v-window-item--active')
+}
+
+/** A row of the admin Matches data table, located by both participant names
+ *  (one name alone is ambiguous once a winner is advanced into a later round). */
+function matchRow(page: Page, ...contains: string[]): Locator {
+  let row = page.locator('tbody tr')
+  for (const text of contains) row = row.filter({ hasText: text })
+  return row
+}
+
+async function openMatchesTab(page: Page, tournamentId: string): Promise<void> {
+  await page.goto(`/admin/tournaments/${tournamentId}?tab=matches`)
+  await expect(page.getByRole('tab', { name: 'Matches' })).toBeVisible()
+}
+
+async function openMatchDetail(page: Page, row: Locator): Promise<Locator> {
+  await row.getByRole('button', { name: 'View match details' }).click()
+  const dialog = matchDialog(page)
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
+async function openAdminActions(dialog: Locator): Promise<Locator> {
+  await dialog.getByRole('tab', { name: 'Admin Actions' }).click()
+  const panel = activePanel(dialog)
+  await expect(panel.getByRole('button', { name: 'Schedule', exact: true })).toBeVisible()
+  return panel
+}
+
+/** Pick a `v-select` option. The menu is teleported to the overlay container,
+ *  so it is addressed through Vuetify's `v-select__content` content class. */
+async function chooseOption(page: Page, select: Locator, optionText: string): Promise<void> {
+  await select.click()
+  await page.locator('.v-select__content .v-list-item').filter({ hasText: optionText }).click()
+  await expect(page.locator('.v-select__content')).toHaveCount(0)
+}
+
+// ---------------------------------------------------------------------------
+
+test.describe('Admin match overrides', () => {
+  test('admin walks a match through the status machine from the Overview tab', async ({ page }) => {
+    test.setTimeout(90_000)
+    const adminToken = await getAdminToken()
+
+    const scenario = await createStartedTournament(adminToken, {
+      format: 'single_elimination',
+      playerCount: 4,
+    })
+    const target = matchAt(scenario.matches, 'R1M1')
+    expect(target.status).toBe('ready')
+    const p1 = target.participant1_name as string
+    const p2 = target.participant2_name as string
+
+    await loginAsAdmin(page)
+    await openMatchesTab(page, scenario.tournamentId)
+
+    const dialog = await openMatchDetail(page, matchRow(page, p1, p2))
+    const overview = activePanel(dialog)
+    await expect(overview.locator('.v-chip').filter({ hasText: 'Ready' })).toBeVisible()
+
+    // ready → scheduled. `getMatchActionLabel('ready')` is "Schedule".
+    await overview.getByRole('button', { name: 'Schedule', exact: true }).click()
+    await expect(
+      page.locator('.v-snackbar').getByText('Match transitioned to scheduled'),
+    ).toBeVisible()
+    await expect(overview.locator('.v-chip').filter({ hasText: 'Scheduled' })).toBeVisible()
+    expect((await getOverrideMatch(adminToken, scenario.tournamentId, target.id)).status).toBe(
+      'scheduled',
+    )
+
+    // scheduled → in_progress, proving the button relabels off the new status.
+    await overview.getByRole('button', { name: 'Start Match', exact: true }).click()
+    await expect(
+      page.locator('.v-snackbar').getByText('Match transitioned to in progress'),
+    ).toBeVisible()
+    await expect(overview.locator('.v-chip').filter({ hasText: 'In Progress' })).toBeVisible()
+    expect((await getOverrideMatch(adminToken, scenario.tournamentId, target.id)).status).toBe(
+      'in_progress',
+    )
+  })
+
+  test('admin manually schedules a match from the Admin Actions tab', async ({ page }) => {
+    test.setTimeout(90_000)
+    const adminToken = await getAdminToken()
+
+    const scenario = await createStartedTournament(adminToken, {
+      format: 'single_elimination',
+      playerCount: 4,
+    })
+    const target = matchAt(scenario.matches, 'R1M1')
+    expect(target.scheduled_at ?? null).toBeNull()
+    const p1 = target.participant1_name as string
+    const p2 = target.participant2_name as string
+
+    await loginAsAdmin(page)
+    await openMatchesTab(page, scenario.tournamentId)
+
+    const row = matchRow(page, p1, p2)
+    await expect(row).toContainText('Not scheduled')
+
+    const dialog = await openMatchDetail(page, row)
+    const actions = await openAdminActions(dialog)
+
+    // `handleSchedule` sends `new Date(<local input>).toISOString()`, so the
+    // expected instant is computed with the browser's own timezone rather than
+    // the node process's.
+    const localInput = '2032-04-17T19:45'
+    const expectedIso = await page.evaluate((s) => new Date(s).toISOString(), localInput)
+
+    await actions.locator('input[type="datetime-local"]').fill(localInput)
+    await actions.getByLabel('Notes (optional)').fill('E2E override window')
+    await actions.getByRole('button', { name: 'Schedule', exact: true }).click()
+
+    await expect(page.locator('.v-snackbar').getByText('Match scheduled')).toBeVisible()
+
+    // API cross-check: the instant landed and the match moved to `scheduled`
+    // (`SchedulingService::admin_schedule` writes both).
+    const scheduled = await getOverrideMatch(adminToken, scenario.tournamentId, target.id)
+    expect(scheduled.status).toBe('scheduled')
+    expect(new Date(scheduled.scheduled_at as string).toISOString()).toBe(expectedIso)
+
+    // UI: the Overview metadata table renders the new time via `formatDateTime`
+    // (`toLocaleString()`), computed here in the same browser context.
+    const expectedLabel = await page.evaluate((iso) => new Date(iso).toLocaleString(), expectedIso)
+    await dialog.getByRole('tab', { name: 'Overview' }).click()
+    const overview = activePanel(dialog)
+    await expect(overview.locator('tr').filter({ hasText: 'Scheduled At' })).toContainText(
+      expectedLabel,
+    )
+
+    // …and the Matches table row no longer says "Not scheduled".
+    await dialog.getByRole('button', { name: 'Close' }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(row).toContainText(expectedLabel)
+  })
+
+  test('admin forfeits one participant and the opponent is awarded the match', async ({ page }) => {
+    test.setTimeout(90_000)
+    const adminToken = await getAdminToken()
+
+    const scenario = await createStartedTournament(adminToken, {
+      format: 'single_elimination',
+      playerCount: 4,
+    })
+    const target = matchAt(scenario.matches, 'R1M1')
+    const p1 = target.participant1_name as string
+    const p2 = target.participant2_name as string
+    // `TournamentMatchStatus::can_forfeit()` starts at `scheduled`.
+    await transitionMatchViaApi(adminToken, scenario.tournamentId, target.id, 'scheduled')
+
+    await loginAsAdmin(page)
+    await openMatchesTab(page, scenario.tournamentId)
+
+    const row = matchRow(page, p1, p2)
+    const dialog = await openMatchDetail(page, row)
+    const actions = await openAdminActions(dialog)
+
+    const forfeitCard = actions.locator('.v-card').filter({ hasText: 'Forfeit Match' })
+    await chooseOption(page, forfeitCard.locator('.v-select').first(), p1)
+    await chooseOption(page, forfeitCard.locator('.v-select').nth(1), 'Disqualification')
+    await forfeitCard.getByLabel('Reason *').fill('Cheating confirmed by admin review')
+    await forfeitCard.getByRole('button', { name: 'Forfeit', exact: true }).click()
+
+    const confirm = confirmOverlay(page, 'The match is decided immediately.')
+    await expect(confirm).toContainText(`Forfeit ${p1} (disqualification)?`)
+    await confirm.getByRole('button', { name: 'Forfeit', exact: true }).click()
+
+    await expect(page.locator('.v-snackbar').getByText('Match forfeited')).toBeVisible()
+
+    // API cross-check: forfeited, with the opponent recorded as winner.
+    const forfeited = await getOverrideMatch(adminToken, scenario.tournamentId, target.id)
+    expect(forfeited.status).toBe('forfeit')
+    expect(forfeited.winner_registration_id).toBe(target.participant2_registration_id)
+
+    // UI: the Overview tab names the winner and the row chip reads "Forfeit".
+    await dialog.getByRole('tab', { name: 'Overview' }).click()
+    const overview = activePanel(dialog)
+    await expect(overview.locator('tr').filter({ hasText: 'Winner' })).toContainText(p2)
+    await expect(overview.locator('.v-chip').filter({ hasText: 'Forfeit' })).toBeVisible()
+
+    await dialog.getByRole('button', { name: 'Close' }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(row.locator('.v-chip').filter({ hasText: 'Forfeit' })).toBeVisible()
+  })
+
+  test('admin double-forfeits a match and neither participant is awarded it', async ({ page }) => {
+    test.setTimeout(90_000)
+    const adminToken = await getAdminToken()
+
+    const scenario = await createStartedTournament(adminToken, {
+      format: 'single_elimination',
+      playerCount: 4,
+    })
+    const target = matchAt(scenario.matches, 'R1M1')
+    const p1 = target.participant1_name as string
+    const p2 = target.participant2_name as string
+    await transitionMatchViaApi(adminToken, scenario.tournamentId, target.id, 'scheduled')
+
+    await loginAsAdmin(page)
+    await openMatchesTab(page, scenario.tournamentId)
+
+    const row = matchRow(page, p1, p2)
+    const dialog = await openMatchDetail(page, row)
+    const actions = await openAdminActions(dialog)
+
+    const doubleCard = actions.locator('.v-card').filter({ hasText: 'Double Forfeit' })
+    await doubleCard.getByLabel('Reason *').fill('Both rosters failed to appear')
+    await doubleCard.getByRole('button', { name: 'Double Forfeit', exact: true }).click()
+
+    const confirm = confirmOverlay(page, 'Neither advances, and the match is closed immediately.')
+    await expect(confirm).toBeVisible()
+    await confirm.getByRole('button', { name: 'Double Forfeit', exact: true }).click()
+
+    await expect(page.locator('.v-snackbar').getByText('Double forfeit processed')).toBeVisible()
+
+    // API cross-check: `process_double_forfeit` cancels the match, no winner.
+    const cancelled = await getOverrideMatch(adminToken, scenario.tournamentId, target.id)
+    expect(cancelled.status).toBe('cancelled')
+    expect(cancelled.winner_registration_id ?? null).toBeNull()
+
+    // UI: no Winner row on the Overview tab, and the row chip reads "Cancelled".
+    await dialog.getByRole('tab', { name: 'Overview' }).click()
+    const overview = activePanel(dialog)
+    await expect(overview.locator('.v-chip').filter({ hasText: 'Cancelled' })).toBeVisible()
+    await expect(overview.locator('tr').filter({ hasText: 'Winner' })).toHaveCount(0)
+
+    await dialog.getByRole('button', { name: 'Close' }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(row.locator('.v-chip').filter({ hasText: 'Cancelled' })).toBeVisible()
+  })
+
+  test('admin processes bracket progression, then reapplies it to the other participant', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+    const adminToken = await getAdminToken()
+
+    const scenario = await createStartedTournament(adminToken, {
+      format: 'single_elimination',
+      playerCount: 4,
+    })
+    const semi = matchAt(scenario.matches, 'R1M1')
+    const final = matchAt(scenario.matches, 'R2M1')
+    const p1 = semi.participant1_name as string
+    const p2 = semi.participant2_name as string
+
+    // Precondition: a completed semi-final whose bracket never advanced —
+    // exactly what the Process Progression control exists to repair.
+    await completeMatchViaApi(adminToken, scenario.tournamentId, semi.id)
+    const finalBefore = await getOverrideMatch(adminToken, scenario.tournamentId, final.id)
+    expect(finalBefore.participant1_registration_id ?? null).toBeNull()
+
+    await loginAsAdmin(page)
+    await openMatchesTab(page, scenario.tournamentId)
+
+    // The final's slot 1 is sourced from `WinnerOf(R1M1)`
+    // (`bracket_generator/single_elimination.rs:69`), so before progression it
+    // renders as TBD vs TBD.
+    const finalRow = () => matchRow(page, 'TBD')
+    await expect(finalRow()).toHaveCount(1)
+
+    const semiRow = matchRow(page, p1, p2)
+    let dialog = await openMatchDetail(page, semiRow)
+    let actions = await openAdminActions(dialog)
+
+    const progression = actions.locator('.v-card').filter({ hasText: 'Bracket Progression' })
+    await expect(progression).toBeVisible()
+
+    // --- Process: advance p1 into the final -------------------------------
+    await chooseOption(page, progression.locator('.v-select').first(), p1)
+    await progression.getByRole('button', { name: 'Process', exact: true }).click()
+
+    let confirm = confirmOverlay(page, `Advance ${p1} as winner over ${p2}?`)
+    await expect(confirm).toBeVisible()
+    await confirm.getByRole('button', { name: 'Process', exact: true }).click()
+    await expect(page.locator('.v-snackbar').getByText('Progression processed')).toBeVisible()
+
+    // API: the bracket moved — p1 now occupies the final's first slot.
+    await expect
+      .poll(async () =>
+        (await getOverrideMatch(adminToken, scenario.tournamentId, final.id))
+          .participant1_registration_id,
+      )
+      .toBe(semi.participant1_registration_id)
+
+    await dialog.getByRole('button', { name: 'Close' }).click()
+    await expect(dialog).toHaveCount(0)
+
+    // UI: the final row is now "p1 vs TBD".
+    await expect(matchRow(page, p1, 'TBD')).toHaveCount(1)
+
+    // --- Reapply: replace the advanced winner with p2 ----------------------
+    dialog = await openMatchDetail(page, semiRow)
+    actions = await openAdminActions(dialog)
+    const progression2 = actions.locator('.v-card').filter({ hasText: 'Bracket Progression' })
+    await chooseOption(page, progression2.locator('.v-select').nth(1), p2)
+    await progression2.getByRole('button', { name: 'Reapply', exact: true }).click()
+
+    confirm = confirmOverlay(page, 'Downstream bracket slots are rewritten.')
+    await expect(confirm).toContainText(`Replace the advanced winner with ${p2}?`)
+    await confirm.getByRole('button', { name: 'Reapply', exact: true }).click()
+    await expect(page.locator('.v-snackbar').getByText('Progression reapplied')).toBeVisible()
+
+    // API: the same slot now holds p2, not p1.
+    await expect
+      .poll(async () =>
+        (await getOverrideMatch(adminToken, scenario.tournamentId, final.id))
+          .participant1_registration_id,
+      )
+      .toBe(semi.participant2_registration_id)
+
+    await dialog.getByRole('button', { name: 'Close' }).click()
+    await expect(dialog).toHaveCount(0)
+
+    // UI: the final row moved with it — "p2 vs TBD", and p1 is no longer there.
+    await expect(matchRow(page, p2, 'TBD')).toHaveCount(1)
+    await expect(matchRow(page, p1, 'TBD')).toHaveCount(0)
+  })
+
+  test('admin reverts bracket progression and the recorded result is rolled back', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+    const adminToken = await getAdminToken()
+
+    // Round robin: the only bracket family whose revert actually rolls back
+    // (see the file header). Four players ⇒ six matches, all `ready`.
+    const scenario = await createStartedTournament(adminToken, {
+      format: 'round_robin',
+      playerCount: 4,
+    })
+    const [bracketId] = await listBracketIds(adminToken, scenario.tournamentId)
+    const target = scenario.matches[0]
+    const p1 = target.participant1_name as string
+    const p2 = target.participant2_name as string
+    const p1Reg = target.participant1_registration_id as string
+
+    await completeMatchViaApi(adminToken, scenario.tournamentId, target.id)
+    expect(await matchesWon(scenario.tournamentId, bracketId, p1Reg)).toBe(0)
+
+    await loginAsAdmin(page)
+    await openMatchesTab(page, scenario.tournamentId)
+
+    const dialog = await openMatchDetail(page, matchRow(page, p1, p2))
+    const actions = await openAdminActions(dialog)
+    const progression = actions.locator('.v-card').filter({ hasText: 'Bracket Progression' })
+
+    // --- Process: p1 wins, standings credit the win ------------------------
+    await chooseOption(page, progression.locator('.v-select').first(), p1)
+    await progression.getByRole('button', { name: 'Process', exact: true }).click()
+    await confirmOverlay(page, `Advance ${p1} as winner over ${p2}?`)
+      .getByRole('button', { name: 'Process', exact: true })
+      .click()
+    await expect(page.locator('.v-snackbar').getByText('Progression processed')).toBeVisible()
+
+    await expect
+      .poll(async () =>
+        (await getOverrideMatch(adminToken, scenario.tournamentId, target.id))
+          .winner_registration_id,
+      )
+      .toBe(p1Reg)
+    expect(await matchesWon(scenario.tournamentId, bracketId, p1Reg)).toBe(1)
+
+    // UI: the Overview tab now names the winner.
+    await dialog.getByRole('tab', { name: 'Overview' }).click()
+    await expect(activePanel(dialog).locator('tr').filter({ hasText: 'Winner' })).toContainText(p1)
+
+    // --- Revert: the same state must come back off the bracket -------------
+    await dialog.getByRole('tab', { name: 'Admin Actions' }).click()
+    await activePanel(dialog)
+      .locator('.v-card')
+      .filter({ hasText: 'Bracket Progression' })
+      .getByRole('button', { name: 'Revert', exact: true })
+      .click()
+    await confirmOverlay(page, 'Undo bracket advancement for this match?')
+      .getByRole('button', { name: 'Revert', exact: true })
+      .click()
+    await expect(page.locator('.v-snackbar').getByText('Progression reverted')).toBeVisible()
+
+    await expect
+      .poll(async () =>
+        (await getOverrideMatch(adminToken, scenario.tournamentId, target.id))
+          .winner_registration_id ?? null,
+      )
+      .toBeNull()
+    expect(await matchesWon(scenario.tournamentId, bracketId, p1Reg)).toBe(0)
+
+    // UI: the Winner row is gone again.
+    await dialog.getByRole('tab', { name: 'Overview' }).click()
+    await expect(activePanel(dialog).locator('tr').filter({ hasText: 'Winner' })).toHaveCount(0)
+  })
+})

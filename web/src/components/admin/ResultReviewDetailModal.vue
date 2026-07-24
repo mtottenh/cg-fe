@@ -132,7 +132,13 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="player in review.unrecognized_players" :key="player.steam_id">
+                <!-- Key includes player_name: synthetic lineup-rule rows
+                     (majority/elo/P-26/side-unassigned) carry an empty
+                     steam_id, so steam_id alone would collide. -->
+                <tr
+                  v-for="player in review.unrecognized_players"
+                  :key="`${player.steam_id}:${player.player_name}`"
+                >
                   <td>{{ player.player_name }}</td>
                   <td><code>{{ player.steam_id }}</code></td>
                   <td>{{ player.team_side }}</td>

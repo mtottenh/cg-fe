@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **86 product findings** from what
+*"what should happen here?"* — and that question surfaced **92 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **86 findings · 50 fixed** → the status-drift defect class closed at the source
+112 → 0) → **92 findings · 50 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -83,6 +83,15 @@ not see).
   since P-2, `open` auto-approves. `CreateTournamentOptions.registrationType` exists for this.
 - **`createLeague` fixture hardcodes `access_type: 'open'`** — invite-only/application
   leagues need a spec-local builder (precedent in `league-join.spec.ts`).
+- **Games are GLOBAL config and there is no create-game endpoint** — a spec that mutates one
+  races every other spec that reads the games list. `playwright.config.ts` sets
+  `fullyParallel: true`, so it races *itself* too: Lane 5's first run failed 2/4 when one
+  test's restore hook clobbered another's in-flight rename. Use file-scope
+  `test.describe.configure({ mode: 'serial' })` (precedent: `team-roster.spec.ts:33`), mutate
+  `aoe4` and never `cs2`, restore in a hook, and make renames **suffix-appends** so other
+  specs' substring matches still hold. A residual ~1s cross-file window remains while a game
+  is disabled (it leaves `list_active`, which `admin-management.spec.ts:509` reads) — it
+  cannot be designed away without a create endpoint; CI's `workers: 1` removes it.
 - Statuses are compile-checked unions since P-31 — if a status literal doesn't typecheck,
   **the literal is wrong**, not the type. True in `src/` **and, since P-86, in `e2e/`**:
   import the union from `e2e/fixtures/api-status.ts` (type-only re-exports of the generated
@@ -104,7 +113,7 @@ not see).
 
 | Lane | Instance | Owns (only these files) | §4-F rows claimed |
 |---|---|---|---|
-| 5 | `-i 1` | `e2e/admin-games-config.spec.ts` (new) + `fixtures/game-config.fixture.ts` | game config: enable/disable · `GameEditModal` · maps · rank-tiers · team-size · map catalog CRUD |
+| ~~5~~ | ~~`-i 1`~~ | **LANDED** `e50ec9c` — 4 tests green, red-proven | yielded **P-87..P-92** |
 | 6 | `-i 2` | `e2e/tournament-admin.spec.ts` · `e2e/awards.spec.ts` | `StagesTab.handleCreateStage` · `handleClearSeeding` · `AwardsTab.handleSaveEdit` + void |
 | 7 | `-i 3` | `e2e/player-steam-tracking.spec.ts` (new) · `e2e/player-availability.spec.ts` (new) + `fixtures/player-surfaces.fixture.ts` | `SteamTrackingCard` · availability windows/overrides · `SocialLinksEditor` |
 | 8 | `-i 4` | `e2e/admin-modal-saves.spec.ts` (new) + `fixtures/modal-saves.fixture.ts` | `LeagueCreateModal` · `LeagueEditModal` · `LeagueSeasonCreateModal` · `InviteUserModal` · `BanDetailModal` |
@@ -226,10 +235,12 @@ take one row each without contending; tick a row only when the test is red-prove
 - [ ] Modal saves: `LeagueCreateModal` · `LeagueEditModal` · `LeagueSeasonCreateModal` ·
       `InviteUserModal` · `DemoCatalogModal` · `BanDetailModal`
 
-*Admin — game config (whole surface untested):*
-- [ ] `AdminGamesPage` enable/disable · `GameEditModal` (`PATCH /v1/games/{id}`) ·
-      `GameConfigDialog` tabs → `PUT maps` · `PUT rank-tiers` · `PATCH team-size` ·
-      map-catalog create/update/delete
+*Admin — game config:*
+- [x] **LANE 5 landed** (`e50ec9c`, `admin-games-config.spec.ts`, 4 tests) — enable/disable ·
+      `GameEditModal` save + required-field gate · `GameConfigDialog` read paths.
+      **The write half could not be driven and that is the finding**: `PUT maps`,
+      `PUT rank-tiers`, `PATCH team-size` and map-catalog CRUD all 404 → **P-87**; rank tiers
+      and team size additionally have no control at all → **P-92**
 
 *Admin — demos:*
 - [x] **LANE 4 landed** (`dc36288`, `admin-demo-detail.spec.ts`, 5 tests) — categorize ·
@@ -262,9 +273,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 86 found · 50 fixed · 36 open** (P-53 mitigated).
+**Status (derived): 92 found · 50 fixed · 42 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -365,6 +376,12 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | open |
 | P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
 | P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | **fixed** `e06ff8f` |
+| P-87 | **Every game-config WRITE 404s — handler passes UUID to a slug-keyed update** | **feature dead** | open |
+| P-88 | A disabled game vanishes from admin and can never be re-enabled | **traps admin** | open |
+| P-89 | `AdminGamesPage` aria-labels rotated by one — **P-45 recurrence** | **a11y/safety** | open |
+| P-90 | `GameEditModal` Sort Order shows a fake 0 and can never be set to 0 | user-facing | open |
+| P-91 | Disable writes `maintenance`; status chip prints the raw enum | user-facing | open |
+| P-92 | Rank tiers + team size are read-only with no editing surface anywhere | product gap | open |
 | P-86 | e2e fixtures type statuses as bare `string` — P-31 stops at the test boundary | gate gap | **fixed** `ccd4850` |
 | P-82 | **"Revert to Awaiting Result" always 400s — dead control ×2** | feature dead | open |
 | P-83 | **Revert Progression is a no-op on elimination, claims success** | **integrity** | open |
@@ -582,6 +599,61 @@ belong to the §4-G P-31 remnant batch.
 *claim*, not the mechanism. Probe A ("does the gate run?") passed and would have been enough
 to call P-81 done; Probe B ("does the gate deliver what I said it would?") is what found P-86.
 
+**P-87 — every game-config write 404s: a UUID handed to a slug-keyed update.**
+`GameRepository::update` is declared `update(&self, slug: &str, ...)` and documented "Update a
+game by slug" (`portal-db/src/repositories/game.rs:106`), erroring
+`RepositoryError::not_found` at `:151-153` when nothing matches. Six handlers read the game via
+`find_by_id_or_slug` (which accepts either) and then write with `game_repo.update(&game_id, …)`
+where `game_id` is the **UUID**: `handlers/games.rs:508` (set_map_pool), `:778` (add_map),
+`:851` (update_map), `:902` (remove_map), `:989` (set_rank_tiers), `:1055` (update_team_size).
+Since `0024_restructure_games_uuid.sql` made `games.id` a UUID and added `slug`,
+`GameSummaryResponse.id` is the UUID — which is exactly what `GameConfigDialog.vue:323,330,359,375`
+→ `stores/games.ts:106-167` send. Verified live: the identical body is **200** on
+`/v1/games/aoe4/maps/catalog` and **404 "Game not found: db15451c-…"** on
+`/v1/games/{uuid}/maps/catalog`. So **Add Map, Edit Map, Delete Map and Save Pool are dead
+controls** that pop the failure snackbar every time. `update_game`/`enable`/`disable` are
+unaffected — they call `resolve_game_slug` first (`:339,551,609`), which is also the one-line
+fix for the other six. Blocked the entire map-catalog-CRUD half of Lane 5's assignment: any
+test would have had to assert the failure, i.e. certify the bug. → **D, high.**
+
+**P-88 — a disabled game cannot be re-enabled.** `AdminGamesPage` lists from `GET /v1/games`,
+which is `list_active()` (`portal-db/src/repositories/game.rs:71-79`), and the Enable button
+exists **only inside a row**. Disable a game and it leaves the list on the next fetch, taking
+its own Enable button with it — permanently, from the admin UI. Lane 5's test passes only
+because `stores/games.ts:88` patches the row client-side, so the control survives until
+someone presses Refresh. → D.
+
+**P-89 — `AdminGamesPage` action buttons: aria-labels rotated by one. This is P-45 recurring.**
+`AdminGamesPage.vue:65,74,83,95` — cog/`title="Configure"` carries `aria-label="Edit game"`;
+pencil/`title="Edit"` carries `aria-label="Disable game"`; **`title="Disable"` carries
+`aria-label="Enable game"`**; and the enable button carries `aria-label="Configure game"`.
+`aria-label` wins for the accessible name, so a screen-reader user who activates the control
+announced as "Enable game" **disables the game**. P-45 was the identical rotation in the RBAC
+role rows ("Manage" wired to Delete), fixed in `fbe1500` — that fix was local, and the defect
+class was never swept. **Fixing this one should include a repo-wide audit of `aria-label` vs
+`title`/`@click` on icon buttons**, or it will surface a third time. Lane 5's tests locate by
+`title` deliberately, so they do not certify it. → D, and add the sweep to G.
+
+**P-90 — `GameEditModal` Sort Order is both fabricated and unsettable to 0.**
+`GameEditModal.vue:148` always seeds the field to `0` because `GameSummaryResponse` carries no
+`sort_order` — the real values (cs2=1, aoe4=2) are simply unknowable to the client, so the form
+shows a number that is not the truth. `:183` then only sends the field when non-zero, so no
+game's sort order can ever be *set* to 0. Fix needs the field in the DTO. → E.
+
+**P-91 — disable writes `maintenance`, and the chip prints the raw enum.**
+`POST /disable` sets status **`maintenance`**, not `disabled` (`portal-db/src/repositories/game.rs:182`),
+and `AdminGamesPage.vue:55` renders the status chip from the raw value instead of a label map,
+unlike every other admin table (P-10/P-44 family). Related: `GameSummaryResponse.status` is a
+bare `string` in the spec — no game-status enum is declared — so it is another **P-31 remnant**
+for §4-G, alongside award and veto-session status. → E/G.
+
+**P-92 — rank tiers and team size cannot be edited anywhere.** `games.setRankTiers`
+(`stores/games.ts:153`) and `games.updateTeamSize` (`:165`) have zero component consumers;
+`GameConfigDialog.vue:162-184` is a read-only `v-list` and `:186-204` is a `readonly` field
+captioned "Team size is managed via the game plugin configuration" — **there is no plugin-config
+surface in the application**. So the caption points at a door that does not exist. Both are
+additionally blocked by P-87 even if a control were added. Same shape as P-62/P-70/P-71. → D.
+
 **P-82 — "Revert to Awaiting Result" can only ever fail.** `matchStatus.ts:39` maps
 `completed → 'awaiting_result'` with the label "Revert to Awaiting Result" (`:53`), under a
 comment claiming it "Must follow backend allowed_transitions". It does not:
@@ -785,6 +857,7 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
 | Newer: `invitations`, `league-join`, `team-join`, `captain-actions`, `admin-surfaces`, `admin-teams`, `admin-result-reviews`, `players-directory`, `match-status-timeline`, `match-result-notify`, `tournament-invite-only`, `lineup` | — | all A | | | | [x] | written under the ground rules |
 | `admin-demo-detail.spec.ts` (F Lane 4) | 5 | 5 | – | – | – | [x] | red-proven; yielded P-74/75/76 |
 | `admin-match-overrides.spec.ts` (F Lane 1) | 6 | 6 | – | – | – | [x] | red-proven; yielded P-82..P-85 |
+| `admin-games-config.spec.ts` (F Lane 5) | 4 | 4 | – | – | – | [x] | serial-mode; red-proven; yielded P-87..P-92 |
 
 ## 8. Definition of done
 

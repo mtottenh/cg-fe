@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **73 product findings** from what
+*"what should happen here?"* — and that question surfaced **81 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **73 findings · 41 fixed** → the status-drift defect class closed at the source
+112 → 0) → **81 findings · 48 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -51,7 +51,7 @@ not see).
 
 | Purpose | Command |
 |---|---|
-| Web typecheck | **`npm run typecheck`** — NEVER `npx vue-tsc --noEmit -p tsconfig.json` (solution-style `"files": []`; checks **zero files, always exits 0**; it masked a real error for a whole phase) |
+| Web typecheck | **`npm run typecheck`** — NEVER `npx vue-tsc --noEmit -p tsconfig.json` (solution-style `"files": []`; checks **zero files, always exits 0**; it masked a real error for a whole phase). **It also does not cover `e2e/` at all** (P-81) — until that is fixed, typecheck a spec you touched with a standalone `npx tsc --noEmit --strict --skipLibCheck --module esnext --moduleResolution bundler --target es2022 <file>` |
 | Test-quality ratchet | `node e2e/scripts/check-test-quality.mjs` — baseline is `{}` (zero); may only stay zero |
 | Store-action reachability | `for f in src/stores/*.ts src/stores/tournament/*.ts; do for a in $(grep -oE "^  async function [a-zA-Z0-9_]+" "$f" \| awk '{print $3}'); do [ "$(grep -rl "\b$a\b" src/components src/pages src/composables src/layouts 2>/dev/null \| wc -l)" -eq 0 ] && echo "$(basename $f): $a"; done; done` — every hit is a built-but-unwired feature or a dead action. Found P-68/P-70/P-71; **re-run after any store refactor** |
 | E2E (single) | `npx playwright test e2e/<spec>` against the dev stack. 5173 is contended — pass `E2E_WEB_PORT=51xx PLAYWRIGHT_BASE_URL=http://localhost:51xx` |
@@ -104,7 +104,7 @@ The §4-F coverage wave is running three agents concurrently. **Claimed rows are
 | Lane | Instance | Owns (only these files) | §4-F rows claimed |
 |---|---|---|---|
 | 1 | `-i 1` | `e2e/admin-match-overrides.spec.ts` (new) + `fixtures/admin-overrides.fixture.ts` | `MatchAdminActionsTab` ×5 · `handleSchedule` · `MatchOverviewTab.handleTransition` |
-| 2 | `-i 2` | `e2e/dispute-resolution.spec.ts` + `fixtures/dispute.fixture.ts` | `DisputeDetailModal` ×5 |
+| ~~2~~ | ~~`-i 2`~~ | **LANDED** `5955f9d` — 3→8 tests green, red-proven, ratchet `{}` | yielded **P-77..P-81** |
 | ~~4~~ | ~~`-i 3`~~ | **LANDED** `dc36288` — 5 tests green, red-proven, ratchet `{}` | yielded **P-74/75/76** |
 
 Standing rules for this wave, and for any lane added to it:
@@ -123,7 +123,7 @@ Standing rules for this wave, and for any lane added to it:
 > so they are never renumbered. Read this line for priority, not the alphabet.
 >
 > **Why F jumped the queue.** This campaign's whole thesis (see the header line) is that
-> *driving a surface through the UI is what surfaces product bugs* — 73 findings came out of a
+> *driving a surface through the UI is what surfaces product bugs* — 81 findings came out of a
 > test-quality audit. That thesis is now measured: P-68/P-70/P-71 sat undetected through a full 268-operation
 > inverse audit precisely because nothing drove them through the UI, and P-35 (a dead decision
 > form) had already proved the same point. Every unexercised handler in F is therefore an
@@ -141,6 +141,10 @@ Standing rules for this wave, and for any lane added to it:
 - [ ] 🔵 **Admin manual-scheduling e2e** — `MatchAdminActionsTab.handleSchedule` exists and
       calls the properly-gated `/v1/admin/.../schedule`, but is untested (P-35-shaped risk).
       User-priority item. **Claimed by F Lane 1** (see §3) — tick it there, not here.
+- [ ] **P-81 — typecheck the e2e specs** (`tsconfig.e2e.json` over `e2e/**`, wired into
+      `npm run typecheck`). Promoted into A because it gates the trustworthiness of every
+      remaining F lane: right now ~40 specs compile-check nothing, so P-31's status unions
+      cannot protect a test. Expect a backlog on first run.
 - [ ] **P-65**: register `/v1/users/me/action-items` + `ActionItemResponse` in `openapi.rs`,
       regen types, drop the `as never` casts (`captainActions.ts:56`, `lineups.ts:68-96`).
 - [ ] **P-56**: targeted registration lookup endpoint (resolve BOTH match participants by
@@ -176,9 +180,11 @@ handler that *cannot* be driven has a P-number saying why. Partitioned by surfac
 take one row each without contending; tick a row only when the test is red-proven (§1.10).
 
 *Admin — match & dispute (highest bug-yield: these are the override paths, all confirm-gated):*
-- [ ] 🔵 **LANE 2** — `DisputeDetailModal`: `handleResolveUphold` · `handleResolveAdjusted` ·
-      `handleResolveRematch` · `handleResolveDoubleDq` · `handleAssign` — **4 of 5 resolutions
-      are untested**; only `overturn` is driven today (`dispute-resolution.spec.ts`)
+- [x] **LANE 2 landed** (`5955f9d`, `dispute-resolution.spec.ts` 3→8) — `handleResolveUphold` ·
+      `handleResolveAdjusted` · `handleResolveRematch` · `handleResolveDoubleDq` ·
+      `handleAssign`, each asserting the modal's Resolution card **and** the match row +
+      `resolution_type` over the API. Yielded **P-77..P-81**; uphold/adjust had to be written
+      on a new confirmed-result builder because the claim path cannot be asserted honestly (P-77)
 - [ ] 🔵 **LANE 1** — `MatchAdminActionsTab`: `handleForfeit` · `handleDoubleForfeit` ·
       `handleProcessProgression` · `handleReapplyProgression` · `handleRevertProgression` —
       none driven. Progression revert/reapply mutate bracket state; assert the bracket both ways
@@ -230,13 +236,16 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 76 found · 48 fixed · 28 open** (P-53 mitigated).
+**Status (derived): 81 found · 48 fixed · 33 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-81.
 
-**P-74..P-76 came from F Lane 4** — the first parallel coverage lane to land. Three findings
-from one afternoon on one admin page, which is the §4-F thesis paying out: the page had been
-shipped, reviewed and inverse-audited without anyone clicking its buttons.
+**P-74..P-81 came from the first two F lanes** — 8 findings from two agents on two surfaces,
+in an afternoon. Both surfaces had shipped, been reviewed, and been inverse-audited without
+anyone driving their buttons. Two of the eight (**P-77, P-78**) are silent bracket-corruption
+bugs in the *dispute resolution* path — the mechanism the product uses to fix wrong results —
+and neither is reachable by reading the frontend, which is why the API-level inverse audit
+could not have found them. This is the §4-F thesis paying out; keep the wave running.
 
 | # | Finding | Severity | State |
 |---|---|---|---|
@@ -316,6 +325,11 @@ shipped, reviewed and inverse-audited without anyone clicking its buttons.
 | P-74 | **"Retry Processing" calls no API — reports success anyway** | **trust** | open |
 | P-75 | Demo league/tournament association uncorrectable; shows raw UUIDs | admin gap | open |
 | P-76 | Categorize snackbar prints the raw enum | minor | open |
+| P-77 | **Uphold on a claim-path dispute completes the match with NO result** | **integrity** | open |
+| P-78 | **Rematch / double-DQ leave the old winner + score on the match** | **integrity** | open |
+| P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | open |
+| P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
+| P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | open |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service
@@ -491,6 +505,62 @@ can correct. Note this compounds P-61 — progression has already run by then, a
 cannot change the score they replay. Fix = either an admin score-override writing through the
 same path as `resolve/adjusted` + an audit row, or an admin-raised dispute. → D.
 
+**P-77 — upholding a claim-path dispute completes the match with no result.** Two defects
+compound. (a) `raise_dispute` snapshots the **match row**, not the disputed claim —
+`portal-domain/src/services/tournament/dispute.rs:128-130` takes
+`original_*` from `match_.winner_registration_id` / `match_.participant{1,2}_score`. On the
+claim path the match is not yet confirmed, so the "original" is 0-0/NULL. (b) `resolve_uphold`
+(`same file:246-292`) only flips status to Completed via `resolve_with_status_change` — it
+never confirms the claim it just upheld. Net result, reproduced by probe: upholding a disputed
+**1-0** claim yields `{status: completed, winner: absent, p1: 0, p2: 0}` — a Completed bracket
+match with **no winner**, which then feeds progression. The admin is also deciding on the wrong
+data: `DisputeDetailModal.vue:53-56` renders "Original Score 0 - 0" for a 1-0 claim. Lane 2
+therefore wrote uphold/adjust on a **confirmed-result** dispute (new fixture builder
+`buildConfirmedResultDispute`) — the claim path cannot be asserted honestly. → D, high.
+
+**P-78 — rematch and double-DQ leave the previous result on the match.**
+`resolve_with_status_change` (`portal-db/src/adapters/dispute.rs:483-546`) issues
+`UPDATE tournament_matches SET status = $2` and nothing else — it never clears
+`winner_registration_id`, `loser_registration_id`, `participant{1,2}_score` or `completed_at`.
+Callers: `dispute.rs:379` (→ Ready, rematch) and `:510` (→ Cancelled, double-DQ). Probes:
+rematch → `{status: ready, winner: 019f95ed…, p1: 1, completed_at: 2026-07-24T20:59:51Z}`;
+double-DQ → `{status: cancelled, winner: 019f95ee…, p1: 1}`. So a match "ready to replay"
+still records a winner and a completion time, and progression has **already advanced** that
+winner. Lane 2's tests assert `winner == null` only on the never-confirmed path, with an
+inline comment pointing here, so the suite does not certify the bug (ground rule 8). → D, high.
+
+**P-79 — dispute priority: the UI and the backend disagree on the top severity.**
+`statusMaps.ts:133-138` defines `disputePriorityMap` with `critical`; the backend enum is
+`low|normal|high|urgent` (`migrations/0039_disputes.sql:57-59`). `getStatusLabel`/
+`getStatusColor` fall through to the raw key and grey, so an `urgent` dispute — auto-assigned
+to every **cheating** report — renders as literal `urgent priority` in the lowest-weight
+styling, while the filter at `AdminDisputesPage.vue:174-179` offers a "Critical" option that
+can never match a row. P-10/P-44 family, and a **P-31 remnant**: priority is one of the
+low-traffic `String` fields whose enum still lacks `Serialize`, so it was never compile-locked.
+Fix belongs with the §4-G P-31 remnant batch. → E/G.
+
+**P-80 — "Assign to Me" assigns to nobody.** The `disputes` table has **no assignee column at
+all** (`migrations/0039_disputes.sql:4-60`); `assign_for_review`
+(`portal-domain/src/services/tournament/dispute.rs:196-240`) only sets `status = under_review`
+and posts an internal system message. Two admins can both "take" the same dispute and neither
+the queue nor the modal shows ownership — the button's label promises a guarantee the schema
+cannot make. Lane 2's test asserts exactly what it does (status flip, button retires, system
+message) rather than pretending assignment happened. Decide: add the column + show ownership,
+or rename the control. → D.
+
+**P-81 — the e2e specs are never typechecked.** `tsconfig.app.json` includes only `src/**`
+and `tsconfig.node.json` only `vite.config.ts`, so **no tsconfig covers `e2e/`** — the web
+typecheck gate that CI runs passes over ~40 spec files and every fixture without reading them.
+This is the same class as the §2 typecheck trap that already burned a whole phase (a
+solution-style config that checked zero files and always exited 0): a green gate that silently
+covers nothing. It also undercuts P-31's guarantee *for tests* — the compile-checked status
+unions cannot catch a bad literal in a spec, because the spec is never compiled. Both landed
+lanes worked around it by running a standalone `npx tsc --noEmit --strict` over their own
+files, which is evidence the gap is real and already costing people time. Fix = a
+`tsconfig.e2e.json` covering `e2e/**` wired into `npm run typecheck`. Expect a backlog of
+existing errors on first run; that backlog is the finding's real size. → **A** (it gates the
+trustworthiness of every remaining F lane).
+
 **P-74 — "Retry Processing" is a placebo that reports success.**
 `AdminDemoDetailPage.vue:461-466` — `handleReprocess` calls **no API at all**. Its entire body
 is a null check followed by `snackbar.success('Demo queued for reprocessing')`; the comment
@@ -572,7 +642,7 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
 | `league-season.spec.ts` | 8 | 8 | – | – | – | [x] | season transitions API-only by design |
 | `tournament-formats` / `team-tournament` | 5 | 5 | – | – | – | [x] | |
 | `admin-demo-links` / `awards` / `steam-auth` | 10 | 7 | – | 3 | – | [x] | honest API-level tests |
-| `dispute-resolution.spec.ts` | 3 | 2 | – | 1 | – | [x] | |
+| `dispute-resolution.spec.ts` (F Lane 2) | 8 | 8 | – | – | – | [x] | 3→8; red-proven; yielded P-77..P-81 |
 | `auth.spec.ts` | 13 | 12 | – | – | 1 | [x] | |
 | `match-checkin.spec.ts` | 3 | 2 | – | 1 | – | [x] | fallback removed |
 | `team-roster.spec.ts` | 4 | 2 | 2 | – | – | [~] | transfer-ownership has NO UI (P-62) |

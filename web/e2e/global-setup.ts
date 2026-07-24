@@ -363,25 +363,11 @@ async function openSeasonRegistration(token: string, seasonId: string): Promise<
   }
 }
 
-// Kept for seed scenarios that need an in-progress season.
-async function _activateSeason(token: string, _leagueId: string, seasonId: string): Promise<void> {
-  console.log('Activating season...')
-  // NOTE: Season update is at /v1/league-seasons/{season_id}
-  const response = await fetch(`${API_URL}/v1/league-seasons/${seasonId}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ status: 'active' }),
-  })
-
-  if (response.ok) {
-    console.log('Season activated')
-  } else {
-    console.log('Could not activate season (may already be active)')
-  }
-}
+// `_activateSeason` lived here, unreferenced, "kept for seed scenarios that need
+// an in-progress season". Removed when P-81 turned the typechecker on over e2e/:
+// it had no callers, and git has it if such a scenario ever arrives. Keeping it
+// would have cost a `@ts-ignore` — a suppression to preserve dead code is a bad
+// trade, and P-67 is the standing position on dead surfaces.
 
 async function seedTeamForAdmin(
   token: string,

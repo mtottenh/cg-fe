@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **85 product findings** from what
+*"what should happen here?"* — and that question surfaced **86 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **85 findings · 48 fixed** → the status-drift defect class closed at the source
+112 → 0) → **86 findings · 49 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -51,7 +51,7 @@ not see).
 
 | Purpose | Command |
 |---|---|
-| Web typecheck | **`npm run typecheck`** — NEVER `npx vue-tsc --noEmit -p tsconfig.json` (solution-style `"files": []`; checks **zero files, always exits 0**; it masked a real error for a whole phase). **It also does not cover `e2e/` at all** (P-81) — until that is fixed, typecheck a spec you touched with a standalone `npx tsc --noEmit --strict --skipLibCheck --module esnext --moduleResolution bundler --target es2022 <file>` |
+| Web typecheck | **`npm run typecheck`** — NEVER `npx vue-tsc --noEmit -p tsconfig.json` (solution-style `"files": []`; checks **zero files, always exits 0**; it masked a real error for a whole phase). Since P-81 it runs two passes: `tsconfig.app.json` (src) **and** `tsconfig.e2e.json` (`e2e/**` + `playwright.config.ts`). Iterate with `npm run typecheck:app` / `typecheck:e2e`. No standalone `tsc` workaround needed any more |
 | Test-quality ratchet | `node e2e/scripts/check-test-quality.mjs` — baseline is `{}` (zero); may only stay zero |
 | Store-action reachability | `for f in src/stores/*.ts src/stores/tournament/*.ts; do for a in $(grep -oE "^  async function [a-zA-Z0-9_]+" "$f" \| awk '{print $3}'); do [ "$(grep -rl "\b$a\b" src/components src/pages src/composables src/layouts 2>/dev/null \| wc -l)" -eq 0 ] && echo "$(basename $f): $a"; done; done` — every hit is a built-but-unwired feature or a dead action. Found P-68/P-70/P-71; **re-run after any store refactor** |
 | E2E (single) | `npx playwright test e2e/<spec>` against the dev stack. 5173 is contended — pass `E2E_WEB_PORT=51xx PLAYWRIGHT_BASE_URL=http://localhost:51xx` |
@@ -84,7 +84,9 @@ not see).
 - **`createLeague` fixture hardcodes `access_type: 'open'`** — invite-only/application
   leagues need a spec-local builder (precedent in `league-join.spec.ts`).
 - Statuses are compile-checked unions since P-31 — if a status literal doesn't typecheck,
-  **the literal is wrong**, not the type.
+  **the literal is wrong**, not the type. **Caveat until P-86 lands: this is true in `src/`
+  only.** The e2e fixtures declare status params as bare `string`, so a bogus literal in a
+  spec compiles clean even now that `e2e/` is typechecked (P-81).
 
 ## 3. Current state
 
@@ -130,7 +132,7 @@ Standing rules for this wave, and for any lane added to it:
 > so they are never renumbered. Read this line for priority, not the alphabet.
 >
 > **Why F jumped the queue.** This campaign's whole thesis (see the header line) is that
-> *driving a surface through the UI is what surfaces product bugs* — 85 findings came out of a
+> *driving a surface through the UI is what surfaces product bugs* — 86 findings came out of a
 > test-quality audit. That thesis is now measured: P-68/P-70/P-71 sat undetected through a full 268-operation
 > inverse audit precisely because nothing drove them through the UI, and P-35 (a dead decision
 > form) had already proved the same point. Every unexercised handler in F is therefore an
@@ -148,10 +150,12 @@ Standing rules for this wave, and for any lane added to it:
 - [x] **Admin manual-scheduling e2e** — done by F Lane 1 (`a60af09`). The handler works; the
       *notes* field it collects is silently discarded and the override leaves no status-log
       row → **P-84**.
-- [ ] **P-81 — typecheck the e2e specs** (`tsconfig.e2e.json` over `e2e/**`, wired into
-      `npm run typecheck`). Promoted into A because it gates the trustworthiness of every
-      remaining F lane: right now ~40 specs compile-check nothing, so P-31's status unions
-      cannot protect a test. Expect a backlog on first run.
+- [x] **P-81 — typecheck the e2e specs.** `tsconfig.e2e.json` wired into `npm run typecheck`;
+      backlog was 2 errors, both cleared; red-proved (TS2322 → exit 2) and seed path smoke-run.
+- [ ] **P-86 — retype the fixture status params to the generated unions.** P-81 turned the
+      compiler on; it did **not** deliver P-31's guarantee to tests, because the fixtures say
+      `expected: string`. Do this while the gate is fresh — it is the half of P-81 that
+      actually protects the specs, and it will surface existing bad literals.
 - [ ] **P-65**: register `/v1/users/me/action-items` + `ActionItemResponse` in `openapi.rs`,
       regen types, drop the `as never` casts (`captainActions.ts:56`, `lineups.ts:68-96`).
 - [ ] **P-56**: targeted registration lookup endpoint (resolve BOTH match participants by
@@ -245,9 +249,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 85 found · 48 fixed · 37 open** (P-53 mitigated).
+**Status (derived): 86 found · 49 fixed · 37 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-81, P-82, P-83, P-84, P-85.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-86.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -347,7 +351,8 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-78 | **Rematch / double-DQ leave the old winner + score on the match** | **integrity** | open |
 | P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | open |
 | P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
-| P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | open |
+| P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | **fixed** `0267f37` |
+| P-86 | e2e fixtures type statuses as bare `string` — P-31 stops at the test boundary | gate gap | open |
 | P-82 | **"Revert to Awaiting Result" always 400s — dead control ×2** | feature dead | open |
 | P-83 | **Revert Progression is a no-op on elimination, claims success** | **integrity** | open |
 | P-84 | Admin scheduling notes discarded; no status-log row | audit gap | open |
@@ -527,6 +532,27 @@ can correct. Note this compounds P-61 — progression has already run by then, a
 cannot change the score they replay. Fix = either an admin score-override writing through the
 same path as `resolve/adjusted` + an audit row, or an admin-raised dispute. → D.
 
+**P-86 — P-31's status unions stop at the test boundary.** Found by red-proving the P-81 fix
+with a *second* probe, and it falsified the assumption behind the first. Probe: pass
+`'totally_not_a_real_status'` to `waitForTournamentStatus`. With the typechecker now on over
+`e2e/`, it still **compiles clean** — because the fixture declares `expected: string`
+(`fixtures/tournament-lifecycle.fixture.ts:209-213`), not the union. The generated unions do
+exist (`types.ts:12815 TournamentStatus`, `:12664 TournamentMatchStatus`, `:9609
+DisputeStatus`) but **1 of 41 e2e files imports the generated types at all**
+(`team-roster.spec.ts`). So P-31's "a bad status literal is a compile error" guarantee holds
+for `src/` and stops dead at the fixtures — the §2 trap note ("if a status literal doesn't
+typecheck, the literal is wrong") is currently false for tests, which is worse than not having
+the rule, because people trust it.
+
+Cheap fix, now unblocked by P-81: retype the status parameters in the fixtures to
+`components['schemas']['TournamentStatus']` etc. Expect it to surface bad literals immediately
+— `match-workflow.spec.ts:253`'s `hasText: 'ready'` (§4-F, already known to certify the raw
+enum) is the shape to look for. → **A**, straight after P-81, while the gate is fresh.
+
+**Lesson recorded for ground rule 10:** the probe that matters is the one aimed at the
+*claim*, not the mechanism. Probe A ("does the gate run?") passed and would have been enough
+to call P-81 done; Probe B ("does the gate deliver what I said it would?") is what found P-86.
+
 **P-82 — "Revert to Awaiting Result" can only ever fail.** `matchStatus.ts:39` maps
 `completed → 'awaiting_result'` with the label "Revert to Awaiting Result" (`:53`), under a
 comment claiming it "Must follow backend allowed_transitions". It does not:
@@ -616,18 +642,23 @@ cannot make. Lane 2's test asserts exactly what it does (status flip, button ret
 message) rather than pretending assignment happened. Decide: add the column + show ownership,
 or rename the control. → D.
 
-**P-81 — the e2e specs are never typechecked.** `tsconfig.app.json` includes only `src/**`
-and `tsconfig.node.json` only `vite.config.ts`, so **no tsconfig covers `e2e/`** — the web
-typecheck gate that CI runs passes over ~40 spec files and every fixture without reading them.
-This is the same class as the §2 typecheck trap that already burned a whole phase (a
-solution-style config that checked zero files and always exited 0): a green gate that silently
-covers nothing. It also undercuts P-31's guarantee *for tests* — the compile-checked status
-unions cannot catch a bad literal in a spec, because the spec is never compiled. Both landed
-lanes worked around it by running a standalone `npx tsc --noEmit --strict` over their own
-files, which is evidence the gap is real and already costing people time. Fix = a
-`tsconfig.e2e.json` covering `e2e/**` wired into `npm run typecheck`. Expect a backlog of
-existing errors on first run; that backlog is the finding's real size. → **A** (it gates the
-trustworthiness of every remaining F lane).
+**P-81 — the e2e specs were never typechecked. FIXED.** `tsconfig.app.json` includes only
+`src/**` and `tsconfig.node.json` only `vite.config.ts`, so **no tsconfig covered `e2e/`** —
+the gate CI runs passed over 41 spec files and every fixture without reading them. Same class
+as the §2 typecheck trap that already cost a phase: a green gate covering nothing. Both wave-1
+lanes independently worked around it with standalone `tsc` runs.
+
+Fix: `tsconfig.e2e.json` over `e2e/**` + `playwright.config.ts` (node/DOM libs, same strictness
+as `src`), wired into `npm run typecheck` as a second pass, with `typecheck:app` /
+`typecheck:e2e` split out for iteration. **The backlog was 2 errors, not the pile expected** —
+a dead `_activateSeason` helper in `global-setup.ts` (deleted; git has it) and an unused
+`leagueName` destructure in `invitations.spec.ts:232`. Red-proved per ground rule 10: a
+deliberate `TS2322` in a file under `e2e/` fails the gate with exit 2, and `global-setup` was
+smoke-run afterwards (seeding intact, 2/2 green) because deleting from the seed path is not a
+free edit.
+
+**The red-proof also produced P-86** — see below. Turning the compiler on was necessary but
+**not sufficient** for the claim originally made here.
 
 **P-74 — "Retry Processing" is a placebo that reports success.**
 `AdminDemoDetailPage.vue:461-466` — `handleReprocess` calls **no API at all**. Its entire body

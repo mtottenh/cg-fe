@@ -229,7 +229,7 @@ test.describe('League Invitations', () => {
   test('invited player declines a league invitation and stays outside the league', async ({
     page,
   }) => {
-    const { adminToken, leagueId, leagueName, invitee, message } = await seedLeagueInvitation()
+    const { adminToken, leagueId, invitee, message } = await seedLeagueInvitation()
 
     await loginAsUser(page, { email: invitee.email, password: invitee.password })
     await page.goto('/invitations')

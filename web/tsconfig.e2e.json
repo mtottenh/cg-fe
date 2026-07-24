@@ -1,0 +1,37 @@
+{
+  /* P-81: `e2e/` was covered by no tsconfig, so `npm run typecheck` — the gate CI
+     runs — read none of the spec files or fixtures. That is the same class as the
+     solution-style-config trap in COVERAGE-PLAN §2: a green gate covering nothing.
+     It also meant P-31's compile-checked status unions could not protect a test,
+     because the test was never compiled. Node/Playwright environment, DOM lib for
+     the in-page `evaluate` callbacks. */
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.e2e.tsbuildinfo",
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+
+    /* Bundler mode — matches tsconfig.node.json */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting — same strictness as src, so specs are held to the app's bar */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true
+  },
+  "include": ["e2e/**/*.ts", "playwright.config.ts"]
+}

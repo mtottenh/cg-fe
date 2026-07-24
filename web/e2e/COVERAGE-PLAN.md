@@ -105,7 +105,7 @@ The §4-F coverage wave is running three agents concurrently. **Claimed rows are
 |---|---|---|---|
 | 1 | `-i 1` | `e2e/admin-match-overrides.spec.ts` (new) + `fixtures/admin-overrides.fixture.ts` | `MatchAdminActionsTab` ×5 · `handleSchedule` · `MatchOverviewTab.handleTransition` |
 | 2 | `-i 2` | `e2e/dispute-resolution.spec.ts` + `fixtures/dispute.fixture.ts` | `DisputeDetailModal` ×5 |
-| 4 | `-i 3` | `e2e/admin-demo-detail.spec.ts` (new) + `fixtures/demo-admin.fixture.ts` | `AdminDemoDetailPage` demo admin surfaces |
+| ~~4~~ | ~~`-i 3`~~ | **LANDED** `dc36288` — 5 tests green, red-proven, ratchet `{}` | yielded **P-74/75/76** |
 
 Standing rules for this wave, and for any lane added to it:
 - **One `-i` per agent, never shared.** A wrong `-i` destroys another lane's database
@@ -200,10 +200,11 @@ take one row each without contending; tick a row only when the test is red-prove
       map-catalog create/update/delete
 
 *Admin — demos:*
-- [ ] 🔵 **LANE 4** — `AdminDemoDetailPage`: categorize · reprocess · notes · visibility ·
-      `associate` · batch (`DemoCatalogModal`). Note `demos.ts` exposes `associate`,
-      `submitStats` and `markFailed` with **no component consumer** — if a control is absent
-      that is a finding, not a test to force
+- [x] **LANE 4 landed** (`dc36288`, `admin-demo-detail.spec.ts`, 5 tests) — categorize ·
+      visibility (incl. the `authorize_demo_read` gate: bystander 200 → 403 → 200) · notes
+      (incl. `'' → null`) · catalog single · catalog batch (created + existing branches,
+      idempotency). Not driveable, and that is the finding: **reprocess → P-74**,
+      **`associate` → P-75**; the snackbar leak it declined to certify is **P-76**
 
 *Player:*
 - [ ] `SteamTrackingCard` (opt-in/opt-out — the entry point to the whole P-73 pipeline)
@@ -229,9 +230,13 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 73 found · 48 fixed · 25 open** (P-53 mitigated).
+**Status (derived): 76 found · 48 fixed · 28 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76.
+
+**P-74..P-76 came from F Lane 4** — the first parallel coverage lane to land. Three findings
+from one afternoon on one admin page, which is the §4-F thesis paying out: the page had been
+shipped, reviewed and inverse-audited without anyone clicking its buttons.
 
 | # | Finding | Severity | State |
 |---|---|---|---|
@@ -308,6 +313,9 @@ Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61
 | P-71 | Returning team can't enter the next season | blocks flow | open |
 | P-72 | No admin score correction outside a dispute | admin gap | open |
 | P-73 | Ingestion pipeline invisible to admins | ops blind spot | open |
+| P-74 | **"Retry Processing" calls no API — reports success anyway** | **trust** | open |
+| P-75 | Demo league/tournament association uncorrectable; shows raw UUIDs | admin gap | open |
+| P-76 | Categorize snackbar prints the raw enum | minor | open |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service
@@ -483,6 +491,38 @@ can correct. Note this compounds P-61 — progression has already run by then, a
 cannot change the score they replay. Fix = either an admin score-override writing through the
 same path as `resolve/adjusted` + an audit row, or an admin-raised dispute. → D.
 
+**P-74 — "Retry Processing" is a placebo that reports success.**
+`AdminDemoDetailPage.vue:461-466` — `handleReprocess` calls **no API at all**. Its entire body
+is a null check followed by `snackbar.success('Demo queued for reprocessing')`; the comment
+admits it ("This would be handled server-side; for now just refresh") and it does not refresh
+either. The operator is told a failed demo was requeued when nothing happened, which is worse
+than a missing button: it converts a known-broken demo into one believed to be recovering.
+Root cause is two unwired store actions — `demos.ts:252 submitStats`
+(`POST /v1/admin/demos/{id}/stats`) and `demos.ts:265 markFailed` (`.../stats-failed`), both
+with **zero** consumers. `submitStats` is almost certainly the call this button was meant to
+make. Compounding it, the button is `v-if="currentDemo.status === 'failed'"`
+(`:284`) and `failed` is only reachable via the internal/enricher path, so in a UI-only flow
+it cannot even be made to appear — unreachable *and* inert. Net effect: a demo whose
+enrichment failed can never be re-submitted from the portal, which is the manual fallback
+P-73 would otherwise need. Fix = wire the button to `submitStats`, or delete it; do not leave
+a control that lies. → D (with P-73/P-68 on the pipeline page).
+
+**P-75 — a mis-associated demo cannot be corrected.** `demos.ts:185 associate`
+(`POST /v1/admin/demos/{id}/associate`) has **zero** consumers; the Association card
+(`AdminDemoDetailPage.vue:298-310`) is read-only. It also prints **raw UUIDs** —
+`{{ currentDemo.league_id ?? 'None' }}` at `:303`, tournament at `:307` — so an admin cannot
+even tell *which* league or tournament a demo was stamped onto without going to the database.
+This is the repair path for the P-42 failure mode (auto-linked demos landing on the wrong
+target): an admin can unlink the *match*, but the league/tournament association is
+uncorrectable. Same shape as P-62/P-70/P-71 — endpoint live, control absent. Fix = make the
+card editable over the existing action, and resolve the ids to names. → D.
+
+**P-76 — the categorize snackbar leaks the wire value.** `AdminDemoDetailPage.vue:435` —
+`snackbar.success(\`Categorized as ${category}\`)` renders "Categorized as scrim" / "pug"
+while the chip two lines away renders the `demoCategoryMap` label ("Scrim", "PUG"). P-10/P-44
+family. Lane 4's test deliberately asserts the chip and **not** the snackbar, so the suite
+does not certify the leak (ground rule 8). → E.
+
 **P-73 — the ingestion pipeline is invisible to operators.** Everything upstream of the demo
 catalog runs through `routes/internal.rs` (`steam-tracking/active`, `.../poll-result`,
 `discovered-matches` + `/pending` + `/claim` + `/enriched` + `/failed`, `demos/pending`,
@@ -545,6 +585,7 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
 | `tournament-public.spec.ts` | 21+ | 8 | – | 4 | 9 | [x] | guards 25→0 |
 | `team-management.spec.ts` | 34+ | 6 | 1 | 6 | 21 | [x] | rebuilt: 0 guards, 1290 lines |
 | Newer: `invitations`, `league-join`, `team-join`, `captain-actions`, `admin-surfaces`, `admin-teams`, `admin-result-reviews`, `players-directory`, `match-status-timeline`, `match-result-notify`, `tournament-invite-only`, `lineup` | — | all A | | | | [x] | written under the ground rules |
+| `admin-demo-detail.spec.ts` (F Lane 4) | 5 | 5 | – | – | – | [x] | red-proven; yielded P-74/75/76 |
 
 ## 8. Definition of done
 

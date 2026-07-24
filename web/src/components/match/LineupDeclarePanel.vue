@@ -1,5 +1,5 @@
 <template>
-  <v-card v-if="userRegistrationId" variant="outlined" class="mb-4">
+  <v-card v-if="userRegistrationId" variant="outlined" class="mb-4" data-testid="lineup-declare-panel">
     <v-card-title class="d-flex align-center">
       <v-icon start>mdi-clipboard-account</v-icon>
       Declare your lineup

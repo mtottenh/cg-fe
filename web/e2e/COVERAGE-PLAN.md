@@ -304,7 +304,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-51 | Invitee cannot read own invite state (gate was soft) | design gap | **fixed** `c7d395e` |
 | P-52 | Duplicate `operationId` broke the generated client | build | **fixed** `098832a`; guarded `c5ea9e5` |
 | P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | 🟡 mitigated `7775a19` → P-56 |
-| P-54 | League members truncates at 20; client cannot paginate | user-facing | **fixed** `dc5136c`+`PENDING54` (web half was missing) |
+| P-54 | League members truncates at 20; client cannot paginate | user-facing | **fixed** `dc5136c`+`71bdd90` (web half was missing) |
 | P-55 | Review queue FIFO — newest escalation on the last page | admin friction | open |
 | P-56 | >100-participant tournaments still can't submit (P-53 ceiling) | blocks core flow | open |
 | P-57 | 15-min auto-confirm window too short for humans | trust | **fixed** `5590726` (24h) |

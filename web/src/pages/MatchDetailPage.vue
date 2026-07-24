@@ -195,6 +195,19 @@
         </v-card-text>
       </v-card>
 
+      <!-- Lineups (who played) — provisional declaration + demo-derived,
+           opponent-visible once locked. -->
+      <LineupPanel
+        v-if="match.participant1_registration_id || match.participant2_registration_id"
+        :tournament-id="tournament.id"
+        :match-id="match.id"
+        :participant1-registration-id="match.participant1_registration_id"
+        :participant2-registration-id="match.participant2_registration_id"
+        :participant1-name="match.participant1_name"
+        :participant2-name="match.participant2_name"
+        class="mb-6"
+      />
+
       <!-- Lobby Presence Bar (shown during live lobby states) -->
       <LobbyPresenceBar
         v-if="showVetoPanel && lobbyParticipants.length > 0"
@@ -414,6 +427,7 @@ import ResultHistoryTimeline from '@/components/match/results/ResultHistoryTimel
 import MapResultsSummary from '@/components/match/results/MapResultsSummary.vue'
 import EvidenceDisplay from '@/components/match/evidence/EvidenceDisplay.vue'
 import VetoPanel from '@/components/match/veto/VetoPanel.vue'
+import LineupPanel from '@/components/match/LineupPanel.vue'
 import LobbyChatPanel from '@/components/match/LobbyChatPanel.vue'
 import LobbyPresenceBar from '@/components/match/LobbyPresenceBar.vue'
 import DisputeThreadPanel from '@/components/match/DisputeThreadPanel.vue'

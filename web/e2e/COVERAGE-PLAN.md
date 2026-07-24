@@ -402,7 +402,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-98 | Stage "Format (optional)" is mandatory — blank is a 400 | user trap | open |
 | P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | open |
 | P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | open |
-| P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `PENDING101` |
+| P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
 | P-93 | **Date overrides saved one day early in every positive UTC offset** | **data corruption** | open |
 | P-87 | **Every game-config WRITE 404s — handler passes UUID to a slug-keyed update** | **feature dead** | open |
 | P-88 | A disabled game vanishes from admin and can never be re-enabled | **traps admin** | open |

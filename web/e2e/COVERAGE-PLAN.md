@@ -7,14 +7,16 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **67 product findings** from what
+*"what should happen here?"* — and that question surfaced **73 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **67 findings · 41 fixed** → the status-drift defect class closed at the source
+112 → 0) → **73 findings · 41 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
-corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers).
+corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
+store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
+not see).
 
 ---
 
@@ -51,6 +53,7 @@ corrected (§6) → the inverse audit run (268 API operations vs. frontend consu
 |---|---|
 | Web typecheck | **`npm run typecheck`** — NEVER `npx vue-tsc --noEmit -p tsconfig.json` (solution-style `"files": []`; checks **zero files, always exits 0**; it masked a real error for a whole phase) |
 | Test-quality ratchet | `node e2e/scripts/check-test-quality.mjs` — baseline is `{}` (zero); may only stay zero |
+| Store-action reachability | `for f in src/stores/*.ts src/stores/tournament/*.ts; do for a in $(grep -oE "^  async function [a-zA-Z0-9_]+" "$f" \| awk '{print $3}'); do [ "$(grep -rl "\b$a\b" src/components src/pages src/composables src/layouts 2>/dev/null \| wc -l)" -eq 0 ] && echo "$(basename $f): $a"; done; done` — every hit is a built-but-unwired feature or a dead action. Found P-68/P-70/P-71; **re-run after any store refactor** |
 | E2E | `npx playwright test e2e/<spec>` — **5173 is contended between parallel agents**; use a per-agent `E2E_WEB_PORT=51xx PLAYWRIGHT_BASE_URL=http://localhost:51xx` |
 | API integration tests | `cargo test -p portal-api --features test-utils` — plain `cargo test` runs **zero** integration tests. The MinIO `scanner_e2e` pair flakes under concurrency; confirm sequentially |
 | API lint/format | `cargo fmt --all --check` · `cargo clippy --workspace --all-targets --features portal-api/test-utils -- -D warnings` |
@@ -96,6 +99,21 @@ corrected (§6) → the inverse audit run (268 API operations vs. frontend consu
 
 ## 4. Roadmap — remaining work in order
 
+> **Execution order (set 2026-07-24, owner): A → F → B → C → D → E → G.**
+> The letters are **stable identifiers**, not a sequence — §5 cross-references them by letter,
+> so they are never renumbered. Read this line for priority, not the alphabet.
+>
+> **Why F jumped the queue.** This campaign's whole thesis (see the header line) is that
+> *driving a surface through the UI is what surfaces product bugs* — 73 findings came out of a
+> test-quality audit. That thesis is now measured: P-68/P-70/P-71 sat undetected through a full 268-operation
+> inverse audit precisely because nothing drove them through the UI, and P-35 (a dead decision
+> form) had already proved the same point. Every unexercised handler in F is therefore an
+> **unsampled bug site**, and building D's features first only adds more of them. So: exercise
+> every handler through the UI first, harvest the findings that fall out, *then* build.
+> Corollary for F: when a handler cannot be driven because the control does not exist, that is
+> not a blocked test — **that is the finding**. Register it (that is exactly how P-62/P-70/P-71
+> were born) and move on.
+
 **A · The moment the lineup agent lands (contended-file queue):**
 - [ ] Verify the attribution correction end-to-end (a registered non-declared sub KEEPS
       stats + gets the sub tag; unregistered stays NULL and raises the review; the rewritten
@@ -121,25 +139,61 @@ corrected (§6) → the inverse audit run (268 API operations vs. frontend consu
 P-14 (lock settable at all) · P-15 (single enforcement point) · P-16 · P-18 (audited admin
 override) · collapse `RosterLockStatus` · retire the `substitute` role.
 
-**D · Product-gap wave (from the inverse audit):** P-60 (logout revocation — top item),
-P-61 (cascading DQ), P-62 (transfer ownership UI), P-63 (disband UI), P-64 (backfill
-button), P-66 (audit trail / stored suggestions).
+**D · Product-gap wave (from the inverse audit + the store-action second pass):**
+P-60 (logout revocation — top item), P-61 (cascading DQ), P-62 (transfer ownership UI),
+P-63 (disband UI), P-66 (audit trail / stored suggestions), **P-70** (role assignment UI —
+RBAC is authorable but not assignable), **P-71** (season re-registration), **P-72** (admin
+score correction), **P-68 + P-73 + P-64 together** — one admin "Pipeline" page carrying
+ingestion health, the backfill button and the rating override, since they share a surface and
+P-73 is what makes P-68 necessary.
 
 **E · Minor sweep, one batch:** P-3 · P-6 (confirm-or-kill) · P-41 · P-58 verification
 (landed in `3013f58`; confirm it survives the attribution correction, then tick).
 
-**F · Coverage wave (§7-remainder + names), partitioned by surface:**
-- Admin: `DisputeDetailModal` remaining resolutions (`handleResolveUphold/Adjusted/Rematch/
-  DoubleDq/handleAssign`) · `MatchOverviewTab.handleTransition` · `StagesTab.handleCreateStage`
-  · `AwardsTab.handleSaveEdit` · `AdminGamesPage` enable/disable · `AdminDemoDetailPage`
-  (categorize/reprocess/notes/visibility) · `BanDetailModal` · modal saves: `LeagueCreateModal`,
-  `LeagueEditModal`, `LeagueSeasonCreateModal`, `GameEditModal`, `GameConfigDialog`,
-  `InviteUserModal`, `DemoCatalogModal` · `AdminTournamentDetailPage.handleClearSeeding`
-- Player: `SteamTrackingCard` · `SocialLinksEditor` · `AvailabilityOverridesManager` ·
-  `MapPoolPicker` · `DemoBrowser`
-- Names: `match-workflow.spec.ts:253` asserts `hasText: 'ready'` (certifies the raw enum;
-  survives only via case-insensitive matching) — assert the human label.
-- Product decision embedded: captain **transfer-ownership has no UI** (P-62) — decide, then test.
+**F · Coverage wave — PRIORITY AFTER A. Every handler driven through the UI.**
+
+Exit criterion: **no mutating handler in `src/` is un-driven by an e2e test**, and every
+handler that *cannot* be driven has a P-number saying why. Partitioned by surface so agents can
+take one row each without contending; tick a row only when the test is red-proven (§1.10).
+
+*Admin — match & dispute (highest bug-yield: these are the override paths, all confirm-gated):*
+- [ ] `DisputeDetailModal`: `handleResolveUphold` · `handleResolveAdjusted` · `handleResolveRematch`
+      · `handleResolveDoubleDq` · `handleAssign` — **4 of 5 resolutions are untested**; only
+      `overturn` is driven today (`dispute-resolution.spec.ts`)
+- [ ] `MatchAdminActionsTab`: `handleForfeit` · `handleDoubleForfeit` · `handleProcessProgression`
+      · `handleReapplyProgression` · `handleRevertProgression` — none driven. Progression
+      revert/reapply mutate bracket state; assert the bracket both ways
+- [ ] `MatchAdminActionsTab.handleSchedule` (admin manual scheduling) — user-priority item,
+      P-35-shaped risk, gated route already consumed
+- [ ] `MatchOverviewTab.handleTransition`
+- [ ] While here: `MatchResultsTab` is presentational with **zero** handlers → that is P-72
+
+*Admin — tournament & league:*
+- [ ] `StagesTab.handleCreateStage` · `AdminTournamentDetailPage.handleClearSeeding`
+- [ ] `AwardsTab.handleSaveEdit` + void (author→standings→finalize is covered by
+      `awards.spec.ts:53`; edit and void are not)
+- [ ] Modal saves: `LeagueCreateModal` · `LeagueEditModal` · `LeagueSeasonCreateModal` ·
+      `InviteUserModal` · `DemoCatalogModal` · `BanDetailModal`
+
+*Admin — game config (whole surface untested):*
+- [ ] `AdminGamesPage` enable/disable · `GameEditModal` (`PATCH /v1/games/{id}`) ·
+      `GameConfigDialog` tabs → `PUT maps` · `PUT rank-tiers` · `PATCH team-size` ·
+      map-catalog create/update/delete
+
+*Admin — demos:*
+- [ ] `AdminDemoDetailPage`: categorize · reprocess · notes · visibility · `associate` · batch
+
+*Player:*
+- [ ] `SteamTrackingCard` (opt-in/opt-out — the entry point to the whole P-73 pipeline)
+- [ ] `AvailabilityOverridesManager` + availability windows create/update/delete
+- [ ] `SocialLinksEditor` · `MapPoolPicker` · `DemoBrowser`
+
+*Names & honesty:*
+- [ ] `match-workflow.spec.ts:253` asserts `hasText: 'ready'` (certifies the raw enum; survives
+      only via case-insensitive matching) — assert the human label
+- [ ] Product decisions embedded, to settle as their tests are written: P-62 (transfer
+      ownership), P-70 (role assignment), P-71 (season re-registration) — each is a handler
+      whose control does not exist. Decide, build the control, then test.
 
 **G · Cleanup & close-out:** **P-67** dead-surface batch (501 progression stub · DELETE
 withdraw duplicate · orphaned `admin/demos/pending` · five redundant single-getters ·
@@ -153,10 +207,11 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 67 found · 41 fixed · 26 open** (P-53 mitigated, P-59 gated-pending-commit).
+**Status (derived): 73 found · 41 fixed · 32 open** (P-53 mitigated, P-59 gated-pending-commit).
 
 Open: P-3, P-6, P-14, P-15, P-16, P-18, P-26, P-38, P-39, P-40, P-41, P-46, P-53, P-54,
-P-55, P-56, P-58, P-59, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67.
+P-55, P-56, P-58, P-59, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70,
+P-71, P-72, P-73.
 
 | # | Finding | Severity | State |
 |---|---|---|---|
@@ -227,11 +282,27 @@ P-55, P-56, P-58, P-59, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67.
 | P-65 | `/users/me/action-items` missing from OpenAPI doc | build (P-52 family) | open |
 | P-66 | Match audit trail + stored suggestions invisible | minor | open |
 | P-67 | Dead-surface cleanup batch | hygiene | open |
+| P-68 | Scraped Premier rating has no correction path | data integrity | open |
+| P-69 | Platform Elo engine is dead code (never called) | **scope decided** | open → G |
+| P-70 | **Platform role assignment has no UI** | admin gap | open |
+| P-71 | Returning team can't enter the next season | blocks flow | open |
+| P-72 | No admin score correction outside a dispute | admin gap | open |
+| P-73 | Ingestion pipeline invisible to admins | ops blind spot | open |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service
 endpoints · 8 superseded/dead → P-67). Generated client verified key-by-key against the
 spec (not stale).
+
+**Second pass — store-action reachability (2026-07-24):** the inverse audit joined *spec
+operations* to consumers, so it could not see an endpoint that a **store action calls but no
+component ever invokes** — the store counts as a consumer. Re-run at the store-action level
+(every `async function` in `src/stores/**` grepped against `components|pages|composables|
+layouts`), 26 actions have **zero** UI consumers → P-68, P-70, P-71. Most of the remainder are
+benign (`recordCoinFlip`/`startVetoSession` — the backend drives veto over WS;
+`fetchLeagueBySlug`, `fetchSeason` — superseded getters); those fold into P-67. **Repeat this
+scan after any store refactor** — a dead action is exactly the shape of a feature that was
+built and never wired.
 
 ### Open findings — detail
 
@@ -326,7 +397,82 @@ actor/when) unused by the static timeline; stored scheduling suggestions
 (non-forfeiting duplicate of the consumed POST withdraw) · orphaned `GET /v1/admin/demos/pending` ·
 redundant single-getters (`players/me/games`, `players/{id}/games/{game_id}`,
 `evidence/{evidence_id}` GET, `league-team-seasons/{id}` GET) · `schedule_match` post-P-59 ·
-dead `fixtures/match.fixture.ts` helpers hitting removed paths. → G.
+dead `fixtures/match.fixture.ts` helpers hitting removed paths · the benign zero-consumer
+store actions from the second-pass scan (`awards.fetchLeaderboard` — superseded by
+`fetchPlayerStatsLeaderboard`; `veto.createVetoSession/startVetoSession/recordCoinFlip/
+fetchDelegates/createDelegate/revokeDelegate`; `leagues.fetchLeagueBySlug/fetchMyApplications`;
+`leagueSeasons.fetchSeason`; `players.fetchPlayerTeams`; `auth.fetchMyRoles`;
+`demos.associate/submitStats/markFailed`; `evidence.fetchDemoStats/validateEvidence/
+validateDemo`; `_registrations.fetchCheckInStatus`). → G.
+
+**P-68 — a wrong scraped Premier rating cannot be corrected.** Ratings reach
+`player_game_profiles` from exactly two places: the enricher's demo-derived path
+(`handlers/internal.rs:482 process_demo_ratings`, the normal case) and the admin
+`submit_player_rating` (`handlers/player_game_profiles.rs:264`, `SYSTEM_MANAGE`-gated, live at
+`routes/players.rs:38`). The second has **no UI consumer** — the web app only ever reads
+`rating-history` (`composables/usePlayerStats.ts:56`). Rating drives seeding (`SeedingTab`) and
+league entry gates (`useLeagueEligibility`, `min_rating_per_player`), so a bad extraction
+silently misseeds brackets and can lock a player out of a league with no operator remedy.
+Fix = an admin rating-override control (player detail → set rating + source + reason), which
+also gives P-73 its manual fallback. Note the handler writes `deviation=0, volatility=0.0`
+(see P-69). → D.
+
+**P-69 — the platform Elo engine is dead code. DECIDED: out of scope.**
+`calculate_rating_change` (`portal-plugins/src/games/cs2/mod.rs:591`, trait at
+`traits.rs:212`) is called from **nowhere in production** — the only call sites are the trait's
+own test (`:1573`) and the pass-through at `:1253`. `Glicko2Rating`
+(`portal-core/src/types/rating.rs`) is likewise unreferenced by any live path, and the one
+writer that does exist passes `deviation=0, volatility=0.0`, so the Glicko-2 columns on
+`player_game_profiles` (`0007:13-17`) hold defaults forever.
+**Product decision (2026-07-24, owner):** ratings are *mirrored from Valve Premier* via the
+scraping pipeline — that is the model, and a platform-computed Elo adds nothing on top of it.
+A platform Elo would only ever be for **league-private or team rankings**, which is not a
+committed feature. So this is not a defect to fix; it is a dead surface that currently
+**implies a live platform rating system that does not run**, which is how it misled this
+audit. Action: delete the trait method + `Glicko2Rating`, or keep them behind a comment naming
+them an explicit, unwired extension point for future league/team Elo. Do not leave them
+ambiguous. → G.
+
+**P-70 — no UI grants a platform role.** `rbac.ts` exposes `getUserRoles:128`,
+`assignRoleToUser:138`, `revokeRoleFromUser:160` — all three have **zero** consumers.
+`AdminPermissionsPage` has only Roles and Permissions tabs (`:17-26`); it can author a role
+and attach permissions to it, but never attach a role to a *person*. `AdminPlayersPage`'s role
+chips are **team** roles (`teamRoleMap`, `:399`), not platform ones. Net effect: admins,
+organizers and moderators can only be minted by seed or by hand in SQL — the RBAC system is
+authorable but not assignable. Fix = a Users tab (or a Roles section on the player detail
+modal) over the three existing actions; endpoints are live at `routes/admin.rs:28-36`. → D.
+`admin-surfaces.spec.ts:130` covers role→permission and must be extended to user→role.
+
+**P-71 — a returning team cannot enter the next season.**
+`leagueTeams.registerTeamForSeason:135` (`POST /v1/league-seasons/{id}/teams/register`) has no
+component consumer; the only reachable path is `createTeam`-into-a-season. Since a
+`LeagueTeamSeason` is per-season by design, an existing team is stranded when the season rolls
+over — the captain's only route is to create a brand-new team, orphaning roster history,
+trophies and match history. Fix = a "Register for <season>" action on `TeamDetailPage` /
+`MyLeagueTeamsPage`, gated on league membership. → D. (`leagueTeams.addMember` is also
+consumer-less, but that one is structurally entangled with P-15 — resolve it there, not here.)
+
+**P-72 — a confirmed-but-wrong score has no admin remedy.**
+`MatchResultsTab.vue` is 119 lines with **zero handlers** — purely presentational — and there
+is no admin result route (`routes/admin.rs` has result-*reviews* only). The sole score-writing
+admin path is `POST /v1/admin/disputes/{id}/resolve/adjusted`, which requires a dispute to
+exist. So the failure case is: both parties confirm a wrong score (or it auto-confirms after
+the P-57 24h window), nobody disputes, and the bracket progresses on bad data that no operator
+can correct. Note this compounds P-61 — progression has already run by then, and
+`revert`/`reapply` (which *do* exist, `MatchAdminActionsTab:318-362`) move the bracket but
+cannot change the score they replay. Fix = either an admin score-override writing through the
+same path as `resolve/adjusted` + an audit row, or an admin-raised dispute. → D.
+
+**P-73 — the ingestion pipeline is invisible to operators.** Everything upstream of the demo
+catalog runs through `routes/internal.rs` (`steam-tracking/active`, `.../poll-result`,
+`discovered-matches` + `/pending` + `/claim` + `/enriched` + `/failed`, `demos/pending`,
+`demos/{id}/stats-failed`) and **none of it has an admin read surface** — `AdminDemosPage`
+starts at the catalogued demo. There is no view of tracking-token health, the discovered-match
+queue depth, poll failures, or enrichment failures, so silent ingestion stoppage is
+undetectable from the portal — and since ingestion is what supplies ratings, it fails
+*quietly* into P-68. Fix = an admin "Pipeline" page over the existing internal reads (promote
+them to admin-authed equivalents; do not expose `X-API-Key` routes to the browser). Pairs with
+P-64 (the backfill button, same page). → D.
 
 ## 6. Lineup system — status
 
@@ -386,7 +532,10 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
 - [x] Zero vacuous guards (112 → 0)
 - [x] Every never-loaded route covered (`fbe1500`)
 - [x] Class-B tests eliminated or honestly renamed (last one: veto-bo3, rewritten)
-- [ ] Every remaining §4-F handler exercised through the UI
+- [ ] **Every mutating handler in `src/` exercised through the UI** (§4-F) — and every handler
+      that cannot be, carrying a P-number that says why. This is now the lead objective
+- [ ] Store-action reachability scan clean: no `async function` in `src/stores/**` without a
+      UI consumer, except those explicitly retired in P-67
 - [ ] `match-workflow:253` name/assertion fixed (last misleading-name item)
-- [ ] Register drained to decided-wontfix or fixed (26 open as of the rewrite)
+- [ ] Register drained to decided-wontfix or fixed (32 open as of 2026-07-24)
 - [ ] Final spot-check: deliberately break a component and watch the suite go **red**

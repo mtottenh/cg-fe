@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **107 product findings** from what
+*"what should happen here?"* — and that question surfaced **111 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **107 findings · 53 fixed** → the status-drift defect class closed at the source
+112 → 0) → **111 findings · 53 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -83,6 +83,13 @@ not see).
   since P-2, `open` auto-approves. `CreateTournamentOptions.registrationType` exists for this.
 - **`createLeague` fixture hardcodes `access_type: 'open'`** — invite-only/application
   leagues need a spec-local builder (precedent in `league-join.spec.ts`).
+- **`getByRole('button', { name })` is substring-matched too** — `{ name: 'Link demo' }` also
+  matches `aria-label="Unlink demo"`, so an "it's gone now" assertion silently found the
+  *unlink* button and passed. `exact: true` is **mandatory** on aria-labelled icon buttons —
+  the exact inverse of the v-text-field rule below, where `exact` is unusable.
+- **`getByLabel()` on a `clearable` v-text-field resolves TWO elements** — the input plus the
+  clear icon (`aria-label="Clear <label>"`) — a strict-mode violation. Use
+  `getByRole('textbox', { name })`, non-exact.
 - **Vuetify `v-text-field` doubles its accessible name** (floating label + the input's own
   aria-label), so the name is `"<label> <label>"` and
   `getByRole('textbox', { name: 'Game Auth Code', exact: true })` matches **nothing**.
@@ -117,18 +124,21 @@ not see).
   batch API (`dc5136c`) + web half, P-59 gate (`930f8c9`, red-proven). Combined gate at
   landing: **686 passed / 0 failed**, fmt/clippy clean, ratchet `{}`, 6/6 on the touched specs.
 
-### Parallel F wave 3 — IN FLIGHT (2026-07-24). Do not pick these up.
+### Parallel F wave 3 — COMPLETE (2026-07-24). Both lanes landed. **§4-F is done.**
 
 | Lane | Instance | Owns (only these files) | §4-F rows claimed |
 |---|---|---|---|
 | ~~9~~ | ~~`-i 1`~~ | **LANDED** `c98f2bc` — 3 tests, two network probes | yielded **P-104..P-106** |
-| 10 | `-i 2` | `e2e/match-demo-browser.spec.ts` (new) + `fixtures/demo-browser.fixture.ts` | `DemoBrowser` → `discoverDemos` · `linkDiscoveredDemo` · demo validation |
+| ~~10~~ | ~~`-i 2`~~ | **LANDED** `89cc64b` — 4 tests, probe-proved | yielded **P-108..P-111** |
 
 `MapPoolPicker` mounts twice: `GameConfigDialog.vue:138` (game pool — **dead, P-87**) and
 `TournamentForm.vue:321` (tournament pool — live). Lane 9 drives the tournament one; the game
 one is already registered as a finding and must not be tested into a pass.
 
-This is the **last** wave: after it, every row in §4-F is either ticked or carries a P-number.
+**Outcome: every §4-F row is now ticked or carries a P-number.** Across three waves, 9 agent
+lanes produced **38 findings (P-74..P-111)** — more than a third of the campaign's total, from
+surfaces that had all shipped, been reviewed, and been inverse-audited. The single most common
+shape, by a wide margin: a control that renders, reports success, and does nothing.
 
 ### Parallel F wave 2 — COMPLETE (2026-07-24). All four lanes landed.
 
@@ -192,6 +202,9 @@ Standing rules for this wave, and for any lane added to it:
 > were born) and move on.
 
 **A · The moment the lineup agent lands (contended-file queue):**
+- [ ] **P-108 — gate `link_discovered_evidence` and `link_demo` on match participation.**
+      Security, P-24/P-59 shape; the helper already exists and is used by `validate_demo` on
+      the same surface. Red-prove the 403 before trusting the gate (ground rule 10).
 - [ ] **P-107 — make the FULL suite green.** The campaign validated specs one at a time and
       called that green; the first whole-suite run (302 passed / 4 failed / 3 skipped) proved
       that insufficient. Two were real (fixed: P-102, P-103); two are cross-spec interference.
@@ -257,7 +270,7 @@ take one row each without contending; tick a row only when the test is red-prove
 - [x] **LANE 1** — `MatchAdminActionsTab.handleSchedule` (admin manual scheduling) → **P-84**
 - [x] **LANE 1** — `MatchOverviewTab.handleTransition` (ready→scheduled→in_progress, button
       relabels each step). The `completed → awaiting_result` entry is a dead control → **P-82**
-- [ ] While here: `MatchResultsTab` is presentational with **zero** handlers → that is P-72
+- [x] While here: `MatchResultsTab` is presentational with **zero** handlers → registered as P-72
 
 *Admin — tournament & league:*
 - [x] **LANE 6 landed** (`5bad7ef`) — `StagesTab.handleCreateStage` (blocked the no-format
@@ -287,16 +300,23 @@ take one row each without contending; tick a row only when the test is red-prove
       the no-Steam-ID refusal · availability windows edit/delete · overrides delete ·
       `SocialLinksEditor` save. Window *create* was already covered at
       `player-profile.spec.ts:601`. Override *create* could not be driven honestly → **P-93**
-- [ ] `MapPoolPicker` · `DemoBrowser` — deferred to wave 3
+- [x] **LANE 9 landed** (`c98f2bc`, `tournament-map-pool.spec.ts`, 3 tests) — `MapPoolPicker`
+      on `TournamentForm`: custom pool `PUT`, reset `DELETE`, and the create-modal validity
+      gate. The edit-modal gate and the swallowed reset are **P-104/P-105**
+- [x] **LANE 10 landed** (`89cc64b`, `match-demo-browser.spec.ts`, 4 tests) — `DemoBrowser`
+      discovery, link-discovered, the rejection path (driven by a real 404) and catalog search.
+      Manual link and demo validation could not be driven → **P-110/P-111**; the invisible
+      evidence row is **P-109**; the missing authz is **P-108**
 
 *Names & honesty:*
 - [x] **`match-workflow.spec.ts:253` fixed** — was `hasText: 'ready'`, which passed identically
       whether the chip showed the mapped label or leaked the raw enum, because Playwright text
       matching is case-insensitive. Now `getByText('Ready', { exact: true })` (case-sensitive),
       so it distinguishes `matchStatusMap`'s label from the enum. Verified green.
-- [ ] Product decisions embedded, to settle as their tests are written: P-62 (transfer
-      ownership), P-70 (role assignment), P-71 (season re-registration) — each is a handler
-      whose control does not exist. Decide, build the control, then test.
+- [x] Product decisions embedded, now all registered rather than pending: P-62 (transfer
+      ownership), P-70 (role assignment), P-71 (season re-registration), and the wave-2/3
+      additions P-92, P-95, P-104. Each is a handler whose control does not exist or does not
+      work — decide, build, then test. **This is the §4-F exit criterion, and it is met.**
 
 **G · Cleanup & close-out:** **P-67** dead-surface batch (501 progression stub · DELETE
 withdraw duplicate · orphaned `admin/demos/pending` · five redundant single-getters ·
@@ -310,9 +330,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 107 found · 53 fixed · 54 open** (P-53 mitigated).
+**Status (derived): 111 found · 53 fixed · 58 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-93, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-107.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-93, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-107, P-108, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -413,6 +433,10 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | open |
 | P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
 | P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | **fixed** `e06ff8f` |
+| P-108 | **`link-discovered`/`link-demo` have NO participant authz** | **security** | open |
+| P-109 | Linked demo evidence is invisible on every evidence surface | **feature dead** | open |
+| P-110 | Browse-catalog "Link demo" offers demos it will refuse to link | feature dead | open |
+| P-111 | Nothing ever validates a demo against a result; "Validated" is dead template | integrity | open |
 | P-102 | **`lineup.spec.ts` read an env var nothing sets — wrote to the DEV database** | **test integrity** | **fixed** `172b46f` |
 | P-103 | P-57 landed without updating the test that depended on the old window | test rot | **fixed** `172b46f` |
 | P-104 | Edit modal's empty-pool gate is decorative; the pool edit is discarded | **feature dead** | open |
@@ -650,6 +674,53 @@ belong to the §4-G P-31 remnant batch.
 **Lesson recorded for ground rule 10:** the probe that matters is the one aimed at the
 *claim*, not the mechanism. Probe A ("does the gate run?") passed and would have been enough
 to call P-81 done; Probe B ("does the gate deliver what I said it would?") is what found P-86.
+
+**P-108 — attaching demo evidence to any match needs only a login. SECURITY.**
+`link_discovered_evidence` (`handlers/evidence.rs:594-600`) takes `auth: AuthenticatedUser` and
+performs **no participant or admin check**; the same absence in `link_demo` (`:1175-1180`).
+Its sibling on the same surface, `validate_demo`, calls
+`require_match_participant_or_admin` at `:1019` — so the gate exists, is used two hundred lines
+away, and was simply not applied here. On the face of it any logged-in user can attach demo
+evidence to any match in the system, including matches they have nothing to do with. Evidence
+feeds result review and dispute resolution, so this is an integrity surface, not a cosmetic
+one. Exactly the P-24 and P-59 shape — a write endpoint that everything around it gates.
+**Triage before further coverage work.** Found by Lane 10 while reading for a test, not by a
+test; flagged out-of-lane rather than acted on. → **A, security.**
+
+**P-109 — a linked demo is invisible on every evidence surface in the product.**
+`EvidenceService::link_discovered` stamps the row `EvidenceSource::PluginDiscovery`
+(`portal-domain/src/services/tournament/evidence.rs:711`) **even though a human clicked "Link
+demo"**, and `list_evidence` drops `PluginDiscovery` rows unless `include_discovered=true`
+(`handlers/evidence.rs:325-329`), which defaults to `false`. No frontend caller ever passes it:
+`stores/evidence.ts:193-201 fetchEvidence` sends no query and is the only reader
+(`AdminMatchDetailModal.vue:111` → `MatchEvidenceTab`, and `useMatchDetail.ts:343`). So linking
+a demo writes an evidence record the admin Evidence tab can never display. It cost Lane 10 a
+cycle — its cross-check returned `[]` against a link that had demonstrably succeeded. The spec
+now cross-checks with `include_discovered=true` and deliberately asserts nothing about the
+default listing, so it does not certify the gap. Fix = stamp a human link as a human source, or
+pass the flag. → D.
+
+**P-110 — the browse catalog offers demos it will refuse to link.** `link_demo`
+(`handlers/evidence.rs:1189-1193`) resolves the demo by **file name against the external CS2
+demo-stats service** (`portal-plugins/src/games/cs2/demo_client.rs:144-171`) and 404s when it
+is absent — despite the request carrying `demo_id`, which the handler then uses anyway at
+`:1213-1231` to create the link. The list the button acts on comes from the **catalog**
+(`GET /v1/demos`), a different source of truth, so any catalogued demo whose `.stats.json` is
+missing is offered and then rejected. No stats service runs on `:3100` in the e2e stack, so the
+button 404s there unconditionally — which is why `linkManualDemo` could not be driven and no
+test was written. → D.
+
+**P-111 — nothing in the product ever validates a demo against a result.**
+`DemoBrowser.vue:250-261` renders a "Validated" chip from `item.link.validated`, but the demo
+link's `mark_validated` (trait `portal-domain/src/repositories/demo.rs:162`, impl
+`portal-db/src/adapters/demo.rs:710-727`) has **no caller anywhere in the workspace** — the only
+production `mark_validated` call is the *evidence* repo's, from `validate_against_result`
+(`services/tournament/evidence.rs:755`). `demo_match_links.validated` is `false` forever, so the
+chip is dead template. Compounding it, the three store actions that would drive validation —
+`evidence.validateDemo` (`stores/evidence.ts:252`), `validateEvidence` (`:239`) and
+`fetchDemoStats` (`:203`) — have **zero** UI consumers (re-confirmed by the reachability scan).
+So the backend validator, the plugin, the DB columns and the chip all exist, and no path
+connects them. This closes §4-F's "demo validation" row as a finding rather than a test. → D.
 
 **P-102 — `lineup.spec.ts` read an env var nothing sets, and wrote to the dev database. FIXED.**
 `lineup.spec.ts:10` read `process.env.E2E_API_URL`. **Nothing sets that variable** — not
@@ -1087,8 +1158,9 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
 - [x] Zero vacuous guards (112 → 0)
 - [x] Every never-loaded route covered (`fbe1500`)
 - [x] Class-B tests eliminated or honestly renamed (last one: veto-bo3, rewritten)
-- [ ] **Every mutating handler in `src/` exercised through the UI** (§4-F) — and every handler
-      that cannot be, carrying a P-number that says why. This is now the lead objective
+- [x] **Every mutating handler in `src/` exercised through the UI** (§4-F) — and every handler
+      that cannot be, carrying a P-number that says why. **Met 2026-07-24** across 3 waves /
+      9 lanes / 38 findings (P-74..P-111)
 - [ ] Store-action reachability scan clean: no `async function` in `src/stores/**` without a
       UI consumer, except those explicitly retired in P-67. **Re-run 2026-07-24 after waves
       1-2: still 26, unchanged** — no new drift introduced, and every entry is accounted for

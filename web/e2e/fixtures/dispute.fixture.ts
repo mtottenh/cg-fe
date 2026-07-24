@@ -12,6 +12,8 @@
  * by a previous run).
  */
 
+import type { ClaimStatus, DisputeStatus, TournamentMatchStatus } from './api-status'
+
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
 // Consumers pull seed/login helpers directly from the canonical fixture
@@ -25,7 +27,7 @@ const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 export interface MatchSummary {
   id: string
   tournament_id: string
-  status: string
+  status: TournamentMatchStatus
   participant1_registration_id: string | null
   participant2_registration_id: string | null
   winner_registration_id: string | null
@@ -37,7 +39,7 @@ export interface MatchSummary {
 export interface ResultClaim {
   id: string
   match_id: string
-  status: string
+  status: ClaimStatus
   claimed_winner_registration_id: string
   [key: string]: unknown
 }
@@ -59,7 +61,7 @@ export interface DisputeResolution {
 export interface Dispute {
   id: string
   match_id: string
-  status: string
+  status: DisputeStatus
   priority: string
   disputed_by_registration_id: string
   disputed_by_user_id: string

@@ -27,6 +27,7 @@
 
 import { createTestUser } from './checkin.fixture'
 import { registerPlayer, approveRegistration } from './tournament-lifecycle.fixture'
+import type { TournamentMatchStatus } from './api-status'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -44,7 +45,7 @@ export interface FormatMatch {
   round: number
   match_number: number
   bracket_position: string
-  status: string
+  status: TournamentMatchStatus
   participant1_registration_id: string | null
   participant2_registration_id: string | null
   participant1_name: string | null

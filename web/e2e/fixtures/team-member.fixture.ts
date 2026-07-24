@@ -5,12 +5,13 @@
 import type { Page } from '@playwright/test'
 import { login } from './auth.fixture'
 import { testUsers } from './test-data'
+import type { LeagueTeamInvitationStatus } from './api-status'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
 interface InvitationResponse {
   id: string
-  status: string
+  status: LeagueTeamInvitationStatus
   [key: string]: unknown
 }
 

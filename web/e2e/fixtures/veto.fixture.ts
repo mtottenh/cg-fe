@@ -22,7 +22,9 @@ import {
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
-/** Loosely typed veto session — assert on the fields you need. */
+/** Loosely typed veto session — assert on the fields you need.
+ *  NOTE (P-86): `status` stays `string` — the veto session status enum is not
+ *  declared in the spec, so there is no generated union. P-31 remnant; see §4-G. */
 export interface VetoSession {
   id: string
   status: string

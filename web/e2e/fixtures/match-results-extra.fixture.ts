@@ -40,6 +40,7 @@ import {
   type TournamentSummary,
 } from './tournament-lifecycle.fixture'
 import { uniqueId, CS2_MAP_POOL } from './test-data'
+import type { ClaimStatus, TournamentMatchStatus } from './api-status'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -49,7 +50,7 @@ export type ResultScenario = CheckInScenario
 
 export interface ResultClaim {
   id: string
-  status: string
+  status: ClaimStatus
   claimed_winner_registration_id: string
   claimed_participant1_score: number
   claimed_participant2_score: number
@@ -84,7 +85,7 @@ export async function adminTransitionMatch(
   adminToken: string,
   tournamentId: string,
   matchId: string,
-  toStatus: string,
+  toStatus: TournamentMatchStatus,
 ): Promise<void> {
   const resp = await fetch(
     `${API_URL}/v1/admin/tournaments/${tournamentId}/matches/${matchId}/transition`,

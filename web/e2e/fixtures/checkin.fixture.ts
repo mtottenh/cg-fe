@@ -1,5 +1,6 @@
 import type { APIRequestContext } from '@playwright/test'
 import { uniqueId, CS2_MAP_POOL } from './test-data'
+import type { TournamentMatchStatus, TournamentRegistrationStatus } from './api-status'
 
 /**
  * Match check-in / no-show API helpers.
@@ -301,7 +302,7 @@ async function adminCheckIn(
 async function listMatches(
   adminToken: string,
   tournamentId: string,
-): Promise<Array<{ id: string; participant1_registration_id: string | null; participant2_registration_id: string | null; status: string }>> {
+): Promise<Array<{ id: string; participant1_registration_id: string | null; participant2_registration_id: string | null; status: TournamentMatchStatus }>> {
   const resp = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/matches`, {
     headers: { Authorization: `Bearer ${adminToken}` },
   })
@@ -309,7 +310,7 @@ async function listMatches(
     id: string
     participant1_registration_id: string | null
     participant2_registration_id: string | null
-    status: string
+    status: TournamentMatchStatus
   }>>>(resp, 'List matches')
   return body.data ?? []
 }
@@ -497,7 +498,7 @@ export async function checkInViaApi(
   tournamentId: string,
   matchId: string,
   registrationId: string,
-): Promise<{ status: string; participant1_checked_in_at: string | null; participant2_checked_in_at: string | null }> {
+): Promise<{ status: TournamentMatchStatus; participant1_checked_in_at: string | null; participant2_checked_in_at: string | null }> {
   const resp = await fetch(
     `${API_URL}/v1/tournaments/${tournamentId}/matches/${matchId}/check-in`,
     {
@@ -510,7 +511,7 @@ export async function checkInViaApi(
     },
   )
   const body = await jsonOrThrow<ApiResult<{
-    status: string
+    status: TournamentMatchStatus
     participant1_checked_in_at: string | null
     participant2_checked_in_at: string | null
   }>>(resp, 'Match check-in')
@@ -526,7 +527,7 @@ export async function processNoShows(
   _request: APIRequestContext | undefined,
   adminToken: string,
   tournamentId: string,
-): Promise<Array<{ id: string; status: string }>> {
+): Promise<Array<{ id: string; status: TournamentMatchStatus }>> {
   const resp = await fetch(
     `${API_URL}/v1/tournaments/${tournamentId}/process-no-shows`,
     {
@@ -534,7 +535,7 @@ export async function processNoShows(
       headers: { Authorization: `Bearer ${adminToken}` },
     },
   )
-  const body = await jsonOrThrow<ApiResult<Array<{ id: string; status: string }>>>(
+  const body = await jsonOrThrow<ApiResult<Array<{ id: string; status: TournamentMatchStatus }>>>(
     resp,
     'Process no-shows',
   )
@@ -549,7 +550,7 @@ export async function getMatch(
   matchId: string,
 ): Promise<{
   id: string
-  status: string
+  status: TournamentMatchStatus
   participant1_registration_id: string | null
   participant2_registration_id: string | null
   participant1_checked_in_at: string | null
@@ -564,7 +565,7 @@ export async function getMatch(
   )
   const body = await jsonOrThrow<ApiResult<{
     id: string
-    status: string
+    status: TournamentMatchStatus
     participant1_registration_id: string | null
     participant2_registration_id: string | null
     participant1_checked_in_at: string | null
@@ -580,14 +581,14 @@ export async function getRegistration(
   adminToken: string,
   tournamentId: string,
   registrationId: string,
-): Promise<{ id: string; status: string; checked_in: boolean }> {
+): Promise<{ id: string; status: TournamentRegistrationStatus; checked_in: boolean }> {
   const resp = await fetch(
     `${API_URL}/v1/tournaments/${tournamentId}/registrations`,
     {
       headers: { Authorization: `Bearer ${adminToken}` },
     },
   )
-  const body = await jsonOrThrow<ApiResult<Array<{ id: string; status: string; checked_in: boolean }>>>(
+  const body = await jsonOrThrow<ApiResult<Array<{ id: string; status: TournamentRegistrationStatus; checked_in: boolean }>>>(
     resp,
     'List registrations',
   )

@@ -367,6 +367,8 @@ export async function getDemoLinks(
 /** List a tournament's awards via the public API. */
 export async function getTournamentAwards(
   tournamentId: string,
+// NOTE (P-86): award status stays `string` — the backend enum is not declared in
+// the spec, so there is no generated union to point at. P-31 remnant; see §4-G.
 ): Promise<Array<{ id: string; name: string; status: string; stat_key: string }>> {
   const resp = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/awards`)
   const body = await jsonOrThrow<{

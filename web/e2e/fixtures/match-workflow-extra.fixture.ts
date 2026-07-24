@@ -30,6 +30,7 @@ import { uniqueId, CS2_MAP_POOL } from './test-data'
 import { createTestUser } from './checkin.fixture'
 import { registerPlayer } from './tournament-lifecycle.fixture'
 import { startTournament, listMatches } from './tournament-seeding.fixture'
+import type { ClaimStatus, TournamentMatchStatus } from './api-status'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -219,7 +220,7 @@ export async function createSelfScheduledScenario(
 
 export interface MatchDetails {
   id: string
-  status: string
+  status: TournamentMatchStatus
   participant1_registration_id: string | null
   participant2_registration_id: string | null
   participant1_name: string | null
@@ -312,7 +313,7 @@ export async function submitResultClaim(
   claimedWinnerRegistrationId: string,
   participant1Score: number,
   participant2Score: number,
-): Promise<{ id: string; status: string }> {
+): Promise<{ id: string; status: ClaimStatus }> {
   const resp = await fetch(`${API_URL}/v1/matches/${matchId}/result`, {
     method: 'POST',
     headers: {
@@ -325,7 +326,7 @@ export async function submitResultClaim(
       participant2_score: participant2Score,
     }),
   })
-  const body = await jsonOrThrow<ApiResult<{ claim: { id: string; status: string } }>>(
+  const body = await jsonOrThrow<ApiResult<{ claim: { id: string; status: ClaimStatus } }>>(
     resp,
     'Submit result claim',
   )

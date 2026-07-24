@@ -25,6 +25,7 @@
  */
 
 import { uniqueId, CS2_MAP_POOL } from './test-data'
+import type { TournamentMatchStatus, TournamentStatus } from './api-status'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -48,7 +49,7 @@ export interface TournamentSummary {
   id: string
   slug: string
   name: string
-  status: string
+  status: TournamentStatus
 }
 
 interface ApiResult<T> {
@@ -188,11 +189,11 @@ export async function approveRegistration(
 export async function listMatches(
   adminToken: string,
   tournamentId: string,
-): Promise<Array<{ id: string; status: string }>> {
+): Promise<Array<{ id: string; status: TournamentMatchStatus }>> {
   const resp = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/matches`, {
     headers: { Authorization: `Bearer ${adminToken}` },
   })
-  const body = await jsonOrThrow<ApiResult<Array<{ id: string; status: string }>>>(
+  const body = await jsonOrThrow<ApiResult<Array<{ id: string; status: TournamentMatchStatus }>>>(
     resp,
     'List matches',
   )
@@ -209,7 +210,7 @@ export async function listMatches(
 export async function waitForTournamentStatus(
   adminToken: string,
   tournamentId: string,
-  expected: string,
+  expected: TournamentStatus,
   timeoutMs = 10_000,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs

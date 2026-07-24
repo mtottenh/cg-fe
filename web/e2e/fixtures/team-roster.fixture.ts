@@ -26,6 +26,7 @@
 import { createTestUser } from './checkin.fixture'
 import { invitePlayer, acceptInvitation } from './team-member.fixture'
 import { uniqueId } from './test-data'
+import type { LeagueTeamMemberStatus } from './api-status'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -57,7 +58,7 @@ export interface TeamMemberRow {
   team_season_id: string
   player_id: string
   role: string
-  status: string
+  status: LeagueTeamMemberStatus
   display_name: string
   joined_at: string
 }

@@ -84,9 +84,11 @@ not see).
 - **`createLeague` fixture hardcodes `access_type: 'open'`** — invite-only/application
   leagues need a spec-local builder (precedent in `league-join.spec.ts`).
 - Statuses are compile-checked unions since P-31 — if a status literal doesn't typecheck,
-  **the literal is wrong**, not the type. **Caveat until P-86 lands: this is true in `src/`
-  only.** The e2e fixtures declare status params as bare `string`, so a bogus literal in a
-  spec compiles clean even now that `e2e/` is typechecked (P-81).
+  **the literal is wrong**, not the type. True in `src/` **and, since P-86, in `e2e/`**:
+  import the union from `e2e/fixtures/api-status.ts` (type-only re-exports of the generated
+  client) rather than declaring a status as `string`. Two statuses stay `string` because the
+  backend never declared their enums — **award status** and **veto-session status** (P-31
+  remnant, §4-G).
 
 ## 3. Current state
 
@@ -152,10 +154,9 @@ Standing rules for this wave, and for any lane added to it:
       row → **P-84**.
 - [x] **P-81 — typecheck the e2e specs.** `tsconfig.e2e.json` wired into `npm run typecheck`;
       backlog was 2 errors, both cleared; red-proved (TS2322 → exit 2) and seed path smoke-run.
-- [ ] **P-86 — retype the fixture status params to the generated unions.** P-81 turned the
-      compiler on; it did **not** deliver P-31's guarantee to tests, because the fixtures say
-      `expected: string`. Do this while the gate is fresh — it is the half of P-81 that
-      actually protects the specs, and it will surface existing bad literals.
+- [x] **P-86 — fixture status params retyped to the generated unions** (`fixtures/api-status.ts`,
+      12 fixtures, 25 sites). Red-proved both ways. Surfaced **no** existing bad literals —
+      the value is forward protection, not a backlog.
 - [ ] **P-65**: register `/v1/users/me/action-items` + `ActionItemResponse` in `openapi.rs`,
       regen types, drop the `as never` casts (`captainActions.ts:56`, `lineups.ts:68-96`).
 - [ ] **P-56**: targeted registration lookup endpoint (resolve BOTH match participants by
@@ -249,9 +250,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 86 found · 49 fixed · 37 open** (P-53 mitigated).
+**Status (derived): 86 found · 50 fixed · 36 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-86.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -352,7 +353,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | open |
 | P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
 | P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | **fixed** `e06ff8f` |
-| P-86 | e2e fixtures type statuses as bare `string` — P-31 stops at the test boundary | gate gap | open |
+| P-86 | e2e fixtures type statuses as bare `string` — P-31 stops at the test boundary | gate gap | **fixed** `PENDING86` |
 | P-82 | **"Revert to Awaiting Result" always 400s — dead control ×2** | feature dead | open |
 | P-83 | **Revert Progression is a no-op on elimination, claims success** | **integrity** | open |
 | P-84 | Admin scheduling notes discarded; no status-log row | audit gap | open |
@@ -544,10 +545,26 @@ for `src/` and stops dead at the fixtures — the §2 trap note ("if a status li
 typecheck, the literal is wrong") is currently false for tests, which is worse than not having
 the rule, because people trust it.
 
-Cheap fix, now unblocked by P-81: retype the status parameters in the fixtures to
-`components['schemas']['TournamentStatus']` etc. Expect it to surface bad literals immediately
-— `match-workflow.spec.ts:253`'s `hasText: 'ready'` (§4-F, already known to certify the raw
-enum) is the shape to look for. → **A**, straight after P-81, while the gate is fresh.
+**FIXED.** `e2e/fixtures/api-status.ts` type-only re-exports the 20 generated status unions;
+**12 fixtures, 25 sites** retyped from `string` to the right union (match → `TournamentMatchStatus`,
+claim → `ClaimStatus`, proposal → `ProposalStatus`, dispute → `DisputeStatus`, registration →
+`TournamentRegistrationStatus`, and so on). Type-only, so it erases before Playwright's runtime
+resolution — confirmed by running 15 tests across the three most-edited fixtures (green).
+
+Red-proved both directions: `'totally_not_a_real_status'` → `TS2345` naming the 8 legal
+tournament statuses, `'not_a_match_status'` → `TS2345` naming the 11 legal match statuses, and
+a **control** literal (`'in_progress'`) still compiles — a gate that rejects everything is as
+useless as one that rejects nothing.
+
+**It surfaced zero existing bad literals.** Worth stating plainly rather than dressing up: the
+value here is forward protection, not a backlog. And note what it does *not* cover —
+`match-workflow.spec.ts:253`'s `hasText: 'ready'` is a Playwright **locator string**, not a
+typed parameter, so no amount of typing catches it. That remains a §4-F item; the guess
+recorded when P-86 was filed was wrong.
+
+Two statuses stay `string`, deliberately: **award** and **veto-session**. Neither enum is
+declared in the spec, so there is no union to point at — both are annotated in place and
+belong to the §4-G P-31 remnant batch.
 
 **Lesson recorded for ground rule 10:** the probe that matters is the one aimed at the
 *claim*, not the mechanism. Probe A ("does the gate run?") passed and would have been enough

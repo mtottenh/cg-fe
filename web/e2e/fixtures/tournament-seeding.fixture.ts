@@ -1,5 +1,6 @@
 import { createTestUser } from './checkin.fixture'
 import { uniqueId, CS2_MAP_POOL } from './test-data'
+import type { TournamentMatchStatus, TournamentRegistrationStatus } from './api-status'
 
 /**
  * Tournament seeding / registration-approval API helpers.
@@ -58,7 +59,7 @@ export interface SeedEntry {
 
 export interface RegistrationRow {
   id: string
-  status: string
+  status: TournamentRegistrationStatus
   participant_name: string
   seed: number | null
   checked_in: boolean
@@ -68,7 +69,7 @@ export interface MatchRow {
   id: string
   participant1_registration_id: string | null
   participant2_registration_id: string | null
-  status: string
+  status: TournamentMatchStatus
   round: number
 }
 

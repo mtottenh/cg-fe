@@ -3,11 +3,13 @@
  * Provides API helpers for match scheduling and result submission.
  */
 
+import type { ClaimStatus, ProposalStatus, TournamentMatchStatus } from './api-status'
+
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
 interface MatchResponse {
   id: string
-  status: string
+  status: TournamentMatchStatus
   participant1_registration_id?: string | null
   participant2_registration_id?: string | null
   [key: string]: unknown
@@ -15,14 +17,14 @@ interface MatchResponse {
 
 interface ScheduleProposal {
   id: string
-  status: string
+  status: ProposalStatus
   proposed_times: string[]
   [key: string]: unknown
 }
 
 interface ResultResponse {
   id: string
-  status: string
+  status: ClaimStatus
   [key: string]: unknown
 }
 

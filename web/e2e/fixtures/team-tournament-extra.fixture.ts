@@ -45,6 +45,7 @@ import { approveRegistration } from './tournament-lifecycle.fixture'
 import { getCs2Game } from './awards.fixture'
 import { uniqueId, CS2_MAP_POOL } from './test-data'
 import type { FormatMatch } from './tournament-formats.fixture'
+import type { TournamentRegistrationStatus, TournamentStatus } from './api-status'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -89,7 +90,7 @@ export interface TeamTournamentApi {
   format: string
   participant_type: string
   team_size: number | null
-  status: string
+  status: TournamentStatus
 }
 
 export interface TeamSwissScenario {
@@ -118,12 +119,12 @@ export async function getTeamTournamentApi(tournamentId: string): Promise<TeamTo
 export async function listRegistrations(
   adminToken: string,
   tournamentId: string,
-): Promise<Array<{ id: string; status: string; participant_name: string; team_season_id?: string }>> {
+): Promise<Array<{ id: string; status: TournamentRegistrationStatus; participant_name: string; team_season_id?: string }>> {
   const resp = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/registrations`, {
     headers: { Authorization: `Bearer ${adminToken}` },
   })
   const body = await jsonOrThrow<
-    ApiResult<Array<{ id: string; status: string; participant_name: string; team_season_id?: string }>>
+    ApiResult<Array<{ id: string; status: TournamentRegistrationStatus; participant_name: string; team_season_id?: string }>>
   >(resp, 'List registrations')
   return body.data ?? []
 }

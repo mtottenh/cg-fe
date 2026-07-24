@@ -1,4 +1,5 @@
 import { uniqueId } from './test-data'
+import type { DemoStatus } from './api-status'
 
 /**
  * Admin demo-management helpers.
@@ -19,7 +20,7 @@ export interface AdminDemo {
   file_name: string
   s3_bucket: string
   s3_key: string
-  status: string
+  status: DemoStatus
   category: string
   is_hidden: boolean
   admin_notes: string | null

@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **81 product findings** from what
+*"what should happen here?"* — and that question surfaced **85 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **81 findings · 48 fixed** → the status-drift defect class closed at the source
+112 → 0) → **85 findings · 48 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -96,14 +96,21 @@ not see).
   batch API (`dc5136c`) + web half, P-59 gate (`930f8c9`, red-proven). Combined gate at
   landing: **686 passed / 0 failed**, fmt/clippy clean, ratchet `{}`, 6/6 on the touched specs.
 
-### Parallel F lanes IN FLIGHT (started 2026-07-24) — do not pick these up
+### Parallel F wave 1 — COMPLETE (2026-07-24). All three lanes landed.
 
-The §4-F coverage wave is running three agents concurrently. **Claimed rows are marked 🔵 in
-§4-F.** Do not touch a claimed row or a listed file until its lane lands and the row is ticked.
+Three agents, three surfaces, one afternoon → **12 findings (P-74..P-85)** and **19 tests**
+(5 new + 5 added to dispute-resolution + 6 new + 3 pre-existing kept green). Every lane
+red-proved a test, none touched another's files, none touched `api/`, all committed
+path-limited. The harness held: no port, container, seeded-state or report collision.
+
+**Wave 2 is not yet claimed** — the remaining §4-F rows (game config, awards edit/void,
+stages/clear-seeding, modal saves, the player surfaces) are open. Re-use this table format
+to claim them, and **fix P-81 first**: until `e2e/` is typechecked, every new lane is writing
+specs that compile-check nothing.
 
 | Lane | Instance | Owns (only these files) | §4-F rows claimed |
 |---|---|---|---|
-| 1 | `-i 1` | `e2e/admin-match-overrides.spec.ts` (new) + `fixtures/admin-overrides.fixture.ts` | `MatchAdminActionsTab` ×5 · `handleSchedule` · `MatchOverviewTab.handleTransition` |
+| ~~1~~ | ~~`-i 1`~~ | **LANDED** `a60af09` — 6 tests green, red-proven, ratchet `{}` | yielded **P-82..P-85** |
 | ~~2~~ | ~~`-i 2`~~ | **LANDED** `5955f9d` — 3→8 tests green, red-proven, ratchet `{}` | yielded **P-77..P-81** |
 | ~~4~~ | ~~`-i 3`~~ | **LANDED** `dc36288` — 5 tests green, red-proven, ratchet `{}` | yielded **P-74/75/76** |
 
@@ -123,7 +130,7 @@ Standing rules for this wave, and for any lane added to it:
 > so they are never renumbered. Read this line for priority, not the alphabet.
 >
 > **Why F jumped the queue.** This campaign's whole thesis (see the header line) is that
-> *driving a surface through the UI is what surfaces product bugs* — 81 findings came out of a
+> *driving a surface through the UI is what surfaces product bugs* — 85 findings came out of a
 > test-quality audit. That thesis is now measured: P-68/P-70/P-71 sat undetected through a full 268-operation
 > inverse audit precisely because nothing drove them through the UI, and P-35 (a dead decision
 > form) had already proved the same point. Every unexercised handler in F is therefore an
@@ -138,9 +145,9 @@ Standing rules for this wave, and for any lane added to it:
       stats + gets the sub tag; unregistered stays NULL and raises the review; the rewritten
       `test_attribution_gated_to_lineup` asserts the corrected model; P-26 wired).
 - [x] Commit the **P-59 gate** + red-proven 403 test (`930f8c9`).
-- [ ] 🔵 **Admin manual-scheduling e2e** — `MatchAdminActionsTab.handleSchedule` exists and
-      calls the properly-gated `/v1/admin/.../schedule`, but is untested (P-35-shaped risk).
-      User-priority item. **Claimed by F Lane 1** (see §3) — tick it there, not here.
+- [x] **Admin manual-scheduling e2e** — done by F Lane 1 (`a60af09`). The handler works; the
+      *notes* field it collects is silently discarded and the override leaves no status-log
+      row → **P-84**.
 - [ ] **P-81 — typecheck the e2e specs** (`tsconfig.e2e.json` over `e2e/**`, wired into
       `npm run typecheck`). Promoted into A because it gates the trustworthiness of every
       remaining F lane: right now ~40 specs compile-check nothing, so P-31's status unions
@@ -185,12 +192,14 @@ take one row each without contending; tick a row only when the test is red-prove
       `handleAssign`, each asserting the modal's Resolution card **and** the match row +
       `resolution_type` over the API. Yielded **P-77..P-81**; uphold/adjust had to be written
       on a new confirmed-result builder because the claim path cannot be asserted honestly (P-77)
-- [ ] 🔵 **LANE 1** — `MatchAdminActionsTab`: `handleForfeit` · `handleDoubleForfeit` ·
-      `handleProcessProgression` · `handleReapplyProgression` · `handleRevertProgression` —
-      none driven. Progression revert/reapply mutate bracket state; assert the bracket both ways
-- [ ] 🔵 **LANE 1** — `MatchAdminActionsTab.handleSchedule` (admin manual scheduling) —
-      user-priority item, P-35-shaped risk, gated route already consumed
-- [ ] 🔵 **LANE 1** — `MatchOverviewTab.handleTransition`
+- [x] **LANE 1 landed** (`a60af09`, `admin-match-overrides.spec.ts`, 6 tests) — `handleForfeit` ·
+      `handleDoubleForfeit` · `handleProcessProgression` · `handleReapplyProgression` ·
+      `handleRevertProgression`. Progression asserted both ways (process moves the semi winner
+      into the final's slot 1, reapply rewrites it to p2). Revert had to be tested on **round
+      robin** — on elimination it is a no-op that reports success → **P-83**
+- [x] **LANE 1** — `MatchAdminActionsTab.handleSchedule` (admin manual scheduling) → **P-84**
+- [x] **LANE 1** — `MatchOverviewTab.handleTransition` (ready→scheduled→in_progress, button
+      relabels each step). The `completed → awaiting_result` entry is a dead control → **P-82**
 - [ ] While here: `MatchResultsTab` is presentational with **zero** handlers → that is P-72
 
 *Admin — tournament & league:*
@@ -236,16 +245,25 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 81 found · 48 fixed · 33 open** (P-53 mitigated).
+**Status (derived): 85 found · 48 fixed · 37 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-81.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-81, P-82, P-83, P-84, P-85.
 
-**P-74..P-81 came from the first two F lanes** — 8 findings from two agents on two surfaces,
-in an afternoon. Both surfaces had shipped, been reviewed, and been inverse-audited without
-anyone driving their buttons. Two of the eight (**P-77, P-78**) are silent bracket-corruption
-bugs in the *dispute resolution* path — the mechanism the product uses to fix wrong results —
-and neither is reachable by reading the frontend, which is why the API-level inverse audit
-could not have found them. This is the §4-F thesis paying out; keep the wave running.
+**P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
+on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
+anyone clicking their buttons. The pattern in the yield is the point:
+
+- **Four controls that lie to the operator** — P-74 (retry calls no API), P-82 (revert
+  transition always 400s), P-83 (revert progression is a no-op on elimination), P-84 (notes
+  discarded). Each renders, each reports success or offers an action, none does the work.
+  A reader of the frontend sees a button; only a *driver* of it sees nothing happen.
+- **Two silent bracket-corruption bugs** — P-77, P-78, both in the dispute path, i.e. the
+  mechanism the product uses to *fix* wrong results. Neither is visible from the frontend at
+  all, which is exactly why the 268-operation inverse audit could not have found them.
+- **One gate that covers nothing** — P-81, the same class as the §2 typecheck trap.
+
+Read together: the failure mode this codebase actually has is **built-and-not-wired**, and
+the only instrument that detects it is driving the UI. Finish §4-F.
 
 | # | Finding | Severity | State |
 |---|---|---|---|
@@ -330,6 +348,10 @@ could not have found them. This is the §4-F thesis paying out; keep the wave ru
 | P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | open |
 | P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
 | P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | open |
+| P-82 | **"Revert to Awaiting Result" always 400s — dead control ×2** | feature dead | open |
+| P-83 | **Revert Progression is a no-op on elimination, claims success** | **integrity** | open |
+| P-84 | Admin scheduling notes discarded; no status-log row | audit gap | open |
+| P-85 | `MatchesTab` rows have no `data-testid` | test-facing | open |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service
@@ -505,6 +527,52 @@ can correct. Note this compounds P-61 — progression has already run by then, a
 cannot change the score they replay. Fix = either an admin score-override writing through the
 same path as `resolve/adjusted` + an audit row, or an admin-raised dispute. → D.
 
+**P-82 — "Revert to Awaiting Result" can only ever fail.** `matchStatus.ts:39` maps
+`completed → 'awaiting_result'` with the label "Revert to Awaiting Result" (`:53`), under a
+comment claiming it "Must follow backend allowed_transitions". It does not:
+`TournamentMatchStatus::Completed.allowed_transitions()` is `vec![]`
+(`portal-core/src/types/tournament.rs:472` — `Completed | Forfeit | Cancelled => vec![]`) and
+`admin_transition` hard-rejects even with override
+(`portal-domain/.../match_lifecycle.rs:367`). Observed: `400 — "Cannot transition match from
+completed to awaiting_result (even with admin override)"`. The dead control renders in **two**
+places — `MatchOverviewTab.vue:66-74` and the `MatchesTab.vue:61-80` row menu — so **every
+completed match in the admin table offers an action that always errors**. P-35-shaped. Lane 1
+wrote no test: an honest one asserts the button is absent, and that fails today. Fix = drop
+`completed` from the map (and decide separately whether admins need a real un-complete path,
+which is P-72's territory). → D.
+
+**P-83 — "Revert Progression" is a no-op on elimination brackets and says it worked.**
+`revert_progression` (`portal-domain/.../progression.rs:846`) clears results and recomputes
+standings for `RoundRobin | Swiss` only. For elimination it logs *"Would revert winner
+progression - needs implementation"* (`:870-880`) and returns **200**. Verified on a 4-player
+single-elim bracket: the final's `participant1_registration_id`/`participant1_name` were
+byte-identical before and after, and the source match stayed `completed`. Both the confirm
+dialog (`MatchAdminActionsTab.vue:363`) and the card blurb (`:169-172`) promise that
+"downstream pairings created from it are rolled back" — so an admin gets a success snackbar
+for work that did not happen, on the single most destructive-sounding control in the tab.
+Lane 1's revert test therefore runs on round robin rather than being weakened to assert a
+bare 200. **Latent second bug:** `reapply` calls `revert` first (`progression.rs:906`), so it
+only appears to work because `advance_winner` overwrites the same slot — a reapply whose new
+winner routes to a *different* target slot would leave the stale entry behind. → D, high.
+
+**P-84 — the admin's reason for overriding a schedule is written nowhere.**
+`MatchAdminActionsTab.vue:23-27` collects "Notes (optional)", the store forwards it
+(`_matches.ts:132`), and `AdminScheduleRequest` accepts it
+(`dto/requests/tournament.rs:906`) — but `admin_schedule_match` never passes it on
+(`handlers/tournaments/scheduling.rs:425` calls `admin_schedule(match_id, req.scheduled_at,
+auth.user_id)`) and `SchedulingService::admin_schedule` has no notes parameter
+(`services/tournament/scheduling.rs:381`). Untestable by construction — nothing surfaces it.
+**Compounding:** `admin_schedule` flips status via the repo (`scheduling.rs:419`), bypassing
+`MatchLifecycleService::transition`, so an admin-forced schedule leaves **no
+`match_status_log` row** either. Since scheduling drives check-in windows and no-show
+forfeits (the P-59 attack surface), an admin override of it is precisely the event that
+should be audited, and it is the one that is not. → D, with P-66.
+
+**P-85 — `MatchesTab` rows carry no `data-testid`.** Rows are addressable only by participant
+name, and one name is ambiguous once a winner is advanced into a later round, so Lane 1 had
+to filter on both names. Minor and test-facing, but it makes the highest-bug-yield admin
+surface the most awkward one to assert against. → F/G.
+
 **P-77 — upholding a claim-path dispute completes the match with no result.** Two defects
 compound. (a) `raise_dispute` snapshots the **match row**, not the disputed claim —
 `portal-domain/src/services/tournament/dispute.rs:128-130` takes
@@ -656,6 +724,7 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
 | `team-management.spec.ts` | 34+ | 6 | 1 | 6 | 21 | [x] | rebuilt: 0 guards, 1290 lines |
 | Newer: `invitations`, `league-join`, `team-join`, `captain-actions`, `admin-surfaces`, `admin-teams`, `admin-result-reviews`, `players-directory`, `match-status-timeline`, `match-result-notify`, `tournament-invite-only`, `lineup` | — | all A | | | | [x] | written under the ground rules |
 | `admin-demo-detail.spec.ts` (F Lane 4) | 5 | 5 | – | – | – | [x] | red-proven; yielded P-74/75/76 |
+| `admin-match-overrides.spec.ts` (F Lane 1) | 6 | 6 | – | – | – | [x] | red-proven; yielded P-82..P-85 |
 
 ## 8. Definition of done
 

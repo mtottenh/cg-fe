@@ -42,6 +42,20 @@ export interface ResultClaim {
   [key: string]: unknown
 }
 
+/** Mirrors `DisputeResolutionResponse` — populated once a dispute is resolved. */
+export interface DisputeResolution {
+  resolution_type:
+    | 'upheld'
+    | 'overturned'
+    | 'rematch'
+    | 'adjusted'
+    | 'double_dq'
+  notes: string
+  new_winner_registration_id?: string | null
+  new_participant1_score?: number | null
+  new_participant2_score?: number | null
+}
+
 export interface Dispute {
   id: string
   match_id: string
@@ -51,6 +65,10 @@ export interface Dispute {
   disputed_by_user_id: string
   reason: string
   description: string
+  original_participant1_score?: number | null
+  original_participant2_score?: number | null
+  original_winner_registration_id?: string | null
+  resolution?: DisputeResolution | null
   [key: string]: unknown
 }
 
@@ -145,6 +163,40 @@ export async function submitResultClaim(
   // Response is ResultClaimSubmissionResponse { claim: ResultClaim, ... } ­— unwrap.
   const body = data.data || data
   return (body.claim || body) as ResultClaim
+}
+
+/**
+ * Confirm a submitted result claim as the opponent. This is what turns a
+ * *claim* into the match's recorded result: the match moves to `completed`
+ * with the claimed winner and scores written onto the match row.
+ *
+ * Needed by the resolutions that operate on an already-confirmed result
+ * (uphold / adjusted): only after confirmation does the match actually carry
+ * the scores those resolutions are supposed to preserve or rewrite.
+ */
+export async function confirmResultClaim(
+  token: string,
+  matchId: string,
+  claimId: string
+): Promise<boolean> {
+  const response = await fetch(
+    `${API_URL}/v1/matches/${matchId}/result/${claimId}/confirm`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({}),
+    }
+  )
+  if (!response.ok) {
+    console.error(
+      `confirmResultClaim failed (${response.status}): ${await response.text()}`
+    )
+    return false
+  }
+  return true
 }
 
 /**

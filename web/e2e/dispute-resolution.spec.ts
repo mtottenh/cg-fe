@@ -1,17 +1,28 @@
-import { test, expect, type APIRequestContext } from '@playwright/test'
+import {
+  test,
+  expect,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from '@playwright/test'
 import { getAdminToken, loginAsAdmin } from './fixtures/auth.fixture'
 import {
   adminAddDisputeMessage,
+  confirmResultClaim,
   getDisputeThread,
   getMatch,
+  raiseDispute,
   seedDisputableMatch,
+  submitResultClaim,
   type DisputableMatchContext,
+  type DisputeReason,
 } from './fixtures/dispute.fixture'
 import {
   checkInViaApi,
   createCheckInScenario,
   primeAuthStorage,
   type CheckInScenario,
+  type ParticipantToken,
 } from './fixtures/checkin.fixture'
 
 /**
@@ -25,8 +36,13 @@ import {
  *   1. Admin resolves in favour of P1 (overturn, P1 declared winner).
  *   2. Admin resolves in favour of P2 (overturn flips winner + scores).
  *   3. Admin internal note is hidden from the captain thread.
+ *   4. Admin takes ownership of a dispute (assign → Under Review).
+ *   5. Admin upholds a CONFIRMED result (winner + score survive intact).
+ *   6. Admin adjusts a CONFIRMED score (the only path that rewrites one).
+ *   7. Admin orders a rematch (match returns to `ready`).
+ *   8. Admin double-DQs both teams (match `cancelled`).
  *
- * All three scenarios are fully self-contained — each builds a fresh
+ * Every scenario is fully self-contained — each builds a fresh
  * tournament + two players + an in-progress match via
  * `createCheckInScenario`, then a disputed result claim via the dispute
  * fixtures, so they never race on shared DB rows and never depend on
@@ -85,6 +101,195 @@ async function buildDisputedMatch(
   expect(ctx, 'result claim + claim dispute should succeed').not.toBeNull()
 
   return { scenario, ctx: ctx! }
+}
+
+/**
+ * The other half of the dispute surface: a match whose result was actually
+ * CONFIRMED (winner + scores written onto the match row), which a participant
+ * then formally disputes.
+ *
+ * This is the precondition the "uphold" and "adjust scores" resolutions are
+ * written for — both talk about "the original result", and only a confirmed
+ * result puts one on the match. (The claim-dispute path in
+ * `buildDisputedMatch` never confirms, so the match carries no scores at all.)
+ */
+interface ConfirmedResultDispute {
+  scenario: CheckInScenario
+  tournamentId: string
+  matchId: string
+  disputeId: string
+  /** Registration seeded into the match's participant1 slot (and the winner). */
+  participant1RegistrationId: string
+  participant2RegistrationId: string
+}
+
+async function buildConfirmedResultDispute(
+  request: APIRequestContext,
+  adminToken: string,
+  scores: { p1: number; p2: number },
+  reason: DisputeReason,
+  description: string,
+): Promise<ConfirmedResultDispute> {
+  const scenario = await createCheckInScenario(request, adminToken, {
+    checkInRequired: true,
+  })
+
+  await checkInViaApi(
+    request,
+    scenario.p1.token,
+    scenario.tournamentId,
+    scenario.matchId,
+    scenario.p1.registrationId,
+  )
+  await checkInViaApi(
+    request,
+    scenario.p2.token,
+    scenario.tournamentId,
+    scenario.matchId,
+    scenario.p2.registrationId,
+  )
+
+  const match = await getMatch(adminToken, scenario.tournamentId, scenario.matchId)
+  expect(match, 'seeded match must be readable').not.toBeNull()
+  expect(
+    match!.status,
+    'both check-ins should auto-advance the match to in_progress',
+  ).toBe('in_progress')
+
+  // Bracket seeding decides which scenario player lands in which slot, so
+  // resolve the slots rather than assuming p1 === participant1.
+  const players: ParticipantToken[] = [scenario.p1, scenario.p2]
+  const first = players.find(
+    (p) => p.registrationId === match!.participant1_registration_id,
+  )
+  const second = players.find(
+    (p) => p.registrationId === match!.participant2_registration_id,
+  )
+  expect(
+    first && second,
+    'both scenario players must be the match participants',
+  ).toBeTruthy()
+
+  // participant1 claims the win, participant2 CONFIRMS it — this is what
+  // writes the result onto the match row.
+  const claim = await submitResultClaim(
+    first!.token,
+    scenario.matchId,
+    first!.registrationId,
+    scores.p1,
+    scores.p2,
+  )
+  expect(claim, 'participant1 result claim should succeed').not.toBeNull()
+
+  const confirmed = await confirmResultClaim(
+    second!.token,
+    scenario.matchId,
+    claim!.id,
+  )
+  expect(confirmed, 'participant2 confirmation should succeed').toBe(true)
+
+  const completed = await getMatch(
+    adminToken,
+    scenario.tournamentId,
+    scenario.matchId,
+  )
+  expect(completed, 'match must be readable after confirmation').not.toBeNull()
+  expect(completed!.status, 'confirmation completes the match').toBe('completed')
+  expect(completed!.winner_registration_id).toBe(first!.registrationId)
+  expect(completed!.participant1_score).toBe(scores.p1)
+  expect(completed!.participant2_score).toBe(scores.p2)
+
+  // The loser now formally disputes the confirmed result.
+  const dispute = await raiseDispute(
+    second!.token,
+    scenario.tournamentId,
+    scenario.matchId,
+    second!.registrationId,
+    reason,
+    description,
+  )
+  expect(dispute, 'raising a dispute on the confirmed result should succeed').not.toBeNull()
+
+  const disputedMatch = await getMatch(
+    adminToken,
+    scenario.tournamentId,
+    scenario.matchId,
+  )
+  expect(disputedMatch!.status, 'raising a dispute flips the match to disputed').toBe(
+    'disputed',
+  )
+
+  return {
+    scenario,
+    tournamentId: scenario.tournamentId,
+    matchId: scenario.matchId,
+    disputeId: dispute!.id,
+    participant1RegistrationId: first!.registrationId,
+    participant2RegistrationId: second!.registrationId,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// UI helpers — every resolution takes the same route into the modal.
+// ---------------------------------------------------------------------------
+
+/**
+ * Filter the admin dispute queue down to a single match and open that
+ * dispute's detail modal. The server-side `match_id` filter guarantees the
+ * table holds exactly the one dispute we seeded, so the row is unambiguous.
+ */
+async function openDisputeModal(page: Page, matchId: string): Promise<Locator> {
+  await page.goto('/admin/disputes')
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByRole('heading', { name: 'Disputes' })).toBeVisible()
+
+  await page.getByRole('textbox', { name: 'Match ID' }).fill(matchId)
+  await page.getByRole('textbox', { name: 'Match ID' }).press('Enter')
+  await page.waitForLoadState('networkidle')
+
+  const row = page
+    .getByRole('row')
+    .filter({ hasText: `${matchId.slice(0, 8)}...` })
+    .first()
+  await expect(row).toBeVisible({ timeout: 10000 })
+  await row.click()
+
+  const modal = page.locator('.v-dialog').filter({ hasText: 'Dispute Details' })
+  await expect(modal).toBeVisible()
+  return modal
+}
+
+/**
+ * Expand one of the five resolution panels and hand it back scoped, so the
+ * form fields (all of which share labels across panels) resolve unambiguously.
+ */
+async function openResolutionPanel(
+  modal: Locator,
+  panelTitle: string,
+): Promise<Locator> {
+  const panel = modal.locator('.v-expansion-panel').filter({ hasText: panelTitle })
+  await expect(panel).toBeVisible()
+  await panel.locator('.v-expansion-panel-title').first().click()
+  await expect(panel.getByLabel('Notes *')).toBeVisible()
+  return panel
+}
+
+/**
+ * Close the modal and assert the resolved dispute has left the actionable
+ * queue. `/v1/admin/disputes` with no status filter returns only
+ * pending/under_review disputes, so a resolved one must disappear.
+ */
+async function closeModalAndExpectQueueEmpty(
+  page: Page,
+  modal: Locator,
+  matchId: string,
+) {
+  await modal.locator('.v-card-title').getByRole('button').first().click()
+  await expect(modal).toBeHidden({ timeout: 10000 })
+  await page.waitForLoadState('networkidle')
+  await expect(
+    page.getByRole('row').filter({ hasText: `${matchId.slice(0, 8)}...` }),
+  ).toHaveCount(0, { timeout: 10000 })
 }
 
 test.describe('Admin Dispute Resolution', () => {
@@ -367,5 +572,273 @@ test.describe('Admin Dispute Resolution', () => {
     if (internalMsg) {
       await expect(page.locator(`[data-id="${internalMsg.id}"]`)).toHaveCount(0)
     }
+  })
+
+  test('admin takes ownership — Assign to Me moves the dispute to Under Review', async ({
+    page,
+    request,
+  }) => {
+    const adminToken = await getAdminToken()
+    const reason = `E2E dispute for assignment ${Date.now()}`
+
+    const { scenario, ctx } = await buildDisputedMatch(
+      request,
+      adminToken,
+      { p1: 1, p2: 0 },
+      reason,
+    )
+
+    // Precondition straight from the API — a freshly raised dispute is pending.
+    const before = await getDisputeThread(adminToken, ctx.disputeId)
+    expect(before).not.toBeNull()
+    expect(before!.dispute.status).toBe('pending')
+
+    await loginAsAdmin(page)
+    const modal = await openDisputeModal(page, scenario.matchId)
+
+    // The status chip renders the human label, not the raw enum.
+    await expect(modal.getByText('Pending', { exact: true })).toBeVisible()
+
+    const assignButton = modal.getByRole('button', { name: 'Assign to Me' })
+    await expect(assignButton).toBeVisible()
+    await assignButton.click()
+
+    // UI: the chip flips to Under Review and the button retires itself — it
+    // only renders while `dispute.status === 'pending'`.
+    await expect(modal.getByText('Under Review', { exact: true })).toBeVisible({
+      timeout: 10000,
+    })
+    await expect(modal.getByText('Pending', { exact: true })).toHaveCount(0)
+    await expect(assignButton).toHaveCount(0)
+
+    // An under_review dispute is still resolvable, so the panel must remain.
+    await expect(modal.getByText('Resolve Dispute')).toBeVisible()
+
+    // --- API cross-check -------------------------------------------------
+    const after = await getDisputeThread(adminToken, ctx.disputeId)
+    expect(after).not.toBeNull()
+    expect(after!.dispute.status).toBe('under_review')
+    expect(after!.messages.map((m) => m.message)).toContain(
+      'Dispute assigned for review',
+    )
+
+    // Assignment must not have resolved anything: the match stays disputed
+    // and the dispute stays in the actionable queue.
+    const match = await getMatch(adminToken, scenario.tournamentId, scenario.matchId)
+    expect(match!.status).toBe('disputed')
+  })
+
+  test('upholds a confirmed result — winner and score survive the dispute', async ({
+    page,
+    request,
+  }) => {
+    const adminToken = await getAdminToken()
+    const description = `E2E uphold: the confirmed 1-0 result is correct ${Date.now()}`
+
+    // A CONFIRMED result (not just a claim) — "uphold the original result"
+    // only means something when the match actually carries one.
+    const built = await buildConfirmedResultDispute(
+      request,
+      adminToken,
+      { p1: 1, p2: 0 },
+      'wrong_winner',
+      description,
+    )
+
+    await loginAsAdmin(page)
+    const modal = await openDisputeModal(page, built.matchId)
+
+    // The dispute snapshots the confirmed result as the "original".
+    await expect(
+      modal.locator('tr').filter({ hasText: 'Original Score' }),
+    ).toContainText('1 - 0')
+    await expect(
+      modal.locator('tr').filter({ hasText: 'Original Winner' }),
+    ).toContainText(built.participant1RegistrationId)
+
+    const panel = await openResolutionPanel(modal, 'Uphold Original Result')
+    await panel
+      .getByLabel('Notes *')
+      .fill('Reviewed both demos — the submitted 1-0 result is correct.')
+    await panel.getByRole('button', { name: 'Uphold Result' }).last().click()
+
+    // UI: the resolution card renders with type "Upheld", and the resolve
+    // panel disappears because a resolved dispute cannot be resolved again.
+    await expect(modal.getByText('Resolution')).toBeVisible({ timeout: 10000 })
+    await expect(modal.getByText('Upheld', { exact: true })).toBeVisible()
+    await expect(modal.getByText('Resolve Dispute')).toHaveCount(0)
+
+    await closeModalAndExpectQueueEmpty(page, modal, built.matchId)
+
+    // --- API cross-check: the match is completed again, untouched ---------
+    const after = await getMatch(adminToken, built.tournamentId, built.matchId)
+    expect(after).not.toBeNull()
+    expect(after!.status).toBe('completed')
+    expect(after!.winner_registration_id).toBe(built.participant1RegistrationId)
+    expect(after!.participant1_score).toBe(1)
+    expect(after!.participant2_score).toBe(0)
+
+    const thread = await getDisputeThread(adminToken, built.disputeId)
+    expect(thread).not.toBeNull()
+    expect(thread!.dispute.status).toBe('resolved')
+    expect(thread!.dispute.resolution?.resolution_type).toBe('upheld')
+    // Upholding leaves the result alone — no replacement winner is recorded.
+    expect(thread!.dispute.resolution?.new_winner_registration_id).toBeFalsy()
+  })
+
+  test('adjusts a confirmed score — rewrites the match result and flips the winner', async ({
+    page,
+    request,
+  }) => {
+    const adminToken = await getAdminToken()
+    const description = `E2E adjust: the recorded 1-0 score is wrong ${Date.now()}`
+
+    // This is the ONLY admin path that can rewrite an already-confirmed
+    // score, so the precondition has to be a confirmed result.
+    const built = await buildConfirmedResultDispute(
+      request,
+      adminToken,
+      { p1: 1, p2: 0 },
+      'wrong_score',
+      description,
+    )
+
+    await loginAsAdmin(page)
+    const modal = await openDisputeModal(page, built.matchId)
+
+    await expect(
+      modal.locator('tr').filter({ hasText: 'Original Score' }),
+    ).toContainText('1 - 0')
+
+    // Adjust to 0-1. The winner field is optional here: the backend derives
+    // the winner from the new scores, which must flip it to participant2.
+    const panel = await openResolutionPanel(modal, 'Adjust Scores')
+    await panel.getByLabel(/P1 Score/).fill('0')
+    await panel.getByLabel(/P2 Score/).fill('1')
+    await panel
+      .getByLabel('Notes *')
+      .fill('Scoreboard screenshot shows 0-1; correcting the recorded series.')
+    await panel.getByRole('button', { name: 'Adjust Scores' }).last().click()
+
+    // UI: resolution card shows the new score and the derived new winner.
+    await expect(modal.getByText('Resolution')).toBeVisible({ timeout: 10000 })
+    await expect(modal.getByText('Adjusted', { exact: true })).toBeVisible()
+    await expect(
+      modal.locator('tr').filter({ hasText: 'New Score' }),
+    ).toContainText('0 - 1')
+    await expect(
+      modal.locator('tr').filter({ hasText: 'New Winner' }),
+    ).toContainText(built.participant2RegistrationId)
+
+    await closeModalAndExpectQueueEmpty(page, modal, built.matchId)
+
+    // --- API cross-check: the confirmed result really was rewritten -------
+    const after = await getMatch(adminToken, built.tournamentId, built.matchId)
+    expect(after).not.toBeNull()
+    expect(after!.status).toBe('completed')
+    expect(after!.participant1_score).toBe(0)
+    expect(after!.participant2_score).toBe(1)
+    expect(after!.winner_registration_id).toBe(built.participant2RegistrationId)
+
+    const thread = await getDisputeThread(adminToken, built.disputeId)
+    expect(thread).not.toBeNull()
+    expect(thread!.dispute.status).toBe('resolved')
+    expect(thread!.dispute.resolution?.resolution_type).toBe('adjusted')
+  })
+
+  test('orders a rematch — the disputed match returns to ready', async ({
+    page,
+    request,
+  }) => {
+    const adminToken = await getAdminToken()
+    const reason = `E2E dispute resolved by rematch ${Date.now()}`
+
+    const { scenario, ctx } = await buildDisputedMatch(
+      request,
+      adminToken,
+      { p1: 1, p2: 0 },
+      reason,
+    )
+
+    const before = await getMatch(adminToken, scenario.tournamentId, scenario.matchId)
+    expect(before!.status).toBe('disputed')
+
+    await loginAsAdmin(page)
+    const modal = await openDisputeModal(page, scenario.matchId)
+
+    const panel = await openResolutionPanel(modal, 'Order Rematch')
+    await panel
+      .getByLabel('Notes *')
+      .fill('Server crashed mid-map — both teams to replay the match.')
+    await panel.getByRole('button', { name: 'Order Rematch' }).last().click()
+
+    await expect(modal.getByText('Resolution')).toBeVisible({ timeout: 10000 })
+    await expect(modal.getByText('Rematch', { exact: true })).toBeVisible()
+
+    await closeModalAndExpectQueueEmpty(page, modal, scenario.matchId)
+
+    // --- API cross-check: the match is replayable again -------------------
+    const after = await getMatch(adminToken, scenario.tournamentId, scenario.matchId)
+    expect(after).not.toBeNull()
+    expect(after!.status).toBe('ready')
+    // The DTO omits null fields entirely, so normalise before asserting.
+    // NB: this holds because the claim was never confirmed, so no winner was
+    // ever written. A rematch ordered on a CONFIRMED result does NOT clear the
+    // old winner/score/completed_at — `resolve_with_status_change`
+    // (api/crates/portal-db/src/adapters/dispute.rs:483) updates `status`
+    // alone. Reported as a finding rather than asserted here.
+    expect(after!.winner_registration_id ?? null).toBeNull()
+
+    const thread = await getDisputeThread(adminToken, ctx.disputeId)
+    expect(thread).not.toBeNull()
+    expect(thread!.dispute.status).toBe('resolved')
+    expect(thread!.dispute.resolution?.resolution_type).toBe('rematch')
+  })
+
+  test('double-disqualifies both teams — the match is cancelled', async ({
+    page,
+    request,
+  }) => {
+    const adminToken = await getAdminToken()
+    const reason = `E2E dispute resolved by double DQ ${Date.now()}`
+
+    const { scenario, ctx } = await buildDisputedMatch(
+      request,
+      adminToken,
+      { p1: 1, p2: 0 },
+      reason,
+    )
+
+    const before = await getMatch(adminToken, scenario.tournamentId, scenario.matchId)
+    expect(before!.status).toBe('disputed')
+
+    await loginAsAdmin(page)
+    const modal = await openDisputeModal(page, scenario.matchId)
+
+    const panel = await openResolutionPanel(modal, 'Double Disqualification')
+    await panel
+      .getByLabel('Notes *')
+      .fill('Both rosters fielded ineligible players — both disqualified.')
+    await panel.getByRole('button', { name: 'Double DQ' }).last().click()
+
+    // `formatResolutionType` turns `double_dq` into "Double Dq".
+    await expect(modal.getByText('Resolution')).toBeVisible({ timeout: 10000 })
+    await expect(modal.getByText('Double Dq', { exact: true })).toBeVisible()
+
+    await closeModalAndExpectQueueEmpty(page, modal, scenario.matchId)
+
+    // --- API cross-check: neither side keeps the match ---------------------
+    const after = await getMatch(adminToken, scenario.tournamentId, scenario.matchId)
+    expect(after).not.toBeNull()
+    expect(after!.status).toBe('cancelled')
+    // The DTO omits null fields entirely, so normalise before asserting.
+    // Same caveat as the rematch test: the cancel path leaves an existing
+    // winner/score in place, so this only holds on the never-confirmed path.
+    expect(after!.winner_registration_id ?? null).toBeNull()
+
+    const thread = await getDisputeThread(adminToken, ctx.disputeId)
+    expect(thread).not.toBeNull()
+    expect(thread!.dispute.status).toBe('resolved')
+    expect(thread!.dispute.resolution?.resolution_type).toBe('double_dq')
   })
 })

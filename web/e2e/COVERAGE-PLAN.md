@@ -12,7 +12,7 @@ began as a test-quality audit. The findings are the deliverable; the tests are t
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **86 findings · 49 fixed** → the status-drift defect class closed at the source
+112 → 0) → **86 findings · 50 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -99,6 +99,18 @@ not see).
   committed by the orchestrator): lineup attribution correction + P-26 (`29be78e`), league
   batch API (`dc5136c`) + web half, P-59 gate (`930f8c9`, red-proven). Combined gate at
   landing: **686 passed / 0 failed**, fmt/clippy clean, ratchet `{}`, 6/6 on the touched specs.
+
+### Parallel F wave 2 — IN FLIGHT (2026-07-24). Do not pick these up.
+
+| Lane | Instance | Owns (only these files) | §4-F rows claimed |
+|---|---|---|---|
+| 5 | `-i 1` | `e2e/admin-games-config.spec.ts` (new) + `fixtures/game-config.fixture.ts` | game config: enable/disable · `GameEditModal` · maps · rank-tiers · team-size · map catalog CRUD |
+| 6 | `-i 2` | `e2e/tournament-admin.spec.ts` · `e2e/awards.spec.ts` | `StagesTab.handleCreateStage` · `handleClearSeeding` · `AwardsTab.handleSaveEdit` + void |
+| 7 | `-i 3` | `e2e/player-steam-tracking.spec.ts` (new) · `e2e/player-availability.spec.ts` (new) + `fixtures/player-surfaces.fixture.ts` | `SteamTrackingCard` · availability windows/overrides · `SocialLinksEditor` |
+| 8 | `-i 4` | `e2e/admin-modal-saves.spec.ts` (new) + `fixtures/modal-saves.fixture.ts` | `LeagueCreateModal` · `LeagueEditModal` · `LeagueSeasonCreateModal` · `InviteUserModal` · `BanDetailModal` |
+
+Same standing rules as wave 1 (below). P-81 and P-86 both landed first, so wave 2 writes
+specs that are actually typechecked and whose status literals are compile-locked.
 
 ### Parallel F wave 1 — COMPLETE (2026-07-24). All three lanes landed.
 

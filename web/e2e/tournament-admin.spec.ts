@@ -6,9 +6,13 @@ import {
 } from './fixtures/tournament-lifecycle.fixture'
 import {
   approveRegistration,
+  autoSeedViaApi,
+  createTournamentWithApprovedPlayers,
+  fetchSeeding,
   listRegistrations,
   registerPendingPlayers,
 } from './fixtures/tournament-seeding.fixture'
+import type { StageStatus } from './fixtures/api-status'
 
 /**
  * Tournament Admin Flows E2E Tests
@@ -59,6 +63,26 @@ async function fetchTournamentBySlug(slug: string): Promise<{
     data: { id: string; name: string; slug: string; status: string; description: string | null }
   }
   return body.data
+}
+
+interface StageRow {
+  id: string
+  name: string
+  stage_order: number
+  format: string
+  match_format: string | null
+  status: StageStatus
+}
+
+/** List a tournament's stages — the cross-check for `StagesTab.handleCreateStage`.
+ *  Public GET, mirrors `stores/tournament/_stages.ts:20`. */
+async function fetchStages(tournamentId: string): Promise<StageRow[]> {
+  const resp = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/stages`)
+  if (!resp.ok) {
+    throw new Error(`Fetch stages failed (${resp.status}): ${await resp.text()}`)
+  }
+  const body = (await resp.json()) as { data: StageRow[] }
+  return body.data ?? []
 }
 
 /** A registrations-table row, located by the participant name it renders
@@ -484,6 +508,155 @@ test.describe('Tournament Admin Flows', () => {
       const refetched = await fetchTournamentBySlug(tournament.slug)
       expect(refetched.id).toBe(tournament.id)
       expect(refetched.description).toBe(newDescription)
+    })
+  })
+
+  test.describe('Stages', () => {
+    test('should create a stage from the Stages tab', async ({ page }) => {
+      test.setTimeout(60_000)
+      const adminToken = await getAdminToken()
+      // "Add Stage" is gated on an early lifecycle status
+      // (StagesTab.vue:7) — `draft` qualifies and needs no participants.
+      const tournament = await createDraftTournament(adminToken)
+
+      await page.goto(`/admin/tournaments/${tournament.id}?tab=stages`)
+      // A fresh tournament has no stages: the tab's empty state
+      // (StagesTab.vue:28-32) is what MUST be on screen first.
+      await expect(page.getByRole('heading', { name: 'No Stages' })).toBeVisible({
+        timeout: 15_000,
+      })
+
+      await page.getByRole('button', { name: 'Add Stage' }).click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible()
+
+      // Create is disabled until the stage has a name (StagesTab.vue:62).
+      const createButton = dialog.getByRole('button', { name: 'Create', exact: true })
+      await expect(createButton).toBeDisabled()
+      await dialog.getByLabel('Stage Name').fill('Group Phase')
+      await expect(createButton).toBeEnabled()
+
+      // The two selects are addressed BY POSITION (StagesTab.vue:42 =
+      // "Format (optional)", :49 = "Match Format (optional)"). Neither
+      // `getByLabel` nor `hasText` works here: Vuetify renders a v-select's
+      // label as a plain node that is not associated with the control, so the
+      // combobox has no accessible name at all (accessibility snapshot in
+      // test-results-2/.../error-context.md), and `hasText: 'Format
+      // (optional)'` matches both because Playwright text matching is
+      // substring-based. Same `.v-select` + option-menu pattern as
+      // `admin-match-overrides.spec.ts:93-98`.
+      //
+      // A format MUST be picked here even though the field says "(optional)":
+      // `handleCreateStage` sends `format: newStage.format ?? ''`
+      // (StagesTab.vue:109) and the backend parses `format` into `StageFormat`
+      // (`dto/requests/tournament.rs:525-528`), so `''` is a 400. Leaving it
+      // blank is therefore not a path this test can take — that is a reported
+      // finding, not a gap in the coverage. `round_robin` is one of the five
+      // formats the enum actually accepts (`portal-core/src/types/
+      // tournament.rs:669-678`); the picker's `groups_and_playoffs` is not.
+      const stageSelects = dialog.locator('.v-select')
+      await stageSelects.nth(0).click()
+      await page.locator('.v-select__content .v-list-item')
+        .filter({ hasText: /^round_robin$/ })
+        .click()
+      await expect(page.locator('.v-select__content')).toHaveCount(0)
+      await stageSelects.nth(1).click()
+      await page.locator('.v-select__content .v-list-item')
+        .filter({ hasText: /^bo3$/ })
+        .click()
+      await expect(page.locator('.v-select__content')).toHaveCount(0)
+
+      const snackbarPromise = expect(
+        page.locator('.v-snackbar').getByText('Stage created'),
+      ).toBeVisible({ timeout: 15_000 })
+      await createButton.click()
+      await snackbarPromise
+      await expect(dialog).not.toBeVisible({ timeout: 10_000 })
+
+      // UI: the stage list replaces the empty state and renders the stage's
+      // order avatar, name and formatted subtitle (StagesTab.vue:14-26).
+      await expect(page.getByRole('heading', { name: 'No Stages' })).toHaveCount(0)
+      const stageItem = page.locator('.v-window-item .v-list-item').filter({ hasText: 'Group Phase' })
+      await expect(stageItem).toBeVisible()
+      await expect(stageItem).toContainText('Format: round_robin')
+      // The match format is HUMANISED by formatMatchFormat, not printed raw.
+      await expect(stageItem).toContainText('Match: Best of 3')
+
+      // Backend: the stage really persisted with the values chosen above.
+      const stages = await fetchStages(tournament.id)
+      expect(stages).toHaveLength(1)
+      expect(stages[0]?.name).toBe('Group Phase')
+      expect(stages[0]?.stage_order).toBe(1)
+      expect(stages[0]?.format).toBe('round_robin')
+      expect(stages[0]?.match_format).toBe('bo3')
+    })
+  })
+
+  test.describe('Seeding', () => {
+    test('should clear an existing seeding from the Seeding tab', async ({ page }) => {
+      test.setTimeout(90_000)
+      const adminToken = await getAdminToken()
+      // The Seeding tab is only reachable in `registration`/`scheduled`
+      // (AdminTournamentDetailPage.vue:341-343), which is exactly where
+      // `createTournamentWithApprovedPlayers` leaves the tournament.
+      // Auto-seeding is seeded via the API — the auto-seed BUTTON has its own
+      // coverage in tournament-seeding.spec.ts:131; what is under test here is
+      // the Clear button.
+      const { tournament, players } = await createTournamentWithApprovedPlayers(adminToken, 4)
+      const seeded = await autoSeedViaApi(adminToken, tournament.id)
+      expect(seeded).toHaveLength(4)
+      // Positive control for the post-clear assertion at the end: every
+      // registration carries a seed BEFORE the button is pressed, so
+      // "all seeds absent" afterwards cannot pass for the wrong reason.
+      const seedsBefore = await listRegistrations(adminToken, tournament.id)
+      expect(seedsBefore.map((r) => r.seed ?? null).sort()).toEqual([1, 2, 3, 4])
+
+      await page.goto(`/admin/tournaments/${tournament.id}?tab=seeding`)
+
+      // The seeding list MUST be on screen before we clear it, otherwise
+      // "cleared" is indistinguishable from "never rendered".
+      // Scoped to the tab window: the admin layout's nav drawer is also a
+      // `.v-list-item` list, and an unscoped count silently absorbs it.
+      const seedList = page.locator('.v-window-item .v-list-item')
+      await expect(seedList).toHaveCount(4, { timeout: 15_000 })
+      await expect(page.getByText(players[0]!.participantName)).toBeVisible()
+
+      const clearButton = page.getByRole('button', { name: 'Clear Seeding' })
+      await expect(clearButton).toBeEnabled()
+
+      const snackbarPromise = expect(
+        page.locator('.v-snackbar').getByText('Seeding cleared'),
+      ).toBeVisible({ timeout: 15_000 })
+      await clearButton.click()
+      await snackbarPromise
+
+      // UI: back to the empty state, and the Clear button disables itself
+      // (SeedingTab.vue:26 — nothing left to clear).
+      await expect(page.getByRole('heading', { name: 'No Seeding' })).toBeVisible()
+      await expect(seedList).toHaveCount(0)
+      await expect(clearButton).toBeDisabled()
+
+      // Backend: `get_current_seeding` filters to registrations that HAVE a
+      // seed, so a cleared tournament returns nothing.
+      expect(await fetchSeeding(adminToken, tournament.id)).toHaveLength(0)
+
+      // ...and a reload proves the clear was persisted, not just applied to
+      // the local store (`_seeding.ts:65` empties `seeding` client-side too).
+      await page.reload()
+      await expect(page.getByRole('heading', { name: 'No Seeding' })).toBeVisible({
+        timeout: 15_000,
+      })
+
+      // The registrations themselves are untouched — clearing seeds must not
+      // unregister anybody.
+      const regs = await listRegistrations(adminToken, tournament.id)
+      expect(regs.filter((r) => r.status === 'approved')).toHaveLength(4)
+      // ...but their seeds are gone. `seed` is
+      // `skip_serializing_if = "Option::is_none"` on the DTO
+      // (`api/crates/portal-api/src/dto/responses/tournament.rs:393`), so a
+      // cleared seed comes back as an ABSENT key, not `null` — normalise
+      // before comparing, or `=== null` fails on `undefined`.
+      expect(regs.map((r) => r.seed ?? null)).toEqual([null, null, null, null])
     })
   })
 

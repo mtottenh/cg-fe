@@ -2,11 +2,14 @@ import { test, expect } from '@playwright/test'
 import { loginAsAdmin, getAdminToken } from './fixtures/auth.fixture'
 import {
   createAwardsScenario,
+  createAwardsAdminScope,
+  createTournamentAward,
   submitLinkedDemo,
   getTournamentAwards,
   getPlayerTrophies,
   type AwardsScenario,
 } from './fixtures/awards.fixture'
+import { uniqueId } from './fixtures/test-data'
 
 /**
  * Awards end-to-end flow.
@@ -177,5 +180,132 @@ test.describe('Awards', () => {
       },
     )
     expect(unlinkResp.status).toBe(403)
+  })
+})
+
+/**
+ * Award MANAGEMENT (edit + void) — `AwardsTab.handleSaveEdit` and `confirmVoid`,
+ * neither of which the authoring flow above touches.
+ *
+ * A separate describe so these do NOT pay the `Awards` beforeAll, which builds
+ * two Steam-identified players, a started match and an auto-linked demo.
+ * Neither surface below needs a single stat: they own a cheap scope
+ * (`createAwardsAdminScope`) and their own awards, so nothing they rename or
+ * void can disturb the authoring test.
+ */
+test.describe('Award management', () => {
+  test('organizer edits an award\'s presentation and the change persists', async ({ page }) => {
+    test.setTimeout(60_000)
+    const token = await getAdminToken()
+    const scope = await createAwardsAdminScope(token)
+    const suffix = uniqueId()
+    const originalName = `Original Alpha ${suffix}`
+    const renamed = `Renamed Bravo ${suffix}`
+    const award = await createTournamentAward(token, scope.tournamentId, originalName)
+    expect(award.description).toBeNull()
+
+    await loginAsAdmin(page)
+    await page.goto(`/admin/tournaments/${scope.tournamentId}?tab=awards`)
+
+    const row = page.locator('[data-testid="admin-award-row"]', { hasText: originalName })
+    await expect(row).toBeVisible({ timeout: 15_000 })
+    // Edit is offered on `active` awards only (AwardsTab.vue:82-92).
+    await expect(row.getByTestId('award-status-active')).toBeVisible()
+
+    await row.getByTestId('edit-award').click()
+    const dialog = page.getByTestId('edit-award-dialog')
+    await expect(dialog).toBeVisible()
+    // The dialog opens PRE-FILLED from the award (AwardsTab.vue:298-308) —
+    // a blank form would silently blank the record on save.
+    await expect(dialog.getByLabel('Name *')).toHaveValue(originalName)
+
+    await dialog.getByLabel('Name *').fill(renamed)
+    await dialog.getByLabel('Description').fill('E2E edited description')
+    // Accent colour picker: each swatch is a button labelled with its hex
+    // (AwardsTab.vue:173-184).
+    await dialog.getByRole('button', { name: 'Select color #1E88E5' }).click()
+
+    const editSnackbar = expect(
+      page.locator('.v-snackbar').getByText(`"${renamed}" updated`),
+    ).toBeVisible({ timeout: 15_000 })
+    await dialog.getByTestId('edit-award-save').click()
+    await editSnackbar
+    await expect(dialog).not.toBeVisible({ timeout: 10_000 })
+
+    // UI: the row carries the new name and the old one is gone.
+    await expect(
+      page.locator('[data-testid="admin-award-row"]', { hasText: renamed }),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-testid="admin-award-row"]', { hasText: originalName }),
+    ).toHaveCount(0)
+
+    // API: the PATCH really landed, on the same award id, and left the
+    // non-presentation fields (stat key, status) alone.
+    const afterEdit = await getTournamentAwards(scope.tournamentId)
+    const updated = afterEdit.find((a) => a.id === award.id)
+    expect(updated?.name).toBe(renamed)
+    expect(updated?.description).toBe('E2E edited description')
+    expect(updated?.color).toBe('#1E88E5')
+    expect(updated?.stat_key).toBe('kills')
+    expect(updated?.status).toBe('active')
+
+    // ...and a reload proves it is persisted, not just patched into the store.
+    await page.reload()
+    await expect(
+      page.locator('[data-testid="admin-award-row"]', { hasText: renamed }),
+    ).toBeVisible({ timeout: 15_000 })
+  })
+
+  test('organizer voids an award and it disappears from the public awards tab', async ({ page }) => {
+    test.setTimeout(60_000)
+    const token = await getAdminToken()
+    const scope = await createAwardsAdminScope(token)
+    const suffix = uniqueId()
+    // Two awards: voiding one must remove exactly that one. A single-award
+    // test cannot tell "voided" from "the list stopped rendering".
+    const doomedName = `Doomed Charlie ${suffix}`
+    const keptName = `Kept Delta ${suffix}`
+    const doomed = await createTournamentAward(token, scope.tournamentId, doomedName)
+    const kept = await createTournamentAward(token, scope.tournamentId, keptName, 'headshot_kills')
+
+    await loginAsAdmin(page)
+    await page.goto(`/admin/tournaments/${scope.tournamentId}?tab=awards`)
+
+    const doomedRow = page.locator('[data-testid="admin-award-row"]', { hasText: doomedName })
+    const keptRow = page.locator('[data-testid="admin-award-row"]', { hasText: keptName })
+    await expect(doomedRow).toBeVisible({ timeout: 15_000 })
+    await expect(keptRow).toBeVisible()
+
+    // Void is confirm-gated (AwardsTab.vue:346-361).
+    await doomedRow.getByTestId('void-award').click()
+    const confirmOverlay = page.locator('.v-overlay--active', { hasText: 'Void Award' })
+    await expect(confirmOverlay).toBeVisible()
+    await expect(confirmOverlay.getByText(doomedName)).toBeVisible()
+
+    const voidSnackbar = expect(
+      page.locator('.v-snackbar').getByText(`"${doomedName}" voided`),
+    ).toBeVisible({ timeout: 15_000 })
+    await confirmOverlay.getByRole('button', { name: 'Void', exact: true }).click()
+    await voidSnackbar
+
+    // UI: the voided award leaves the admin list; its neighbour stays.
+    await expect(doomedRow).toHaveCount(0)
+    await expect(keptRow).toBeVisible()
+
+    // API: soft delete — the row still exists, flipped to `void`.
+    const afterVoid = await getTournamentAwards(scope.tournamentId)
+    expect(afterVoid.find((a) => a.id === doomed.id)?.status).toBe('void')
+    expect(afterVoid.find((a) => a.id === kept.id)?.status).toBe('active')
+
+    // Public: the void award is not published (AwardsPanel.vue:71).
+    await page.goto(`/tournaments/${scope.tournamentSlug}`)
+    await page.getByTestId('awards-tab').click()
+    await expect(
+      page.locator('[data-testid="award-card"]', { hasText: keptName }),
+    ).toBeVisible({ timeout: 15_000 })
+    await expect(
+      page.locator('[data-testid="award-card"]', { hasText: doomedName }),
+    ).toHaveCount(0)
   })
 })

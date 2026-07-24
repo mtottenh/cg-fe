@@ -99,6 +99,60 @@ async function createCs2Tournament(
   return { tournamentId: created.data.id, slug: created.data.slug }
 }
 
+/**
+ * Minimal admin scope for the award MANAGEMENT surfaces (edit / void).
+ *
+ * `createAwardsScenario` below is the full pipeline — two registered players,
+ * Steam ids, a started match and an auto-linked demo — because standings and
+ * finalization need real stats. Editing an award's presentation and voiding it
+ * need none of that: only a scope that the AwardsTab can render against and a
+ * game that has templates + a stat catalog. This builder is the cheap half.
+ */
+export async function createAwardsAdminScope(adminToken: string): Promise<{
+  tournamentId: string
+  tournamentSlug: string
+  gameId: string
+}> {
+  const game = await getCs2Game()
+  const { tournamentId, slug } = await createCs2Tournament(adminToken, game.id)
+  return { tournamentId, tournamentSlug: slug, gameId: game.id }
+}
+
+// NOTE (P-86): award status stays `string` — the backend enum is not declared in
+// the spec, so there is no generated union to point at. P-31 remnant; see §4-G.
+export interface AwardRow {
+  id: string
+  name: string
+  status: string
+  stat_key: string
+  description: string | null
+  icon: string | null
+  color: string | null
+}
+
+/**
+ * Create an award in a tournament scope via the admin API.
+ * Used to seed a precondition — the create flow itself is driven through the
+ * UI by `awards.spec.ts`'s authoring test.
+ */
+export async function createTournamentAward(
+  adminToken: string,
+  tournamentId: string,
+  name: string,
+  statKey = 'kills',
+): Promise<AwardRow> {
+  const resp = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/awards`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
+    body: JSON.stringify({ name, stat_key: statKey }),
+  })
+  const body = await jsonOrThrow<{ data: AwardRow }>(resp, `Create award "${name}"`)
+  return body.data
+}
+
 /** Generate a unique, plausibly-valid 17-digit SteamID64. */
 export function uniqueSteamId(): string {
   const tail = String(Math.floor(Math.random() * 1_000_000_000)).padStart(9, '0')
@@ -365,15 +419,9 @@ export async function getDemoLinks(
 }
 
 /** List a tournament's awards via the public API. */
-export async function getTournamentAwards(
-  tournamentId: string,
-// NOTE (P-86): award status stays `string` — the backend enum is not declared in
-// the spec, so there is no generated union to point at. P-31 remnant; see §4-G.
-): Promise<Array<{ id: string; name: string; status: string; stat_key: string }>> {
+export async function getTournamentAwards(tournamentId: string): Promise<AwardRow[]> {
   const resp = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/awards`)
-  const body = await jsonOrThrow<{
-    data: Array<{ id: string; name: string; status: string; stat_key: string }>
-  }>(resp, 'List tournament awards')
+  const body = await jsonOrThrow<{ data: AwardRow[] }>(resp, 'List tournament awards')
   return body.data ?? []
 }
 

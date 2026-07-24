@@ -449,7 +449,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-104 | Edit modal's empty-pool gate is decorative; the pool edit is discarded | **feature dead** | open |
 | P-105 | A failed map-pool reset is swallowed and reported as success | trust | open |
 | P-106 | `MapPoolPicker` cards are unlabelled clickable divs | a11y | open |
-| P-107 | **The full suite is red as a whole though every spec is green alone** | **suite integrity** | **fixed** `PENDING107` |
+| P-107 | **The full suite is red as a whole though every spec is green alone** | **suite integrity** | **fixed** `cb4c4db` |
 | P-94 | `InviteUserModal` message collected, validated, then discarded | user-facing | open |
 | P-95 | **Invite-only league is un-invitable — needs a UUID no surface shows** | feature unusable | open |
 | P-96 | League invitations/applications tables print the raw enum | user-facing | open |

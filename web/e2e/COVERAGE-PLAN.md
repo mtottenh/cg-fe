@@ -8,49 +8,36 @@ Tick the boxes as work lands. **Read "Ground rules" before changing any spec.**
 
 ---
 
-## 0.5 ▶ LINEUP SYSTEM — implementation status (2026-07-24)
+## 0.5 ▶ LINEUP SYSTEM — implementation status (updated 2026-07-24)
 
-The lineup redesign (`api/docs/lineup-design.md`, decision-complete) is **partially built**.
-Backend core landed and is verified (676 passed / 0 failed on a sequential run); frontend is a
-slice; e2e not started. **P-15/P-16 are now retired by construction where enforced; P-23, P-25,
-P-26 are scaffolded but NOT yet closed** — see the precise boundary below.
+The lineup redesign (`api/docs/lineup-design.md`) is **built end-to-end for the core**, verified,
+and **proven through the UI by e2e**. The integrity payoff that motivated it is now REAL:
+**P-25 is closed** — a ringer no longer accrues stats.
 
 **Done & verified:**
-- **Phase A** (`3b3eef0`) — `migrations/0079_match_lineups.sql`, faithful to §0a; `lineup_required`
-  opt-in flag (default off, nothing changes until a season enables it).
-- **Phase B** (`5516a8e`) — provisional declaration write path: full three-layer types, RBAC via
-  the P-24 `require_registration_actor` model, OpenAPI registered, wire-compat test for the new
-  enum, 6 integration tests. Locks on the PickBan/InProgress transition.
-- **Phase D partial** (`e166079`) — P-23's `unrecognized_players` producer is populated: a demo
-  player with no site account now raises the two-captain `roster_mismatch` review even on a
-  clean score. Ringer *detection* works.
-- **Phase E slice** (`311d241`,`6a6fb1e`) — `useLineupsStore` + `LineupPanel.vue` showing lineups
-  with substitute tags and per-map numbers, honouring opponent-visible-at-lock. 3 store tests.
+- **A** (`3b3eef0`) schema · **B** (`5516a8e`) provisional declaration write path (RBAC, OpenAPI,
+  wire-compat, 6 integration tests) · **C** (`c8e14b0`+`b388a77`) authoritative demo-derived
+  lineup **and the attribution gating** — `restrict_attribution_to_lineup` de-attributes any
+  demo player not in the authoritative lineup, with a `has_lineup` short-circuit that no-ops when
+  no lineup exists (the no-lineup path is untouched). Verified by reading the code AND its
+  integration test (`test_attribution_gated_to_lineup`: a registered non-lineup player is
+  stripped to `player_id NULL`, a rostered lineup player keeps attribution). · **D**
+  (`e166079`+`49e173b`) ringer detection + majority-rule & elo-cap enforcement at review, raising
+  the two-captain flow. · **P-58** (`3013f58`) team participation credited from the lineup. ·
+  **E** (`311d241`,`6a6fb1e`,`d26a87c`) store + display panel + check-in declaration picker. ·
+  **F** (`7ac1a01`) **e2e driving the real UI** — a captain declares at check-in (POST 200,
+  status flips to submitted) and a second context sees the lineup only after it locks. Both pass.
+- Backend: 681 passed / 0 failed (agent), independently re-confirmed sequentially (suite run).
 
-**⚠️ Scaffolded but NOT closed (the integrity payoff is not delivered yet):**
-- **P-25 — a ringer STILL accrues stats today.** Phase C built `materialize_demo_lineup`
-  (tested) but deliberately left the bare Steam-ID attribution gating in place
-  (`portal-db/src/adapters/demo.rs:899`, `demo_stats.rs:118`) and did **not** wire materialization
-  into ingestion (`services/demo.rs:296` `link_to_match`, `:495` `try_auto_link`) — gating without
-  the wiring would break the common no-lineup path. **The machinery to stop ringers exists; the
-  stop does not.**
-- **P-26 / majority-rule enforcement** — `substitutes_are_minority` + elo caps are built but not
-  yet invoked; they need the Phase C materialized lineup as input.
+**Still open in the cluster (NOT closed by this work):**
+- **P-26** — the majority rule and elo caps are enforced, but **not-facing-own-team is not yet
+  wired** into the demo-lineup enforcement. Genuinely still open.
+- **P-15, P-18** — the roster-lock invitation-path consistency and the admin override were NOT
+  touched: §9 sequences the roster-lock rework LAST, after the feature proves out on a season.
 
-**Deferred by instruction (§9 last):** retiring the `substitute` role, collapsing
-`RosterLockStatus`, waivers (§0c), the evidence ladder beyond `demo`, mid-match
-`participation_status`, and the Phase E declaration picker UI. Phase F e2e not started.
-
-### P-58 — team matches credit participation to NOBODY today
-- `StatsUpdaterAdapter` (`api/crates/portal-api/src/adapters/stats_updater.rs:171-207`) credits
-  participation only for **individual** registrations; team matches credit no one
-  (*"team stats aggregation would require looking up team members"*).
-- **Reframes §4/P-25:** the design assumed participation is credited to the *whole roster* for
-  teams; in fact it is credited to **no one**. So lineup-based crediting for teams is a **new
-  feature to add**, not a bug to fix — but the leaderboards/awards gap it implies is real.
-- [ ] Credit team participation from the (demo-derived) lineup when Phase C wiring lands.
-
----
+**Deferred by instruction (extension points left):** retiring the `substitute` role, collapsing
+`RosterLockStatus`, the §0c waiver flow, the evidence ladder beyond `demo`, mid-match
+`participation_status`.
 
 ## 0. ▶ WHAT TO DO NEXT (prioritised, 2026-07-23)
 
@@ -577,7 +564,12 @@ Actively misleading — rename or fix (most are also tracked above).
 
 ## 9b. PRODUCT findings uncovered by this work
 
-**Status:** 58 found · **38 fixed** · 20 open (1 mitigated). **Lineup system partially built — see §0.5.**
+**Status:** 58 found · **40 fixed** · 18 open (1 mitigated). **Lineup system core built + e2e-proven (§0.5); P-25 closed.**
+
+Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-23, P-24, P-25, P-27, P-47, P-51, P-52, P-48, P-49, P-50, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
+
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-26, P-46, P-38, P-39, P-40, P-41, P-53, P-56, P-57, P-58, P-54, P-55. Roster-lock remnants **P-15/P-18/P-26** are sequenced LAST
+per lineup-design §9 (roster-lock rework after the feature proves out).
 
 Fixed: P-1, P-2, P-4, P-5, P-7, P-8, P-9, P-10, P-11, P-12, P-13, P-17, P-19, P-20, P-21, P-22, P-24, P-27, P-47, P-51, P-52, P-48, P-49, P-50, P-28, P-29, P-30, P-31, P-32, P-33, P-34, P-35, P-36, P-37, P-42, P-43, P-44, P-45.
 
@@ -672,10 +664,10 @@ P-19..P-22 were promoted out of §9c for exactly that reason.
 | P-20 | Home page hides `pick_ban`/`ready`/`awaiting_result` matches | user-facing | **fixed** `c727267` |
 | P-21 | Tournament **list** cards print raw enum | user-facing | **fixed** `c4bca02` |
 | P-22 | Season roster-lock column always "Open" | enforcement | **fixed** `7b4aa8d` |
-| P-23 | Roster-mismatch review built but unreachable | integrity | open |
+| P-23 | Roster-mismatch review built but unreachable | integrity | **fixed** `e166079` |
 | P-24 | **Check-in has no authz — anyone can start any match** (+forfeit, +reg check-in) | **security** | **fixed** `98c8f48` |
-| P-25 | Benched players credited with matches; ringer stats count | integrity | open |
-| P-26 | "Sub can't face own team" never enforced | integrity | open |
+| P-25 | **Ringer stats count / benched credited** | integrity | **fixed** `b388a77` |
+| P-26 | "Sub can't face own team" never enforced | integrity | open (majority+elo done) |
 | P-27 | `invite_only` tournaments accept anyone | trust | **fixed** `c3e0949` |
 | P-46 | invite-only refusal: 403 tournaments vs 400 leagues | inconsistent | open |
 | P-47 | **No frontend invite-only awareness; no organiser invite UI** | feature unusable | **fixed** `616a2d6` |

@@ -248,9 +248,21 @@ export const useLeaguesStore = defineStore('leagues', () => {
 
   async function fetchMembers(leagueId: string): Promise<LeagueMemberResponse[]> {
     return withActionState(fetchMembersState, async () => {
+      // P-54 (web half): the API half landed in `dc5136c`, which declared
+      // `page`/`per_page` in the utoipa block — but this call still sent
+      // neither, so members silently truncated at the API default of 20. The
+      // pagination guard could not see it until the params existed, which is
+      // why it surfaced only afterwards. A league with 21 members showed 20,
+      // with no pager and no clue.
+      //
+      // `per_page: 100` matches the house mitigation used for the same class
+      // elsewhere (`games.ts:52`, `useMatchDetail.ts:312`). It is a ceiling,
+      // not a fix: `PaginationParams` caps at 100, so a league with more than
+      // 100 members still truncates — the same residual as P-56. Recorded
+      // there rather than papered over here.
       // Endpoint returns the array directly, not wrapped in a DataResponse envelope.
       const result = await unwrapApi(api.GET('/v1/leagues/{league_id}/members', {
-        params: { path: { league_id: leagueId } },
+        params: { path: { league_id: leagueId }, query: { per_page: 100 } },
       }))
       members.value = result
       return members.value

@@ -12,7 +12,7 @@ began as a test-quality audit. The findings are the deliverable; the tests are t
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **111 findings · 55 fixed** → the status-drift defect class closed at the source
+112 → 0) → **111 findings · 56 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -203,7 +203,7 @@ two each and together retire most of the dead-control class.
 
 | Tier | Theme | Findings | Why here |
 |---|---|---|---|
-| **T0** | **Security** | ~~P-108~~ · P-60 | Unauthenticated writes and un-revoked sessions. Cost is irrelevant |
+| **T0** | **Security** | ~~P-108~~ · ~~P-60~~ — **tier complete** | Unauthenticated writes and un-revoked sessions. Cost is irrelevant |
 | **T1** | **Silent data corruption** | P-93 · P-77 · P-78 · P-83 | Each writes or preserves *wrong data* while reporting success. Worst possible failure mode: no one finds out |
 | **T2** | **One-line dead-control fixes** | P-87 · P-99 · P-98 · P-82 · P-104 · P-105 · P-94 · P-84 | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
 | **T3** | **a11y sweep** (one batch) | P-89 · P-100 · P-106 · P-85 | P-89 is a **P-45 recurrence**, so this must be a repo-wide sweep, not another point fix |
@@ -229,9 +229,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 111 found · 55 fixed · 56 open** (P-53 mitigated).
+**Status (derived): 111 found · 56 fixed · 55 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-93, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-109, P-110, P-111.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-93, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -304,13 +304,13 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-51 | Invitee cannot read own invite state (gate was soft) | design gap | **fixed** `c7d395e` |
 | P-52 | Duplicate `operationId` broke the generated client | build | **fixed** `098832a`; guarded `c5ea9e5` |
 | P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | 🟡 mitigated `7775a19` → P-56 |
-| P-54 | League members truncates at 20; client cannot paginate | user-facing | **fixed** `dc5136c` |
+| P-54 | League members truncates at 20; client cannot paginate | user-facing | **fixed** `dc5136c`+`PENDING54` (web half was missing) |
 | P-55 | Review queue FIFO — newest escalation on the last page | admin friction | open |
 | P-56 | >100-participant tournaments still can't submit (P-53 ceiling) | blocks core flow | open |
 | P-57 | 15-min auto-confirm window too short for humans | trust | **fixed** `5590726` (24h) |
 | P-58 | Team matches credit participation to nobody | integrity | landed `3013f58`, verify post-§6 |
 | P-59 | **`schedule_match` direct-set: no authz → manufactured forfeits** | **security** | **fixed** `930f8c9` (red-proven) |
-| P-60 | Logout never revokes the session server-side | security gap | open |
+| P-60 | Logout never revokes the session server-side | security gap | **fixed** `409969b` |
 | P-61 | UI disqualify doesn't cascade; strands matches | admin gap | open |
 | P-62 | Transfer team ownership has no UI | product gap | open |
 | P-63 | Disband team has no UI | product gap | open |
@@ -441,9 +441,24 @@ so forfeits could be manufactured. Participants are unaffected by gating (they u
 negotiation flow; admins have their own consumed `/v1/admin/.../schedule`). Gate is in the
 working tree; commit + red-proven test in Roadmap A; deletion (redundant surface) in P-67.
 
-**P-60 — logout never revokes server-side.** `POST /v1/auth/logout` (`handlers/auth.rs:392`)
-and `logout-all` (`:446`, built for compromise response) exist; `stores/auth.ts:354` only
-clears localStorage. Call logout on sign-out; add "log out of all devices". → T6.
+**P-60 — logout never revoked server-side. FIXED `409969b`.** Both endpoints existed —
+`POST /v1/auth/logout` and `/logout-all`, the latter built for compromise response — with
+nothing in the app calling either, so the refresh token stayed valid for its full lifetime
+after the user pressed "Log out".
+
+Three decisions worth keeping: `logout()` clears **locally first**, then revokes, and swallows
+transport failures — the endpoint authenticates the refresh token in its body rather than a
+bearer token, so clearing first costs nothing, and the reverse order would leave a user staring
+at a logged-in UI while a request times out. `logoutAll()` does the **opposite** (request, then
+clear, via `try/finally`) because it *does* need the bearer token. And the global 401 handler
+in `main.ts` is rewired to a new `clearSession()`, not `logout()` — the server has already
+rejected that token, so a revoke would be pointless *and* would 401 in turn, re-entering the
+handler that called it.
+
+"Log out of all devices" added to `ProfilePage`. Red-proved: removing the revoke fails "sends
+the revoke" with 0 calls while the other three tests stay green, because they pin local
+clearing — the suite distinguishes the fix from its surroundings rather than going uniformly
+red. → **T0, done.**
 
 **P-61 — UI disqualify doesn't cascade.** `admin_disqualify` (`handlers/forfeit.rs:200`)
 forfeits remaining matches; the UI calls the status-flip variant

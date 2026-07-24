@@ -191,144 +191,36 @@ Standing rules for this wave, and for any lane added to it:
   concurrently is how entries get lost; the orchestrator merges them centrally.
 - Path-limited commits only, per the multi-agent git trap below.
 
-## 4. Roadmap — remaining work in order
+## 4. Triage — the open register as an ordered work queue
 
-> **Execution order (set 2026-07-24, owner): A → F → B → C → D → E → G.**
-> The letters are **stable identifiers**, not a sequence — §5 cross-references them by letter,
-> so they are never renumbered. Read this line for priority, not the alphabet.
->
-> **Why F jumped the queue.** This campaign's whole thesis (see the header line) is that
-> *driving a surface through the UI is what surfaces product bugs* — 86 findings came out of a
-> test-quality audit. That thesis is now measured: P-68/P-70/P-71 sat undetected through a full 268-operation
-> inverse audit precisely because nothing drove them through the UI, and P-35 (a dead decision
-> form) had already proved the same point. Every unexercised handler in F is therefore an
-> **unsampled bug site**, and building D's features first only adds more of them. So: exercise
-> every handler through the UI first, harvest the findings that fall out, *then* build.
-> Corollary for F: when a handler cannot be driven because the control does not exist, that is
-> not a blocked test — **that is the finding**. Register it (that is exactly how P-62/P-70/P-71
-> were born) and move on.
+**Rewritten 2026-07-25.** The old A-G roadmap predated waves 2-3, which added 30 findings and
+left the lettering unable to order them. §5 no longer cross-references letters; it references
+**tiers**. The coverage wave (old F) is **complete** — see §3.
 
-**A · The moment the lineup agent lands (contended-file queue):**
-- [ ] **P-108 — gate `link_discovered_evidence` and `link_demo` on match participation.**
-      Security, P-24/P-59 shape; the helper already exists and is used by `validate_demo` on
-      the same surface. Red-prove the 403 before trusting the gate (ground rule 10).
-- [ ] **P-107 — make the FULL suite green.** The campaign validated specs one at a time and
-      called that green; the first whole-suite run (302 passed / 4 failed / 3 skipped) proved
-      that insufficient. Two were real (fixed: P-102, P-103); two are cross-spec interference.
-      Bisect with `--workers=1` first to separate parallelism from ordering. **Until this is
-      closed, "the suite passes" may only be claimed from a full run.**
-- [x] Verify the attribution correction end-to-end (a registered non-declared sub KEEPS
-      stats + gets the sub tag; unregistered stays NULL and raises the review; the rewritten
-      `test_attribution_gated_to_lineup` asserts the corrected model; P-26 wired).
-- [x] Commit the **P-59 gate** + red-proven 403 test (`930f8c9`).
-- [x] **Admin manual-scheduling e2e** — done by F Lane 1 (`a60af09`). The handler works; the
-      *notes* field it collects is silently discarded and the override leaves no status-log
-      row → **P-84**.
-- [x] **P-81 — typecheck the e2e specs.** `tsconfig.e2e.json` wired into `npm run typecheck`;
-      backlog was 2 errors, both cleared; red-proved (TS2322 → exit 2) and seed path smoke-run.
-- [x] **P-86 — fixture status params retyped to the generated unions** (`fixtures/api-status.ts`,
-      12 fixtures, 25 sites). Red-proved both ways. Surfaced **no** existing bad literals —
-      the value is forward protection, not a backlog.
-- [ ] **P-65**: register `/v1/users/me/action-items` + `ActionItemResponse` in `openapi.rs`,
-      regen types, drop the `as never` casts (`captainActions.ts:56`, `lineups.ts:68-96`).
-- [ ] **P-56**: targeted registration lookup endpoint (resolve BOTH match participants by
-      id) — fully closes P-53. `openapi.rs` registration required.
-- [ ] **P-55**: review queue ordering (adapter is in the contended area).
+Ordering principle: **impact × cheapness**, with one exception — security goes first regardless
+of cost. A "one-line fix" tier exists because eight of these findings are genuinely a line or
+two each and together retire most of the dead-control class.
 
-**B · Lineup product completion (decided scope — see design §0b/§0c):**
-- [ ] Evidence ladder: screenshot evidence + **admin manual lineup entry**
-      (`source='evidence'|'admin'`).
-- [ ] **§0c waiver flow**: `ResolutionType: waived` with mandatory rule+reason.
-- [ ] Lineup integrity e2e (Phase F remainder): a played demo shows the substitute tag in
-      the UI; an unregistered player surfaces the roster-mismatch review.
+| Tier | Theme | Findings | Why here |
+|---|---|---|---|
+| **T0** | **Security** | P-108 · P-60 | Unauthenticated writes and un-revoked sessions. Cost is irrelevant |
+| **T1** | **Silent data corruption** | P-93 · P-77 · P-78 · P-83 | Each writes or preserves *wrong data* while reporting success. Worst possible failure mode: no one finds out |
+| **T2** | **One-line dead-control fixes** | P-87 · P-99 · P-98 · P-82 · P-104 · P-105 · P-94 · P-84 | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
+| **T3** | **a11y sweep** (one batch) | P-89 · P-100 · P-106 · P-85 | P-89 is a **P-45 recurrence**, so this must be a repo-wide sweep, not another point fix |
+| **T4** | **Raw-enum sweep** (one batch) | P-76 · P-91 · P-96 · P-79 | P-10/P-44 family, now on its fifth recurrence. Batch it and add a guard, or it returns |
+| **T5** | **Dead code & build hygiene** | P-69 · P-67 · P-65 · P-90 | Deletions and registrations. Cheap, and shrinks the surface the other tiers have to reason about |
+| **T6** | **Missing controls** (product build) | P-74 · P-88 · P-109 · P-110 · P-111 · P-70 · P-71 · P-62 · P-63 · P-64 · P-72 · P-75 · P-92 · P-95 · P-68 · P-73 · P-61 · P-66 | Endpoint live, control absent or non-functional. Real build work; sequence by user pain |
+| **T7** | **Roster-lock rework** (together) | P-14 · P-15 · P-16 · P-18 | Design §9 sequences these as one unit, after the lineup proved out. Do not pick off individually |
+| **T8** | **Decide, then act** | P-3 · P-6 · P-41 · P-53/P-56 · P-55 · P-80 · P-97 | Each needs a product decision or a confirm-or-kill before it is actionable |
 
-**C · Roster-lock rework** (design §9 sequences this LAST, after the lineup proves out):
-P-14 (lock settable at all) · P-15 (single enforcement point) · P-16 · P-18 (audited admin
-override) · collapse `RosterLockStatus` · retire the `substitute` role.
+**Standing rules while working the queue**
+- Fix in the register's order within a tier; tiers themselves are strictly ordered.
+- **Every fix gets a red-proven test** (ground rule 10) — for a security gate, prove the 403.
+- After any batch, re-run the **full** suite; per-spec green is not green (P-107).
+- `api/` and `web/` are separate repos: commit path-limited, in each.
 
-**D · Product-gap wave (from the inverse audit + the store-action second pass):**
-P-60 (logout revocation — top item), P-61 (cascading DQ), P-62 (transfer ownership UI),
-P-63 (disband UI), P-66 (audit trail / stored suggestions), **P-70** (role assignment UI —
-RBAC is authorable but not assignable), **P-71** (season re-registration), **P-72** (admin
-score correction), **P-68 + P-73 + P-64 together** — one admin "Pipeline" page carrying
-ingestion health, the backfill button and the rating override, since they share a surface and
-P-73 is what makes P-68 necessary.
-
-**E · Minor sweep, one batch:** P-3 · P-6 (confirm-or-kill) · P-41 · P-58 verification
-(landed in `3013f58`; confirm it survives the attribution correction, then tick).
-
-**F · Coverage wave — PRIORITY AFTER A. Every handler driven through the UI.**
-
-Exit criterion: **no mutating handler in `src/` is un-driven by an e2e test**, and every
-handler that *cannot* be driven has a P-number saying why. Partitioned by surface so agents can
-take one row each without contending; tick a row only when the test is red-proven (§1.10).
-
-*Admin — match & dispute (highest bug-yield: these are the override paths, all confirm-gated):*
-- [x] **LANE 2 landed** (`5955f9d`, `dispute-resolution.spec.ts` 3→8) — `handleResolveUphold` ·
-      `handleResolveAdjusted` · `handleResolveRematch` · `handleResolveDoubleDq` ·
-      `handleAssign`, each asserting the modal's Resolution card **and** the match row +
-      `resolution_type` over the API. Yielded **P-77..P-81**; uphold/adjust had to be written
-      on a new confirmed-result builder because the claim path cannot be asserted honestly (P-77)
-- [x] **LANE 1 landed** (`a60af09`, `admin-match-overrides.spec.ts`, 6 tests) — `handleForfeit` ·
-      `handleDoubleForfeit` · `handleProcessProgression` · `handleReapplyProgression` ·
-      `handleRevertProgression`. Progression asserted both ways (process moves the semi winner
-      into the final's slot 1, reapply rewrites it to p2). Revert had to be tested on **round
-      robin** — on elimination it is a no-op that reports success → **P-83**
-- [x] **LANE 1** — `MatchAdminActionsTab.handleSchedule` (admin manual scheduling) → **P-84**
-- [x] **LANE 1** — `MatchOverviewTab.handleTransition` (ready→scheduled→in_progress, button
-      relabels each step). The `completed → awaiting_result` entry is a dead control → **P-82**
-- [x] While here: `MatchResultsTab` is presentational with **zero** handlers → registered as P-72
-
-*Admin — tournament & league:*
-- [x] **LANE 6 landed** (`5bad7ef`) — `StagesTab.handleCreateStage` (blocked the no-format
-      path → **P-98**, dead option → **P-99**) · `AdminTournamentDetailPage.handleClearSeeding`
-      (with the positive control its predecessor lacked → **P-101**)
-- [x] **LANE 6** — `AwardsTab.handleSaveEdit` + void
-- [x] **LANE 8 landed** (`b181e85`) — `LeagueCreateModal` · `LeagueEditModal` ·
-      `LeagueSeasonCreateModal` · `InviteUserModal` (message discarded → **P-94**; UUID-only
-      → **P-95**) · `BanDetailModal`. `DemoCatalogModal` was covered by Lane 4
-
-*Admin — game config:*
-- [x] **LANE 5 landed** (`e50ec9c`, `admin-games-config.spec.ts`, 4 tests) — enable/disable ·
-      `GameEditModal` save + required-field gate · `GameConfigDialog` read paths.
-      **The write half could not be driven and that is the finding**: `PUT maps`,
-      `PUT rank-tiers`, `PATCH team-size` and map-catalog CRUD all 404 → **P-87**; rank tiers
-      and team size additionally have no control at all → **P-92**
-
-*Admin — demos:*
-- [x] **LANE 4 landed** (`dc36288`, `admin-demo-detail.spec.ts`, 5 tests) — categorize ·
-      visibility (incl. the `authorize_demo_read` gate: bystander 200 → 403 → 200) · notes
-      (incl. `'' → null`) · catalog single · catalog batch (created + existing branches,
-      idempotency). Not driveable, and that is the finding: **reprocess → P-74**,
-      **`associate` → P-75**; the snackbar leak it declined to certify is **P-76**
-
-*Player:*
-- [x] **LANE 7 landed** (`331887e`, 8 tests) — `SteamTrackingCard` enable/update/disable +
-      the no-Steam-ID refusal · availability windows edit/delete · overrides delete ·
-      `SocialLinksEditor` save. Window *create* was already covered at
-      `player-profile.spec.ts:601`. Override *create* could not be driven honestly → **P-93**
-- [x] **LANE 9 landed** (`c98f2bc`, `tournament-map-pool.spec.ts`, 3 tests) — `MapPoolPicker`
-      on `TournamentForm`: custom pool `PUT`, reset `DELETE`, and the create-modal validity
-      gate. The edit-modal gate and the swallowed reset are **P-104/P-105**
-- [x] **LANE 10 landed** (`89cc64b`, `match-demo-browser.spec.ts`, 4 tests) — `DemoBrowser`
-      discovery, link-discovered, the rejection path (driven by a real 404) and catalog search.
-      Manual link and demo validation could not be driven → **P-110/P-111**; the invisible
-      evidence row is **P-109**; the missing authz is **P-108**
-
-*Names & honesty:*
-- [x] **`match-workflow.spec.ts:253` fixed** — was `hasText: 'ready'`, which passed identically
-      whether the chip showed the mapped label or leaked the raw enum, because Playwright text
-      matching is case-insensitive. Now `getByText('Ready', { exact: true })` (case-sensitive),
-      so it distinguishes `matchStatusMap`'s label from the enum. Verified green.
-- [x] Product decisions embedded, now all registered rather than pending: P-62 (transfer
-      ownership), P-70 (role assignment), P-71 (season re-registration), and the wave-2/3
-      additions P-92, P-95, P-104. Each is a handler whose control does not exist or does not
-      work — decide, build, then test. **This is the §4-F exit criterion, and it is met.**
-
-**G · Cleanup & close-out:** **P-67** dead-surface batch (501 progression stub · DELETE
-withdraw duplicate · orphaned `admin/demos/pending` · five redundant single-getters ·
-`schedule_match` after P-59 · dead `fixtures/match.fixture.ts` helpers) · P-31 remnant
-(9 low-traffic `String` fields whose enums lack `Serialize`) · §8 final spot-check.
+**Deferred, unchanged:** lineup product completion (evidence ladder, §0c waivers) — see §6.
+It is decided scope, not a finding, and is not in this queue.
 
 ## 5. Findings register — SINGLE SOURCE OF TRUTH
 
@@ -502,7 +394,7 @@ and un-swallow — or kill the finding.
 `roster_lock_status` (`dto/requests/league_team.rs:189-217`) but `update_season` never
 forwards it, the repo command has no field, and the working `update_roster_lock`
 (`services/league_team/season.rs:193-218`) has **no HTTP route**. All lock enforcement is
-therefore unreachable. → Roadmap C.
+therefore unreachable. → T7.
 
 **P-15 — substitute invitations bypass the roster lock.** The sharp form: **two paths
 disagree** — `add_member_authorized` checks both lock predicates; `create_invitation`/
@@ -510,10 +402,10 @@ disagree** — `add_member_authorized` checks both lock predicates; `create_invi
 Fix = one enforcement point. → Roadmap C (structurally affected by the lineup redesign).
 
 **P-16 — role changes not lock-checked.** `promote_to_captain`/`demote_from_captain`
-(`team.rs:526-600`) ignore the season lock; the UI is stricter than the backend. Align. → C.
+(`team.rs:526-600`) ignore the season lock; the UI is stricter than the backend. Align. → T7.
 
 **P-18 — no admin/emergency override of the roster lock.** The lock check is unconditional;
-`roster_locked_by` exists as an audit column but no admin operation uses it. → C. (The
+`roster_locked_by` exists as an audit column but no admin operation uses it. → T7. (The
 match-level cousin — per-match rule waivers — is decided in lineup-design §0c, Roadmap B.)
 
 **P-26 — "sub can't face own team" never enforced.** Stated in a migration comment only;
@@ -537,11 +429,11 @@ tournaments still break. Proper fix: a targeted lookup resolving **both** partic
 (also feeds `opponentPlayerId`). Needs `openapi.rs`. → Roadmap A.
 
 **P-55 — review queue FIFO.** `created_at ASC` (`portal-db/src/adapters/result_review.rs:193`),
-bare `total`, no sort control — newest escalation is on the last page. → A.
+bare `total`, no sort control — newest escalation is on the last page. → T8.
 
 **P-58 — team matches credit participation to nobody.** `StatsUpdaterAdapter:171-207`
 credits only individual registrations. Lineup-based team crediting landed (`3013f58`);
-verify it survives the §6 attribution correction, then tick. → E.
+verify it survives the §6 attribution correction, then tick. → T4.
 
 **P-59 — `schedule_match` direct-set had no authorization.** Any logged-in user could
 direct-set any match's `scheduled_at` — which drives check-in windows and no-show forfeits,
@@ -551,29 +443,29 @@ working tree; commit + red-proven test in Roadmap A; deletion (redundant surface
 
 **P-60 — logout never revokes server-side.** `POST /v1/auth/logout` (`handlers/auth.rs:392`)
 and `logout-all` (`:446`, built for compromise response) exist; `stores/auth.ts:354` only
-clears localStorage. Call logout on sign-out; add "log out of all devices". → D.
+clears localStorage. Call logout on sign-out; add "log out of all devices". → T6.
 
 **P-61 — UI disqualify doesn't cascade.** `admin_disqualify` (`handlers/forfeit.rs:200`)
 forfeits remaining matches; the UI calls the status-flip variant
-(`stores/tournament/_registrations.ts:131`), stranding matches mid-tournament. → D.
+(`stores/tournament/_registrations.ts:131`), stranding matches mid-tournament. → T6.
 
 **P-62 — transfer team ownership has no UI.** Endpoint works (e2e-proven,
-`team-roster.spec.ts:188`); no control exists. → D/F.
+`team-roster.spec.ts:188`); no control exists. → T6.
 
 **P-63 — disband team has no UI.** `DELETE /v1/league-teams/{id}` gated
-`team.settings.manage`; teams are un-removable from the product. → D.
+`team.settings.manage`; teams are un-removable from the product. → T6.
 
 **P-64 — demo auto-link backfill unreachable.** `POST /v1/admin/demos/process-unlinked`
-(`handlers/demos.rs:653`); admin page has the toggle but no run-backfill button. → D.
+(`handlers/demos.rs:653`); admin page has the toggle but no run-backfill button. → T6.
 
 **P-65 — `/users/me/action-items` unregistered in `openapi.rs`.** Route live
 (`routes/users.rs:16`), handler annotated (`handlers/users.rs:140-151`), never added to
 `paths(...)`/`components(schemas)`. The `as never` at `captainActions.ts:56` masks it; the
-casts at `lineups.ts:68-96` are stale (those endpoints ARE registered). → A.
+casts at `lineups.ts:68-96` are stale (those endpoints ARE registered). → T8.
 
 **P-66 — invisible read surfaces.** Match status/history endpoints (transition log with
 actor/when) unused by the static timeline; stored scheduling suggestions
-(`handlers/availability.rs:490`) lost on reload. → D/F.
+(`handlers/availability.rs:490`) lost on reload. → T6.
 
 **P-67 — dead-surface cleanup.** 501 `matches/{id}/progression` stub · `DELETE .../registrations/{rid}`
 (non-forfeiting duplicate of the consumed POST withdraw) · orphaned `GET /v1/admin/demos/pending` ·
@@ -585,7 +477,7 @@ store actions from the second-pass scan (`awards.fetchLeaderboard` — supersede
 fetchDelegates/createDelegate/revokeDelegate`; `leagues.fetchLeagueBySlug/fetchMyApplications`;
 `leagueSeasons.fetchSeason`; `players.fetchPlayerTeams`; `auth.fetchMyRoles`;
 `demos.associate/submitStats/markFailed`; `evidence.fetchDemoStats/validateEvidence/
-validateDemo`; `_registrations.fetchCheckInStatus`). → G.
+validateDemo`; `_registrations.fetchCheckInStatus`). → T5.
 
 **P-68 — a wrong scraped Premier rating cannot be corrected.** Ratings reach
 `player_game_profiles` from exactly two places: the enricher's demo-derived path
@@ -597,7 +489,7 @@ league entry gates (`useLeagueEligibility`, `min_rating_per_player`), so a bad e
 silently misseeds brackets and can lock a player out of a league with no operator remedy.
 Fix = an admin rating-override control (player detail → set rating + source + reason), which
 also gives P-73 its manual fallback. Note the handler writes `deviation=0, volatility=0.0`
-(see P-69). → D.
+(see P-69). → T6.
 
 **P-69 — the platform Elo engine is dead code. DECIDED: out of scope.**
 `calculate_rating_change` (`portal-plugins/src/games/cs2/mod.rs:591`, trait at
@@ -613,7 +505,7 @@ committed feature. So this is not a defect to fix; it is a dead surface that cur
 **implies a live platform rating system that does not run**, which is how it misled this
 audit. Action: delete the trait method + `Glicko2Rating`, or keep them behind a comment naming
 them an explicit, unwired extension point for future league/team Elo. Do not leave them
-ambiguous. → G.
+ambiguous. → T5.
 
 **P-70 — no UI grants a platform role.** `rbac.ts` exposes `getUserRoles:128`,
 `assignRoleToUser:138`, `revokeRoleFromUser:160` — all three have **zero** consumers.
@@ -622,7 +514,7 @@ and attach permissions to it, but never attach a role to a *person*. `AdminPlaye
 chips are **team** roles (`teamRoleMap`, `:399`), not platform ones. Net effect: admins,
 organizers and moderators can only be minted by seed or by hand in SQL — the RBAC system is
 authorable but not assignable. Fix = a Users tab (or a Roles section on the player detail
-modal) over the three existing actions; endpoints are live at `routes/admin.rs:28-36`. → D.
+modal) over the three existing actions; endpoints are live at `routes/admin.rs:28-36`. → T6.
 `admin-surfaces.spec.ts:130` covers role→permission and must be extended to user→role.
 
 **P-71 — a returning team cannot enter the next season.**
@@ -631,7 +523,7 @@ component consumer; the only reachable path is `createTeam`-into-a-season. Since
 `LeagueTeamSeason` is per-season by design, an existing team is stranded when the season rolls
 over — the captain's only route is to create a brand-new team, orphaning roster history,
 trophies and match history. Fix = a "Register for <season>" action on `TeamDetailPage` /
-`MyLeagueTeamsPage`, gated on league membership. → D. (`leagueTeams.addMember` is also
+`MyLeagueTeamsPage`, gated on league membership. → T6. (`leagueTeams.addMember` is also
 consumer-less, but that one is structurally entangled with P-15 — resolve it there, not here.)
 
 **P-72 — a confirmed-but-wrong score has no admin remedy.**
@@ -643,7 +535,7 @@ the P-57 24h window), nobody disputes, and the bracket progresses on bad data th
 can correct. Note this compounds P-61 — progression has already run by then, and
 `revert`/`reapply` (which *do* exist, `MatchAdminActionsTab:318-362`) move the bracket but
 cannot change the score they replay. Fix = either an admin score-override writing through the
-same path as `resolve/adjusted` + an audit row, or an admin-raised dispute. → D.
+same path as `resolve/adjusted` + an audit row, or an admin-raised dispute. → T6.
 
 **P-86 — P-31's status unions stop at the test boundary.** Found by red-proving the P-81 fix
 with a *second* probe, and it falsified the assumption behind the first. Probe: pass
@@ -705,7 +597,7 @@ a demo writes an evidence record the admin Evidence tab can never display. It co
 cycle — its cross-check returned `[]` against a link that had demonstrably succeeded. The spec
 now cross-checks with `include_discovered=true` and deliberately asserts nothing about the
 default listing, so it does not certify the gap. Fix = stamp a human link as a human source, or
-pass the flag. → D.
+pass the flag. → T6.
 
 **P-110 — the browse catalog offers demos it will refuse to link.** `link_demo`
 (`handlers/evidence.rs:1189-1193`) resolves the demo by **file name against the external CS2
@@ -715,7 +607,7 @@ is absent — despite the request carrying `demo_id`, which the handler then use
 (`GET /v1/demos`), a different source of truth, so any catalogued demo whose `.stats.json` is
 missing is offered and then rejected. No stats service runs on `:3100` in the e2e stack, so the
 button 404s there unconditionally — which is why `linkManualDemo` could not be driven and no
-test was written. → D.
+test was written. → T6.
 
 **P-111 — nothing in the product ever validates a demo against a result.**
 `DemoBrowser.vue:250-261` renders a "Validated" chip from `item.link.validated`, but the demo
@@ -727,7 +619,7 @@ chip is dead template. Compounding it, the three store actions that would drive 
 `evidence.validateDemo` (`stores/evidence.ts:252`), `validateEvidence` (`:239`) and
 `fetchDemoStats` (`:203`) — have **zero** UI consumers (re-confirmed by the reachability scan).
 So the backend validator, the plugin, the DB columns and the chip all exist, and no path
-connects them. This closes §4-F's "demo validation" row as a finding rather than a test. → D.
+connects them. This closes §4-F's "demo validation" row as a finding rather than a test. → T6.
 
 **P-102 — `lineup.spec.ts` read an env var nothing sets, and wrote to the dev database. FIXED.**
 `lineup.spec.ts:10` read `process.env.E2E_API_URL`. **Nothing sets that variable** — not
@@ -770,20 +662,20 @@ evaporates. Lane 9 verified live: pool after "saving" empty = the original 7 map
 in one control: a gate that doesn't gate (P-84/P-94 family) and a save that silently does
 nothing. No test written — asserting "save is blocked" is red today, asserting "save succeeds
 and nothing changes" certifies the bug. Fix = add `|| !formRef?.mapPoolValid`, matching create.
-→ D.
+→ T6.
 
 **P-105 — a failed map-pool reset is indistinguishable from success.**
 `TournamentEditModal.vue:107`: `deleteTournamentMapPool(...).catch(() => {})`. The DELETE 404s
 whenever no override row exists, and *any* failure is swallowed while the modal still emits
 `saved` and the page shows the success snackbar. Lane 9's DELETE probe (fulfilled 204 with the
 database untouched) is exactly what a real failure looks like from the UI. P-74/P-83 family.
-→ D.
+→ T6.
 
 **P-106 — `MapPoolPicker` cards are unlabelled clickable divs.** `MapPoolPicker.vue:34-55`
 renders each map as a `v-card` with `@click` and no `role`, no `aria-pressed`, no accessible
 name; selection is conveyed only by colour, opacity and a glyph swap, and there is no
 `data-testid`, so the spec must locate by CSS class plus exact inner text. Joins the
-P-85/P-89/P-100 a11y sweep. → D/G.
+P-85/P-89/P-100 a11y sweep. → T3.
 
 **P-107 — the suite is red as a whole while every spec is green alone.** First full-suite run
 of the campaign (2026-07-24, ephemeral instance 5): **302 passed, 4 failed, 3 did not run**.
@@ -824,7 +716,7 @@ positional, which is what the UUID-prefix trap warns against.
 (`handlers/leagues.rs:597` forwards `req.message`), and `LeagueMembersModal.vue:204-209` renders
 a Message column that can therefore never be populated for an invite. Identical shape to P-84.
 Lane 8 fills the field to drive the modal and asserts nothing about it in either direction —
-asserting either way would certify the defect. → D, with P-84.
+asserting either way would certify the defect. → T6.
 
 **P-95 — an invite-only league cannot be invited to by a human.** `InviteUserModal` demands a
 raw UUID typed by hand (`rules.uuid`, hint "Enter the UUID of the user to invite",
@@ -835,13 +727,13 @@ chars (`LeagueMembersModal.vue:147`, `:201`). The endpoint is live and correct; 
 unusable. So P-47 ("no frontend invite-only awareness", fixed `616a2d6`) is only half-closed —
 the organiser can now see invite-only leagues but still cannot invite to one. Lane 8's test
 passes only because it seeds the account over the API and knows the id. Fix = swap in
-`UserSearchAutocomplete`. → D.
+`UserSearchAutocomplete`. → T6.
 
 **P-96 — league invitations/applications tables print the wire enum.**
 `LeagueMembersModal.vue:150-154` and `:211-215` render `{{ item.status }}` raw, while the same
 modal maps roles through `formatRole`. P-10/P-44/P-76/P-91 family — this class keeps
 reappearing in newly-built tables, which argues for a lint rule rather than another one-off
-fix. Lane 8 asserts the row's Cancel action instead of the chip. → E.
+fix. Lane 8 asserts the row's Cancel action instead of the chip. → T4.
 
 **P-97 — every league silently gets a "Season 1" nobody configured.**
 `trg_leagues_create_default_season` (`migrations/0028_fix_league_season_trigger.sql:49-53`,
@@ -851,7 +743,7 @@ league immediately has an **open-registration** season they never set up and may
 exists. Recorded as a product question rather than a defect — it may well be intended
 onboarding — but it should be either surfaced in the create flow or dropped. It cost Lane 8 a
 run (its precondition asserted zero seasons) and is now pinned by the test rather than assumed
-away. → D, decide.
+away. → T8.
 
 **P-98 — the stage dialog's "Format (optional)" is mandatory.** `StagesTab.vue:45` labels the
 select *"Format (optional)"* and `handleCreateStage` sends `format: newStage.format ?? ''`
@@ -859,7 +751,7 @@ select *"Format (optional)"* and `handleCreateStage` sends `format: newStage.for
 (`dto/requests/tournament.rs:525-528`), and `""` does not parse. Verified live against the
 ephemeral API: `{"format":""}` → **400 "Invalid stage format"**. An organiser who believes the
 field's own label gets a hard failure. Fix = drop "(optional)" and mark it required, or default
-it. → E.
+it. → T4.
 
 **P-99 — `groups_and_playoffs` is a dead option, and the one valid value is missing.**
 `StagesTab.vue:44` offers `single_elimination | double_elimination | round_robin | swiss |
@@ -867,7 +759,7 @@ groups_and_playoffs`, but `StageFormat::from_str` accepts
 `single_elimination | double_elimination | round_robin | swiss | **group_stage**`
 (`portal-core/src/types/tournament.rs:669-678`). Verified live: `groups_and_playoffs` → **400**,
 control `swiss` → **201**. So the picker offers a value that always fails *and* omits the only
-one that would work. Same class as P-82. → D.
+one that would work. Same class as P-82. → T6.
 
 **P-100 — Vuetify `v-select` exposes no accessible name, app-wide.** The aria snapshot shows
 the label as a plain node and the combobox unnamed, so `getByLabel(...)` cannot reach any
@@ -876,7 +768,7 @@ select in the application; the sibling `v-text-field` *does* get one (and double
 (`admin-match-overrides.spec.ts:93-98`, `admin-management.spec.ts:225`, and Lane 6 again). It
 is logged as a test-authoring trap in §2, but the underlying fact is an **a11y defect**: a
 screen-reader user cannot tell what any select in the app is for. Belongs with the P-89
-aria-label sweep. → D.
+aria-label sweep. → T6.
 
 **P-101 — the seeding fixture blessed a comparison that cannot be true. FIXED.**
 `TournamentRegistrationResponse.seed` is `skip_serializing_if = "Option::is_none"`
@@ -909,7 +801,7 @@ verbatim in the spec header, ready to restore with the fix.
 The same `toISOString()` pattern drives three more places, so expect the same skew in the
 min-date guard and the past/future split: `AvailabilityOverridesManager.vue:255-258`, `:290`,
 and `stores/availability.ts:65`. Fix = format from local parts
-(`getFullYear`/`getMonth`/`getDate`), never `toISOString`, for a **calendar date**. → **D, high.**
+(`getFullYear`/`getMonth`/`getDate`), never `toISOString`, for a **calendar date**. → **T1**.
 
 **P-87 — every game-config write 404s: a UUID handed to a slug-keyed update.**
 `GameRepository::update` is declared `update(&self, slug: &str, ...)` and documented "Update a
@@ -926,14 +818,14 @@ Since `0024_restructure_games_uuid.sql` made `games.id` a UUID and added `slug`,
 controls** that pop the failure snackbar every time. `update_game`/`enable`/`disable` are
 unaffected — they call `resolve_game_slug` first (`:339,551,609`), which is also the one-line
 fix for the other six. Blocked the entire map-catalog-CRUD half of Lane 5's assignment: any
-test would have had to assert the failure, i.e. certify the bug. → **D, high.**
+test would have had to assert the failure, i.e. certify the bug. → **T1**.
 
 **P-88 — a disabled game cannot be re-enabled.** `AdminGamesPage` lists from `GET /v1/games`,
 which is `list_active()` (`portal-db/src/repositories/game.rs:71-79`), and the Enable button
 exists **only inside a row**. Disable a game and it leaves the list on the next fetch, taking
 its own Enable button with it — permanently, from the admin UI. Lane 5's test passes only
 because `stores/games.ts:88` patches the row client-side, so the control survives until
-someone presses Refresh. → D.
+someone presses Refresh. → T6.
 
 **P-89 — `AdminGamesPage` action buttons: aria-labels rotated by one. This is P-45 recurring.**
 `AdminGamesPage.vue:65,74,83,95` — cog/`title="Configure"` carries `aria-label="Edit game"`;
@@ -950,21 +842,21 @@ class was never swept. **Fixing this one should include a repo-wide audit of `ar
 `GameEditModal.vue:148` always seeds the field to `0` because `GameSummaryResponse` carries no
 `sort_order` — the real values (cs2=1, aoe4=2) are simply unknowable to the client, so the form
 shows a number that is not the truth. `:183` then only sends the field when non-zero, so no
-game's sort order can ever be *set* to 0. Fix needs the field in the DTO. → E.
+game's sort order can ever be *set* to 0. Fix needs the field in the DTO. → T4.
 
 **P-91 — disable writes `maintenance`, and the chip prints the raw enum.**
 `POST /disable` sets status **`maintenance`**, not `disabled` (`portal-db/src/repositories/game.rs:182`),
 and `AdminGamesPage.vue:55` renders the status chip from the raw value instead of a label map,
 unlike every other admin table (P-10/P-44 family). Related: `GameSummaryResponse.status` is a
 bare `string` in the spec — no game-status enum is declared — so it is another **P-31 remnant**
-for §4-G, alongside award and veto-session status. → E/G.
+for §4-G, alongside award and veto-session status. → T4.
 
 **P-92 — rank tiers and team size cannot be edited anywhere.** `games.setRankTiers`
 (`stores/games.ts:153`) and `games.updateTeamSize` (`:165`) have zero component consumers;
 `GameConfigDialog.vue:162-184` is a read-only `v-list` and `:186-204` is a `readonly` field
 captioned "Team size is managed via the game plugin configuration" — **there is no plugin-config
 surface in the application**. So the caption points at a door that does not exist. Both are
-additionally blocked by P-87 even if a control were added. Same shape as P-62/P-70/P-71. → D.
+additionally blocked by P-87 even if a control were added. Same shape as P-62/P-70/P-71. → T6.
 
 **P-82 — "Revert to Awaiting Result" can only ever fail.** `matchStatus.ts:39` maps
 `completed → 'awaiting_result'` with the label "Revert to Awaiting Result" (`:53`), under a
@@ -978,7 +870,7 @@ places — `MatchOverviewTab.vue:66-74` and the `MatchesTab.vue:61-80` row menu 
 completed match in the admin table offers an action that always errors**. P-35-shaped. Lane 1
 wrote no test: an honest one asserts the button is absent, and that fails today. Fix = drop
 `completed` from the map (and decide separately whether admins need a real un-complete path,
-which is P-72's territory). → D.
+which is P-72's territory). → T6.
 
 **P-83 — "Revert Progression" is a no-op on elimination brackets and says it worked.**
 `revert_progression` (`portal-domain/.../progression.rs:846`) clears results and recomputes
@@ -992,7 +884,7 @@ for work that did not happen, on the single most destructive-sounding control in
 Lane 1's revert test therefore runs on round robin rather than being weakened to assert a
 bare 200. **Latent second bug:** `reapply` calls `revert` first (`progression.rs:906`), so it
 only appears to work because `advance_winner` overwrites the same slot — a reapply whose new
-winner routes to a *different* target slot would leave the stale entry behind. → D, high.
+winner routes to a *different* target slot would leave the stale entry behind. → **T1**.
 
 **P-84 — the admin's reason for overriding a schedule is written nowhere.**
 `MatchAdminActionsTab.vue:23-27` collects "Notes (optional)", the store forwards it
@@ -1005,12 +897,12 @@ auth.user_id)`) and `SchedulingService::admin_schedule` has no notes parameter
 `MatchLifecycleService::transition`, so an admin-forced schedule leaves **no
 `match_status_log` row** either. Since scheduling drives check-in windows and no-show
 forfeits (the P-59 attack surface), an admin override of it is precisely the event that
-should be audited, and it is the one that is not. → D, with P-66.
+should be audited, and it is the one that is not. → T6.
 
 **P-85 — `MatchesTab` rows carry no `data-testid`.** Rows are addressable only by participant
 name, and one name is ambiguous once a winner is advanced into a later round, so Lane 1 had
 to filter on both names. Minor and test-facing, but it makes the highest-bug-yield admin
-surface the most awkward one to assert against. → F/G.
+surface the most awkward one to assert against. → T3.
 
 **P-77 — upholding a claim-path dispute completes the match with no result.** Two defects
 compound. (a) `raise_dispute` snapshots the **match row**, not the disputed claim —
@@ -1023,7 +915,7 @@ never confirms the claim it just upheld. Net result, reproduced by probe: uphold
 match with **no winner**, which then feeds progression. The admin is also deciding on the wrong
 data: `DisputeDetailModal.vue:53-56` renders "Original Score 0 - 0" for a 1-0 claim. Lane 2
 therefore wrote uphold/adjust on a **confirmed-result** dispute (new fixture builder
-`buildConfirmedResultDispute`) — the claim path cannot be asserted honestly. → D, high.
+`buildConfirmedResultDispute`) — the claim path cannot be asserted honestly. → **T1**.
 
 **P-78 — rematch and double-DQ leave the previous result on the match.**
 `resolve_with_status_change` (`portal-db/src/adapters/dispute.rs:483-546`) issues
@@ -1034,7 +926,7 @@ rematch → `{status: ready, winner: 019f95ed…, p1: 1, completed_at: 2026-07-2
 double-DQ → `{status: cancelled, winner: 019f95ee…, p1: 1}`. So a match "ready to replay"
 still records a winner and a completion time, and progression has **already advanced** that
 winner. Lane 2's tests assert `winner == null` only on the never-confirmed path, with an
-inline comment pointing here, so the suite does not certify the bug (ground rule 8). → D, high.
+inline comment pointing here, so the suite does not certify the bug (ground rule 8). → **T1**.
 
 **P-79 — dispute priority: the UI and the backend disagree on the top severity.**
 `statusMaps.ts:133-138` defines `disputePriorityMap` with `critical`; the backend enum is
@@ -1044,7 +936,7 @@ to every **cheating** report — renders as literal `urgent priority` in the low
 styling, while the filter at `AdminDisputesPage.vue:174-179` offers a "Critical" option that
 can never match a row. P-10/P-44 family, and a **P-31 remnant**: priority is one of the
 low-traffic `String` fields whose enum still lacks `Serialize`, so it was never compile-locked.
-Fix belongs with the §4-G P-31 remnant batch. → E/G.
+Fix belongs with the §4-G P-31 remnant batch. → T4.
 
 **P-80 — "Assign to Me" assigns to nobody.** The `disputes` table has **no assignee column at
 all** (`migrations/0039_disputes.sql:4-60`); `assign_for_review`
@@ -1053,7 +945,7 @@ and posts an internal system message. Two admins can both "take" the same disput
 the queue nor the modal shows ownership — the button's label promises a guarantee the schema
 cannot make. Lane 2's test asserts exactly what it does (status flip, button retires, system
 message) rather than pretending assignment happened. Decide: add the column + show ownership,
-or rename the control. → D.
+or rename the control. → T6.
 
 **P-81 — the e2e specs were never typechecked. FIXED.** `tsconfig.app.json` includes only
 `src/**` and `tsconfig.node.json` only `vite.config.ts`, so **no tsconfig covered `e2e/`** —
@@ -1097,13 +989,13 @@ even tell *which* league or tournament a demo was stamped onto without going to 
 This is the repair path for the P-42 failure mode (auto-linked demos landing on the wrong
 target): an admin can unlink the *match*, but the league/tournament association is
 uncorrectable. Same shape as P-62/P-70/P-71 — endpoint live, control absent. Fix = make the
-card editable over the existing action, and resolve the ids to names. → D.
+card editable over the existing action, and resolve the ids to names. → T6.
 
 **P-76 — the categorize snackbar leaks the wire value.** `AdminDemoDetailPage.vue:435` —
 `snackbar.success(\`Categorized as ${category}\`)` renders "Categorized as scrim" / "pug"
 while the chip two lines away renders the `demoCategoryMap` label ("Scrim", "PUG"). P-10/P-44
 family. Lane 4's test deliberately asserts the chip and **not** the snackbar, so the suite
-does not certify the leak (ground rule 8). → E.
+does not certify the leak (ground rule 8). → T4.
 
 **P-73 — the ingestion pipeline is invisible to operators.** Everything upstream of the demo
 catalog runs through `routes/internal.rs` (`steam-tracking/active`, `.../poll-result`,
@@ -1114,7 +1006,7 @@ queue depth, poll failures, or enrichment failures, so silent ingestion stoppage
 undetectable from the portal — and since ingestion is what supplies ratings, it fails
 *quietly* into P-68. Fix = an admin "Pipeline" page over the existing internal reads (promote
 them to admin-authed equivalents; do not expose `X-API-Key` routes to the browser). Pairs with
-P-64 (the backfill button, same page). → D.
+P-64 (the backfill button, same page). → T6.
 
 ## 6. Lineup system — status
 

@@ -351,7 +351,15 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
 
-  function logout() {
+  /**
+   * Drop the session locally. Does NOT talk to the server.
+   *
+   * This is the right call when the server has *already* invalidated us — the
+   * global 401 handler (`main.ts`) uses it, because attempting a revoke with a
+   * token the server just rejected would be pointless and, via the 401 handler
+   * it would itself trigger, recursive.
+   */
+  function clearSession() {
     token.value = null
     refreshToken.value = null
     playerId.value = null
@@ -363,9 +371,56 @@ export const useAuthStore = defineStore('auth', () => {
     setAuthToken(null)
   }
 
+  /**
+   * P-60: log out of THIS session, server-side as well as locally.
+   *
+   * Previously this only cleared localStorage, so the refresh token stayed
+   * valid for its full lifetime after the user pressed "Log out" — on a shared
+   * machine, "logged out" meant nothing at the server.
+   *
+   * Order matters: the local session is cleared FIRST, then the revoke is sent.
+   * A user who clicks "log out" must end up logged out even if the network
+   * hangs or the request fails; the reverse order would leave them staring at
+   * a logged-in UI while a request times out. The endpoint needs no bearer
+   * token (it authenticates the refresh token in the body), so clearing first
+   * costs nothing.
+   */
+  async function logout(): Promise<void> {
+    const rt = refreshToken.value
+    clearSession()
+    try {
+      await unwrapApi(api.POST('/v1/auth/logout', {
+        body: rt ? { refresh_token: rt } : {},
+        credentials: 'include',
+      }))
+    } catch {
+      // Best effort, and deliberately swallowed: the local session is already
+      // gone and the refresh token expires on its own. Surfacing an error here
+      // would tell the user their logout failed when, locally, it did not.
+    }
+  }
+
+  /**
+   * P-60: revoke every session for this user — the "log out of all devices"
+   * control, built for compromise response (`handlers/auth.rs` logout-all).
+   *
+   * Unlike `logout`, this one needs the bearer token, so the request must go
+   * out BEFORE the local session is cleared — hence try/finally rather than
+   * clear-first.
+   */
+  async function logoutAll(): Promise<void> {
+    try {
+      await unwrapApi(api.POST('/v1/auth/logout-all', { credentials: 'include' }))
+    } finally {
+      clearSession()
+    }
+  }
+
   return {
     token,
     refreshToken,
+    clearSession,
+    logoutAll,
     playerId,
     user,
     player,

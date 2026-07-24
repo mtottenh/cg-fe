@@ -118,10 +118,24 @@
                 <v-btn
                   color="error"
                   variant="outlined"
+                  :loading="loggingOut"
                   @click="handleLogout"
                 >
                   <v-icon start>mdi-logout</v-icon>
                   Logout
+                </v-btn>
+
+                <!-- P-60: the compromise-response control. `logout-all` existed
+                     server-side with nothing to call it. -->
+                <v-btn
+                  color="error"
+                  variant="text"
+                  :loading="loggingOutAll"
+                  data-testid="logout-all"
+                  @click="handleLogoutAll"
+                >
+                  <v-icon start>mdi-logout-variant</v-icon>
+                  Log out of all devices
                 </v-btn>
               </div>
             </v-card-text>
@@ -214,9 +228,37 @@ function formatDate(dateStr: string): string {
   })
 }
 
-function handleLogout() {
-  authStore.logout()
-  router.push('/')
+const loggingOut = ref(false)
+const loggingOutAll = ref(false)
+
+// P-60: `logout` now revokes the session server-side as well as locally. It
+// clears locally first and swallows transport failures, so it always resolves
+// and the navigation below always happens — pressing "Log out" can never strand
+// the user in a logged-in UI.
+async function handleLogout() {
+  loggingOut.value = true
+  try {
+    await authStore.logout()
+  } finally {
+    loggingOut.value = false
+    router.push('/')
+  }
+}
+
+// P-60: revokes every refresh token for this user. Unlike `logout` this needs
+// the bearer token, so the store sends the request before clearing.
+async function handleLogoutAll() {
+  loggingOutAll.value = true
+  try {
+    await authStore.logoutAll()
+  } catch {
+    // The store clears the local session in a `finally`, so we are logged out
+    // locally regardless; navigate rather than stranding the user on a page
+    // they can no longer load.
+  } finally {
+    loggingOutAll.value = false
+    router.push('/')
+  }
 }
 </script>
 

@@ -15,10 +15,13 @@ app.use(pinia)
 app.use(vuetify)
 app.use(router)
 
-// Wire global 401 handler to auth store logout
+// Wire global 401 handler to auth store session teardown.
+// P-60: this must be `clearSession`, NOT `logout`. The server has already
+// rejected our token, so a revoke call would be pointless — and it would 401
+// in turn, re-entering this very handler.
 const authStore = useAuthStore(pinia)
 setUnauthorizedHandler(() => {
-  authStore.logout()
+  authStore.clearSession()
   router.push({ name: 'login' })
 })
 

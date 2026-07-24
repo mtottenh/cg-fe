@@ -7,7 +7,15 @@ import {
   type CheckInScenario,
 } from './fixtures/checkin.fixture'
 
-const API_URL = process.env.E2E_API_URL || 'http://localhost:3000'
+// P-102: this read `process.env.E2E_API_URL`, which NOTHING sets — not the
+// ephemeral runner, not playwright.config.ts, not CI. Every other e2e file (52
+// of them) reads VITE_API_URL, which `scripts/e2e-ephemeral.sh:74` exports.
+// The effect was not a missing base URL but a WRONG one: this spec fell back to
+// :3000 — the long-lived DEV api and DEV database — while its tokens were minted
+// against the ephemeral stack, so the API-side half of these tests wrote to the
+// developer's real database and then failed 401 on a foreign JWT secret.
+// Against the dev stack it passed, which is exactly why it survived.
+const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
 /** Declare a provisional lineup through the API (deterministic test setup). */
 async function declareLineupViaApi(

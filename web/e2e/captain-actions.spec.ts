@@ -275,9 +275,22 @@ test.describe('Captain action items', () => {
       await expect(card.locator('.v-badge__badge')).toHaveClass(/bg-warning/)
 
       // The opponent submits a claim (covered as a flow by match-results.spec.ts;
-      // here it is the precondition). Its `auto_confirm_at` is 15 minutes out
-      // (portal-domain/src/services/tournament/result.rs:125), which is inside
-      // the store's one-hour "critical" threshold (stores/captainActions.ts:29-35).
+      // here it is the precondition).
+      //
+      // GROUND RULE 9 — assertion changed because the SPECIFICATION changed, not
+      // to make a failure go green. This block used to assert the `bg-error`
+      // "critical" badge and a `Nm left` countdown, because `auto_confirm_at` was
+      // 15 minutes out — inside the store's one-hour critical threshold
+      // (stores/captainActions.ts:29-35). **P-57 deliberately raised that window
+      // to 24 hours** (`result.rs:136`, commit 5590726), so the deadline is now
+      // ~23h out: not critical, and rendered in hours by CaptainActionItem.vue:86.
+      // Asserting the old values would now be certifying a window the product
+      // deliberately moved away from.
+      //
+      // The <1h critical path is no longer reachable from e2e — no action item
+      // the suite can create has a sub-hour deadline. It is pinned instead by
+      // `src/stores/__tests__/captainActions.test.ts`, so the behaviour is not
+      // silently dropped. See P-103.
       await submitResultClaim(
         scenario.p1.token,
         scenario.matchId,
@@ -292,9 +305,12 @@ test.describe('Captain action items', () => {
 
       await expect(card.getByText('Confirm or dispute result')).toBeVisible({ timeout: 10_000 })
       await expect(card.getByText('Submit match result')).toHaveCount(0)
-      // Critical: the badge turns red and the countdown is in minutes.
-      await expect(card.locator('.v-badge__badge')).toHaveClass(/bg-error/)
-      await expect(card.locator('.v-chip')).toHaveText(/^\d+m left$/)
+      // Post-P-57: a 24h auto-confirm window is NOT critical, and the countdown
+      // renders in hours (CaptainActionItem.vue:86). Asserting the exact hour
+      // count would be brittle across the run's own elapsed time; asserting the
+      // unit is the real contract.
+      await expect(card.locator('.v-badge__badge')).toHaveClass(/bg-warning/)
+      await expect(card.locator('.v-chip')).toHaveText(/^\d+h left$/)
 
       // Backend, from each participant's own token: the claim submitter has
       // nothing left to do, the opponent owes the confirmation.

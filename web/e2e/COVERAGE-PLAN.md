@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **101 product findings** from what
+*"what should happen here?"* — and that question surfaced **107 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **101 findings · 51 fixed** → the status-drift defect class closed at the source
+112 → 0) → **107 findings · 53 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -121,7 +121,7 @@ not see).
 
 | Lane | Instance | Owns (only these files) | §4-F rows claimed |
 |---|---|---|---|
-| 9 | `-i 1` | `e2e/tournament-map-pool.spec.ts` (new) + `fixtures/map-pool.fixture.ts` | `MapPoolPicker` on `TournamentForm` → `PUT`/`DELETE /v1/tournaments/{id}/map-pool` |
+| ~~9~~ | ~~`-i 1`~~ | **LANDED** `c98f2bc` — 3 tests, two network probes | yielded **P-104..P-106** |
 | 10 | `-i 2` | `e2e/match-demo-browser.spec.ts` (new) + `fixtures/demo-browser.fixture.ts` | `DemoBrowser` → `discoverDemos` · `linkDiscoveredDemo` · demo validation |
 
 `MapPoolPicker` mounts twice: `GameConfigDialog.vue:138` (game pool — **dead, P-87**) and
@@ -192,6 +192,11 @@ Standing rules for this wave, and for any lane added to it:
 > were born) and move on.
 
 **A · The moment the lineup agent lands (contended-file queue):**
+- [ ] **P-107 — make the FULL suite green.** The campaign validated specs one at a time and
+      called that green; the first whole-suite run (302 passed / 4 failed / 3 skipped) proved
+      that insufficient. Two were real (fixed: P-102, P-103); two are cross-spec interference.
+      Bisect with `--workers=1` first to separate parallelism from ordering. **Until this is
+      closed, "the suite passes" may only be claimed from a full run.**
 - [x] Verify the attribution correction end-to-end (a registered non-declared sub KEEPS
       stats + gets the sub tag; unregistered stays NULL and raises the review; the rewritten
       `test_attribution_gated_to_lineup` asserts the corrected model; P-26 wired).
@@ -305,9 +310,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 101 found · 51 fixed · 50 open** (P-53 mitigated).
+**Status (derived): 107 found · 53 fixed · 54 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-93, P-94, P-95, P-96, P-97, P-98, P-99, P-100.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-60, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-93, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-107.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -408,6 +413,12 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | open |
 | P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
 | P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | **fixed** `e06ff8f` |
+| P-102 | **`lineup.spec.ts` read an env var nothing sets — wrote to the DEV database** | **test integrity** | **fixed** `PENDING102` |
+| P-103 | P-57 landed without updating the test that depended on the old window | test rot | **fixed** `PENDING102` |
+| P-104 | Edit modal's empty-pool gate is decorative; the pool edit is discarded | **feature dead** | open |
+| P-105 | A failed map-pool reset is swallowed and reported as success | trust | open |
+| P-106 | `MapPoolPicker` cards are unlabelled clickable divs | a11y | open |
+| P-107 | **The full suite is red as a whole though every spec is green alone** | **suite integrity** | open |
 | P-94 | `InviteUserModal` message collected, validated, then discarded | user-facing | open |
 | P-95 | **Invite-only league is un-invitable — needs a UUID no surface shows** | feature unusable | open |
 | P-96 | League invitations/applications tables print the raw enum | user-facing | open |
@@ -639,6 +650,79 @@ belong to the §4-G P-31 remnant batch.
 **Lesson recorded for ground rule 10:** the probe that matters is the one aimed at the
 *claim*, not the mechanism. Probe A ("does the gate run?") passed and would have been enough
 to call P-81 done; Probe B ("does the gate deliver what I said it would?") is what found P-86.
+
+**P-102 — `lineup.spec.ts` read an env var nothing sets, and wrote to the dev database. FIXED.**
+`lineup.spec.ts:10` read `process.env.E2E_API_URL`. **Nothing sets that variable** — not
+`scripts/e2e-ephemeral.sh` (which exports `VITE_API_URL` at `:74`), not `playwright.config.ts`,
+not CI; the other **52** e2e files all read `VITE_API_URL`. The consequence was not a missing
+base URL but a *wrong* one: the spec fell back to `http://localhost:3000`, the long-lived **dev
+API and dev database**, while its tokens were minted against the ephemeral stack. So its
+API-side writes landed in the developer's real database and then failed `401 Invalid token` on
+a foreign JWT secret.
+
+It survived because it *passes* against the dev stack — the pre-ephemeral workflow — and only
+the full-suite run under the ephemeral runner exposed it. Two lessons: an isolated green run
+proves less than it looks, and a test that silently writes to the wrong database is worse than
+a failing one. Fixed to `VITE_API_URL`; both lineup tests now pass on an ephemeral instance.
+
+**P-103 — P-57's fix landed without updating the test that depended on the old window. FIXED.**
+`captain-actions.spec.ts:251` asserted the `bg-error` critical badge and a `Nm left` countdown,
+with a comment naming its own premise: `auto_confirm_at` is 15 minutes out, inside the store's
+one-hour threshold. **P-57 deliberately raised that window to 24 hours** (`result.rs:136`,
+`5590726`) and the test was not updated, so it has been failing ever since — undetected,
+because nothing ran the whole suite.
+
+Fixed under ground rule 9 (the *specification* changed): the e2e now asserts the real
+post-P-57 rendering — `bg-warning` and `/^\d+h left$/`. But that leaves the `<1h` critical
+branch unreachable from e2e, since no action item the suite can create has a sub-hour deadline.
+Rule 9 also requires pinning what was *not* relaxed, so the threshold is now covered by
+`src/stores/__tests__/captainActions.test.ts` (5 tests, new). That file asserts **both sides**
+of the boundary — 59 min critical, 24 h not — so neither an always-true nor an always-false
+threshold can pass it; it is self-proving without a destructive edit.
+
+**P-104 — the edit modal's empty-pool gate is decorative, and the pool edit is discarded.**
+`TournamentCreateModal.vue:38` disables Save on `!formRef?.mapPoolValid`;
+`TournamentEditModal.vue:39` disables on `!formValid || !hasChanges` **only** — `mapPoolValid`
+is exposed by `TournamentForm.vue:585-586` and never consulted. So clearing every map in Edit
+Tournament shows the chip "Custom (0 maps)" and the warning "Select at least one map…", and
+Save stays **enabled** and reports "Tournament updated successfully". Then
+`TournamentEditModal.vue:105-110` takes **neither** branch — `mapPoolIsCustom` is true so the
+DELETE is skipped, `selectedMapIds.length > 0` is false so the PUT is skipped — and the edit
+evaporates. Lane 9 verified live: pool after "saving" empty = the original 7 maps. Two defects
+in one control: a gate that doesn't gate (P-84/P-94 family) and a save that silently does
+nothing. No test written — asserting "save is blocked" is red today, asserting "save succeeds
+and nothing changes" certifies the bug. Fix = add `|| !formRef?.mapPoolValid`, matching create.
+→ D.
+
+**P-105 — a failed map-pool reset is indistinguishable from success.**
+`TournamentEditModal.vue:107`: `deleteTournamentMapPool(...).catch(() => {})`. The DELETE 404s
+whenever no override row exists, and *any* failure is swallowed while the modal still emits
+`saved` and the page shows the success snackbar. Lane 9's DELETE probe (fulfilled 204 with the
+database untouched) is exactly what a real failure looks like from the UI. P-74/P-83 family.
+→ D.
+
+**P-106 — `MapPoolPicker` cards are unlabelled clickable divs.** `MapPoolPicker.vue:34-55`
+renders each map as a `v-card` with `@click` and no `role`, no `aria-pressed`, no accessible
+name; selection is conveyed only by colour, opacity and a glyph swap, and there is no
+`data-testid`, so the spec must locate by CSS class plus exact inner text. Joins the
+P-85/P-89/P-100 a11y sweep. → D/G.
+
+**P-107 — the suite is red as a whole while every spec is green alone.** First full-suite run
+of the campaign (2026-07-24, ephemeral instance 5): **302 passed, 4 failed, 3 did not run**.
+Two of the four (`captain-actions:251`, `lineup:78`) were genuine and are now fixed as P-103
+and P-102. The other two — `team-roster.spec.ts:49` (a promote that reports role `player`
+instead of `captain`) and `tournament-admin.spec.ts:664` (the "View Public" button not
+rendering) — **pass when the four are run together in isolation** and fail only in the full
+run, i.e. cross-spec interference under `fullyParallel: true`.
+
+This is a suite-integrity defect, not a product one, and it matters more than its severity
+suggests: **the campaign has been validating specs one at a time and calling that green.** CI
+runs `workers: 1`, which masks it. Candidate causes, in order: shared-identity state (the dev
+token is one identity — ground rule 6), the global game config Lane 5 documented, and
+action-item/roster state leaking between specs that share a seeded user. Needs a bisect —
+run the suite with `--workers=1` first to separate parallelism from ordering, then bisect the
+interfering spec. Until it is closed, **"the suite passes" may only be claimed from a full
+run**, never from a per-spec one. → **A**, ahead of further coverage work.
 
 **P-94 — the invitation message is collected, validated, then thrown away.**
 `InviteUserModal.vue:33-42` renders "Message (Optional)" with `rules.maxLength(500)`, then calls
@@ -1012,4 +1096,5 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
 - [x] `match-workflow:253` name/assertion fixed (`c3d0122`) — the last misleading-name item
 - [ ] Register drained to decided-wontfix or fixed (**50 open** after waves 1-2; the
       coverage wave is a finding *generator*, so this number rises before it falls)
+- [ ] **Full suite green in one run** (P-107) — first attempt 2026-07-24: 302/4/3
 - [ ] Final spot-check: deliberately break a component and watch the suite go **red**

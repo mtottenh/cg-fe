@@ -96,6 +96,26 @@ not see).
   batch API (`dc5136c`) + web half, P-59 gate (`930f8c9`, red-proven). Combined gate at
   landing: **686 passed / 0 failed**, fmt/clippy clean, ratchet `{}`, 6/6 on the touched specs.
 
+### Parallel F lanes IN FLIGHT (started 2026-07-24) — do not pick these up
+
+The §4-F coverage wave is running three agents concurrently. **Claimed rows are marked 🔵 in
+§4-F.** Do not touch a claimed row or a listed file until its lane lands and the row is ticked.
+
+| Lane | Instance | Owns (only these files) | §4-F rows claimed |
+|---|---|---|---|
+| 1 | `-i 1` | `e2e/admin-match-overrides.spec.ts` (new) + `fixtures/admin-overrides.fixture.ts` | `MatchAdminActionsTab` ×5 · `handleSchedule` · `MatchOverviewTab.handleTransition` |
+| 2 | `-i 2` | `e2e/dispute-resolution.spec.ts` + `fixtures/dispute.fixture.ts` | `DisputeDetailModal` ×5 |
+| 4 | `-i 3` | `e2e/admin-demo-detail.spec.ts` (new) + `fixtures/demo-admin.fixture.ts` | `AdminDemoDetailPage` demo admin surfaces |
+
+Standing rules for this wave, and for any lane added to it:
+- **One `-i` per agent, never shared.** A wrong `-i` destroys another lane's database
+  mid-run; the runner's preflight catches a *clash*, not a *collision of intent*.
+- **`api/` is off-limits while lanes are live** — it is the one resource `-i` does not
+  isolate, and every instance builds and runs whatever Rust source is on disk.
+- **Findings go in the agent's report, not into §5.** Three agents appending to the register
+  concurrently is how entries get lost; the orchestrator merges them centrally.
+- Path-limited commits only, per the multi-agent git trap below.
+
 ## 4. Roadmap — remaining work in order
 
 > **Execution order (set 2026-07-24, owner): A → F → B → C → D → E → G.**
@@ -118,9 +138,9 @@ not see).
       stats + gets the sub tag; unregistered stays NULL and raises the review; the rewritten
       `test_attribution_gated_to_lineup` asserts the corrected model; P-26 wired).
 - [x] Commit the **P-59 gate** + red-proven 403 test (`930f8c9`).
-- [ ] **Admin manual-scheduling e2e** — `MatchAdminActionsTab.handleSchedule` exists and
+- [ ] 🔵 **Admin manual-scheduling e2e** — `MatchAdminActionsTab.handleSchedule` exists and
       calls the properly-gated `/v1/admin/.../schedule`, but is untested (P-35-shaped risk).
-      User-priority item.
+      User-priority item. **Claimed by F Lane 1** (see §3) — tick it there, not here.
 - [ ] **P-65**: register `/v1/users/me/action-items` + `ActionItemResponse` in `openapi.rs`,
       regen types, drop the `as never` casts (`captainActions.ts:56`, `lineups.ts:68-96`).
 - [ ] **P-56**: targeted registration lookup endpoint (resolve BOTH match participants by
@@ -156,15 +176,15 @@ handler that *cannot* be driven has a P-number saying why. Partitioned by surfac
 take one row each without contending; tick a row only when the test is red-proven (§1.10).
 
 *Admin — match & dispute (highest bug-yield: these are the override paths, all confirm-gated):*
-- [ ] `DisputeDetailModal`: `handleResolveUphold` · `handleResolveAdjusted` · `handleResolveRematch`
-      · `handleResolveDoubleDq` · `handleAssign` — **4 of 5 resolutions are untested**; only
-      `overturn` is driven today (`dispute-resolution.spec.ts`)
-- [ ] `MatchAdminActionsTab`: `handleForfeit` · `handleDoubleForfeit` · `handleProcessProgression`
-      · `handleReapplyProgression` · `handleRevertProgression` — none driven. Progression
-      revert/reapply mutate bracket state; assert the bracket both ways
-- [ ] `MatchAdminActionsTab.handleSchedule` (admin manual scheduling) — user-priority item,
-      P-35-shaped risk, gated route already consumed
-- [ ] `MatchOverviewTab.handleTransition`
+- [ ] 🔵 **LANE 2** — `DisputeDetailModal`: `handleResolveUphold` · `handleResolveAdjusted` ·
+      `handleResolveRematch` · `handleResolveDoubleDq` · `handleAssign` — **4 of 5 resolutions
+      are untested**; only `overturn` is driven today (`dispute-resolution.spec.ts`)
+- [ ] 🔵 **LANE 1** — `MatchAdminActionsTab`: `handleForfeit` · `handleDoubleForfeit` ·
+      `handleProcessProgression` · `handleReapplyProgression` · `handleRevertProgression` —
+      none driven. Progression revert/reapply mutate bracket state; assert the bracket both ways
+- [ ] 🔵 **LANE 1** — `MatchAdminActionsTab.handleSchedule` (admin manual scheduling) —
+      user-priority item, P-35-shaped risk, gated route already consumed
+- [ ] 🔵 **LANE 1** — `MatchOverviewTab.handleTransition`
 - [ ] While here: `MatchResultsTab` is presentational with **zero** handlers → that is P-72
 
 *Admin — tournament & league:*
@@ -180,7 +200,10 @@ take one row each without contending; tick a row only when the test is red-prove
       map-catalog create/update/delete
 
 *Admin — demos:*
-- [ ] `AdminDemoDetailPage`: categorize · reprocess · notes · visibility · `associate` · batch
+- [ ] 🔵 **LANE 4** — `AdminDemoDetailPage`: categorize · reprocess · notes · visibility ·
+      `associate` · batch (`DemoCatalogModal`). Note `demos.ts` exposes `associate`,
+      `submitStats` and `markFailed` with **no component consumer** — if a control is absent
+      that is a finding, not a test to force
 
 *Player:*
 - [ ] `SteamTrackingCard` (opt-in/opt-out — the entry point to the whole P-73 pipeline)

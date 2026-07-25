@@ -527,11 +527,15 @@ test.describe('Result Dispute Workflow', () => {
     const header = page.locator('.v-card').filter({ hasText: /Match #\d+/ }).first()
     await expect(header.getByText('Disputed').first()).toBeVisible({ timeout: 10000 })
 
-    // Result History reflects the dispute. Asserted AFTER the reload on purpose:
-    // in-page it still showed "Awaiting Confirmation" (the `pending` label) for
-    // 10s+ even though the backend had flipped the claim — tracked as the
-    // suspected refresh bug in COVERAGE-PLAN.md §9b P-6. If this assertion ever
-    // starts passing before the reload, promote P-6 and move it back up.
+    // Result History reflects the dispute, asserted after the reload.
+    //
+    // This used to carry a note saying the in-page version of the assertion had
+    // been seen failing for 10s+ ("promote P-6 if it ever starts passing before
+    // the reload"). It has been promoted: P-6 was reproduced, root-caused and
+    // fixed, and `match-dispute-refresh.spec.ts` now makes every one of these
+    // assertions WITHOUT a reload. The post-reload assertions stay here because
+    // "still correct after a full reload" is a different claim from "updates
+    // in-page", and both are worth pinning.
     const history = page.locator('.v-card').filter({ hasText: 'Result History' }).first()
     await expect(history.getByText('Disputed').first()).toBeVisible({ timeout: 10000 })
 

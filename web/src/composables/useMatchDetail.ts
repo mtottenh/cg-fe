@@ -219,12 +219,26 @@ export function useMatchDetail() {
   }
 
   // Data fetching
+  /**
+   * Refetch the current claim and the claim history for this match.
+   *
+   * P-6: both legs used to carry `.catch(() => …)`, which converted a failed
+   * refresh into a RESOLVED promise — every caller then continued as though
+   * the page were current, and the only trace of the failure was a store error
+   * nobody was obliged to read. Failures now propagate.
+   *
+   * `allSettled` rather than a bare `Promise.all`: `Promise.all` rejects on the
+   * first failure and leaves a second, later rejection unhandled. Both legs are
+   * always awaited here, and the first failure is rethrown.
+   */
   async function fetchResultData() {
     if (!match.value) return
-    await Promise.all([
-      resultsStore.fetchCurrentResult(match.value.id).catch(() => null),
-      resultsStore.fetchResultHistory(match.value.id).catch(() => []),
+    const settled = await Promise.allSettled([
+      resultsStore.fetchCurrentResult(match.value.id),
+      resultsStore.fetchResultHistory(match.value.id),
     ])
+    const failure = settled.find((r) => r.status === 'rejected')
+    if (failure) throw (failure as PromiseRejectedResult).reason
   }
 
   /**
@@ -272,8 +286,47 @@ export function useMatchDetail() {
       }
     }
 
-    await Promise.all(tasks)
+    // `allSettled`, not `all`: since P-6 un-swallowed `fetchResultData`, one
+    // failing leg would otherwise reject the whole tick — and a rejection
+    // inside a `setInterval` callback is an unhandled rejection, not an error
+    // anyone sees. Each action still records its own error in its store state.
+    await Promise.allSettled(tasks)
   }
+
+  /**
+   * P-6 — refresh the MATCH when the claim's status changes under the page.
+   *
+   * `MatchDetailPage` wires `@disputed` / `@confirmed` on
+   * `ResultConfirmationPanel`, but **those handlers never run.** The panel is
+   * rendered behind `showConfirmationPanel`, which requires the claim to still
+   * be `pending`; `disputeResult`/`confirmResult` write the new claim into the
+   * store *before* returning, so Vue has already unmounted the panel — and the
+   * `ResultDisputeModal` inside it — by the time `handleDispute` resumes to
+   * `emit('disputed')`. The event is emitted into a torn-down tree.
+   *
+   * Measured, not inferred: a network probe over a real UI dispute recorded the
+   * dispute POST and then **no further requests at all**, and the page sat on
+   * pre-dispute state — header still "Awaiting Result", no dispute thread —
+   * until the 15s poll tick. That is exactly the symptom P-6 was filed for.
+   *
+   * Reacting to STATE instead of to an event is immune to that teardown: no
+   * matter which component performed the write, or whether it survived it, the
+   * match is re-read. `pollMatch` (not `fetchAll`) because only match-derived
+   * state is stale — the tournament, registrations and rosters have not moved.
+   */
+  watch(
+    () => resultsStore.currentResult?.status,
+    (status, previous) => {
+      // `previous === undefined` is the first claim this page ever saw (a load,
+      // or a first submission), not a transition that happened under the user.
+      if (previous === undefined || status === undefined || status === previous) return
+      // Only the transitions that also rewrite the MATCH are worth a round-trip:
+      // `disputed` sets match.status = disputed + match.disputed, `confirmed`
+      // completes it. `superseded`/`cancelled` leave the match where it was.
+      if (status !== 'disputed' && status !== 'confirmed') return
+      void pollMatch()
+    },
+  )
 
   async function fetchAll() {
     const tournamentSlug = route.params.tournamentSlug as string

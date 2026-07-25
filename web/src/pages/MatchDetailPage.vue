@@ -673,9 +673,23 @@ async function handleResultConfirmed() {
   await fetchAll()
 }
 
+/**
+ * P-6: this used to call `fetchResultData()`, which refetches the CLAIM and the
+ * claim history and nothing else — while disputing also rewrites the MATCH
+ * (`status` → `disputed`, `disputed` → true) and creates the dispute row that
+ * gates the thread panel. `fetchAll` is what `handleResultConfirmed` already
+ * does, for the same reason.
+ *
+ * DO NOT rely on this handler for the refresh, though: `ResultConfirmationPanel`
+ * is unmounted by the store write that precedes its own `emit('disputed')`, so
+ * `@disputed` does not reliably arrive here at all. The refresh that actually
+ * runs is the claim-status watcher in `useMatchDetail`; see the comment there.
+ * This stays because it is the correct response if the event does land, and
+ * because the snackbar is this component's to show.
+ */
 async function handleResultDisputed() {
   snackbar.show('Result disputed. An admin will review.', 'warning')
-  await fetchResultData()
+  await fetchAll()
 }
 
 // Lifecycle

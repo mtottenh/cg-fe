@@ -131,6 +131,26 @@ not see).
   batch API (`dc5136c`) + web half, P-59 gate (`930f8c9`, red-proven). Combined gate at
   landing: **686 passed / 0 failed**, fmt/clippy clean, ratchet `{}`, 6/6 on the touched specs.
 
+### Fix wave A — IN FLIGHT (2026-07-25). Do not pick these up.
+
+Four lanes chosen for **zero file overlap**, because every agent shares one
+checkout — `api/` is not isolated by `git worktree` (separate repos), so two
+lanes editing `openapi.rs` or `routes/*.rs` would silently lose each other's
+work. The API-heavy clusters (C6 builds, roster lock, P-112, the pagination
+ceiling) are deliberately held for wave B for that reason, not because they
+matter less.
+
+| Lane | Findings | Owns (only these files) |
+|---|---|---|
+| A | P-98 · P-99 · P-82 | `StagesTab.vue` · `utils/matchStatus.ts` · `MatchOverviewTab.vue` · `MatchesTab.vue` |
+| B | P-88 · P-90 · P-92 | `AdminGamesPage.vue` · `GameEditModal.vue` · `GameConfigDialog.vue` · `stores/games.ts` · `api dto/responses/game.rs` |
+| D | P-62 · P-63 · P-71 | `TeamDetailPage.vue` · `MyLeagueTeamsPage.vue` · `stores/leagueTeams.ts` |
+| E | P-95 · P-96 · P-97 | `InviteUserModal.vue` · `LeagueMembersModal.vue` · `LeagueSearchAutocomplete.vue` · `LeagueCreateModal.vue` · `LeaguesPage.vue` · `LeagueDetailPage.vue` · `stores/leagues.ts` |
+
+**Nobody edits `e2e/scripts/check-status-maps.mjs`.** Lanes D and E will both fix
+entries in its BASELINE; concurrent edits would clobber. Report which entries you
+fixed and the orchestrator updates it centrally — same rule as the register.
+
 ### Parallel F wave 3 — COMPLETE (2026-07-24). Both lanes landed. **§4-F is done.**
 
 | Lane | Instance | Owns (only these files) | §4-F rows claimed |

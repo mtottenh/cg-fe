@@ -171,20 +171,31 @@ describe('Evidence Store', () => {
       expect(store.unlinkDemoState.error).toBeNull()
     })
 
-    it('DELETEs the mapped evidence record for links created via linkManualDemo', async () => {
+    // P-110 spec change, not a relaxation: `linkManualDemo` used to fabricate a
+    // `linkedDemos` entry whose `link.id` was the *evidence* id, on the stated
+    // (wrong) premise that `link-demo` writes no `demo_match_link`. It writes
+    // one whenever `demo_id` is sent, which this action always sends, so the
+    // action now re-reads the real link and maps ITS id to the evidence id.
+    // These two tests pinned the fabricated shape; they now pin the real one,
+    // and the assertion they exist for — that unlink DELETEs the mapped
+    // evidence record — is unchanged and still able to fail.
+    it('maps the real demo_match_link to its evidence record, and DELETEs that record on unlink', async () => {
       const store = useEvidenceStore()
-      // linkManualDemo populates the internal demoLinkId → evidenceId map and
-      // constructs a synthetic linkedDemos entry keyed by the evidence id.
       store.browseDemos = [makeDemo({ id: 'demo-1', file_name: 'match.dem' })]
-      const created = makeEvidence({ id: 'evid-9' })
-      mockPost.mockResolvedValue({ data: { data: created } })
+      mockPost.mockResolvedValue({ data: { data: makeEvidence({ id: 'evid-9' }) } })
+      // The refetch `linkManualDemo` performs: the backend's real link row.
+      mockGet.mockResolvedValue({ data: { data: [makeLinkedDemo('link-77')] } })
 
-      await store.linkManualDemo('match-1', 'match.dem', 1)
-      expect(store.linkedDemos.map((d) => d.link.id)).toEqual(['evid-9'])
+      await store.linkManualDemo('match-1', 'match.dem', 1, 'demo-1')
+
+      expect(mockGet).toHaveBeenCalledWith('/v1/matches/{match_id}/demos', {
+        params: { path: { match_id: 'match-1' }, query: { include_stats: true } },
+      })
+      expect(store.linkedDemos.map((d) => d.link.id)).toEqual(['link-77'])
       expect(store.browseDemos).toEqual([]) // consumed from browse results
 
       mockDelete.mockResolvedValue({ data: { data: null } })
-      await store.unlinkDemoEvidence('match-1', 'evid-9')
+      await store.unlinkDemoEvidence('match-1', 'link-77')
 
       expect(mockDelete).toHaveBeenCalledWith('/v1/matches/{match_id}/evidence/{evidence_id}', {
         params: { path: { match_id: 'match-1', evidence_id: 'evid-9' } },
@@ -196,19 +207,73 @@ describe('Evidence Store', () => {
       const store = useEvidenceStore()
       store.browseDemos = [makeDemo({ id: 'demo-1', file_name: 'match.dem' })]
       mockPost.mockResolvedValue({ data: { data: makeEvidence({ id: 'evid-9' }) } })
-      await store.linkManualDemo('match-1', 'match.dem', 1)
+      mockGet.mockResolvedValue({ data: { data: [makeLinkedDemo('link-77')] } })
+      await store.linkManualDemo('match-1', 'match.dem', 1, 'demo-1')
 
       mockDelete.mockResolvedValue({ error: { status: 403, detail: 'Forbidden' } })
-      await expect(store.unlinkDemoEvidence('match-1', 'evid-9')).rejects.toThrow('Forbidden')
+      await expect(store.unlinkDemoEvidence('match-1', 'link-77')).rejects.toThrow('Forbidden')
 
       expect(store.unlinkDemoState.error).toBe('Forbidden')
-      expect(store.linkedDemos.map((d) => d.link.id)).toEqual(['evid-9'])
+      expect(store.linkedDemos.map((d) => d.link.id)).toEqual(['link-77'])
 
       // A retry after the failure still works and cleans up
       mockDelete.mockResolvedValue({ data: { data: null } })
-      await store.unlinkDemoEvidence('match-1', 'evid-9')
+      await store.unlinkDemoEvidence('match-1', 'link-77')
       expect(store.linkedDemos).toEqual([])
       expect(store.unlinkDemoState.error).toBeNull()
+    })
+  })
+
+  describe('validateDemoLink', () => {
+    it('resolves the evidence id from the evidence list, POSTs it, and re-reads both lists', async () => {
+      const store = useEvidenceStore()
+      store.linkedDemos = [makeLinkedDemo('link-77')]
+
+      // 1st GET: the evidence list the id is recovered from (joined on the
+      // demo's file name — both catalog link paths name the row after it).
+      // 2nd/3rd GET: the refetch of linked demos + evidence after the write.
+      mockGet
+        .mockResolvedValueOnce({
+          data: { data: [makeSummary({ id: 'ev-42', name: 'match.dem', evidence_type: 'demo' })] },
+        })
+        .mockResolvedValue({ data: { data: [] } })
+      mockPost.mockResolvedValue({
+        data: { data: { is_valid: true, confidence: 0.9, errors: [], warnings: [] } },
+      })
+
+      const result = await store.validateDemoLink('match-1', 'link-77', {
+        participant1Score: 13,
+        participant2Score: 7,
+      })
+
+      expect(mockPost).toHaveBeenCalledWith('/v1/matches/{match_id}/evidence/validate', {
+        params: { path: { match_id: 'match-1' } },
+        body: {
+          evidence_ids: ['ev-42'],
+          expected_participant1_score: 13,
+          expected_participant2_score: 7,
+        },
+      })
+      expect(result.is_valid).toBe(true)
+      // Post-write re-read: linked demos AND the evidence list.
+      expect(mockGet).toHaveBeenCalledWith('/v1/matches/{match_id}/demos', {
+        params: { path: { match_id: 'match-1' }, query: { include_stats: true } },
+      })
+    })
+
+    it('refuses to validate a link with no evidence record rather than POSTing a guess', async () => {
+      const store = useEvidenceStore()
+      store.linkedDemos = [makeLinkedDemo('link-77')]
+      mockGet.mockResolvedValue({ data: { data: [] } })
+
+      await expect(
+        store.validateDemoLink('match-1', 'link-77', {
+          participant1Score: 13,
+          participant2Score: 7,
+        }),
+      ).rejects.toThrow('No evidence record found for this demo')
+      expect(mockPost).not.toHaveBeenCalled()
+      expect(store.validateDemoState.error).toBe('No evidence record found for this demo')
     })
   })
 

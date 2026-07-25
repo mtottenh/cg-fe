@@ -295,18 +295,99 @@
             </v-card-text>
           </v-card>
 
-          <!-- Association -->
-          <v-card variant="outlined" class="mb-4">
-            <v-card-title class="text-subtitle-1">Association</v-card-title>
+          <!--
+            Association (P-75). This card was read-only and printed the raw
+            UUIDs, so an admin could not tell which league or tournament a demo
+            had been stamped onto, let alone correct it — and a mis-stamped
+            demo is exactly the P-42 failure mode (the auto-linker landing a
+            demo on the wrong target). The endpoint existed the whole time;
+            `demos.associate` simply had no caller.
+          -->
+          <v-card variant="outlined" class="mb-4" data-testid="association-card">
+            <v-card-title class="text-subtitle-1 d-flex align-center">
+              <span>Association</span>
+              <v-spacer />
+              <v-btn
+                v-if="!editingAssociation"
+                size="small"
+                variant="text"
+                prepend-icon="mdi-pencil"
+                @click="startEditAssociation"
+              >
+                Edit
+              </v-btn>
+            </v-card-title>
             <v-card-text>
-              <div class="mb-2">
-                <div class="text-caption text-medium-emphasis">League</div>
-                <div class="text-body-2">{{ currentDemo.league_id ?? 'None' }}</div>
-              </div>
-              <div class="mb-3">
-                <div class="text-caption text-medium-emphasis">Tournament</div>
-                <div class="text-body-2">{{ currentDemo.tournament_id ?? 'None' }}</div>
-              </div>
+              <template v-if="!editingAssociation">
+                <div class="mb-2">
+                  <div class="text-caption text-medium-emphasis">League</div>
+                  <div class="text-body-2" data-testid="association-league">
+                    {{ associationLeagueLabel }}
+                  </div>
+                </div>
+                <div class="mb-3">
+                  <div class="text-caption text-medium-emphasis">Tournament</div>
+                  <div class="text-body-2" data-testid="association-tournament">
+                    {{ associationTournamentLabel }}
+                  </div>
+                </div>
+              </template>
+
+              <template v-else>
+                <v-autocomplete
+                  v-model="associationForm.leagueId"
+                  aria-label="Associated league"
+                  data-testid="association-league-select"
+                  :items="leagueOptions"
+                  :loading="leaguesStore.fetchLeaguesState.loading"
+                  label="League"
+                  variant="outlined"
+                  density="compact"
+                  clearable
+                  no-filter
+                  hide-details
+                  class="mb-3"
+                  @update:search="onLeagueSearch"
+                />
+                <v-autocomplete
+                  v-model="associationForm.tournamentId"
+                  aria-label="Associated tournament"
+                  data-testid="association-tournament-select"
+                  :items="tournamentOptions"
+                  :loading="tournamentsStore.fetchTournamentsState.loading"
+                  label="Tournament"
+                  variant="outlined"
+                  density="compact"
+                  clearable
+                  no-filter
+                  hide-details
+                  class="mb-3"
+                  @update:search="onTournamentSearch"
+                />
+                <div class="d-flex ga-2">
+                  <v-btn
+                    size="small"
+                    color="primary"
+                    variant="tonal"
+                    :loading="demosStore.associateState.loading"
+                    @click="saveAssociation"
+                  >
+                    Save Association
+                  </v-btn>
+                  <v-btn size="small" variant="text" @click="cancelEditAssociation">
+                    Cancel
+                  </v-btn>
+                </div>
+                <v-alert
+                  v-if="demosStore.associateState.error"
+                  type="error"
+                  variant="tonal"
+                  density="compact"
+                  class="mt-3"
+                >
+                  {{ demosStore.associateState.error }}
+                </v-alert>
+              </template>
             </v-card-text>
           </v-card>
 
@@ -354,10 +435,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useDemosStore, type DemoMatchLinkResponse } from '@/stores/demos'
+import { useLeaguesStore } from '@/stores/leagues'
+import { useTournamentsStore } from '@/stores/tournaments'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { formatDateTime, formatRelativeTime, formatFileSize } from '@/utils/formatters'
@@ -369,6 +452,8 @@ import ErrorAlert from '@/components/ErrorAlert.vue'
 const route = useRoute()
 const router = useRouter()
 const demosStore = useDemosStore()
+const leaguesStore = useLeaguesStore()
+const tournamentsStore = useTournamentsStore()
 const {
   currentDemo, players, links,
   fetchDemoState, fetchPlayersState, fetchLinksState,
@@ -380,6 +465,42 @@ const confirmDialogState = useConfirmDialog()
 const linkModalOpen = ref(false)
 const notesText = ref('')
 const selectedCategory = ref('')
+
+// ---- Association (P-75) ---------------------------------------------------
+interface AssociationOption { title: string; value: string }
+
+const editingAssociation = ref(false)
+const associationForm = reactive<{ leagueId: string | null; tournamentId: string | null }>({
+  leagueId: null,
+  tournamentId: null,
+})
+// Resolved names for the ids currently on the demo. Kept separate from the
+// search results so the labels survive a search that does not include them.
+const associatedLeague = ref<AssociationOption | null>(null)
+const associatedTournament = ref<AssociationOption | null>(null)
+const leagueSearchResults = ref<AssociationOption[]>([])
+const tournamentSearchResults = ref<AssociationOption[]>([])
+
+const associationLeagueLabel = computed(() =>
+  currentDemo.value?.league_id ? (associatedLeague.value?.title ?? 'Loading…') : 'None',
+)
+const associationTournamentLabel = computed(() =>
+  currentDemo.value?.tournament_id ? (associatedTournament.value?.title ?? 'Loading…') : 'None',
+)
+
+/** Search results plus whatever is currently associated, so the selected value always has a label. */
+function withCurrent(
+  results: AssociationOption[],
+  current: AssociationOption | null,
+): AssociationOption[] {
+  if (!current || results.some((o) => o.value === current.value)) return results
+  return [current, ...results]
+}
+
+const leagueOptions = computed(() => withCurrent(leagueSearchResults.value, associatedLeague.value))
+const tournamentOptions = computed(() =>
+  withCurrent(tournamentSearchResults.value, associatedTournament.value),
+)
 
 const categoryOptions = [
   { title: 'Uncategorized', value: 'uncategorized' },
@@ -403,8 +524,101 @@ watch(currentDemo, (demo) => {
   if (demo) {
     notesText.value = demo.admin_notes ?? ''
     selectedCategory.value = demo.category
+    resolveAssociationNames()
   }
 })
+
+// ---- Association (P-75) ---------------------------------------------------
+
+/**
+ * Turn the demo's stored ids into names. The card printed the raw UUIDs, which
+ * told an admin nothing about *which* league or tournament a demo had been
+ * stamped onto.
+ */
+async function resolveAssociationNames() {
+  const demo = currentDemo.value
+  if (!demo) return
+
+  if (demo.league_id) {
+    if (associatedLeague.value?.value !== demo.league_id) {
+      try {
+        const league = await leaguesStore.fetchLeague(demo.league_id)
+        associatedLeague.value = { title: league.name, value: league.id }
+      } catch {
+        // A deleted league still has to render as something an admin can act
+        // on — fall back to the id rather than an empty cell.
+        associatedLeague.value = { title: demo.league_id, value: demo.league_id }
+      }
+    }
+  } else {
+    associatedLeague.value = null
+  }
+
+  if (demo.tournament_id) {
+    if (associatedTournament.value?.value !== demo.tournament_id) {
+      try {
+        const tournament = await tournamentsStore.fetchTournament(demo.tournament_id)
+        associatedTournament.value = { title: tournament.name, value: tournament.id }
+      } catch {
+        associatedTournament.value = { title: demo.tournament_id, value: demo.tournament_id }
+      }
+    }
+  } else {
+    associatedTournament.value = null
+  }
+}
+
+let leagueSearchTimer: ReturnType<typeof setTimeout> | null = null
+function onLeagueSearch(query: string) {
+  if (leagueSearchTimer) clearTimeout(leagueSearchTimer)
+  leagueSearchTimer = setTimeout(async () => {
+    const leagues = await leaguesStore.fetchLeagues(1, 20, undefined, query || undefined)
+    leagueSearchResults.value = leagues.map((l) => ({ title: l.name, value: l.id }))
+  }, 300)
+}
+
+let tournamentSearchTimer: ReturnType<typeof setTimeout> | null = null
+function onTournamentSearch(query: string) {
+  if (tournamentSearchTimer) clearTimeout(tournamentSearchTimer)
+  tournamentSearchTimer = setTimeout(async () => {
+    const tournaments = await tournamentsStore.fetchTournaments({
+      search: query || undefined,
+      per_page: 20,
+    })
+    tournamentSearchResults.value = tournaments.map((t) => ({ title: t.name, value: t.id }))
+  }, 300)
+}
+
+function startEditAssociation() {
+  demosStore.associateState.error = null
+  associationForm.leagueId = currentDemo.value?.league_id ?? null
+  associationForm.tournamentId = currentDemo.value?.tournament_id ?? null
+  editingAssociation.value = true
+  onLeagueSearch('')
+  onTournamentSearch('')
+}
+
+function cancelEditAssociation() {
+  editingAssociation.value = false
+  demosStore.associateState.error = null
+}
+
+async function saveAssociation() {
+  if (!currentDemo.value) return
+  try {
+    await demosStore.associate(currentDemo.value.id, {
+      league_id: associationForm.leagueId,
+      tournament_id: associationForm.tournamentId,
+    })
+    editingAssociation.value = false
+    await resolveAssociationNames()
+    snackbar.success('Association updated')
+  } catch {
+    // The inline alert renders `associateState.error`; the snackbar names the
+    // failure so it is not silent when the card is scrolled out of view.
+    snackbar.error(demosStore.associateState.error || 'Failed to update association')
+  }
+}
 
 // Methods
 async function fetchData() {

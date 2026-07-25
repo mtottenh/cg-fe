@@ -26,13 +26,14 @@ import {
  *   - catalog      POST /v1/admin/demos                   (DemoCatalogModal, single)
  *   - batch        POST /v1/admin/demos/batch             (DemoCatalogModal, batch)
  *
+ * The Association card (`POST /v1/admin/demos/{id}/associate`) was in this
+ * spec's "not covered" list as P-75 — read-only, printing raw UUIDs, with
+ * `demos.associate` reaching no control. It is fixed and driven by
+ * `admin-demo-association.spec.ts`.
+ *
  * NOT covered, deliberately — the handlers exist but no control reaches them,
  * which is the finding rather than a test (COVERAGE-PLAN §4-F):
  *
- *   - `POST /v1/admin/demos/{id}/associate` — `demos.associate` (stores/demos.ts:185)
- *     has zero component consumers. `AdminDemoDetailPage.vue:298-310` renders the
- *     league/tournament association as read-only text with no edit control, so a
- *     demo mis-stamped by the auto-linker cannot be re-associated from the portal.
  *   - `POST /v1/admin/demos/{id}/stats` — `demos.submitStats` (stores/demos.ts:252)
  *     likewise has no consumer. `AdminDemoDetailPage.handleReprocess` (:461-466) is
  *     the "Retry Processing" button's handler and it calls NO API at all: it pops a

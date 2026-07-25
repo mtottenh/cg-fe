@@ -67,6 +67,15 @@ function authHeaders(token: string): Record<string, string> {
 // The match
 // =============================================================================
 
+/** A participant, paired with the Steam ID written onto their player row. */
+export interface DemoParticipant {
+  token: string
+  userId: string
+  username: string
+  registrationId: string
+  steamId: string
+}
+
 export interface DemoBrowserScenario extends CheckInScenario {
   /** The tournament's game — the demo catalog is keyed on it. */
   gameId: string
@@ -79,6 +88,16 @@ export interface DemoBrowserScenario extends CheckInScenario {
    * relevance score, which the browser renders as a percentage chip.
    */
   referenceTime: string
+  /**
+   * The two participants **in the match's own order**, i.e. `[0]` is
+   * `participant1_registration_id`.
+   *
+   * Seeding is random, so `p1` is not reliably participant 1. Anything that
+   * compares a demo's per-team scores against `participant1_score` /
+   * `participant2_score` — demo validation, above all — has to seed and claim
+   * in this order or it is asserting on a coin flip.
+   */
+  ordered: [DemoParticipant, DemoParticipant]
 }
 
 interface MatchRow {
@@ -87,6 +106,10 @@ interface MatchRow {
   match_format: string
   started_at: string | null
   scheduled_at: string | null
+  participant1_registration_id: string | null
+  participant2_registration_id: string | null
+  participant1_score: number
+  participant2_score: number
 }
 
 export async function fetchMatch(
@@ -149,12 +172,33 @@ export async function createDemoBrowserMatch(adminToken: string): Promise<DemoBr
     throw new Error('Match has neither started_at nor scheduled_at; discovery has no time anchor')
   }
 
+  const asParticipant = (p: CheckInScenario['p1'], steamId: string): DemoParticipant => ({
+    token: p.token,
+    userId: p.userId,
+    username: p.username,
+    registrationId: p.registrationId,
+    steamId,
+  })
+  const first = asParticipant(scenario.p1, p1SteamId)
+  const second = asParticipant(scenario.p2, p2SteamId)
+  const ordered: [DemoParticipant, DemoParticipant] =
+    match.participant1_registration_id === scenario.p1.registrationId
+      ? [first, second]
+      : [second, first]
+  if (
+    match.participant1_registration_id !== ordered[0].registrationId ||
+    match.participant2_registration_id !== ordered[1].registrationId
+  ) {
+    throw new Error('Could not map the match participants back onto the scenario registrations')
+  }
+
   return {
     ...scenario,
     gameId: await fetchTournamentGameId(scenario.tournamentId),
     p1SteamId,
     p2SteamId,
     referenceTime,
+    ordered,
   }
 }
 
@@ -266,24 +310,114 @@ export async function listLinkedDemosViaApi(
 }
 
 /**
- * The `match_evidence` row a successful link writes alongside the link.
+ * The `match_evidence` row a successful link writes alongside the link, read
+ * from the **default** listing — no `include_discovered`, exactly what
+ * `stores/evidence.ts fetchEvidence` sends and what every evidence surface in
+ * the product therefore sees.
  *
- * `include_discovered=true` is not optional here. `EvidenceService::link_discovered`
- * stamps every row it creates `EvidenceSource::PluginDiscovery`
- * (`api/crates/portal-domain/src/services/tournament/evidence.rs:711`) — even
- * though a human clicked "Link demo" — and `list_evidence`
- * (`handlers/evidence.rs:325-329`) drops those rows from the default listing.
- * The cross-check has to ask for them explicitly to see what the UI just wrote.
+ * P-109 fixed: this used to have to pass `include_discovered=true`.
+ * `EvidenceService::link_discovered` stamped every row it created
+ * `EvidenceSource::PluginDiscovery` even though a human had clicked "Link
+ * demo", and `list_evidence` drops those from the default listing — so the
+ * cross-check could see a row the application never could. A human-initiated
+ * link is now stamped `ManualUpload`, so the default listing is the honest
+ * cross-check and asserting on it can fail if the stamp regresses.
  */
 export async function listEvidenceViaApi(
   token: string,
   matchId: string,
 ): Promise<EvidenceSummary[]> {
-  const resp = await fetch(`${API_URL}/v1/matches/${matchId}/evidence?include_discovered=true`, {
+  const resp = await fetch(`${API_URL}/v1/matches/${matchId}/evidence`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   const body = await jsonOrThrow<ApiResult<EvidenceSummary[]>>(resp, 'List evidence')
   return body.data ?? []
+}
+
+/**
+ * Attach a catalogued demo to a match as a precondition, over the same
+ * endpoint `DemoBrowser`'s suggestion list uses (`link-discovered` with the
+ * `catalog:` external id).
+ */
+export async function linkCatalogDemoViaApi(
+  token: string,
+  matchId: string,
+  demoId: string,
+  gameNumber = 1,
+): Promise<{ id: string }> {
+  const resp = await fetch(`${API_URL}/v1/matches/${matchId}/evidence/link-discovered`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ external_id: `catalog:${demoId}`, game_number: gameNumber }),
+  })
+  const body = await jsonOrThrow<ApiResult<{ id: string }>>(resp, 'Link catalog demo')
+  return body.data
+}
+
+/**
+ * Record and confirm a result on the match, in the match's own participant
+ * order, carrying a **per-game** score for game 1.
+ *
+ * The two scores are different things and the distinction is load-bearing here:
+ * `SubmitResultClaimRequest.participant{1,2}_score` is the *series* score (maps
+ * won, `range(min = 0, max = 10)`), while `game_results[].participant{1,2}_score`
+ * is that map's round score. A demo covers one map, so demo validation compares
+ * against the game result — validating against the series score would compare
+ * two different units.
+ */
+export async function recordMatchResult(
+  scenario: DemoBrowserScenario,
+  gameParticipant1Score: number,
+  gameParticipant2Score: number,
+  mapId = 'de_dust2',
+): Promise<void> {
+  const [first, second] = scenario.ordered
+  const firstWins = gameParticipant1Score > gameParticipant2Score
+  const winner = firstWins ? first : second
+
+  const submitted = await fetch(`${API_URL}/v1/matches/${scenario.matchId}/result`, {
+    method: 'POST',
+    headers: authHeaders(first.token),
+    body: JSON.stringify({
+      claimed_winner_registration_id: winner.registrationId,
+      participant1_score: firstWins ? 1 : 0,
+      participant2_score: firstWins ? 0 : 1,
+      game_results: [
+        {
+          game_number: 1,
+          map_id: mapId,
+          participant1_score: gameParticipant1Score,
+          participant2_score: gameParticipant2Score,
+        },
+      ],
+    }),
+  })
+  const claimBody = await jsonOrThrow<ApiResult<{ claim: { id: string } }>>(
+    submitted,
+    'Submit result claim',
+  )
+
+  const confirmed = await fetch(
+    `${API_URL}/v1/matches/${scenario.matchId}/result/${claimBody.data.claim.id}/confirm`,
+    { method: 'POST', headers: authHeaders(second.token), body: JSON.stringify({}) },
+  )
+  await jsonOrThrow<ApiResult<unknown>>(confirmed, 'Confirm result claim')
+
+  // Fail loudly rather than validating against a claim that never took the
+  // game score — the UI reads it back off `game_results`, and an empty list
+  // would disable the control rather than fail an assertion.
+  const resp = await fetch(`${API_URL}/v1/matches/${scenario.matchId}/result`, {
+    headers: { Authorization: `Bearer ${first.token}` },
+  })
+  const current = await jsonOrThrow<
+    ApiResult<{ game_results: Array<{ game_number: number; participant1_score: number }> }>
+  >(resp, 'Get current result')
+  const game1 = current.data.game_results.find((g) => g.game_number === 1)
+  if (!game1 || game1.participant1_score !== gameParticipant1Score) {
+    throw new Error(
+      `Confirmed claim does not carry the game-1 score: ${JSON.stringify(current.data.game_results)}`,
+    )
+  }
 }
 
 /** Demos visible to the "Browse Demo Catalog" search, by map name. */

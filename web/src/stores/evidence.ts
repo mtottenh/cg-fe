@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api } from '@/api'
+import { api, ApiError } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 
@@ -144,9 +144,6 @@ export const useEvidenceStore = defineStore('evidence', () => {
     demoId?: string,
   ): Promise<EvidenceResponse> {
     return withActionState(linkManualDemoState, async () => {
-      // Grab the demo data before filtering it out of browse results
-      const demo = browseDemos.value.find(d => d.file_name === demoName)
-
       const result = await unwrapApi(api.POST('/v1/matches/{match_id}/evidence/link-demo', {
         params: { path: { match_id: matchId } },
         body: {
@@ -160,30 +157,22 @@ export const useEvidenceStore = defineStore('evidence', () => {
       // Remove from browse results
       browseDemos.value = browseDemos.value.filter(d => d.file_name !== demoName)
 
-      // The link-demo endpoint creates an evidence record, not a demo_match_link.
-      // GET /v1/matches/{match_id}/demos reads from demo_match_links, so fetchLinkedDemos
-      // won't find it. Instead, construct a synthetic linked demo entry from the data we have.
-      if (demo) {
-        const syntheticLink: DemoMatchLinkWithDemoResponse = {
-          link: {
-            id: evidenceResponse.id,
-            match_id: matchId,
-            demo_id: demo.id,
-            link_type: 'evidence',
-            game_number: gameNumber ?? null,
-            confidence_score: null,
-            validated: false,
-            created_at: evidenceResponse.created_at,
-            linked_at: evidenceResponse.created_at,
-            linked_by_user_id: evidenceResponse.uploaded_by_user_id ?? null,
-            validated_at: null,
-            validation_result: null,
-          },
-          demo,
-          players: null,
+      // P-110: read the real link back instead of fabricating one.
+      //
+      // This used to build a *synthetic* `DemoMatchLinkWithDemoResponse` from
+      // the browse row, on the stated grounds that `link-demo` creates only an
+      // evidence record. It does create a `demo_match_link` whenever the
+      // request carries `demo_id` — which this action always sends — so the
+      // synthetic row shadowed a real one with the wrong `link.id` (it used the
+      // evidence id), a hardcoded `validated: false` that could never update,
+      // and no `players`. Anything that refetched replaced it and the ids moved
+      // under the caller. Re-read, exactly as `linkDiscoveredDemo` does.
+      if (demoId) {
+        await fetchLinkedDemos(matchId)
+        const newLink = linkedDemos.value.find(d => d.link.demo_id === demoId)
+        if (newLink) {
+          evidenceIdMap.value[newLink.link.id] = evidenceResponse.id
         }
-        linkedDemos.value = [...linkedDemos.value, syntheticLink]
-        evidenceIdMap.value[evidenceResponse.id] = evidenceResponse.id
       }
 
       return evidenceResponse
@@ -258,6 +247,68 @@ export const useEvidenceStore = defineStore('evidence', () => {
         params: { path: { match_id: matchId } },
         body,
       }))
+      return result.data
+    }, 'Failed to validate demo')
+  }
+
+  /**
+   * P-111: validate a *linked demo* against the claimed score for its game.
+   *
+   * `validateEvidence` below is keyed on evidence ids, but every surface that
+   * shows a demo — `DemoBrowser`'s Linked Demos cards, `EvidenceDisplay`'s
+   * table, the admin demo page's Match Links list — is keyed on the
+   * `demo_match_link`. This resolves one to the other and calls the endpoint,
+   * which is what makes the "Validated" chip reachable at all: nothing in the
+   * product had ever called a validation endpoint, so `validated` was `false`
+   * on every link row that has ever existed.
+   *
+   * The scores are the claimed scores **for the demo's game** (rounds on one
+   * map), not the match's series score — the caller reads them off the result
+   * claim's `game_results`. The backend refuses the call without them rather
+   * than comparing two different units.
+   *
+   * The evidence id comes from `evidenceIdMap` when the link was made in this
+   * session; otherwise it is recovered by joining the match's evidence list on
+   * the demo's file name, which both catalog link paths use verbatim as the
+   * evidence row's `name` (`handlers/evidence.rs` — `link_demo` and
+   * `link_discovered_evidence`'s catalog branch).
+   */
+  async function validateDemoLink(
+    matchId: string,
+    demoLinkId: string,
+    claimed: { participant1Score: number; participant2Score: number },
+  ): Promise<components['schemas']['ValidationResultResponse']> {
+    return withActionState(validateDemoState, async () => {
+      const linked = linkedDemos.value.find(d => d.link.id === demoLinkId)
+      // Thrown as ApiError so `withActionState` surfaces the real reason —
+      // it replaces any other error type with the generic fallback message.
+      if (!linked) {
+        throw new ApiError(404, 'That demo is no longer linked to this match')
+      }
+
+      let evidenceId = evidenceIdMap.value[demoLinkId]
+      if (!evidenceId) {
+        const records = await fetchEvidence(matchId)
+        const match = records.find(e => e.name === linked.demo.file_name)
+        if (!match) {
+          throw new ApiError(404, 'No evidence record found for this demo')
+        }
+        evidenceId = match.id
+        evidenceIdMap.value[demoLinkId] = evidenceId
+      }
+
+      const result = await unwrapApi(api.POST('/v1/matches/{match_id}/evidence/validate', {
+        params: { path: { match_id: matchId } },
+        body: {
+          evidence_ids: [evidenceId],
+          expected_participant1_score: claimed.participant1Score,
+          expected_participant2_score: claimed.participant2Score,
+        },
+      }))
+
+      // Both the link row and the evidence row were just written server-side;
+      // re-read rather than guessing what the verdict did to them.
+      await Promise.all([fetchLinkedDemos(matchId), fetchEvidence(matchId)])
       return result.data
     }, 'Failed to validate demo')
   }
@@ -344,6 +395,7 @@ export const useEvidenceStore = defineStore('evidence', () => {
     completeUpload,
     validateEvidence,
     validateDemo,
+    validateDemoLink,
     getAccessUrl,
     linkEvidence,
 

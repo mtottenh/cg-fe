@@ -242,6 +242,7 @@
         :key="item.link.id"
         variant="outlined"
         class="mb-2 pa-3"
+        :data-testid="`linked-demo-${item.link.id}`"
       >
         <div class="d-flex align-center justify-space-between">
           <div class="flex-grow-1 mr-2">

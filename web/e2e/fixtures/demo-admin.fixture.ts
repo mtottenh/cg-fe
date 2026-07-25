@@ -95,6 +95,30 @@ export async function catalogDemoViaApi(
   return body.data
 }
 
+/**
+ * Stamp a demo onto a league/tournament through the admin API.
+ *
+ * Used to seed the *wrong* stamp that P-75's repair path exists to correct —
+ * the P-42 failure mode, where the auto-linker lands a demo on the wrong
+ * target. The correction itself is driven through the UI by the spec.
+ */
+export async function associateDemoViaApi(
+  adminToken: string,
+  demoId: string,
+  body: { league_id?: string | null; tournament_id?: string | null },
+): Promise<AdminDemo> {
+  const resp = await fetch(`${API_URL}/v1/admin/demos/${demoId}/associate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
+    body: JSON.stringify(body),
+  })
+  const parsed = await jsonOrThrow<{ data: AdminDemo }>(resp, 'Associate demo')
+  return parsed.data
+}
+
 /** Read a demo back as the admin (sees hidden demos). */
 export async function getDemoViaApi(token: string, demoId: string): Promise<AdminDemo> {
   const resp = await fetch(`${API_URL}/v1/demos/${demoId}`, {

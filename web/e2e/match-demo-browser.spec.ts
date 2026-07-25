@@ -26,19 +26,20 @@ import {
  *     → `POST /v1/matches/{id}/evidence/link-discovered`
  *   - `searchDemos`         → `evidence.fetchBrowseDemos` (`:118`)
  *     → `GET /v1/demos`
+ *   - `linkManualDemo`      → `evidence.linkManualDemo` (`:140`)
+ *     → `POST /v1/matches/{id}/evidence/link-demo`
  *   - the empty/error states the component renders off `discoverState` and
  *     `linkDemoState`.
  *
- * Not covered, and that is a finding rather than a gap (see the report):
- *   - `linkManualDemo` (the Browse-catalog "Link demo" button) routes through
- *     `link_demo` (`api/.../handlers/evidence.rs:1175`), which resolves the demo
- *     by **file name against the external demo-stats service** rather than by
- *     the `demo_id` the UI already holds. With no stats service the call always
- *     404s, so the button cannot be driven honestly.
- *   - demo *validation*: `evidence.validateDemo` / `validateEvidence` /
- *     `fetchDemoStats` have zero component consumers, and nothing in the
- *     codebase ever calls `DemoMatchLinkRepository::mark_validated`, so the
- *     "Validated" chip at `DemoBrowser.vue:253` can never light up.
+ * P-110 fixed: `linkManualDemo` was previously undrivable. `link_demo` resolved
+ * the demo by **file name against the external demo-stats service** and 404'd
+ * when it was absent — while holding the `demo_id` it then used anyway — so the
+ * button offered every catalogued demo and refused the ones whose `.stats.json`
+ * was missing, which in this stack (no stats service) is all of them. It now
+ * resolves from the catalog the list itself came from.
+ *
+ * Demo *validation* lives in `demo-evidence-validation.spec.ts` — it needs a
+ * recorded result to validate against, which this surface precedes.
  */
 
 test.describe('Match evidence — demo browser', () => {
@@ -234,5 +235,76 @@ test.describe('Match evidence — demo browser', () => {
     // Backend cross-check: the search is the API filter, not client-side.
     const viaApi = await browseDemosViaApi(scenario.p1.token, demo.mapName)
     expect(viaApi.map((d) => d.id)).toEqual([demo.id])
+  })
+
+  /**
+   * P-110. The Browse-catalog "Link demo" button, driven end to end for the
+   * first time. The catalogued demo here has no `.stats.json` anywhere — no
+   * stats service runs in this stack at all — which is exactly the case the
+   * old handler refused: it resolved `demo_name` against the stats service and
+   * 404'd, despite the request carrying the catalog `demo_id` it then used to
+   * build the link.
+   */
+  test('participant links a demo from the browse catalog, not just from suggestions', async ({
+    page,
+  }) => {
+    const adminToken = await getAdminToken()
+    const scenario = await createDemoBrowserMatch(adminToken)
+    // Strangers' Steam IDs: this demo must reach the panel through the catalog
+    // search, not through discovery, or the test would be driving the other
+    // button. With no suggestions, the only "Link demo" on the page is the
+    // browse one.
+    const demo = await seedCatalogDemo(adminToken, {
+      gameId: scenario.gameId,
+      steamIds: ['76561198000000555', '76561198000000666'],
+      matchDate: scenario.referenceTime,
+    })
+
+    await primeAuthStorage(page, scenario.p1.token, scenario.p1.userId)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`)
+    await expect(page.getByText('Submit Match Result')).toBeVisible({ timeout: 15000 })
+    await page.getByRole('button', { name: 'Browse Demos' }).click()
+
+    const browser = page.locator('.demo-browser')
+    await expect(
+      browser.getByText('No demo suggestions found for this match. Try searching the demo catalog below.'),
+    ).toBeVisible({ timeout: 15000 })
+
+    await browser.getByRole('textbox', { name: 'Map name' }).fill(demo.mapName)
+    await browser.getByRole('button', { name: 'Search' }).click()
+
+    const resultCard = browser.locator('.v-card').filter({ hasText: demo.file_name })
+    await expect(resultCard).toHaveCount(1, { timeout: 15000 })
+
+    const linkButton = browser.getByRole('button', { name: 'Link demo', exact: true })
+    await expect(linkButton).toHaveCount(1)
+    await linkButton.click()
+
+    // The catalog row moves into Linked Demos with its parsed metadata, which
+    // only a real `demo_match_link` read back from the server can supply — the
+    // store used to fabricate this entry client-side.
+    await expect(browser.getByText('Linked Demos')).toBeVisible({ timeout: 15000 })
+    const linkedCard = browser.locator('.v-card').filter({ hasText: demo.mapName })
+    await expect(linkedCard.getByText('Game 1', { exact: true })).toBeVisible()
+    await expect(
+      linkedCard.getByText(
+        `${demo.team1Name} ${demo.team1Score} : ${demo.team2Score} ${demo.team2Name}`,
+      ),
+    ).toBeVisible()
+    // ...and it is consumed from the browse results, so it cannot be linked twice.
+    await expect(browser.getByRole('button', { name: 'Link demo', exact: true })).toHaveCount(0)
+
+    // Backend cross-check: a real link row, and an evidence row the DEFAULT
+    // listing can see (P-109 on this path).
+    const linked = await listLinkedDemosViaApi(scenario.p1.token, scenario.matchId)
+    expect(linked).toHaveLength(1)
+    expect(linked[0].link.demo_id).toBe(demo.id)
+    expect(linked[0].link.game_number).toBe(1)
+    expect(linked[0].link.link_type).toBe('evidence')
+
+    const evidence = await listEvidenceViaApi(scenario.p1.token, scenario.matchId)
+    expect(evidence).toHaveLength(1)
+    expect(evidence[0].name).toBe(demo.file_name)
+    expect(evidence[0].evidence_type).toBe('demo')
   })
 })

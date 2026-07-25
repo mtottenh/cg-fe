@@ -79,6 +79,11 @@ const EXEMPT = [
   'src/pages/admin/AdminBansPage.vue',
   // availability override `reason` is free text a player types.
   'src/components/AvailabilityOverridesManager.vue',
+  // admin score-correction `reason` is free text an operator types
+  // (`MatchResultOverrideResponse.reason: String`, P-72) — there is no enum.
+  // The only other enum-shaped field this file renders (`ResultClaim.status`)
+  // already goes through `getResultStatusLabel`.
+  'src/components/admin/match-detail/MatchResultsTab.vue',
 ]
 
 // `role` and `reason` added 2026-07-25 (Lane H): both are now generated unions

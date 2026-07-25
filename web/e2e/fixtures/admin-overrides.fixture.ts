@@ -344,3 +344,108 @@ export async function matchesWon(
   }
   return row.matches_won
 }
+
+// ---------------------------------------------------------------------------
+// P-72: admin score correction
+// ---------------------------------------------------------------------------
+
+/** One recorded admin score correction, from
+ *  `GET /v1/admin/tournaments/{id}/matches/{id}/result-overrides`. */
+export interface ResultOverrideEntry {
+  id: string
+  match_id: string
+  previous_participant1_score?: number
+  previous_participant2_score?: number
+  previous_winner_registration_id?: string
+  new_participant1_score: number
+  new_participant2_score: number
+  new_winner_registration_id: string
+  reason: string
+  changed_by_player_id: string
+  changed_by_name?: string
+  created_at: string
+}
+
+/**
+ * Drive a match to a CONFIRMED result through the real claim flow: p1 submits
+ * 1-0, p2 confirms.
+ *
+ * Deliberately not a direct database write. The P-72 scenario is "a score both
+ * parties agreed on turns out to be wrong", and the thing that makes it
+ * uncorrectable is the *absence* of a dispute row — so the fixture has to
+ * produce that state the way the product does, not approximate it.
+ *
+ * The walk to `in_progress` goes ready → scheduled → in_progress via the admin
+ * transition, skipping `pick_ban`, so no veto session exists and the submitted
+ * map is validated against the tournament's pool rather than a veto result.
+ */
+export async function recordConfirmedResult(
+  adminToken: string,
+  scenario: OverrideScenario,
+  matchId: string,
+  participant1: OverridePlayer,
+  participant2: OverridePlayer,
+): Promise<void> {
+  for (const status of ['scheduled', 'in_progress'] as const) {
+    await transitionMatchViaApi(adminToken, scenario.tournamentId, matchId, status)
+  }
+
+  const submitResp = await fetch(`${API_URL}/v1/matches/${matchId}/result`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${participant1.token}`,
+    },
+    body: JSON.stringify({
+      claimed_winner_registration_id: participant1.registrationId,
+      participant1_score: 1,
+      participant2_score: 0,
+      game_results: [
+        {
+          game_number: 1,
+          map_id: CS2_MAP_POOL[0],
+          participant1_score: 16,
+          participant2_score: 10,
+          evidence_ids: [],
+          demo_link_id: null,
+        },
+      ],
+      evidence_ids: [],
+      demo_link_ids: [],
+      notes: null,
+    }),
+  })
+  const submitted = await jsonOrThrow<ApiResult<{ claim: { id: string } }>>(
+    submitResp,
+    'Submit result claim',
+  )
+
+  const confirmResp = await fetch(
+    `${API_URL}/v1/matches/${matchId}/result/${submitted.data.claim.id}/confirm`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${participant2.token}`,
+      },
+      body: JSON.stringify({}),
+    },
+  )
+  if (!confirmResp.ok) {
+    throw new Error(`Confirm result claim failed (${confirmResp.status}): ${await confirmResp.text()}`)
+  }
+}
+
+/** Read the admin score-correction audit trail for a match. */
+export async function listResultOverrides(
+  adminToken: string,
+  tournamentId: string,
+  matchId: string,
+): Promise<ResultOverrideEntry[]> {
+  const resp = await fetch(
+    `${API_URL}/v1/admin/tournaments/${tournamentId}/matches/${matchId}/result-overrides`,
+    { headers: { Authorization: `Bearer ${adminToken}` } },
+  )
+  const body = await jsonOrThrow<ApiResult<ResultOverrideEntry[]>>(resp, 'List result overrides')
+  return body.data ?? []
+}

@@ -6,6 +6,8 @@ import { replaceById } from '@/utils/collections'
 
 type TournamentMatchResponse = components['schemas']['TournamentMatchResponse']
 type TournamentBracketResponse = components['schemas']['TournamentBracketResponse']
+type MatchParticipantsResponse = components['schemas']['MatchParticipantsResponse']
+type MatchResultOverrideResponse = components['schemas']['MatchResultOverrideResponse']
 
 /**
  * Matches slice: matches, brackets, admin match actions, progression, player match actions.
@@ -17,6 +19,10 @@ export function createMatchesSlice() {
   // tournament switch (a deep link into tournament B after visiting A would
   // otherwise read A's cached list).
   const matchesTournamentId = ref<string | null>(null)
+  /** Resolved participants for the match currently on screen (P-53/P-56). */
+  const matchParticipants = ref<MatchParticipantsResponse | null>(null)
+  /** Admin score corrections recorded against the match on screen (P-72). */
+  const matchResultOverrides = ref<MatchResultOverrideResponse[]>([])
 
   const fetchMatchesState = createActionState()
   const fetchMatchState = createActionState()
@@ -31,6 +37,9 @@ export function createMatchesSlice() {
   const matchCheckInState = createActionState()
   const forfeitMatchState = createActionState()
   const fetchBracketStandingsState = createActionState()
+  const fetchMatchParticipantsState = createActionState()
+  const overrideMatchResultState = createActionState()
+  const fetchMatchResultOverridesState = createActionState()
 
   // Latest-wins guard for the matches list across rapid tournament switches.
   const beginMatchesFetch = createLatestGuard()
@@ -62,6 +71,86 @@ export function createMatchesSlice() {
       }
       return result.data
     }, 'Failed to fetch match')
+  }
+
+  /**
+   * Resolve both of a match's registrations, and which one is the caller's.
+   *
+   * P-53/P-56: this used to be derived in the browser by fetching the
+   * tournament's registrations list and scanning it. That list is paginated
+   * and the API clamps `per_page` at 100, so any participant whose row sorted
+   * past #100 resolved to `null` — and every participant-only affordance on
+   * the match page (submit a result, confirm one, schedule, check in) is gated
+   * on that value. Result submission was therefore impossible, silently, for
+   * everyone past row 100 of a 100+ participant tournament.
+   *
+   * The scan is deliberately not kept as a fallback: a fallback that only
+   * works below 100 participants is the bug, and leaving it in is how the
+   * ceiling comes back.
+   */
+  async function fetchMatchParticipants(
+    tournamentId: string,
+    matchId: string,
+  ): Promise<MatchParticipantsResponse> {
+    return withActionState(fetchMatchParticipantsState, async () => {
+      const result = await unwrapApi(api.GET(
+        '/v1/tournaments/{tournament_id}/matches/{match_id}/participants',
+        { params: { path: { tournament_id: tournamentId, match_id: matchId } } },
+      ))
+      matchParticipants.value = result.data
+      return result.data
+    }, 'Failed to resolve match participants')
+  }
+
+  /**
+   * P-72: correct the score recorded against a match.
+   *
+   * The only other admin path that can write a score requires a dispute to
+   * exist (`POST /v1/admin/disputes/{id}/resolve/adjusted`), so a wrong score
+   * that both parties confirmed — or that auto-confirmed after 24h — with
+   * nobody disputing was uncorrectable by any operator.
+   */
+  async function adminOverrideMatchResult(
+    tournamentId: string,
+    matchId: string,
+    participant1Score: number,
+    participant2Score: number,
+    reason: string,
+  ): Promise<TournamentMatchResponse> {
+    return withActionState(overrideMatchResultState, async () => {
+      const result = await unwrapApi(api.POST(
+        '/v1/admin/tournaments/{tournament_id}/matches/{match_id}/result-override',
+        {
+          params: { path: { tournament_id: tournamentId, match_id: matchId } },
+          body: {
+            participant1_score: participant1Score,
+            participant2_score: participant2Score,
+            reason,
+          },
+        },
+      ))
+      // Keep the cached list coherent so the modal and the matches table both
+      // show the corrected score without a full refetch.
+      if (matchesTournamentId.value === tournamentId && matches.value.length > 0) {
+        replaceById(matches.value, result.data)
+      }
+      return result.data
+    }, 'Failed to correct match result')
+  }
+
+  /** The audit trail of admin score corrections for one match, newest first. */
+  async function fetchMatchResultOverrides(
+    tournamentId: string,
+    matchId: string,
+  ): Promise<MatchResultOverrideResponse[]> {
+    return withActionState(fetchMatchResultOverridesState, async () => {
+      const result = await unwrapApi(api.GET(
+        '/v1/admin/tournaments/{tournament_id}/matches/{match_id}/result-overrides',
+        { params: { path: { tournament_id: tournamentId, match_id: matchId } } },
+      ))
+      matchResultOverrides.value = result.data
+      return result.data
+    }, 'Failed to fetch score corrections')
   }
 
   async function fetchBrackets(tournamentId: string): Promise<TournamentBracketResponse[]> {
@@ -210,12 +299,16 @@ export function createMatchesSlice() {
     matches.value = []
     brackets.value = []
     matchesTournamentId.value = null
+    matchParticipants.value = null
+    matchResultOverrides.value = []
   }
 
   return {
     // State
     matches,
     brackets,
+    matchParticipants,
+    matchResultOverrides,
     // Per-action states
     fetchMatchesState,
     fetchMatchState,
@@ -230,6 +323,9 @@ export function createMatchesSlice() {
     matchCheckInState,
     forfeitMatchState,
     fetchBracketStandingsState,
+    fetchMatchParticipantsState,
+    overrideMatchResultState,
+    fetchMatchResultOverridesState,
     // Actions
     fetchMatches,
     fetchMatch,
@@ -244,6 +340,9 @@ export function createMatchesSlice() {
     matchCheckIn,
     forfeitMatch,
     fetchBracketStandings,
+    fetchMatchParticipants,
+    adminOverrideMatchResult,
+    fetchMatchResultOverrides,
     clear,
   }
 }

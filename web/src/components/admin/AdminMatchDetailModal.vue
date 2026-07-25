@@ -38,7 +38,11 @@
           </v-tabs-window-item>
 
           <v-tabs-window-item value="results">
-            <MatchResultsTab />
+            <MatchResultsTab
+              :match="match"
+              :tournament-id="tournamentId"
+              @updated="emit('updated')"
+            />
           </v-tabs-window-item>
 
           <v-tabs-window-item value="evidence">

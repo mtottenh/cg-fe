@@ -48,6 +48,25 @@ function makeMatch(overrides: Partial<TournamentMatchResponse> = {}): Tournament
   } as TournamentMatchResponse
 }
 
+type MatchParticipants = NonNullable<
+  ReturnType<typeof useTournamentsStore>['matchParticipants']
+>
+
+/**
+ * The `GET .../matches/{id}/participants` payload the page now resolves
+ * identity from. `my_registration_id` is decided server-side from the match
+ * row, which is what removed the 100-participant ceiling (P-53/P-56).
+ */
+function makeParticipants(overrides: Partial<MatchParticipants> = {}): MatchParticipants {
+  return {
+    match_id: 'match-1',
+    participant1: { id: 'reg-a', player_id: 'player-a' },
+    participant2: { id: 'reg-b', player_id: 'player-b' },
+    my_registration_id: 'reg-a',
+    ...overrides,
+  } as MatchParticipants
+}
+
 function makeTournament(overrides: Partial<TournamentResponse> = {}): TournamentResponse {
   return {
     id: 'tourney-1',
@@ -80,10 +99,10 @@ describe('useMatchDetail panel-visibility computeds', () => {
     authStore.playerId = 'player-a'
     authStore.user = { id: 'user-a', username: 'u' } as unknown as typeof authStore.user extends infer U ? U : never
     tournamentsStore.currentTournament = makeTournament()
-    tournamentsStore.registrations = [
-      { id: 'reg-a', player_id: 'player-a', status: 'confirmed' } as unknown as (typeof tournamentsStore.registrations)[number],
-      { id: 'reg-b', player_id: 'player-b', status: 'confirmed' } as unknown as (typeof tournamentsStore.registrations)[number],
-    ]
+    // P-53/P-56: identity is now resolved by the server from the MATCH row,
+    // not by scanning the paginated registrations list — so the fixture is the
+    // participants response rather than a page of registrations.
+    tournamentsStore.matchParticipants = makeParticipants()
     result.match.value = makeMatch(matchOverrides)
 
     return { composable: result, tournamentsStore, resultsStore }
@@ -130,10 +149,8 @@ describe('useMatchDetail panel-visibility computeds', () => {
 
   it('showCheckInPanel is false when user is not a participant', () => {
     const { composable, tournamentsStore } = setup({ status: 'scheduled' })
-    // Remove the user's registration so userRegistrationId resolves null.
-    tournamentsStore.registrations = [
-      { id: 'reg-b', player_id: 'player-b', status: 'confirmed' } as unknown as (typeof tournamentsStore.registrations)[number],
-    ]
+    // The server reports no registration of the caller's in this match.
+    tournamentsStore.matchParticipants = makeParticipants({ my_registration_id: undefined })
     expect(composable.userRegistrationId.value).toBeNull()
     expect(composable.showCheckInPanel.value).toBe(false)
   })

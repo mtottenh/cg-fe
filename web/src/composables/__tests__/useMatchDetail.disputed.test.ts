@@ -93,7 +93,12 @@ describe('useMatchDetail fetchAll status guards include disputed', () => {
       return tournament
     })
     vi.spyOn(tournamentsStore, 'fetchMatch').mockResolvedValue(match)
-    vi.spyOn(tournamentsStore, 'fetchRegistrations').mockResolvedValue([])
+    // P-53/P-56: the page resolves the caller's registration from the match
+    // row now, not from a page of the registrations list.
+    vi.spyOn(tournamentsStore, 'fetchMatchParticipants').mockResolvedValue({
+      match_id: match.id,
+      my_registration_id: undefined,
+    } as Awaited<ReturnType<typeof tournamentsStore.fetchMatchParticipants>>)
 
     const spies = {
       fetchCurrentResult: vi.spyOn(resultsStore, 'fetchCurrentResult').mockResolvedValue(null),

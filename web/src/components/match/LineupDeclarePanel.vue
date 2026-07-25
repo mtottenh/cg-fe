@@ -89,17 +89,29 @@
 import { lineupStatusMap, getStatusLabel } from '@/utils/statusMaps'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useLineupsStore } from '@/stores/lineups'
-import { useTournamentsStore } from '@/stores/tournaments'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
+import type { components } from '@/api/types'
+
+type TournamentRegistrationResponse = components['schemas']['TournamentRegistrationResponse']
 
 const props = defineProps<{
   tournamentId: string
   matchId: string
   userRegistrationId: string | null
+  /**
+   * The caller's own registration, resolved by the server (P-53/P-56).
+   *
+   * This used to be looked up here as
+   * `tournamentsStore.registrations.find(r => r.id === userRegistrationId)`,
+   * which carried exactly the same 100-row ceiling as the defect P-53 was
+   * filed for: the registrations list is paginated and capped at `per_page=100`,
+   * so a captain past row 100 found no row and the candidate list came back
+   * empty — no players to pick, no lineup to declare, no error.
+   */
+  userRegistration: TournamentRegistrationResponse | null
 }>()
 
 const lineupsStore = useLineupsStore()
-const tournamentsStore = useTournamentsStore()
 const leagueTeamsStore = useLeagueTeamsStore()
 
 interface Candidate {
@@ -121,7 +133,7 @@ function toggle(playerId: string): void {
 /** Resolve the pickable players for the caller's registration. */
 async function loadCandidates(): Promise<void> {
   if (!props.userRegistrationId) return
-  const reg = tournamentsStore.registrations.find((r) => r.id === props.userRegistrationId)
+  const reg = props.userRegistration
   if (!reg) return
 
   if (reg.team_season_id) {

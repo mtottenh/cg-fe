@@ -5,8 +5,10 @@ import {
   createStartedTournament,
   getOverrideMatch,
   listBracketIds,
+  listResultOverrides,
   matchAt,
   matchesWon,
+  recordConfirmedResult,
   transitionMatchViaApi,
 } from './fixtures/admin-overrides.fixture'
 
@@ -452,4 +454,113 @@ test.describe('Admin match overrides', () => {
     await dialog.getByRole('tab', { name: 'Overview' }).click()
     await expect(activePanel(dialog).locator('tr').filter({ hasText: 'Winner' })).toHaveCount(0)
   })
+
+  /**
+   * P-72 — a confirmed-but-wrong score was PERMANENTLY UNCORRECTABLE.
+   *
+   * `MatchResultsTab.vue` was 119 lines with zero handlers, and no admin
+   * result route existed (`routes/admin.rs` had result-*reviews* only). The
+   * one score-writing admin path, `POST /v1/admin/disputes/{id}/resolve/adjusted`,
+   * requires a dispute row to exist. So the case reproduced below — both
+   * parties confirm a wrong score, nobody disputes — left a bracket
+   * progressing on bad data that no operator could repair by any means.
+   * `revert`/`reapply` exist and move the bracket, but they replay the
+   * recorded score; they cannot change it.
+   *
+   * The result here is created through the REAL claim flow (p1 submits, p2
+   * confirms) rather than written into the database, so the starting state is
+   * exactly the one the finding describes, dispute row absent and all.
+   */
+  test('admin corrects a wrong score that both parties confirmed, with no dispute', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+    const adminToken = await getAdminToken()
+
+    const scenario = await createStartedTournament(adminToken, {
+      format: 'single_elimination',
+      playerCount: 2,
+    })
+    const target = matchAt(scenario.matches, 'R1M1')
+    const p1Name = target.participant1_name as string
+    const p2Name = target.participant2_name as string
+    const p1Reg = target.participant1_registration_id as string
+    const p2Reg = target.participant2_registration_id as string
+    const p1 = scenario.players.find((p) => p.registrationId === p1Reg)!
+    const p2 = scenario.players.find((p) => p.registrationId === p2Reg)!
+
+    // Both parties agree on the WRONG scoreline: 1-0 to participant 1.
+    await recordConfirmedResult(adminToken, scenario, target.id, p1, p2)
+
+    const before = await getOverrideMatch(adminToken, scenario.tournamentId, target.id)
+    expect(before.status).toBe('completed')
+    expect(before.winner_registration_id).toBe(p1Reg)
+    expect([before.participant1_score, before.participant2_score]).toEqual([1, 0])
+
+    // No dispute — which is precisely why nothing could fix this before.
+    const disputeResp = await fetch(
+      `${process.env.VITE_API_URL || 'http://localhost:3000'}/v1/tournaments/${scenario.tournamentId}/matches/${target.id}/dispute`,
+      { headers: { Authorization: `Bearer ${adminToken}` } },
+    )
+    expect(
+      disputeResp.status,
+      'the scenario must have NO dispute — the adjusted-resolution path is unreachable without one',
+    ).toBe(404)
+
+    // --- Correct it through the UI, on the Results tab -------------------
+    await loginAsAdmin(page)
+    await openMatchesTab(page, scenario.tournamentId)
+    const dialog = await openMatchDetail(page, matchRow(page, p1Name, p2Name))
+    await dialog.getByRole('tab', { name: 'Results' }).click()
+    const results = activePanel(dialog)
+
+    await expect(results.getByTestId('recorded-p1-score')).toHaveText('1')
+    await expect(results.getByTestId('recorded-p2-score')).toHaveText('0')
+    await expect(results.getByTestId('recorded-winner')).toHaveText(p1Name)
+    await expect(
+      results.locator('[data-testid="override-row"]'),
+      'a match nobody has corrected must show no corrections',
+    ).toHaveCount(0)
+
+    const scoreInputs = results.locator('input[type="number"]')
+    await scoreInputs.first().fill('0')
+    await scoreInputs.nth(1).fill('2')
+    await results.getByLabel('Reason *').fill('Demo review: participant 2 won 2-0.')
+    await results.getByRole('button', { name: 'Correct Score' }).click()
+
+    await confirmOverlay(page, `Overwrite the official result with 0-2, making ${p2Name} the winner?`)
+      .getByRole('button', { name: 'Correct Score' })
+      .click()
+    await expect(page.locator('.v-snackbar').getByText('Score corrected')).toBeVisible()
+
+    // --- The UI reflects the correction ---------------------------------
+    await expect(results.getByTestId('recorded-p1-score')).toHaveText('0')
+    await expect(results.getByTestId('recorded-p2-score')).toHaveText('2')
+    await expect(results.getByTestId('recorded-winner')).toHaveText(p2Name)
+
+    // …including the audit trail, naming a person rather than a truncated id.
+    const auditRow = results.locator('[data-testid="override-row"]')
+    await expect(auditRow).toHaveCount(1)
+    await expect(auditRow).toContainText('1–0')
+    await expect(auditRow).toContainText('0–2')
+    await expect(auditRow).toContainText('Demo review: participant 2 won 2-0.')
+    await expect(auditRow).not.toContainText('Unknown admin')
+
+    // --- …and so does the API (§1.4) ------------------------------------
+    const after = await getOverrideMatch(adminToken, scenario.tournamentId, target.id)
+    expect([after.participant1_score, after.participant2_score]).toEqual([0, 2])
+    expect(after.winner_registration_id).toBe(p2Reg)
+    expect(after.status).toBe('completed')
+
+    const overrides = await listResultOverrides(adminToken, scenario.tournamentId, target.id)
+    expect(overrides).toHaveLength(1)
+    expect(overrides[0]!.previous_participant1_score).toBe(1)
+    expect(overrides[0]!.previous_participant2_score).toBe(0)
+    expect(overrides[0]!.new_participant1_score).toBe(0)
+    expect(overrides[0]!.new_participant2_score).toBe(2)
+    expect(overrides[0]!.new_winner_registration_id).toBe(p2Reg)
+    expect(overrides[0]!.reason).toBe('Demo review: participant 2 won 2-0.')
+    expect(overrides[0]!.changed_by_name, 'the audit row must name the operator').toBeTruthy()
+  })
+
 })

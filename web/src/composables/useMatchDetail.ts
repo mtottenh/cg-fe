@@ -2,7 +2,6 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTournamentsStore, type TournamentMatchResponse } from '@/stores/tournaments'
-import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { useMatchSchedulingStore } from '@/stores/matchScheduling'
 import { useMatchResultsStore, getTimeUntilAutoConfirm } from '@/stores/matchResults'
 import { useEvidenceStore } from '@/stores/evidence'
@@ -21,7 +20,6 @@ export function useMatchDetail() {
   const route = useRoute()
   const authStore = useAuthStore()
   const tournamentsStore = useTournamentsStore()
-  const leagueTeamsStore = useLeagueTeamsStore()
   const schedulingStore = useMatchSchedulingStore()
   const resultsStore = useMatchResultsStore()
   const evidenceStore = useEvidenceStore()
@@ -49,8 +47,16 @@ export function useMatchDetail() {
   // Composed state from stores
   const tournament = computed(() => tournamentsStore.currentTournament)
 
-  // Centralized user-match identity
-  const { userRegistrationId, opponentPlayerId, opponentRegistrationId: _opponentRegistrationId } = useMatchContext(match, tournament)
+  // Centralized user-match identity. Resolved by the server from the match
+  // row (P-53/P-56) rather than by scanning the paginated registrations list —
+  // see `useMatchContext` for why that scan was a hard 100-participant ceiling
+  // on submitting a result at all.
+  const {
+    myRegistration,
+    userRegistrationId,
+    opponentPlayerId,
+    opponentRegistrationId: _opponentRegistrationId,
+  } = useMatchContext(match)
 
   const activeProposal = computed(() => schedulingStore.activeProposal)
   const proposalHistory = computed(() => schedulingStore.proposalHistory)
@@ -382,31 +388,26 @@ export function useMatchDetail() {
         if (gen !== fetchGen) return
         match.value = fetched
 
-        // Fetch registrations to resolve userRegistrationId for result submission.
+        // Resolve BOTH of this match's registrations, and which one is the
+        // caller's, in one targeted request (P-53/P-56).
         //
-        // useMatchContext / useTournamentContext resolve the caller's (and the
-        // opponent's) registration by SCANNING this list. With the default
-        // page size of 20 a participant whose registration sits past row 20
-        // could not be resolved and therefore could not submit a result at all
-        // — routine, since max_participants defaults to 64 (P-53).
+        // This replaced `fetchRegistrations(..., { per_page: 100 })`. That
+        // fetch existed only so `useMatchContext` could SCAN the list for the
+        // caller's row, and `PaginationParams::limit` clamps `per_page` at
+        // 100 — so in any tournament with more than 100 participants every
+        // player past row 100 resolved to `null` and lost the submit, confirm,
+        // schedule and check-in affordances entirely, with no error shown.
+        // Nothing on this page needs the whole registrations list, so the
+        // paged fetch is gone rather than merely widened: keeping it is how
+        // the ceiling comes back.
         //
-        // STOPGAP: request the maximum page size (the API caps per_page at 100,
-        // see PaginationParams::limit). This only raises the ceiling from 20 to
-        // 100; tournaments with more than 100 participants remain broken. The
-        // real fix is a targeted lookup (a `GET .../registrations/me` endpoint,
-        // or a caller/registration-id filter on the list) so resolution is O(1)
-        // and independent of participant count — that needs a new API surface.
-        if (authStore.playerId && tournamentsStore.currentTournament) {
-          const fetchPromises: Promise<unknown>[] = [
-            tournamentsStore.fetchRegistrations(tournamentsStore.currentTournament.id, {
-              per_page: 100,
-            }),
-          ]
-          // Fetch user's teams for team tournaments so useMatchContext can resolve registration
-          if (tournamentsStore.currentTournament.participant_type === 'team') {
-            fetchPromises.push(leagueTeamsStore.fetchMyTeams())
-          }
-          await Promise.all(fetchPromises)
+        // Anonymous viewers skip it — the endpoint requires auth, and every
+        // gate it feeds is participant-only anyway.
+        if (authStore.isAuthenticated) {
+          await tournamentsStore
+            .fetchMatchParticipants(tournamentId, matchId)
+            .catch(() => null)
+          if (gen !== fetchGen) return
         }
 
         if (tournamentsStore.currentTournament.scheduling_mode === 'self_scheduled') {
@@ -583,6 +584,8 @@ export function useMatchDetail() {
     checkInCountdown,
     vetoPickedMaps,
     selectableMaps,
+
+    myRegistration,
 
     // Actions
     fetchAll,

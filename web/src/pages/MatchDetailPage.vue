@@ -198,6 +198,7 @@
             :tournament-id="tournament.id"
             :match-id="match.id"
             :user-registration-id="userRegistrationId"
+            :user-registration="myRegistration"
             class="mt-4"
           />
         </v-card-text>
@@ -462,7 +463,7 @@ const {
   showResultPanel, showConfirmationPanel, canSubmitResult,
   showWaitingForOpponent, autoConfirmCountdown, checkInCountdown, vetoPickedMaps,
   selectableMaps,
-  opponentPlayerId, suggestedTimes, userRegistrationId,
+  opponentPlayerId, suggestedTimes, userRegistrationId, myRegistration,
   fetchAll,
   schedulingStore,
   resultsStore,

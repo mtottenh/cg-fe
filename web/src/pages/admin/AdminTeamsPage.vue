@@ -228,7 +228,10 @@ async function fetchMyLeagues() {
       ADMIN_ROLES.includes(l.membership_type)
     )
   } catch {
-    error.value = leaguesStore.error || 'Failed to load leagues'
+    // P-124 (unlisted instance, same defect): `leaguesStore.error` is a
+    // computed alias over `fetchLeaguesState` (stores/leagues.ts:27) — the
+    // public league LIST — while the call that just failed is `fetchMyLeagues`.
+    error.value = leaguesStore.fetchMyLeaguesState.error || 'Failed to load leagues'
   } finally {
     loadingLeagues.value = false
   }
@@ -247,7 +250,12 @@ async function onLeagueChange() {
     await seasonsStore.fetchSeasons(selectedLeagueId.value)
     seasons.value = seasonsStore.seasons
   } catch {
-    error.value = seasonsStore.error || 'Failed to load seasons'
+    // P-124: this one was already correct — but only by coincidence, because
+    // `seasonsStore.error` happens to alias `fetchSeasonsState`, the action
+    // being called. Naming the state directly is what stops it becoming the
+    // next instance the day that alias is repointed, which is exactly how the
+    // other three reads in this file went wrong.
+    error.value = seasonsStore.fetchSeasonsState.error || 'Failed to load seasons'
   } finally {
     loadingSeasons.value = false
   }
@@ -270,7 +278,10 @@ async function fetchTeams(page = 1) {
     pagination.value = teamsStore.pagination
     currentPage.value = page
   } catch {
-    error.value = teamsStore.error || 'Failed to load teams'
+    // P-124: `teamsStore.error` aliases `fetchMyTeamsState` — the admin's own
+    // memberships, which this page never fetches — so a failed season-teams
+    // load showed the fallback while the real reason sat unread one field away.
+    error.value = teamsStore.fetchTeamsInSeasonState.error || 'Failed to load teams'
   } finally {
     loadingTeams.value = false
   }

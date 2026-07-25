@@ -16,13 +16,13 @@
     </v-row>
 
     <ErrorAlert
-      :error="leagueTeamsStore.error || leaguesStore.error"
+      :error="loadError"
       retryable
       @clear="clearErrors"
       @retry="fetchData"
     />
 
-    <v-progress-linear v-if="leagueTeamsStore.loading || leaguesStore.fetchMyLeagueInvitationsState.loading" indeterminate class="mb-4" />
+    <v-progress-linear v-if="loadingData" indeterminate class="mb-4" />
 
     <!-- League Invitations Section -->
     <template v-if="leaguesStore.myLeagueInvitations.length > 0">
@@ -171,7 +171,7 @@
     </v-row>
 
     <EmptyState
-      v-else-if="!leagueTeamsStore.loading && leaguesStore.myLeagueInvitations.length === 0"
+      v-else-if="!loadingData && !loadError && leaguesStore.myLeagueInvitations.length === 0"
       icon="mdi-email-outline"
       title="No Pending Invitations"
       subtitle="You don't have any invitations at the moment."
@@ -215,6 +215,36 @@ const processing = computed(() =>
   acceptingLeague.value !== null || decliningLeague.value !== null
 )
 
+/**
+ * P-124 — the page-level alert used to bind `leagueTeamsStore.error ||
+ * leaguesStore.error`. Both are computed aliases over a single unrelated
+ * action (`fetchMyTeamsState` and `fetchLeaguesState` respectively), and this
+ * page calls NEITHER — so the alert was not merely generic, it was dead: a
+ * failed load of either invitation list rendered nothing at all and the user
+ * saw an empty page with no explanation. These are the two actions `fetchData`
+ * actually runs. (The progress bar below already read the right state.)
+ */
+const loadError = computed(
+  () =>
+    leagueTeamsStore.fetchMyInvitationsState.error ||
+    leaguesStore.fetchMyLeagueInvitationsState.error,
+)
+
+/**
+ * Same alias defect, on the LOADING side — and it is the reason the fix above
+ * is not enough on its own. The spinner and the "No Pending Invitations" empty
+ * state were both gated on `leagueTeamsStore.loading`, an alias over
+ * `fetchMyTeamsState`, which this page never sets. So the empty state rendered
+ * during the load AND after a failure: a user whose invitations could not be
+ * fetched was told, confidently, that they had none. An empty state is an
+ * assertion about the data, so it must not render while the data is unknown.
+ */
+const loadingData = computed(
+  () =>
+    leagueTeamsStore.fetchMyInvitationsState.loading ||
+    leaguesStore.fetchMyLeagueInvitationsState.loading,
+)
+
 async function fetchData() {
   try {
     await Promise.all([
@@ -227,8 +257,8 @@ async function fetchData() {
 }
 
 function clearErrors() {
-  leagueTeamsStore.error = null
-  leaguesStore.error = null
+  leagueTeamsStore.fetchMyInvitationsState.error = null
+  leaguesStore.fetchMyLeagueInvitationsState.error = null
 }
 
 onMounted(() => { fetchData() })
@@ -240,7 +270,12 @@ async function handleAcceptLeague(invitationId: string) {
     await leaguesStore.acceptLeagueInvitation(invitationId)
     snackbar.show('You have joined the league!', 'success')
   } catch {
-    snackbar.show('Failed to accept league invitation', 'error')
+    // P-124, adjacent instance: this one read no store state at all, so the
+    // reason was discarded rather than mis-sourced. Same remedy.
+    snackbar.show(
+      leaguesStore.acceptLeagueInvitationState.error || 'Failed to accept league invitation',
+      'error',
+    )
   } finally {
     acceptingLeague.value = null
   }
@@ -265,7 +300,11 @@ async function handleDeclineLeague(invitationId: string) {
     await leaguesStore.declineLeagueInvitation(invitationId)
     snackbar.show('League invitation declined', 'success')
   } catch {
-    snackbar.show('Failed to decline league invitation', 'error')
+    // P-124, adjacent instance — see handleAcceptLeague.
+    snackbar.show(
+      leaguesStore.declineLeagueInvitationState.error || 'Failed to decline league invitation',
+      'error',
+    )
   } finally {
     decliningLeague.value = null
   }
@@ -282,7 +321,15 @@ async function handleAccept(invitationId: string) {
       router.push('/my-teams')
     }, 1500)
   } catch {
-    snackbar.show(leagueTeamsStore.error || 'Failed to accept invitation', 'error')
+    // P-124: `leagueTeamsStore.error` aliases `fetchMyTeamsState`, an action
+    // this page never calls, so it is permanently null and the invitee always
+    // got the fallback. `acceptInvitationState` carries the reason they need —
+    // "Invitation is invalid or already used", a roster-full refusal, or the
+    // one-team-per-season rule.
+    snackbar.show(
+      leagueTeamsStore.acceptInvitationState.error || 'Failed to accept invitation',
+      'error',
+    )
   } finally {
     accepting.value = null
   }

@@ -314,7 +314,11 @@ onMounted(async () => {
       originalForm.value = { ...form }
     }
   } catch {
-    error.value = leagueTeamsStore.error || 'Failed to load team'
+    // P-124 (P-116 recurrence): `leagueTeamsStore.error` is a computed alias
+    // over `fetchMyTeamsState` (stores/leagueTeams.ts:55) — an action this
+    // page never calls — so it is always null here and the user only ever saw
+    // the fallback. The failing call is `fetchTeam`; read its state.
+    error.value = leagueTeamsStore.fetchTeamState.error || 'Failed to load team'
   } finally {
     loading.value = false
   }
@@ -347,7 +351,12 @@ async function handleSubmit() {
     successMessage.value = 'Team settings saved'
     showSuccess.value = true
   } catch {
-    error.value = leagueTeamsStore.error || 'Failed to save team settings'
+    // P-124: same alias, and this is the site where it costs the most — the
+    // backend's refusals here are the only thing that explains a rejected
+    // save ("team name 'X' is already taken in this league", or, since P-126,
+    // "team is disbanded and can no longer be modified"). Reading
+    // `updateTeamState` puts the reason in front of the person retyping.
+    error.value = leagueTeamsStore.updateTeamState.error || 'Failed to save team settings'
   } finally {
     saving.value = false
   }

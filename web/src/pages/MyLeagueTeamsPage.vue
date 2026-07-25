@@ -14,13 +14,13 @@
     </v-row>
 
     <ErrorAlert
-      :error="leagueTeamsStore.error"
+      :error="loadError"
       retryable
-      @clear="leagueTeamsStore.error = null"
+      @clear="clearLoadError"
       @retry="fetchData"
     />
 
-    <v-progress-linear v-if="leagueTeamsStore.loading" indeterminate class="mb-4" />
+    <v-progress-linear v-if="loadingData" indeterminate class="mb-4" />
 
     <!-- League memberships without teams -->
     <template v-if="leaguesWithoutTeams.length > 0">
@@ -161,7 +161,7 @@
 
     <!-- Empty state -->
     <EmptyState
-      v-else-if="!leagueTeamsStore.loading"
+      v-else-if="!loadingData && !loadError"
       icon="mdi-account-group-outline"
       title="You're Not on Any Teams Yet"
       subtitle="Join a league and create or join a team to get started!"
@@ -268,6 +268,43 @@ function confirmLeaveTeam(membership: PlayerLeagueTeamMembershipResponse) {
       snackbar.show(`Left ${membership.team_name}`, 'success')
     },
   })
+}
+
+/**
+ * P-124 — the alert used to bind `leagueTeamsStore.error`, a computed alias
+ * over `fetchMyTeamsState` (stores/leagueTeams.ts:55). That is one of the
+ * three calls `fetchData` makes, so the page reported a failed team fetch and
+ * stayed silent for the other two: a failed `fetchMyLeagues` left the "My
+ * Leagues" section empty with nothing on screen to say why, which reads as
+ * "you are in no leagues" — a wrong answer, not a missing one.
+ *
+ * All three legs run concurrently and any of them can fail, so this reports
+ * the first one that did, in the order they are listed.
+ */
+const loadError = computed(
+  () =>
+    leagueTeamsStore.fetchMyTeamsState.error ||
+    leagueTeamsStore.fetchMyInvitationsState.error ||
+    leaguesStore.fetchMyLeaguesState.error,
+)
+
+/**
+ * Same alias defect on the LOADING side: the spinner and the "You're Not on
+ * Any Teams Yet" empty state were gated on `leagueTeamsStore.loading`, which
+ * covers only `fetchMyTeams`. An empty state is an assertion about the data,
+ * so it must not render while the data is unknown or failed.
+ */
+const loadingData = computed(
+  () =>
+    leagueTeamsStore.fetchMyTeamsState.loading ||
+    leagueTeamsStore.fetchMyInvitationsState.loading ||
+    leaguesStore.fetchMyLeaguesState.loading,
+)
+
+function clearLoadError() {
+  leagueTeamsStore.fetchMyTeamsState.error = null
+  leagueTeamsStore.fetchMyInvitationsState.error = null
+  leaguesStore.fetchMyLeaguesState.error = null
 }
 
 async function fetchData() {

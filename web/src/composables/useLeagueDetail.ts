@@ -166,7 +166,21 @@ export function useLeagueDetail() {
       ])
     } catch (e) {
       console.error('Failed to create team:', e)
-      error.value = teamsStore.error || 'Failed to create team'
+      // P-124: `teamsStore.error` aliases `fetchMyTeamsState`
+      // (stores/leagueTeams.ts:55). That is one of the three calls in this
+      // block, but the LAST and least interesting one — so the refusal that
+      // actually matters ("team name 'X' is already taken in this league",
+      // "you already have a team in this season") was never the message shown.
+      //
+      // Unlike the single-action handlers, this block genuinely spans three
+      // actions, so it reads them in the order they run rather than picking
+      // one: if the create failed nothing else ran, and if a refresh failed
+      // the team DOES exist — saying "Failed to create team" would be a lie.
+      error.value =
+        teamsStore.createTeamState.error ||
+        teamsStore.fetchTeamsInSeasonState.error ||
+        teamsStore.fetchMyTeamsState.error ||
+        'Failed to create team'
       throw e
     } finally {
       creatingTeam.value = false

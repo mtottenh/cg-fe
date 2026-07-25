@@ -74,13 +74,22 @@ async function jsonOrThrow<T>(response: Response, context: string): Promise<T> {
   }
 }
 
+// P-130: resolve CS2 by SLUG, never positionally. `GET /v1/games` is
+// `ORDER BY sort_order`, and the P-90 test deliberately sets aoe4's sort_order
+// to 0 — so `data[0]` becomes aoe4, every fixture here then builds a CS2 map
+// pool on it, and the tournament create 400s with "Unknown map: de_dust2".
+// The §2 rule "mutate aoe4, never cs2" does not cover this: the damage is to
+// ORDERING, not to the row. Precedent: awards.fixture.ts:50.
 async function firstGameId(): Promise<string> {
   const resp = await fetch(`${API_URL}/v1/games`)
   const body = await jsonOrThrow<ApiResult<Array<{ id: string }>>>(resp, 'List games')
   if (!body.data || body.data.length === 0) {
     throw new Error('No games available to create tournament')
   }
-  return body.data[0].id
+  const cs2 = body.data.find(
+    (g: { id: string; slug?: string }) => g.slug?.toLowerCase() === 'cs2',
+  )
+  return (cs2 ?? body.data[0]).id
 }
 
 async function postAdminAction(

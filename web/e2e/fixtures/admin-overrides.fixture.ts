@@ -173,7 +173,10 @@ export async function createStartedTournament(
   const createResp = await post(adminToken, '/v1/tournaments', 'Create tournament', {
     name,
     slug,
-    game_id: games.data[0].id,
+    // P-130: CS2 by slug, never positionally — `GET /v1/games` is
+    // `ORDER BY sort_order` and the P-90 test sets aoe4's to 0, so `data[0]`
+    // becomes aoe4 and the CS2 map pool below 400s with "Unknown map".
+    game_id: (games.data.find((g: { id: string; slug?: string }) => g.slug?.toLowerCase() === 'cs2') ?? games.data[0]).id,
     format,
     map_pool: CS2_MAP_POOL,
     participant_type: 'individual',

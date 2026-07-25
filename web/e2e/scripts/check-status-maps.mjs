@@ -48,20 +48,51 @@ const BASELINE = {
   // `registration.status` have no declared enum to map against.
   'src/components/admin/RegistrationReasonModal.vue#status': 1,
   'src/components/admin/tournament-detail/AwardsTab.vue#status': 1,
+  // P-131 — `DisputeResponse.reason` IS a `DisputeReason` union since Lane H
+  // typed the DTO, so these are keyable now.
+  'src/components/admin/DisputeDetailModal.vue#reason': 1,
+  'src/pages/admin/AdminDisputesPage.vue#reason': 1,
+  // P-132 — `LeagueTeamRole` is a union now; these render it raw.
+  'src/components/tournament/TeamRegistrationModal.vue#role': 1,
+  'src/pages/HomePage.vue#role': 1,
+  'src/pages/LeagueDetailPage.vue#role': 1,
+  'src/pages/PlayerDetailPage.vue#role': 1,
+  'src/pages/TeamDetailPage.vue#role': 3,
+  'src/pages/admin/AdminPlayersPage.vue#role': 1,
 }
 
-/** Genuinely not an enum — nothing to map. */
+/**
+ * Genuinely not an enum — nothing to map. Each entry states WHY, because an
+ * exemption without a reason is indistinguishable from an unfixed leak.
+ *
+ * NOTE `reason` is deliberately not exempt wholesale: `DisputeResponse.reason`
+ * IS a `DisputeReason` enum, while ban and availability reasons are free text
+ * a human typed. Same property name, different kind — so the exemption is
+ * per-file, never per-property.
+ */
 const EXEMPT = [
   // permission `priority` is a NUMBER.
   'src/pages/admin/AdminPermissionsPage.vue',
+  // ban `reason` is free text (`BanResponse.reason: String`) — an operator
+  // types it; there is no enum to map.
+  'src/components/admin/BanDetailModal.vue',
+  'src/pages/admin/AdminBansPage.vue',
+  // availability override `reason` is free text a player types.
+  'src/components/AvailabilityOverridesManager.vue',
 ]
 
+// `role` and `reason` added 2026-07-25 (Lane H): both are now generated unions
+// (LeagueTeamRole, DisputeReason), and both were leaking raw at ten sites the
+// guard could not see. Third widening — P-117 added `format`. The lesson each
+// time is the same: a guard is only as wide as its pattern, so widen it the
+// moment a leak is found outside it rather than filing the leak alone.
+//
 // `format` added and a trailing `|| 'fallback'` tolerated: the original regex
 // missed `{{ stage.format || 'Default' }}` on BOTH counts, so an entire enum
 // family was invisible to the guard. A guard is only as wide as its pattern —
 // widen it whenever a leak is found outside it.
 const RAW =
-  /\{\{\s*[\w.]+\.(status|priority|category|format|override_type|access_type)\s*(\|\|[^}]*)?\}\}/
+  /\{\{\s*[\w.]+\.(status|priority|category|format|role|reason|override_type|access_type)\s*(\|\|[^}]*)?\}\}/
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {

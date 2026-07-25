@@ -132,7 +132,10 @@ export async function createApprovalTournament(
   const body: Record<string, unknown> = {
     name: `E2E Seeding Tournament ${suffix}`,
     slug,
-    game_id: games.data[0].id,
+    // P-130: CS2 by slug, never positionally — `GET /v1/games` is
+    // `ORDER BY sort_order` and the P-90 test sets aoe4's to 0, so `data[0]`
+    // becomes aoe4 and the CS2 map pool below 400s with "Unknown map".
+    game_id: (games.data.find((g: { id: string; slug?: string }) => g.slug?.toLowerCase() === 'cs2') ?? games.data[0]).id,
     format: 'single_elimination',
     map_pool: CS2_MAP_POOL,
     participant_type: 'individual',

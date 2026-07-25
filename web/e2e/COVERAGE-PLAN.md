@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **129 product findings** from what
+*"what should happen here?"* — and that question surfaced **133 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **129 findings · 96 fixed** → the status-drift defect class closed at the source
+112 → 0) → **133 findings · 101 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -153,7 +153,7 @@ cascading DQ, the pagination lookup, roster lock) is held for wave C.
 Four lanes chosen for **zero file overlap**, because every agent shares one
 checkout — `api/` is not isolated by `git worktree` (separate repos), so two
 lanes editing `openapi.rs` or `routes/*.rs` would silently lose each other's
-work. The API-heavy clusters (C6 builds, roster lock, P-112, the pagination
+work. The API-heavy clusters (C6 builds, roster lock, the pagination
 ceiling) are deliberately held for wave B for that reason, not because they
 matter less.
 
@@ -397,9 +397,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 129 found · 96 fixed · 33 open** (P-53 mitigated).
+**Status (derived): 133 found · 101 fixed · 32 open** (P-53 mitigated).
 
-Open: P-14, P-15, P-16, P-18, P-53, P-56, P-58, P-61, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-72, P-73, P-75, P-80, P-109, P-110, P-111.
+Open: P-14, P-15, P-16, P-18, P-53, P-56, P-58, P-61, P-64, P-66, P-68, P-70, P-72, P-73, P-75, P-80, P-109, P-110, P-111, P-120, P-121, P-122, P-123, P-124, P-125, P-126, P-127, P-128, P-129, P-131, P-132, P-133.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -483,11 +483,11 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-62 | Transfer team ownership has no UI | product gap | **fixed** `28afc7a` |
 | P-63 | Disband team has no UI | product gap | **fixed** `28afc7a` |
 | P-64 | Demo auto-link backfill unreachable from UI | admin gap | open |
-| P-65 | `/users/me/action-items` missing from OpenAPI doc | build (P-52 family) | open |
+| P-65 | `/users/me/action-items` missing from OpenAPI doc | build (P-52 family) | **fixed** `ea55c83` |
 | P-66 | Match audit trail + stored suggestions invisible | minor | open |
-| P-67 | Dead-surface cleanup batch | hygiene | open |
+| P-67 | Dead-surface cleanup batch | hygiene | **fixed** `c985d26` |
 | P-68 | Scraped Premier rating has no correction path | data integrity | open |
-| P-69 | Platform Elo engine is dead code (never called) | **scope decided** | open → G |
+| P-69 | Platform Elo engine is dead code (never called) | **scope decided** | **fixed** `82e8b14` |
 | P-70 | **Platform role assignment has no UI** | admin gap | open |
 | P-71 | Returning team can't enter the next season | blocks flow | **fixed** `28afc7a` |
 | P-72 | No admin score correction outside a dispute | admin gap | open |
@@ -521,6 +521,10 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-127 | **The result-panel event system is dead by construction, not just for dispute** | **feature dead** | open |
 | P-128 | Team colour fields have no client validation against a backend bound | user trap | open |
 | P-129 | Review queue still has no server-side sort control (P-55 follow-up) | admin friction | open |
+| P-130 | Fixtures picked a game positionally; a sort_order test reordered them | test-infra | **fixed** `PENDING130` |
+| P-131 | `dispute.reason` rendered raw on two admin surfaces | user-facing | open |
+| P-132 | Eight `.role` raw renders across six files | user-facing | open |
+| P-133 | `MyLeagueTeamsPage` feeds `membership_type` through `teamRoleMap` — never matches | user-facing | open |
 | P-123 | **Ban-lift confirm dialog identifies the user by a truncated UUID** | **safety** | open |
 | P-124 | P-116 recurs in 6 more sites reading a whole-store error alias | user-facing | open |
 | P-125 | `TeamDetailPage` renders roster/invitation roles raw | user-facing | open |
@@ -535,7 +539,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-114 | Invitations table has no Message column, so P-94's message is invisible | user-facing | **fixed** `eda3bc2` |
 | P-115 | Invitations/applications identify people by a truncated UUID | user-facing | **fixed** `eda3bc2+e820ebe` |
 | P-116 | `TeamDetailPage` handlers read the wrong action state, so errors are generic | user-facing | **fixed** `fdc4721` |
-| P-112 | **API stringifies enums it already declares — 10 maps unlockable** | **architectural** | open |
+| P-112 | **API stringifies enums it already declares — 10 maps unlockable** | **architectural** | **fixed** `c7f9ae1` |
 | P-93 | **Date overrides saved one day early in every positive UTC offset** | **data corruption** | **fixed** `2b4d4ee` |
 | P-87 | **Every game-config WRITE 404s — handler passes UUID to a slug-keyed update** | **feature dead** | **fixed** `024513b` |
 | P-88 | A disabled game vanishes from admin and can never be re-enabled | **traps admin** | **fixed** `f9d2fe1` |

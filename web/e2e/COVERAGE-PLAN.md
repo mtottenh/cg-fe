@@ -585,7 +585,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-145 | **Every `entity_changes` insert failed — `ip_address` bound as text into an INET column. The audit trail was CLI-read-only and had never been written to** | **audit dead** | **fixed** `297a19e` |
 | P-146 | `seed reset` ran `UPDATE entity_changes SET changed_by = NULL` against a `NOT NULL` column — impossible by construction, harmless only while nothing wrote to the table | latent | **fixed** `261e302` |
 | P-147 | `create_team` / `register_for_season` seat a captain WITHOUT the roster-lock enforcement point — same shape as P-15 | enforcement | open |
-| P-148 | **`allows_roster_changes()` is `Draft \| Registration` only, so the roster lock is inert once a season is active — the mid-playoffs guarantee comes from season status, not the lock** | **blocker rationale wrong** | open |
+| P-148 | **`allows_roster_changes()` admits only Draft and Registration, so the roster lock is inert once a season is active — the mid-playoffs guarantee comes from season status, not the lock** | **blocker rationale wrong** | open |
 | P-149 | Override audit rows are written but have no HTTP read surface — only `portal-cli` can read them | ops gap | open |
 | P-150 | `entity_changes.changed_by` is `NOT NULL REFERENCES players(id) ON DELETE SET NULL` — a self-contradictory pair | schema | open |
 | P-151 | **Permission strings used as bare literals (10 sites) are absent from the registry, so the P-140 guard cannot see them** | **gate gap** | **fixed** `61fa1f1` |

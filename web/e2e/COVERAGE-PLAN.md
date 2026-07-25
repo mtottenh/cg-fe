@@ -12,7 +12,7 @@ began as a test-quality audit. The findings are the deliverable; the tests are t
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **111 findings · 57 fixed** → the status-drift defect class closed at the source
+112 → 0) → **111 findings · 59 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -204,7 +204,7 @@ two each and together retire most of the dead-control class.
 | Tier | Theme | Findings | Why here |
 |---|---|---|---|
 | **T0** | **Security** | ~~P-108~~ · ~~P-60~~ — **tier complete** | Unauthenticated writes and un-revoked sessions. Cost is irrelevant |
-| **T1** | **Silent data corruption** | ~~P-93~~ · P-77 · P-78 · P-83 | Each writes or preserves *wrong data* while reporting success. Worst possible failure mode: no one finds out |
+| **T1** | **Silent data corruption** | ~~P-93~~ · ~~P-77~~ · ~~P-78~~ · P-83 | Each writes or preserves *wrong data* while reporting success. Worst possible failure mode: no one finds out |
 | **T2** | **One-line dead-control fixes** | P-87 · P-99 · P-98 · P-82 · P-104 · P-105 · P-94 · P-84 | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
 | **T3** | **a11y sweep** (one batch) | P-89 · P-100 · P-106 · P-85 | P-89 is a **P-45 recurrence**, so this must be a repo-wide sweep, not another point fix |
 | **T4** | **Raw-enum sweep** (one batch) | P-76 · P-91 · P-96 · P-79 | P-10/P-44 family, now on its fifth recurrence. Batch it and add a guard, or it returns |
@@ -229,9 +229,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 111 found · 57 fixed · 54 open** (P-53 mitigated).
+**Status (derived): 111 found · 59 fixed · 52 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-109, P-110, P-111.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -327,8 +327,8 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-74 | **"Retry Processing" calls no API — reports success anyway** | **trust** | open |
 | P-75 | Demo league/tournament association uncorrectable; shows raw UUIDs | admin gap | open |
 | P-76 | Categorize snackbar prints the raw enum | minor | open |
-| P-77 | **Uphold on a claim-path dispute completes the match with NO result** | **integrity** | open |
-| P-78 | **Rematch / double-DQ leave the old winner + score on the match** | **integrity** | open |
+| P-77 | **Uphold on a claim-path dispute completes the match with NO result** | **integrity** | **fixed** `2b8e428` |
+| P-78 | **Rematch / double-DQ leave the old winner + score on the match** | **integrity** | **fixed** `2b8e428` |
 | P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | open |
 | P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
 | P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | **fixed** `e06ff8f` |

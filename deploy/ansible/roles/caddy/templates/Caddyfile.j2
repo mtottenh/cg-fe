@@ -12,6 +12,27 @@
 {{ portal_domain }} {
     encode zstd gzip
 
+    # MatchZy demo/backup uploads: 100-300 MB .dem files need far more
+    # than the default 60s (§8 / review M5).
+    @gameserver_uploads {
+        path /v1/gameserver/demos /v1/gameserver/backups
+    }
+    handle @gameserver_uploads {
+        reverse_proxy 127.0.0.1:3000 {
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+            # Agent identity headers are trusted ONLY from the agents
+            # vhost (§5.4 / review C1) — never from the public site.
+            header_up -X-Client-Cert-Serial
+            header_up -X-Client-Cert-Fingerprint
+            header_up -X-Portal-Agent-Vhost
+            transport http {
+                read_timeout 600s
+                write_timeout 600s
+            }
+        }
+    }
+
     # API routes — everything the backend owns.
     @api {
         path /v1/* /uploads/* /swagger-ui/* /api-docs/* /health
@@ -22,6 +43,11 @@
             header_up X-Forwarded-For {remote}
             header_up X-Forwarded-Proto {scheme}
             header_up X-Real-IP {remote}
+            # Agent identity headers are trusted ONLY from the agents
+            # vhost (§5.4 / review C1) — never from the public site.
+            header_up -X-Client-Cert-Serial
+            header_up -X-Client-Cert-Fingerprint
+            header_up -X-Portal-Agent-Vhost
             # 60s is plenty; bump if you add long-polling routes.
             transport http {
                 read_timeout 60s
@@ -83,6 +109,43 @@
         Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: {{ portal_evidence_public_url }}; font-src 'self' data:; connect-src 'self' wss: {{ portal_evidence_public_url }}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
     }
 }
+
+{% if gameserver_integration_enabled | default(false) %}
+# Game-server agent channel (docs/matchzy-integration.md §5.4). Agents on
+# CS2 hosts connect OUTBOUND here with client certificates signed by the
+# portal CA (`portal-cli gameserver ca-init`). Caddy verifies the chain and
+# validity window; the API resolves the forwarded serial against its
+# revocation registry. Needs a DNS A record for agents.{{ portal_domain }}.
+agents.{{ portal_domain }} {
+    tls {
+        client_auth {
+            mode require_and_verify
+            trusted_ca_cert_file {{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}/ca.pem
+        }
+    }
+
+    reverse_proxy 127.0.0.1:3000 {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        # Identity for the API: hex serial of the verified client cert.
+        header_up X-Client-Cert-Serial {tls_client_serial}
+        header_up X-Client-Cert-Fingerprint {tls_client_fingerprint}
+        # Trust marker: the API honors the serial only when this is set
+        # (§5.4 / review C1). The public site strips it.
+        header_up X-Portal-Agent-Vhost 1
+        # Long-lived agent WebSocket.
+        transport http {
+            read_timeout 300s
+            write_timeout 300s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+}
+{% endif %}
 
 # Demo-stats service (CS2 demo parser). The portal API's SSRF guard requires
 # CS2_DEMO_SERVICE_URL to be https + non-private, so the loopback service is

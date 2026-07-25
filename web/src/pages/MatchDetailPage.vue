@@ -245,6 +245,13 @@
         @send="handleChatSend"
       />
 
+      <!-- Game server (MatchZy integration §7.2) -->
+      <MatchServerPanel
+        v-if="matchIdRef"
+        :match-id="matchIdRef"
+        :is-admin="authStore.isAdmin"
+      />
+
       <!-- Forfeit Button -->
       <v-card v-if="canForfeit" class="mb-6" variant="outlined" color="error">
         <v-card-text class="d-flex align-center justify-space-between">
@@ -438,6 +445,9 @@ import VetoPanel from '@/components/match/veto/VetoPanel.vue'
 import LineupPanel from '@/components/match/LineupPanel.vue'
 import LineupDeclarePanel from '@/components/match/LineupDeclarePanel.vue'
 import LobbyChatPanel from '@/components/match/LobbyChatPanel.vue'
+import MatchServerPanel from '@/components/match/MatchServerPanel.vue'
+import { useAuthStore } from '@/stores/auth'
+import { useMatchServerStore } from '@/stores/matchServer'
 import LobbyPresenceBar from '@/components/match/LobbyPresenceBar.vue'
 import DisputeThreadPanel from '@/components/match/DisputeThreadPanel.vue'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
@@ -484,6 +494,43 @@ const confirmDialog = useConfirmDialog()
 // instantiated the composable and re-exposed lobby state via defineExpose,
 // which coupled MatchDetailPage to a template ref — moved to provide/inject.
 const matchIdRef = computed<string | null>(() => match.value?.id ?? null)
+
+// Game-server reservation state (MatchZy §7.2): fetched per match, kept
+// fresh by status changes + the lobby websocket pushes.
+const authStore = useAuthStore()
+const matchServerStore = useMatchServerStore()
+watch(
+  matchIdRef,
+  (id) => {
+    matchServerStore.clear()
+    if (id) {
+      void matchServerStore.fetchMatchServer(id)
+      void matchServerStore.fetchSubstitutions(id)
+    }
+  },
+  { immediate: true },
+)
+watch(
+  () => match.value?.status,
+  (status, prev) => {
+    if (status && prev && status !== prev && matchIdRef.value) {
+      void matchServerStore.fetchMatchServer(matchIdRef.value)
+    }
+  },
+)
+
+// §7.3 / review M7: on a reload during server setup or a live match the
+// veto panel never mounts (it only renders for checking_in/pick_ban), so
+// nothing would open the lobby socket — connect it here whenever a
+// reservation is active.
+watch(
+  () => matchServerStore.reservation?.status,
+  (status, prev) => {
+    if (status !== prev && matchServerStore.isActive()) {
+      void matchLobby.initialize()
+    }
+  },
+)
 const matchLobby = useMatchLobby(matchIdRef, userRegistrationId)
 provideMatchLobby(matchLobby)
 

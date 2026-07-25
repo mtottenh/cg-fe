@@ -416,9 +416,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 173 found · 141 fixed · 32 open** (P-53 mitigated).
+**Status (derived): 179 found · 147 fixed · 32 open** (P-53 mitigated).
 
-Open: P-58, P-61, P-66, P-80, P-120, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162, P-167, P-168, P-169, P-173.
+Open: P-58, P-61, P-66, P-80, P-120, P-128, P-129, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162, P-167, P-168, P-169, P-173, P-175, P-176, P-177, P-178, P-179.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -541,17 +541,17 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-128 | Team colour fields have no client validation against a backend bound | user trap | open |
 | P-129 | Review queue still has no server-side sort control (P-55 follow-up) | admin friction | open |
 | P-130 | Fixtures picked a game positionally; a sort_order test reordered them | test-infra | **fixed** `3a0df22` |
-| P-131 | `dispute.reason` rendered raw on two admin surfaces | user-facing | open |
-| P-132 | Eight `.role` raw renders across six files | user-facing | open |
-| P-133 | `MyLeagueTeamsPage` feeds `membership_type` through `teamRoleMap` — never matches | user-facing | open |
-| P-134 | A match completed in-page never fetches its result review | user-facing | open |
+| P-131 | `dispute.reason` rendered raw on two admin surfaces — both treated a declared enum as the free-text field beside it | user-facing | **fixed** `86701cc` |
+| P-132 | Eight `.role` raw renders across six files — six took the LABEL off the wire while colouring the chip from the map, so they looked deliberate | user-facing | **fixed** `86701cc` |
+| P-133 | `MyLeagueTeamsPage` feeds `membership_type` through `teamRoleMap` — disjoint enums, so EVERY lookup missed and the fallback fired for every league card ever drawn. Hidden because `formatRole` capitalises without consulting a map | user-facing | **fixed** `86701cc` |
+| P-134 | A match completed in-page never fetches its result review — `pollMatch` never fetched it at all | user-facing | **fixed** `86701cc` |
 | P-135 | `unlinkDemoEvidence` silently no-ops after a reload — no DELETE sent | **trust** | **fixed** `b6ccf8b+806048e` |
 | P-136 | `MatchEvidenceTab` never passes `match-id`, so evidence actions never render | feature dead | **fixed** `b6ccf8b+806048e` (prop made required) |
 | P-137 | `Cs2DemoClient::default()` points at a real external host — **2 more instances found** (portal-scanner, portal-cli) | **config safety** | **fixed** `b6ccf8b` |
 | P-138 | **A FAILED validation still stamped the green chip** — `mark_validated` hardcoded `validated = true`, so link and evidence rows actively disagreed | **integrity** | **fixed** `b6ccf8b+806048e` |
 | P-123 | **Ban-lift confirm dialog identifies the user by a truncated UUID** | **safety** | **fixed** `be66b56+fa394b0` |
 | P-124 | P-116 recurs in 6 more sites reading a whole-store error alias | user-facing | **fixed** `c99ae81` |
-| P-125 | `TeamDetailPage` renders roster/invitation roles raw | user-facing | open |
+| P-125 | `TeamDetailPage` renders roster/invitation roles raw — actually THREE sites (roster, invitation, join-request) | user-facing | **fixed** `86701cc` |
 | P-126 | A disbanded team can still be renamed — no terminal check on update | integrity | **fixed** `f3c6550` |
 | P-118 | **Evidence upload URL hard-coded to the dev stack** | **cross-env** | **fixed** `a9e2988` |
 | P-119 | Stale specs asserted raw enums the status-map sweeps humanised | test rot | **fixed** `3bcfd12` |
@@ -611,6 +611,12 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-171 | `MatchResultsTab` printed `submitted_by_user_id` as a raw UUID while `submitted_by_display_name` sat unused on the same DTO — P-95/P-115/P-123 class | user-facing | **fixed** `97f4ae7` |
 | P-172 | Evidence/demo chips read `id.slice(0, 8)`; v7 prefixes are timestamps, so files attached seconds apart rendered as identical chips | user-facing | **fixed** `97f4ae7` |
 | P-173 | `tournament_matches.participant1_score` is `NOT NULL DEFAULT 0`, so "no result yet" is indistinguishable from "0-0" at the column level — `winner_registration_id` is the only honest has-result signal, and `?? '-'` fallbacks on those fields are dead code | latent | open |
+| P-174 | **A player who leaves or is removed keeps a My Teams card whose chip printed the literal `left`/`removed`** — `teamStatusMap` was fed a THIRD enum nobody had keyed it against, and the P-112 sweep had deleted those values as belonging to neither | **live leak** | **fixed** `86701cc` |
+| P-175 | `EvidenceDisplay:165` renders `evidence_type` raw; the property is outside the ratchet's list so the guard cannot see it. `evidence_type` is `string` on the wire — P-112 class | user-facing | open |
+| P-176 | `AdminPipelinePage:376` renders `h.source` raw; `player_rating_history.source` is `VARCHAR(64)` with no CHECK, so genuinely unconstrained | debt | open |
+| P-177 | **`LeagueMembersModal` disables actions on `membership_type === 'owner'`, but `LeagueMembershipType` is admin/moderator/member — `'owner'` is unreachable, so those guards NEVER fire** | enforcement | open |
+| P-178 | `leagueStatusMap` is duplicated inline in three components instead of living in `statusMaps.ts`, so the ratchet cannot count it and it can drift three ways | debt | open |
+| P-179 | The "pending approvals" badge never clears after an organizer approves a registration — API returns 200, the count is not refreshed (`tournament-team.spec.ts:481`, reproducible) | user-facing | open |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service

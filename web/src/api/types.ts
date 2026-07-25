@@ -2295,7 +2295,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get evidence details. */
+        get: operations["get_evidence"];
         put?: never;
         post?: never;
         /** Delete evidence. */
@@ -21452,6 +21453,40 @@ export interface operations {
                 };
             };
             /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_evidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+                /** @description Evidence ID */
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Evidence details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_EvidenceResponse"];
+                };
+            };
+            /** @description Evidence not found */
             404: {
                 headers: {
                     [name: string]: unknown;

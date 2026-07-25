@@ -595,11 +595,21 @@ function clearUserLookupError() {
 
 /**
  * `UserSearchAutocomplete` is backed by `GET /v1/players`, whose `id` is a
- * PLAYER id — and `players.id` is not `users.id` (`migrations/0002`: players
- * has its own PK plus a `user_id` FK). The RBAC endpoints are user-scoped, so
- * the player id has to be resolved before anything else. Getting this wrong is
- * silent: `/v1/admin/users/{player_id}/roles` returns an empty list rather
- * than a 404, so the tab would just say "no roles" for everybody.
+ * PLAYER id, while every RBAC endpoint is user-scoped. Today those two UUIDs
+ * happen to be equal: `register_user` derives them together through
+ * `make_shared_account_ids` (api `portal-domain/src/services/user.rs:145-171`)
+ * and that 1:1 invariant is documented and deliberate. It is also documented
+ * as *migratable* — point 3 of that comment reserves the right to hand out
+ * distinct ids for alt accounts — and `PlayerRepository::create`
+ * (`portal-db/src/repositories/user.rs:315`) already inserts a player without
+ * an explicit id, so the schema does not enforce the equality either.
+ *
+ * Resolving through `GET /v1/players/{id}` costs one request and makes this
+ * tab independent of all that. It is worth the request because the failure
+ * mode is silent rather than loud: `/v1/admin/users/{some_other_uuid}/roles`
+ * answers 200 with an empty list, not a 404, so a tab that assumed the ids
+ * matched would simply report "no platform roles" for everybody the day the
+ * invariant changed — on the surface that decides who is an administrator.
  */
 async function onUserSelected(player: PlayerSummary | null) {
   roleToAssign.value = null

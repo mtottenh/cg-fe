@@ -199,10 +199,15 @@ describe('AdminPermissionsPage — Users tab exists at all (P-70)', () => {
   it('renders a Users tab and loads the subject’s current role assignments', async () => {
     const w = await mountUsersTab([ROLES[0]!])
     expect(w.find('[data-testid="role-subject"]').text()).toBe('Target Person')
-    // The tab reads the USER id, not the player id it was handed: `players.id`
-    // and `users.id` are different columns, and the roles endpoint answers an
-    // unknown user with an empty list rather than a 404, so getting this wrong
-    // fails silently as "no roles" for everybody.
+    // The tab reads the USER id, not the player id it was handed. Today those
+    // UUIDs are equal by a documented, deliberate 1:1 invariant
+    // (`make_shared_account_ids`, api portal-domain/src/services/user.rs:145-171)
+    // — which is exactly why this needs pinning: nothing would visibly break if
+    // the resolution step were dropped, right up until that invariant is
+    // migrated away (its own doc reserves the right), and then the failure is
+    // silent, because `/v1/admin/users/{unknown}/roles` answers 200 with an
+    // empty list rather than 404. Hence the mock returns a user_id that differs
+    // from the player id: a page relying on the invariant fails here today.
     expect(mockGet).toHaveBeenCalledWith('/v1/admin/users/{user_id}/roles', {
       params: { path: { user_id: 'user-1' } },
     })

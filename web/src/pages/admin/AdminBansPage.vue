@@ -132,9 +132,20 @@
           :items-per-page="pagination.per_page"
           class="elevation-0"
         >
-          <template v-slot:item.user_id="{ item }">
-            <div class="text-caption font-weight-medium">
-              {{ item.user_id.substring(0, 8) }}...
+          <!--
+            P-123: this column used to render `item.user_id.substring(0, 8)`.
+            No surface in the product shows a user's UUID, and UUID v7 prefixes
+            are timestamps — two bans created minutes apart share theirs — so
+            the column identified nobody and did it ambiguously. It now leads
+            with the display name (the name `UserSearchAutocomplete` showed the
+            admin who issued the ban) and carries the username beneath.
+          -->
+          <template v-slot:item.username="{ item }">
+            <div data-testid="ban-user">
+              <div class="font-weight-medium">{{ item.display_name || item.username }}</div>
+              <div v-if="item.display_name" class="text-caption text-medium-emphasis">
+                {{ item.username }}
+              </div>
             </div>
           </template>
 
@@ -310,7 +321,7 @@ const statusOptions = [
 
 // Table headers
 const headers = [
-  { title: 'User ID', key: 'user_id', width: '120px' },
+  { title: 'User', key: 'username', width: '180px' },
   { title: 'Type', key: 'ban_type', width: '130px' },
   { title: 'Reason', key: 'reason' },
   { title: 'Status', key: 'status', width: '100px' },
@@ -379,10 +390,24 @@ function viewBanDetail(ban: BanResponse) {
   detailModalOpen.value = true
 }
 
+/**
+ * How a ban's subject is named to a human.
+ *
+ * P-123: the confirm dialog below asked an operator to approve a destructive
+ * moderation action against `019f993f...` — eight characters of a UUID v7,
+ * whose leading digits are a timestamp, so two bans created minutes apart are
+ * genuinely indistinguishable rather than merely cryptic. Both names are shown
+ * because either alone is defeatable: display names are not unique, and the
+ * username is the identifier an operator can act on elsewhere.
+ */
+function banSubject(ban: BanResponse): string {
+  return ban.display_name ? `${ban.display_name} (@${ban.username})` : `@${ban.username}`
+}
+
 function confirmLiftBan(ban: BanResponse) {
   confirmDialog.confirm({
     title: 'Lift Ban',
-    message: `Are you sure you want to lift this ban for user ${ban.user_id.substring(0, 8)}...?`,
+    message: `Are you sure you want to lift this ${formatBanType(ban.ban_type)} ban for ${banSubject(ban)}?`,
     action: 'Lift Ban',
     color: 'success',
     handler: async () => {

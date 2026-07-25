@@ -431,10 +431,19 @@ test.describe('Admin Management', () => {
       // The lift action only renders for active bans (AdminBansPage.vue:186-196).
       await row.getByRole('button', { name: 'Lift ban' }).click()
 
+      // P-123 changed this copy deliberately: the dialog used to read "…for
+      // user 019f993f…?", eight characters of a UUID v7 whose leading digits
+      // are a timestamp — so two bans created minutes apart were confirmed
+      // against the same string. Ground rule 9, spec-changed case: the locator
+      // follows the new copy, and the assertion below is STRONGER than the one
+      // it replaces, pinning that the dialog names the person and the ban type
+      // rather than merely that some dialog appeared.
       const confirmDialog = page
         .getByRole('dialog')
-        .filter({ hasText: 'Are you sure you want to lift this ban' })
+        .filter({ hasText: 'Are you sure you want to lift this' })
       await expect(confirmDialog).toBeVisible()
+      await expect(confirmDialog).toContainText(target.displayName)
+      await expect(confirmDialog.getByText(`${target.userId.substring(0, 8)}...`)).toHaveCount(0)
 
       const liftPromise = page.waitForResponse(
         (resp) =>

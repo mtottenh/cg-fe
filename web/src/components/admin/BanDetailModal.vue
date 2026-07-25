@@ -42,12 +42,26 @@
 
           <!-- Ban Information -->
           <v-list density="compact" class="mb-4">
+            <!--
+              P-123: the modal led with the raw `user_id`. The full UUID is at
+              least unambiguous (unlike the truncation on the table), but it
+              still names nobody, so the operator had to leave the moderation
+              surface to find out whose ban they were reading. Name first, id
+              kept underneath because it is what an operator quotes into a
+              support ticket or a SQL console.
+            -->
             <v-list-item>
               <template v-slot:prepend>
                 <v-icon>mdi-account</v-icon>
               </template>
-              <v-list-item-title>User ID</v-list-item-title>
-              <v-list-item-subtitle class="text-body-2">{{ ban.user_id }}</v-list-item-subtitle>
+              <v-list-item-title>User</v-list-item-title>
+              <v-list-item-subtitle class="text-body-2" data-testid="ban-detail-user">
+                {{ ban.display_name || ban.username }}
+                <span v-if="ban.display_name" class="text-medium-emphasis">({{ ban.username }})</span>
+              </v-list-item-subtitle>
+              <v-list-item-subtitle class="text-caption text-medium-emphasis">
+                {{ ban.user_id }}
+              </v-list-item-subtitle>
             </v-list-item>
 
             <v-list-item>

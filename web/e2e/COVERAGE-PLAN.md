@@ -458,7 +458,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | **fixed** `4166015` |
 | P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | **fixed** `b137146` |
 | P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
-| P-117 | Stage formats rendered and offered raw; ratchet regex missed `.format` | user-facing | **fixed** `PENDING117` |
+| P-117 | Stage formats rendered and offered raw; ratchet regex missed `.format` | user-facing | **fixed** `af05f75` |
 | P-113 | **Ownership transfer leaves the RBAC role behind — new owner 403s, old owner retains power** | **authorization** | open |
 | P-114 | Invitations table has no Message column, so P-94's message is invisible | user-facing | open |
 | P-115 | Invitations/applications identify people by a truncated UUID | user-facing | open |

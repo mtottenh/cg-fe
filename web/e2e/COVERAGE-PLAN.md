@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **116 product findings** from what
+*"what should happen here?"* — and that question surfaced **117 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **116 findings · 79 fixed** → the status-drift defect class closed at the source
+112 → 0) → **117 findings · 83 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -225,7 +225,7 @@ two each and together retire most of the dead-control class.
 |---|---|---|---|
 | **T0** | **Security** | ~~P-108~~ · ~~P-60~~ — **tier complete** | Unauthenticated writes and un-revoked sessions. Cost is irrelevant |
 | **T1** | **Silent data corruption** | ~~P-93~~ · ~~P-77~~ · ~~P-78~~ · ~~P-83~~ — **tier complete** | Each writes or preserves *wrong data* while reporting success. Worst possible failure mode: no one finds out |
-| **T2** | **One-line dead-control fixes** | ~~P-87~~ · ~~P-104~~ · ~~P-105~~ · ~~P-94~~ · ~~P-84~~ · P-99 · P-98 · P-82 | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
+| **T2** | **One-line dead-control fixes** | all eight fixed — **tier complete** | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
 | **T3** | **a11y sweep** (one batch) | ~~P-89~~ · ~~P-100~~ · ~~P-106~~ · ~~P-85~~ — **tier complete**, ratcheted | P-89 is a **P-45 recurrence**, so this must be a repo-wide sweep, not another point fix |
 | **T4** | **Raw-enum sweep** (one batch) | ~~P-76~~ · ~~P-91~~ · ~~P-79~~ · P-96 → now ratcheted; see C1 | P-10/P-44 family, now on its fifth recurrence. Batch it and add a guard, or it returns |
 | **T5** | **Dead code & build hygiene** | P-69 · P-67 · P-65 · P-90 | Deletions and registrations. Cheap, and shrinks the surface the other tiers have to reason about |
@@ -337,9 +337,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 116 found · 79 fixed · 37 open** (P-53 mitigated).
+**Status (derived): 117 found · 83 fixed · 34 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-72, P-73, P-75, P-80, P-82, P-88, P-90, P-92, P-98, P-99, P-109, P-110, P-111.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-72, P-73, P-75, P-80, P-88, P-90, P-92, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -454,10 +454,11 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-95 | **Invite-only league is un-invitable — needs a UUID no surface shows** | feature unusable | **fixed** `4dd4f60` |
 | P-96 | League invitations/applications tables print the raw enum | user-facing | **fixed** `4dd4f60` |
 | P-97 | Every league silently gets an unconfigured "Season 1" | product question | **fixed** `4dd4f60` |
-| P-98 | Stage "Format (optional)" is mandatory — blank is a 400 | user trap | open |
-| P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | open |
+| P-98 | Stage "Format (optional)" is mandatory — blank is a 400 | user trap | **fixed** `4166015` |
+| P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | **fixed** `4166015` |
 | P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | **fixed** `b137146` |
 | P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
+| P-117 | Stage formats rendered and offered raw; ratchet regex missed `.format` | user-facing | **fixed** `PENDING117` |
 | P-113 | **Ownership transfer leaves the RBAC role behind — new owner 403s, old owner retains power** | **authorization** | open |
 | P-114 | Invitations table has no Message column, so P-94's message is invisible | user-facing | open |
 | P-115 | Invitations/applications identify people by a truncated UUID | user-facing | open |
@@ -471,7 +472,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-91 | Disable writes `maintenance`; status chip prints the raw enum | user-facing | **fixed** `b992f2a` |
 | P-92 | Rank tiers + team size are read-only with no editing surface anywhere | product gap | open |
 | P-86 | e2e fixtures type statuses as bare `string` — P-31 stops at the test boundary | gate gap | **fixed** `ccd4850` |
-| P-82 | **"Revert to Awaiting Result" always 400s — dead control ×2** | feature dead | open |
+| P-82 | **"Revert to Awaiting Result" always 400s — dead control ×2** | feature dead | **fixed** `4166015` |
 | P-83 | **Revert Progression is a no-op on elimination, claims success** | **integrity** | **fixed** `8e56adf` |
 | P-84 | Admin scheduling notes discarded; no status-log row | audit gap | **fixed** `1d5c9e5` |
 | P-85 | `MatchesTab` rows have no `data-testid` | test-facing | **fixed** `b137146` |

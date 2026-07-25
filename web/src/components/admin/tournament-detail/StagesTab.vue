@@ -20,7 +20,7 @@
         </template>
         <v-list-item-title>{{ stage.name }}</v-list-item-title>
         <v-list-item-subtitle>
-          Format: {{ stage.format || 'Default' }}
+          Format: {{ stage.format ? getStatusLabel(stageFormatMap, stage.format) : 'Default' }}
           <span v-if="stage.match_format"> | Match: {{ formatMatchFormat(stage.match_format) }}</span>
         </v-list-item-subtitle>
       </v-list-item>
@@ -47,7 +47,7 @@
         <v-select
           aria-label="Format"
           v-model="newStage.format"
-          :items="STAGE_FORMATS"
+          :items="STAGE_FORMAT_OPTIONS"
           label="Format"
           class="mb-2"
         />
@@ -76,6 +76,7 @@
 </template>
 
 <script setup lang="ts">
+import { stageFormatMap, getStatusLabel } from '@/utils/statusMaps'
 import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTournamentsStore } from '@/stores/tournaments'
@@ -111,6 +112,13 @@ const STAGE_FORMATS = [
 ] as const
 
 type StageFormat = (typeof STAGE_FORMATS)[number]
+
+// P-117: the picker showed raw wire values too. Titles come from the same map
+// the list renders through, so the two can never disagree.
+const STAGE_FORMAT_OPTIONS = STAGE_FORMATS.map((value) => ({
+  value,
+  title: getStatusLabel(stageFormatMap, value),
+}))
 
 const props = defineProps<{
   tournamentId: string

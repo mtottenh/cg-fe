@@ -108,24 +108,30 @@ test.describe('Stage format picker', () => {
     // five-item list, so anything less than that is a broken test, not a pass.
     expect(offered.length, 'the format picker offers options at all').toBeGreaterThanOrEqual(5)
     // The dead option must be gone, by name — a regression should say WHY.
+    // P-117 gave the picker human titles, so match on those; the wire values
+    // are still pinned by the per-stage API cross-check inside the loop.
+    expect(offered).not.toContain('Groups and Playoffs')
     expect(offered).not.toContain('groups_and_playoffs')
     // ...and the valid one it displaced must be present.
-    expect(offered).toContain('group_stage')
+    expect(offered).toContain('Group Stage')
 
     await page.keyboard.press('Escape')
     await expect(dialog).not.toBeVisible({ timeout: 10_000 })
 
     // Now prove each offered option is REAL by creating a stage with it. A
     // format the backend rejects surfaces as a 400 → no snackbar → failure here.
-    for (const [index, format] of offered.entries()) {
-      const stageName = `Stage ${format}`
+    // P-117: options now show human titles, so the displayed text is NOT the
+    // wire value and must not be sent as one. The loop selects by POSITION and
+    // never learns the wire value at all — which keeps this test's whole point
+    // intact (it holds no copy of the enum to drift) while the API cross-check
+    // below still proves what was actually persisted.
+    for (const [index, label] of offered.entries()) {
+      const stageName = `Stage ${label}`
       const d = await openStageDialog(page)
       await d.getByLabel('Stage Name').fill(stageName)
 
       await formatSelect(d).click()
-      await page.locator('.v-select__content .v-list-item')
-        .filter({ hasText: new RegExp(`^${format}$`) })
-        .click()
+      await page.locator('.v-select__content .v-list-item').nth(index).click()
       await expect(page.locator('.v-select__content')).toHaveCount(0)
 
       // Await the mutation rather than networkidle (§2): an already-idle page
@@ -140,7 +146,7 @@ test.describe('Stage format picker', () => {
 
       expect(
         response.status(),
-        `creating a stage with the offered format "${format}" must not be rejected`,
+        `creating a stage with the offered format "${label}" must not be rejected`,
       ).toBe(201)
       await expect(d).not.toBeVisible({ timeout: 10_000 })
 
@@ -150,7 +156,12 @@ test.describe('Stage format picker', () => {
       expect(stages).toHaveLength(index + 1)
       const persisted = stages.find((s) => s.name === stageName)
       expect(persisted, `stage "${stageName}" persisted`).toBeTruthy()
-      expect(persisted!.format).toBe(format)
+      // The persisted value must be a REAL StageFormat, not the label. This is
+      // what would catch a picker whose title and value had come apart.
+      expect(
+        ['single_elimination', 'double_elimination', 'round_robin', 'swiss', 'group_stage'],
+        `"${label}" persisted as a wire value the backend defines`,
+      ).toContain(persisted!.format)
     }
   })
 

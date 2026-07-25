@@ -56,7 +56,12 @@ const EXEMPT = [
   'src/pages/admin/AdminPermissionsPage.vue',
 ]
 
-const RAW = /\{\{\s*[\w.]+\.(status|priority|category|override_type|access_type)\s*\}\}/
+// `format` added and a trailing `|| 'fallback'` tolerated: the original regex
+// missed `{{ stage.format || 'Default' }}` on BOTH counts, so an entire enum
+// family was invisible to the guard. A guard is only as wide as its pattern —
+// widen it whenever a leak is found outside it.
+const RAW =
+  /\{\{\s*[\w.]+\.(status|priority|category|format|override_type|access_type)\s*(\|\|[^}]*)?\}\}/
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -117,7 +122,11 @@ const maps = readFileSync(join(SRC, 'utils', 'statusMaps.ts'), 'utf-8')
 const total = (maps.match(/^export const \w+Map: StatusMap/gm) ?? []).length
 const keyed = (maps.match(/^export const \w+Map: StatusMap</gm) ?? []).length
 const unlocked = total - keyed
-const MAX_UNLOCKED = 10
+// 11 after `stageFormatMap` (P-117). This number is a DEBT METER, not a target:
+// every unkeyed map is one the API stringifies, so it can still drift the way
+// P-79 and P-91 did. It rises only when a new map is added for an enum the API
+// has not declared, and must fall to 0 as P-112 is worked through.
+const MAX_UNLOCKED = 11
 
 if (unlocked > MAX_UNLOCKED) {
   failed = true

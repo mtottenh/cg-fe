@@ -333,3 +333,16 @@ export const tournamentInvitationStatusMap: StatusMap<S['TournamentInvitationSta
   accepted: { color: 'success', label: 'Accepted' },
   revoked: { color: 'error', label: 'Revoked' },
 }
+
+// P-117: stage formats were rendered raw ("round_robin") in the stages list and
+// offered raw in the picker. Not keyed to a union because
+// `CreateTournamentStageRequest.format` is `string` on the wire — the API
+// stringifies `StageFormat`, which is P-112. The five values are the ones
+// `StageFormat::from_str` accepts (portal-core/src/types/tournament.rs:669-678).
+export const stageFormatMap: StatusMap = {
+  single_elimination: { color: 'primary', label: 'Single Elimination' },
+  double_elimination: { color: 'primary', label: 'Double Elimination' },
+  round_robin: { color: 'info', label: 'Round Robin' },
+  swiss: { color: 'info', label: 'Swiss' },
+  group_stage: { color: 'secondary', label: 'Group Stage' },
+}

@@ -557,7 +557,7 @@ test.describe('Tournament Admin Flows', () => {
       const stageSelects = dialog.locator('.v-select')
       await stageSelects.nth(0).click()
       await page.locator('.v-select__content .v-list-item')
-        .filter({ hasText: /^round_robin$/ })
+        .filter({ hasText: /^Round Robin$/ })
         .click()
       await expect(page.locator('.v-select__content')).toHaveCount(0)
       await stageSelects.nth(1).click()
@@ -578,7 +578,11 @@ test.describe('Tournament Admin Flows', () => {
       await expect(page.getByRole('heading', { name: 'No Stages' })).toHaveCount(0)
       const stageItem = page.locator('.v-window-item .v-list-item').filter({ hasText: 'Group Phase' })
       await expect(stageItem).toBeVisible()
-      await expect(stageItem).toContainText('Format: round_robin')
+      // P-117: the list renders the mapped label now, not the wire value. The
+      // API cross-check below still pins the wire value, so this asserts the
+      // PRESENTATION while that asserts the CONTRACT — the pair is what makes a
+      // raw-enum regression visible instead of silently passing.
+      await expect(stageItem).toContainText('Format: Round Robin')
       // The match format is HUMANISED by formatMatchFormat, not printed raw.
       await expect(stageItem).toContainText('Match: Best of 3')
 

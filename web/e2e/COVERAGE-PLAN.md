@@ -416,9 +416,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 202 found · 158 fixed · 44 open** (P-53 mitigated).
+**Status (derived): 202 found · 162 fixed · 40 open** (P-53 mitigated).
 
-Open: P-61, P-66, P-80, P-120, P-128, P-129, P-142, P-143, P-144, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162, P-173, P-175, P-176, P-177, P-178, P-179, P-180, P-181, P-182, P-183, P-186, P-187, P-188, P-189, P-190, P-191, P-192, P-193, P-194, P-195, P-196, P-198, P-199, P-200.
+Open: P-61, P-66, P-80, P-120, P-128, P-129, P-142, P-143, P-144, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-173, P-175, P-176, P-177, P-178, P-180, P-181, P-182, P-183, P-186, P-187, P-188, P-189, P-190, P-191, P-193, P-194, P-195, P-198, P-199, P-200.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -601,7 +601,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-159 | `linkDiscoveredDemo` recovers the new link by matching `game_number`, so on bo3+ it can map the evidence id onto the WRONG link | correctness | open |
 | P-160 | `docker-compose.yml:76` defaults `CS2_DEMO_SERVICE_URL` to the live third-party host — P-137's mechanism surviving in deployment config | **config safety** | open |
 | P-161 | `POST /evidence/validate-demo` and `GET /evidence/demo-stats/{name}` are dead API surface — the store actions exist, no component calls them, so P-137 has no UI to drive | feature dead | open |
-| P-162 | `derive_result_outcome` (`tournament/helpers.rs:143`) is dead code, flagged by the compiler | debt | open |
+| P-162 | `derive_result_outcome` was dead code — **no longer dead**: P-165's tie fix routed `dispute.rs:517` and `result.rs:453` through it, which is what stopped a tie fabricating a winner. Verified clean | debt | **fixed** `1a6743b` |
 | P-163 | **`league.create` was declared but never seeded — a second P-139. The first handler to gate on it would 403 everyone including super_admin** | **authorization** | **fixed** `0081` |
 | P-164 | **The P-140 guard covered `admin::ALL` only — 1 of 5 registries — so an unseeded `tournament.results.manage` would have slipped through it too** | **gate gap** | **fixed** `1a6743b` |
 | P-165 | **`resolve/adjusted` silently fabricated a winner on a TIE and wrote it into the bracket** (`p1 > p2 ? p1 : p2` awards equal scores to participant 2) | **integrity** | **fixed** `1a6743b` |
@@ -621,11 +621,11 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-189 | Result-override audit read hard-coded to `100, 0` with no pagination surface | admin gap | open |
 | P-190 | **`HomePage` upcoming-matches scans `per_page: 100` per tournament AND matches only `player_id`, so a team-only participant never sees ANY upcoming match** | user-facing | open |
 | P-191 | Eight more page/component/composable pagination scans (`TeamDetailPage` 20, `LeagueSearchAutocomplete` 200→clamped to 100, `useLeagueDetail`/`LeagueDetailPage` 20 with counts from `.length`, `HomePage:487`, `LeagueMembersModal`, `leagues.ts:295`, `TournamentInvitationsModal`) | user-facing | open |
-| P-192 | **The pagination guard only globs `src/stores/**`, so every page, component and composable instance above is INVISIBLE to it** — the guard worked where it looked and did not look widely enough | **gate gap** | open |
+| P-192 | **The pagination guard globbed `src/stores/**` only, so every page/component/composable instance was INVISIBLE to it** — green throughout while 13 scans sat outside its field of view. Scope is now asserted, so narrowing it fails loudly instead of shrinking coverage behind a passing tick | **gate gap** | **fixed** `d88a783` |
 | P-193 | Check-in disagrees exactly as P-168 did: `useMatchDetail:92` shows the panel to any roster member, the backend accepts only captain/owner/delegate/staff → silent 403. Needs a product ruling | user-facing | open |
 | P-194 | **`v_player_league_teams` has no `left_at IS NULL` filter while `is_member` does, so `GET /v1/players/me/league-teams` returns teams the player has LEFT** — feeds `myTeams`, `hasEligibleTeams` and the team picker | correctness | open |
 | P-195 | Capacity count excludes `'withdrawn','rejected'`; `'rejected'` is not in the status enum (dead literal), and `disqualified` rows still occupy a slot | correctness | open |
-| P-196 | `progression.rs:122 fills_from` is dead code, warns on every build | debt | open |
+| P-196 | `progression.rs:122 fills_from` was dead code warning on every build — **no longer dead**: P-169's structural revert (`7a19c34`) is precisely what needed it (`:1076`). Verified: `cargo check -p portal-domain` emits no warning | debt | **fixed** `7a19c34` |
 | P-197 | **`team-management.spec.ts:1208` was RED, not merely obsolete** — its refusal regex stopped matching any backend string when `297a19e` unified the enforcement point. The message changed and the e2e was missed | test rot | **fixed** `085e7c5` |
 | P-198 | `update_season` writes the generic field update and THEN calls `update_roster_lock` — two non-transactional writes, so a DB error between them half-applies the PATCH | integrity | open |
 | P-199 | **`update_status` enforces a transition chain (Draft→Registration→Active→…) but `update_season` writes `status` as a plain field with NO validation, so `PATCH {status}` bypasses the chain entirely** — two mechanisms disagreeing about the same rule | enforcement | open |
@@ -639,7 +639,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-176 | `AdminPipelinePage:376` renders `h.source` raw; `player_rating_history.source` is `VARCHAR(64)` with no CHECK, so genuinely unconstrained | debt | open |
 | P-177 | **`LeagueMembersModal` disables actions on `membership_type === 'owner'`, but `LeagueMembershipType` is admin/moderator/member — `'owner'` is unreachable, so those guards NEVER fire** | enforcement | open |
 | P-178 | `leagueStatusMap` is duplicated inline in three components instead of living in `statusMaps.ts`, so the ratchet cannot count it and it can drift three ways | debt | open |
-| P-179 | The "pending approvals" badge never clears after an organizer approves a registration — API returns 200, the count is not refreshed (`tournament-team.spec.ts:481`, reproducible) | user-facing | open |
+| P-179 | **A regression INTRODUCED by P-167 hours earlier**: the new server-sourced counts were never invalidated, so the badge was right on load and stale from the first approval onwards. The old page-derived count updated for free because it read the array the mutations write to | user-facing | **fixed** `4f8eb58` |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service

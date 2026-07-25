@@ -12,7 +12,7 @@ began as a test-quality audit. The findings are the deliverable; the tests are t
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **112 findings · 68 fixed** → the status-drift defect class closed at the source
+112 → 0) → **112 findings · 73 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -205,7 +205,7 @@ two each and together retire most of the dead-control class.
 |---|---|---|---|
 | **T0** | **Security** | ~~P-108~~ · ~~P-60~~ — **tier complete** | Unauthenticated writes and un-revoked sessions. Cost is irrelevant |
 | **T1** | **Silent data corruption** | ~~P-93~~ · ~~P-77~~ · ~~P-78~~ · ~~P-83~~ — **tier complete** | Each writes or preserves *wrong data* while reporting success. Worst possible failure mode: no one finds out |
-| **T2** | **One-line dead-control fixes** | ~~P-87~~ · P-99 · P-98 · P-82 · P-104 · P-105 · P-94 · P-84 | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
+| **T2** | **One-line dead-control fixes** | ~~P-87~~ · ~~P-104~~ · ~~P-105~~ · ~~P-94~~ · ~~P-84~~ · P-99 · P-98 · P-82 | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
 | **T3** | **a11y sweep** (one batch) | ~~P-89~~ · ~~P-100~~ · ~~P-106~~ · ~~P-85~~ — **tier complete**, ratcheted | P-89 is a **P-45 recurrence**, so this must be a repo-wide sweep, not another point fix |
 | **T4** | **Raw-enum sweep** (one batch) | ~~P-76~~ · ~~P-91~~ · ~~P-79~~ · P-96 → now ratcheted; see C1 | P-10/P-44 family, now on its fifth recurrence. Batch it and add a guard, or it returns |
 | **T5** | **Dead code & build hygiene** | P-69 · P-67 · P-65 · P-90 | Deletions and registrations. Cheap, and shrinks the surface the other tiers have to reason about |
@@ -263,13 +263,13 @@ closed P-79/P-91/P-76, found 5 unfiled drifts (one a live leak) and 11 raw rende
 > one-line fixes (`resolve_game_slug` first, as `update_game` already does), one test each.
 > Unblocks **P-92** (rank tiers / team size are additionally blocked by it).
 
-**C4 · "Collected, validated, discarded."**
+**C4 · "Collected, validated, discarded." ✅ DONE** (P-94 `c49380d`, P-84 `1d5c9e5`)
 > Findings: **P-94 · P-84** (and P-104's second half). A field the UI collects that never reaches
 > storage. *Not* one fix — P-94 drops in the web store, P-84 in the Rust handler — but one
 > **audit**: for every request DTO field, is it consumed by the service? Worth a guard later;
 > the two known cases are cheap now.
 
-**C5 · "Reports success, does nothing."**
+**C5 · "Reports success, does nothing." ✅ DONE** (P-74, P-104, P-105)
 > Findings: **P-74 · P-105** (+ P-104). Different mechanisms — a handler that calls no API, a
 > `.catch(() => {})` on a mutation — but one detectable shape: a success snackbar not guarded by
 > a confirmed write. A lint for `.catch(() => {})` on store mutations catches the P-105 form.
@@ -317,9 +317,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 112 found · 68 fixed · 44 open** (P-53 mitigated).
+**Status (derived): 112 found · 73 fixed · 39 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-80, P-82, P-84, P-88, P-90, P-92, P-94, P-95, P-96, P-97, P-98, P-99, P-104, P-105, P-109, P-110, P-111.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-75, P-80, P-82, P-88, P-90, P-92, P-95, P-96, P-97, P-98, P-99, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -412,7 +412,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-71 | Returning team can't enter the next season | blocks flow | open |
 | P-72 | No admin score correction outside a dispute | admin gap | open |
 | P-73 | Ingestion pipeline invisible to admins | ops blind spot | open |
-| P-74 | **"Retry Processing" calls no API — reports success anyway** | **trust** | open |
+| P-74 | **"Retry Processing" calls no API — reports success anyway** | **trust** | **fixed** `c49380d+1d5c9e5` |
 | P-75 | Demo league/tournament association uncorrectable; shows raw UUIDs | admin gap | open |
 | P-76 | Categorize snackbar prints the raw enum | minor | **fixed** `b992f2a` |
 | P-77 | **Uphold on a claim-path dispute completes the match with NO result** | **integrity** | **fixed** `2b8e428` |
@@ -426,11 +426,11 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-111 | Nothing ever validates a demo against a result; "Validated" is dead template | integrity | open |
 | P-102 | **`lineup.spec.ts` read an env var nothing sets — wrote to the DEV database** | **test integrity** | **fixed** `172b46f` |
 | P-103 | P-57 landed without updating the test that depended on the old window | test rot | **fixed** `172b46f` |
-| P-104 | Edit modal's empty-pool gate is decorative; the pool edit is discarded | **feature dead** | open |
-| P-105 | A failed map-pool reset is swallowed and reported as success | trust | open |
+| P-104 | Edit modal's empty-pool gate is decorative; the pool edit is discarded | **feature dead** | **fixed** `c49380d` |
+| P-105 | A failed map-pool reset is swallowed and reported as success | trust | **fixed** `c49380d` |
 | P-106 | `MapPoolPicker` cards are unlabelled clickable divs | a11y | **fixed** `b137146` |
 | P-107 | **The full suite is red as a whole though every spec is green alone** | **suite integrity** | **fixed** `cb4c4db` |
-| P-94 | `InviteUserModal` message collected, validated, then discarded | user-facing | open |
+| P-94 | `InviteUserModal` message collected, validated, then discarded | user-facing | **fixed** `c49380d` |
 | P-95 | **Invite-only league is un-invitable — needs a UUID no surface shows** | feature unusable | open |
 | P-96 | League invitations/applications tables print the raw enum | user-facing | open |
 | P-97 | Every league silently gets an unconfigured "Season 1" | product question | open |
@@ -449,7 +449,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-86 | e2e fixtures type statuses as bare `string` — P-31 stops at the test boundary | gate gap | **fixed** `ccd4850` |
 | P-82 | **"Revert to Awaiting Result" always 400s — dead control ×2** | feature dead | open |
 | P-83 | **Revert Progression is a no-op on elimination, claims success** | **integrity** | **fixed** `8e56adf` |
-| P-84 | Admin scheduling notes discarded; no status-log row | audit gap | open |
+| P-84 | Admin scheduling notes discarded; no status-log row | audit gap | **fixed** `1d5c9e5` |
 | P-85 | `MatchesTab` rows have no `data-testid` | test-facing | **fixed** `b137146` |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`

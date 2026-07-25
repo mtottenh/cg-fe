@@ -17,9 +17,15 @@ type S = components['schemas']
  * (P-79), and the games table had no map at all (P-91). Both rendered the raw
  * wire value to users.
  *
- * `StatusMap` without a type argument stays permissive, for the maps whose
- * enums the API still stringifies — see P-112. Those are the ones that can
- * still drift; prefer the keyed form whenever a union exists.
+ * `StatusMap` without a type argument stays permissive, for the maps that have no
+ * union to key against — see P-112. Those are the ONLY ones that can still drift;
+ * prefer the keyed form whenever a union exists, and if one does not, say in a
+ * comment on the map *why* (no enum at all / client-derived / DTO still
+ * stringifies it) so the next reader does not have to re-derive it.
+ *
+ * P-112 took this from 11 unkeyed maps to 5 by typing six DTO fields that stood in
+ * front of enums which already derived `Serialize` + `ToSchema`. Two of the five
+ * that remain are one-line DTO edits away; three genuinely have nothing to key to.
  */
 export type StatusMap<K extends string = string> = Record<
   K,
@@ -52,7 +58,12 @@ export const tournamentStatusMap: StatusMap<S['TournamentStatus']> = {
  * See COVERAGE-PLAN.md §9b P-4. Keep these keys in sync with
  * `tournamentStatusMap` above.
  */
-export const tournamentPublicStatusMap: StatusMap = {
+// P-112: keyed at last. This map needed no API change at all — `TournamentStatus`
+// has been a declared union since P-31 and `tournamentStatusMap` above was already
+// keyed to it; this one was simply never converted. Keying it is what enforces the
+// "keep these keys in sync" instruction in the comment above, which until now was
+// only a request.
+export const tournamentPublicStatusMap: StatusMap<S['TournamentStatus']> = {
   draft: { color: 'grey', label: 'Coming Soon' },
   published: { color: 'info', label: 'Announced' },
   registration: { color: 'success', label: 'Registration Open' },
@@ -125,7 +136,9 @@ export const demoStatusMap: StatusMap<S['DemoStatus']> = {
   archived: { color: 'grey', label: 'Archived', icon: 'mdi-archive' },
 }
 
-export const demoCategoryMap: StatusMap = {
+// P-112: `DemoResponse.category` was `String` in front of `DemoCategory`, which
+// already derived `Serialize` + `ToSchema`. Now typed, so this map is locked.
+export const demoCategoryMap: StatusMap<S['DemoCategory']> = {
   uncategorized: { color: 'grey', label: 'Uncategorized', icon: 'mdi-help-circle-outline' },
   pug: { color: 'blue', label: 'PUG', icon: 'mdi-account-group' },
   league: { color: 'purple', label: 'League', icon: 'mdi-trophy' },
@@ -156,9 +169,11 @@ export const disputeStatusMap: StatusMap<S['DisputeStatus']> = {
 // auto-assigned to CHEATING reports, fell through to the raw wire value and
 // rendered as literal "urgent priority" in the lowest-weight grey styling.
 //
-// Not keyed to a union because `DisputeResponse.priority` is `String` on the
-// wire, so no union is generated — see P-112.
-export const disputePriorityMap: StatusMap = {
+// P-112 CLOSED for this map: `DisputeResponse.priority` is now typed
+// `DisputePriority` on the wire, so the union exists and this map is keyed to it.
+// The drift that produced P-79 is now a compile error rather than a grey chip
+// reading "urgent priority".
+export const disputePriorityMap: StatusMap<S['DisputePriority']> = {
   low: { color: 'grey', label: 'Low' },
   normal: { color: 'info', label: 'Normal' },
   high: { color: 'warning', label: 'High' },
@@ -168,22 +183,41 @@ export const disputePriorityMap: StatusMap = {
 // P-91: the games table rendered `{{ item.status }}` raw because no map existed.
 // `disable` writes `maintenance`, not `disabled` (repositories/game.rs:182), so
 // a disabled game showed the literal string "maintenance" to the operator.
-// `games.status` is a bare `String` column with no enum — see P-112.
+//
+// NOT keyable (P-112): `games.status` is a bare `VARCHAR` column with no Rust
+// enum behind it, so there is nothing to declare in the spec. Declaring one would
+// mean inventing a type and hoping it matches what the column holds.
+//
+// The column is not unconstrained, though — `games_check_status`
+// (migrations/0003_create_games.sql:49) permits FIVE values, and this map covered
+// only two of them, so `inactive`, `beta` and `deprecated` fell through to the raw
+// wire value in the admin table. The three added below close that; keying is what
+// would have caught it, which is the whole argument for P-112.
 export const gameStatusMap: StatusMap = {
   active: { color: 'success', label: 'Active' },
+  inactive: { color: 'grey', label: 'Inactive' },
+  beta: { color: 'info', label: 'Beta' },
+  deprecated: { color: 'grey', label: 'Deprecated' },
   maintenance: { color: 'warning', label: 'Disabled' },
 }
 
-export const teamRoleMap: StatusMap = {
+// P-112: every `role` field on the league-team responses (member, member-with-player,
+// player-membership, and both invitation shapes) was `String` in front of
+// `LeagueTeamRole`. Typing them produced the union — and keying this map to it
+// deleted FOUR keys the backend can never emit: `founder`, `officer`, `coach` and
+// `manager`. `LeagueTeamRole` is exactly captain | player | substitute.
+export const teamRoleMap: StatusMap<S['LeagueTeamRole']> = {
   captain: { color: 'primary', label: 'Captain' },
-  founder: { color: 'purple', label: 'Founder' },
-  officer: { color: 'secondary', label: 'Officer' },
-  coach: { color: 'success', label: 'Coach' },
-  manager: { color: 'secondary', label: 'Manager' },
   player: { color: 'info', label: 'Player' },
   substitute: { color: 'warning', label: 'Substitute' },
 }
 
+// NOT keyable yet (P-112): `LeagueMemberResponse.membership_type` and
+// `LeagueInvitationResponse.role` are still `String` in front of
+// `LeagueMembershipType`, which already derives `Serialize` + `ToSchema`. The DTO
+// lives in `dto/responses/league.rs`, held by another lane this wave.
+// When it is typed, key this to `S['LeagueMembershipType']` — which will drop
+// `owner`, a key that enum does not have.
 export const leagueRoleMap: StatusMap = {
   owner: { color: 'purple', label: 'Owner' },
   admin: { color: 'primary', label: 'Admin' },
@@ -248,7 +282,8 @@ export const seasonStatusMap: StatusMap<S['SeasonStatus']> = {
   cancelled: { color: 'error', label: 'Cancelled' },
 }
 
-export const banTypeMap: StatusMap = {
+// P-112: `BanResponse.ban_type` is now typed `BanType` on the wire.
+export const banTypeMap: StatusMap<S['BanType']> = {
   platform: { color: 'error', label: 'Platform', icon: 'mdi-block-helper' },
   matchmaking: { color: 'warning', label: 'Matchmaking', icon: 'mdi-controller-off' },
   chat: { color: 'info', label: 'Chat', icon: 'mdi-message-off' },
@@ -256,12 +291,21 @@ export const banTypeMap: StatusMap = {
   tournament: { color: 'orange', label: 'Tournament', icon: 'mdi-tournament' },
 }
 
+// NOT keyable (P-112): unlike `banTypeMap` above, this is not a wire field at all.
+// `AdminBansPage.getBanStatusKey()` DERIVES the key client-side from `lifted_at` /
+// `ends_at` / `is_active`, so there is no backend enum to key against and never
+// will be until the API exposes a computed ban state.
 export const banStatusMap: StatusMap = {
   active: { color: 'error', label: 'Active' },
   lifted: { color: 'success', label: 'Lifted' },
   expired: { color: 'grey', label: 'Expired' },
 }
 
+// NOT keyable (P-112): `permissions.category` is free text —
+// `migrations/0009_create_permissions.sql:14` declares it `VARCHAR(64) NOT NULL
+// DEFAULT 'general'` with NO check constraint and no Rust enum, so any category a
+// seed invents is legal. (`roles.category` IS constrained, but that is a different
+// column and this map is only ever fed `PermissionResponse.category`.)
 export const permissionCategoryMap: StatusMap = {
   platform: { color: 'purple', label: 'Platform' },
   team: { color: 'blue', label: 'Team' },
@@ -270,6 +314,10 @@ export const permissionCategoryMap: StatusMap = {
   admin: { color: 'error', label: 'Admin' },
 }
 
+// NOT keyable yet (P-112): `LeagueAccessType` already derives `Serialize` +
+// `ToSchema`, but `LeagueResponse.access_type` is still `String`
+// (`dto/responses/league.rs`, held by another lane this wave). One-line fix there,
+// then key this to `S['LeagueAccessType']`.
 export const leagueAccessTypeMap: StatusMap = {
   open: { color: 'success', label: 'Open', icon: 'mdi-lock-open-variant' },
   application: { color: 'warning', label: 'Application', icon: 'mdi-file-document-edit' },
@@ -335,11 +383,15 @@ export const tournamentInvitationStatusMap: StatusMap<S['TournamentInvitationSta
 }
 
 // P-117: stage formats were rendered raw ("round_robin") in the stages list and
-// offered raw in the picker. Not keyed to a union because
-// `CreateTournamentStageRequest.format` is `string` on the wire — the API
-// stringifies `StageFormat`, which is P-112. The five values are the ones
-// `StageFormat::from_str` accepts (portal-core/src/types/tournament.rs:669-678).
-export const stageFormatMap: StatusMap = {
+// offered raw in the picker.
+//
+// P-112 CLOSED for this map: `TournamentStageResponse.format` is now typed
+// `StageFormat` rather than stringified, so the union exists and the map is keyed
+// to it. The picker's option list (`StagesTab.vue`) derives its titles from this
+// same map, so a format the backend adds and this map forgets is now a compile
+// error at the map — the failure P-99 shipped (`groups_and_playoffs` offered,
+// `group_stage` missing) can no longer be written here.
+export const stageFormatMap: StatusMap<S['StageFormat']> = {
   single_elimination: { color: 'primary', label: 'Single Elimination' },
   double_elimination: { color: 'primary', label: 'Double Elimination' },
   round_robin: { color: 'info', label: 'Round Robin' },

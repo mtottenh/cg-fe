@@ -1,18 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api, getAuthToken } from '@/api'
-import { createActionState, withActionState } from '@/stores/helpers/apiAction'
+import { createActionState, unwrapApi, withActionState } from '@/stores/helpers/apiAction'
+import type { components } from '@/api/types'
 
-export interface CaptainAction {
-  action_type: string
-  match_id: string
-  tournament_id: string
-  tournament_slug: string
-  tournament_name: string
-  match_label: string
-  deadline: string | null
-  created_at: string
-}
+/**
+ * Aliased to the generated DTO rather than restated. The hand-written interface
+ * this replaces declared `deadline: string | null`, while the DTO marks it
+ * `#[serde(skip_serializing_if = "Option::is_none")]` — i.e. absent, not null —
+ * so the two disagreed on the one field every consumer branches on.
+ */
+export type CaptainAction = components['schemas']['ActionItemResponse']
 
 export const useCaptainActionsStore = defineStore('captainActions', () => {
   const actions = ref<CaptainAction[]>([])
@@ -52,12 +50,14 @@ export const useCaptainActionsStore = defineStore('captainActions', () => {
     if (!token) return
 
     return withActionState(fetchActionsState, async () => {
-      // Endpoint not in OpenAPI spec — use api client for auth middleware benefits
-      const { data, error: apiError } = await api.GET('/v1/users/me/action-items' as never)
-      if (apiError) {
-        throw new Error((apiError as Record<string, string>).detail || 'Failed to fetch action items')
-      }
-      actions.value = ((data as Record<string, unknown>)?.data as CaptainAction[]) ?? []
+      // P-65: this used `api.GET('…' as never)` with hand-rolled `unknown` casts on
+      // the result, because the operation was missing from `paths(...)` in
+      // `openapi.rs` and so had no generated type. The route and the
+      // `#[utoipa::path]` annotation both existed; only the registration line was
+      // absent. It is registered now, so the call is typed end to end and the
+      // response shape is checked against the DTO instead of asserted.
+      const result = await unwrapApi(api.GET('/v1/users/me/action-items'))
+      actions.value = result.data
     }, 'Failed to fetch action items')
   }
 
@@ -80,7 +80,7 @@ export const useCaptainActionsStore = defineStore('captainActions', () => {
   }
 })
 
-function getUrgencyRank(deadline: string | null): number {
+function getUrgencyRank(deadline: string | null | undefined): number {
   if (!deadline) return 3
   const diff = new Date(deadline).getTime() - Date.now()
   if (diff < 3600000) return 1 // critical: < 1h

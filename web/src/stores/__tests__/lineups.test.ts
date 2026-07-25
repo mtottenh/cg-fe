@@ -49,12 +49,28 @@ describe('lineups store', () => {
   })
 
   it('surfaces a fetch error', async () => {
-    mockGet.mockResolvedValue({ data: undefined, error: { detail: 'boom' } })
+    mockGet.mockResolvedValue({ data: undefined, error: { detail: 'boom', status: 409 } })
     const store = useLineupsStore()
 
     await expect(store.fetchLineups('t1', 'm1')).rejects.toThrow('boom')
-    // withActionState records the fallback message for non-ApiError throws.
-    expect(store.fetchState.error).toBe('Failed to load lineups')
+    // P-65: this used to assert `'Failed to load lineups'`, because the store
+    // threw a plain `Error` and `withActionState` only forwards the real reason
+    // for an `ApiError` (`apiAction.ts:154`). Routing the call through
+    // `unwrapApi` — which the `as never` casts had been standing in the way of —
+    // means the BACKEND's message now reaches the user instead of a generic
+    // fallback. Same class as P-116: the previous assertion pinned an error path
+    // that told the user nothing.
+    expect(store.fetchState.error).toBe('boom')
+  })
+
+  it('falls back to a generic message when the API gives no detail', async () => {
+    // The fallback still exists and still matters; it is just no longer what a
+    // detailed backend error degrades to.
+    mockGet.mockResolvedValue({ data: undefined, error: { status: 500 } })
+    const store = useLineupsStore()
+
+    await expect(store.fetchLineups('t1', 'm1')).rejects.toThrow()
+    expect(store.fetchState.error).toBe('An unknown error occurred')
   })
 
   it('declares a lineup and reflects it locally', async () => {

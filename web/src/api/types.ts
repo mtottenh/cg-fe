@@ -120,23 +120,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/demos/pending": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get demos pending processing. */
-        get: operations["get_pending_demos"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/admin/demos/process-unlinked": {
         parameters: {
             query?: never;
@@ -2310,8 +2293,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get evidence details. */
-        get: operations["get_evidence"];
+        get?: never;
         put?: never;
         post?: never;
         /** Delete evidence. */
@@ -2352,27 +2334,6 @@ export interface paths {
          * @description Verifies the file was uploaded and marks the evidence as active.
          */
         post: operations["complete_upload"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/matches/{match_id}/progression": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get progression details for a match.
-         * @description Returns information about winner advancement and loser routing.
-         *     Note: This returns progression info only if the match has been processed.
-         */
-        get: operations["get_progression"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2738,23 +2699,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/players/me/games": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List game profiles for the authenticated player. */
-        get: operations["get_my_game_profiles"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/players/me/league-teams": {
         parameters: {
             query?: never;
@@ -2852,26 +2796,6 @@ export interface paths {
         };
         /** List all game profiles for a player. */
         get: operations["list_player_game_profiles"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/players/{player_id}/games/{game_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get a specific game profile for a player.
-         * @description The `game_id` path parameter accepts either a game slug (e.g., "cs2") or a game UUID.
-         */
-        get: operations["get_player_game_profile"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3444,23 +3368,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/tournaments/{tournament_id}/matches/{match_id}/schedule": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Schedule a match. */
-        post: operations["schedule_match"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/accept": {
         parameters: {
             query?: never;
@@ -3750,23 +3657,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/tournaments/{tournament_id}/registrations/{registration_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Withdraw from a tournament. */
-        delete: operations["withdraw"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/tournaments/{tournament_id}/registrations/{registration_id}/admin-check-in": {
         parameters: {
             query?: never;
@@ -4017,6 +3907,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/users/me/action-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the current user's pending action items. */
+        get: operations["get_my_action_items"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/users/me/league-invitations": {
         parameters: {
             query?: never;
@@ -4119,6 +4026,43 @@ export interface components {
             message: string;
             /** @description Updated review. */
             review: components["schemas"]["ResultReviewResponse"];
+        };
+        /** @description A pending action item requiring captain attention. */
+        ActionItemResponse: {
+            /**
+             * @description Type of action required.
+             * @example confirm_result
+             */
+            action_type: string;
+            /** @description When the action became available (ISO 8601). */
+            created_at: string;
+            /** @description Optional deadline for this action (ISO 8601). */
+            deadline?: string | null;
+            /**
+             * @description Match ID this action relates to.
+             * @example 550e8400-e29b-41d4-a716-446655440000
+             */
+            match_id: string;
+            /**
+             * @description Human-readable match label.
+             * @example Team Alpha vs Team Bravo
+             */
+            match_label: string;
+            /**
+             * @description Tournament ID.
+             * @example 550e8400-e29b-41d4-a716-446655440000
+             */
+            tournament_id: string;
+            /**
+             * @description Tournament name for display.
+             * @example Summer Cup 2026
+             */
+            tournament_name: string;
+            /**
+             * @description Tournament slug for URL construction.
+             * @example summer-cup-2026
+             */
+            tournament_slug: string;
         };
         /** @description Request to add a message to a dispute. */
         AddDisputeMessageRequest: {
@@ -4477,11 +4421,8 @@ export interface components {
         };
         /** @description Ban response DTO. */
         BanResponse: {
-            /**
-             * @description Type of ban (platform, matchmaking, chat, league, tournament).
-             * @example platform
-             */
-            ban_type: string;
+            /** @description Type of ban (platform, matchmaking, chat, league, tournament). */
+            ban_type: components["schemas"]["BanType"];
             /** @description When the ban record was created. */
             created_at: string;
             /** @description When the ban expires (null for permanent bans). */
@@ -4528,6 +4469,11 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * @description Type of ban that determines what the user is restricted from.
+         * @enum {string}
+         */
+        BanType: "platform" | "matchmaking" | "chat" | "league" | "tournament";
         /** @description A single demo entry in a batch catalog request. */
         BatchCatalogDemoEntry: {
             /** @description Demo file name. */
@@ -5185,11 +5131,8 @@ export interface components {
         DataResponse_BanResponse: {
             /** @description Ban response DTO. */
             data: {
-                /**
-                 * @description Type of ban (platform, matchmaking, chat, league, tournament).
-                 * @example platform
-                 */
-                ban_type: string;
+                /** @description Type of ban (platform, matchmaking, chat, league, tournament). */
+                ban_type: components["schemas"]["BanType"];
                 /** @description When the ban record was created. */
                 created_at: string;
                 /** @description When the ban expires (null for permanent bans). */
@@ -5402,7 +5345,7 @@ export interface components {
                  */
                 categorized_by_user_id?: string | null;
                 /** @description Category (uncategorized, pug, league, scrim, ignored). */
-                category: string;
+                category: components["schemas"]["DemoCategory"];
                 /**
                  * Format: date-time
                  * @description When the record was created.
@@ -5675,9 +5618,9 @@ export interface components {
                 /** @description Original winner (if any). */
                 original_winner_registration_id?: string | null;
                 /** @description Priority level. */
-                priority: string;
+                priority: components["schemas"]["DisputePriority"];
                 /** @description Reason for the dispute. */
-                reason: string;
+                reason: components["schemas"]["DisputeReason"];
                 resolution?: null | components["schemas"]["DisputeResolutionResponse"];
                 /**
                  * Format: date-time
@@ -6010,7 +5953,7 @@ export interface components {
                 /** Format: date-time */
                 responded_at?: string | null;
                 response_message?: string | null;
-                role: string;
+                role: components["schemas"]["LeagueTeamRole"];
                 status: components["schemas"]["LeagueTeamInvitationStatus"];
                 team_season_id: string;
             };
@@ -6031,7 +5974,7 @@ export interface components {
                 left_at?: string | null;
                 player_id: string;
                 position?: string | null;
-                role: string;
+                role: components["schemas"]["LeagueTeamRole"];
                 season_id: string;
                 status: components["schemas"]["LeagueTeamMemberStatus"];
                 team_season_id: string;
@@ -7223,7 +7166,7 @@ export interface components {
                 created_at: string;
                 /** Format: date-time */
                 ends_at?: string | null;
-                format: string;
+                format: components["schemas"]["StageFormat"];
                 format_settings: unknown;
                 id: string;
                 map_veto_format?: string | null;
@@ -7378,6 +7321,47 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_ActionItemResponse: {
+            data: {
+                /**
+                 * @description Type of action required.
+                 * @example confirm_result
+                 */
+                action_type: string;
+                /** @description When the action became available (ISO 8601). */
+                created_at: string;
+                /** @description Optional deadline for this action (ISO 8601). */
+                deadline?: string | null;
+                /**
+                 * @description Match ID this action relates to.
+                 * @example 550e8400-e29b-41d4-a716-446655440000
+                 */
+                match_id: string;
+                /**
+                 * @description Human-readable match label.
+                 * @example Team Alpha vs Team Bravo
+                 */
+                match_label: string;
+                /**
+                 * @description Tournament ID.
+                 * @example 550e8400-e29b-41d4-a716-446655440000
+                 */
+                tournament_id: string;
+                /**
+                 * @description Tournament name for display.
+                 * @example Summer Cup 2026
+                 */
+                tournament_name: string;
+                /**
+                 * @description Tournament slug for URL construction.
+                 * @example summer-cup-2026
+                 */
+                tournament_slug: string;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_Vec_AvailabilityOverrideResponse: {
             data: {
                 /** Format: date-time */
@@ -7493,11 +7477,8 @@ export interface components {
         /** @description Wrapper for single-item responses. */
         DataResponse_Vec_BanResponse: {
             data: {
-                /**
-                 * @description Type of ban (platform, matchmaking, chat, league, tournament).
-                 * @example platform
-                 */
-                ban_type: string;
+                /** @description Type of ban (platform, matchmaking, chat, league, tournament). */
+                ban_type: components["schemas"]["BanType"];
                 /** @description When the ban record was created. */
                 created_at: string;
                 /** @description When the ban expires (null for permanent bans). */
@@ -7654,95 +7635,6 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
-        DataResponse_Vec_DemoResponse: {
-            data: {
-                /** @description Admin notes. */
-                admin_notes?: string | null;
-                /**
-                 * Format: date-time
-                 * @description When it was categorized.
-                 */
-                categorized_at?: string | null;
-                /**
-                 * Format: uuid
-                 * @description Who categorized this demo.
-                 */
-                categorized_by_user_id?: string | null;
-                /** @description Category (uncategorized, pug, league, scrim, ignored). */
-                category: string;
-                /**
-                 * Format: date-time
-                 * @description When the record was created.
-                 */
-                created_at: string;
-                /**
-                 * Format: date-time
-                 * @description When the demo was discovered in S3.
-                 */
-                discovered_at: string;
-                /** @description Demo file name. */
-                file_name: string;
-                /**
-                 * Format: int64
-                 * @description File size in bytes.
-                 */
-                file_size_bytes?: number | null;
-                /**
-                 * Format: uuid
-                 * @description Game ID.
-                 */
-                game_id: string;
-                /**
-                 * Format: date-time
-                 * @description When it was hidden.
-                 */
-                hidden_at?: string | null;
-                /**
-                 * Format: uuid
-                 * @description Who hid this demo.
-                 */
-                hidden_by_user_id?: string | null;
-                /**
-                 * Format: uuid
-                 * @description Demo ID.
-                 */
-                id: string;
-                /** @description Whether the demo is hidden. */
-                is_hidden: boolean;
-                /**
-                 * Format: uuid
-                 * @description Associated league ID.
-                 */
-                league_id?: string | null;
-                metadata?: null | components["schemas"]["DemoMetadataResponse"];
-                /** @description S3 bucket name. */
-                s3_bucket: string;
-                /** @description S3 object key. */
-                s3_key: string;
-                /** @description Stats fetch error message. */
-                stats_fetch_error?: string | null;
-                /**
-                 * Format: date-time
-                 * @description When stats were fetched.
-                 */
-                stats_fetched_at?: string | null;
-                /** @description Processing status. */
-                status: components["schemas"]["DemoStatus"];
-                /**
-                 * Format: uuid
-                 * @description Associated tournament ID.
-                 */
-                tournament_id?: string | null;
-                /**
-                 * Format: date-time
-                 * @description When the record was last updated.
-                 */
-                updated_at: string;
-            }[];
-            /** @description Response metadata. */
-            meta: components["schemas"]["Meta"];
-        };
-        /** @description Wrapper for single-item responses. */
         DataResponse_Vec_DiscoveredEvidenceResponse: {
             data: {
                 /**
@@ -7865,7 +7757,7 @@ export interface components {
                 /** Format: date-time */
                 responded_at?: string | null;
                 response_message?: string | null;
-                role: string;
+                role: components["schemas"]["LeagueTeamRole"];
                 status: components["schemas"]["LeagueTeamInvitationStatus"];
                 team_season_id: string;
             }[];
@@ -7888,7 +7780,7 @@ export interface components {
                 player_id: string;
                 /** Format: date-time */
                 responded_at?: string | null;
-                role: string;
+                role: components["schemas"]["LeagueTeamRole"];
                 season_id: string;
                 season_name: string;
                 status: components["schemas"]["LeagueTeamInvitationStatus"];
@@ -7915,7 +7807,7 @@ export interface components {
                 left_at?: string | null;
                 player_id: string;
                 position?: string | null;
-                role: string;
+                role: components["schemas"]["LeagueTeamRole"];
                 status: components["schemas"]["LeagueTeamMemberStatus"];
                 team_season_id: string;
             }[];
@@ -8167,7 +8059,7 @@ export interface components {
                 league_id: string;
                 league_name: string;
                 player_id: string;
-                role: string;
+                role: components["schemas"]["LeagueTeamRole"];
                 season_id: string;
                 season_name: string;
                 season_status: components["schemas"]["SeasonStatus"];
@@ -8705,7 +8597,7 @@ export interface components {
                 created_at: string;
                 /** Format: date-time */
                 ends_at?: string | null;
-                format: string;
+                format: components["schemas"]["StageFormat"];
                 format_settings: unknown;
                 id: string;
                 map_veto_format?: string | null;
@@ -9017,6 +8909,11 @@ export interface components {
             /** @description If true the lineup is marked `submitted`; otherwise left `draft`. */
             submit?: boolean;
         };
+        /**
+         * @description Category for demo files in the catalog.
+         * @enum {string}
+         */
+        DemoCategory: "uncategorized" | "pug" | "league" | "scrim" | "ignored";
         /** @description Demo download URL response. */
         DemoDownloadResponse: {
             /** @description Download URL. */
@@ -9273,7 +9170,7 @@ export interface components {
              */
             categorized_by_user_id?: string | null;
             /** @description Category (uncategorized, pug, league, scrim, ignored). */
-            category: string;
+            category: components["schemas"]["DemoCategory"];
             /**
              * Format: date-time
              * @description When the record was created.
@@ -9550,6 +9447,16 @@ export interface components {
             /** @description Message content. */
             message: string;
         };
+        /**
+         * @description Priority of a dispute.
+         * @enum {string}
+         */
+        DisputePriority: "low" | "normal" | "high" | "urgent";
+        /**
+         * @description Reason for the dispute.
+         * @enum {string}
+         */
+        DisputeReason: "wrong_score" | "wrong_winner" | "cheating" | "rule_violation" | "technical_issue" | "player_misconduct" | "other";
         /** @description Response DTO for dispute resolution details. */
         DisputeResolutionResponse: {
             /**
@@ -9612,9 +9519,9 @@ export interface components {
             /** @description Original winner (if any). */
             original_winner_registration_id?: string | null;
             /** @description Priority level. */
-            priority: string;
+            priority: components["schemas"]["DisputePriority"];
             /** @description Reason for the dispute. */
-            reason: string;
+            reason: components["schemas"]["DisputeReason"];
             resolution?: null | components["schemas"]["DisputeResolutionResponse"];
             /**
              * Format: date-time
@@ -10324,7 +10231,7 @@ export interface components {
             /** Format: date-time */
             responded_at?: string | null;
             response_message?: string | null;
-            role: string;
+            role: components["schemas"]["LeagueTeamRole"];
             status: components["schemas"]["LeagueTeamInvitationStatus"];
             team_season_id: string;
         };
@@ -10348,7 +10255,7 @@ export interface components {
             player_id: string;
             /** Format: date-time */
             responded_at?: string | null;
-            role: string;
+            role: components["schemas"]["LeagueTeamRole"];
             season_id: string;
             season_name: string;
             status: components["schemas"]["LeagueTeamInvitationStatus"];
@@ -10370,7 +10277,7 @@ export interface components {
             left_at?: string | null;
             player_id: string;
             position?: string | null;
-            role: string;
+            role: components["schemas"]["LeagueTeamRole"];
             season_id: string;
             status: components["schemas"]["LeagueTeamMemberStatus"];
             team_season_id: string;
@@ -10393,7 +10300,7 @@ export interface components {
             left_at?: string | null;
             player_id: string;
             position?: string | null;
-            role: string;
+            role: components["schemas"]["LeagueTeamRole"];
             status: components["schemas"]["LeagueTeamMemberStatus"];
             team_season_id: string;
         };
@@ -10417,6 +10324,11 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /**
+         * @description Role of a member within a league team.
+         * @enum {string}
+         */
+        LeagueTeamRole: "captain" | "player" | "substitute";
         /** @description Response DTO for a team's seasonal participation. */
         LeagueTeamSeasonResponse: {
             /** Format: date-time */
@@ -11386,7 +11298,7 @@ export interface components {
             league_id: string;
             league_name: string;
             player_id: string;
-            role: string;
+            role: components["schemas"]["LeagueTeamRole"];
             season_id: string;
             season_name: string;
             season_status: components["schemas"]["SeasonStatus"];
@@ -12257,14 +12169,6 @@ export interface components {
          * @enum {string}
          */
         RosterLockStatus: "open" | "soft_lock" | "hard_lock";
-        /** @description Request to schedule a match. */
-        ScheduleMatchRequest: {
-            /**
-             * Format: date-time
-             * @description Scheduled start time.
-             */
-            scheduled_at: string;
-        };
         /** @description Response DTO for a schedule proposal. */
         ScheduleProposalResponse: {
             /** @description Counter-proposal ID if this was counter-proposed. */
@@ -12444,6 +12348,11 @@ export interface components {
              */
             youtube?: string | null;
         };
+        /**
+         * @description Format of a tournament stage.
+         * @enum {string}
+         */
+        StageFormat: "single_elimination" | "double_elimination" | "round_robin" | "swiss" | "group_stage";
         /**
          * @description Status of a tournament stage.
          * @enum {string}
@@ -12850,7 +12759,7 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             ends_at?: string | null;
-            format: string;
+            format: components["schemas"]["StageFormat"];
             format_settings: unknown;
             id: string;
             map_veto_format?: string | null;
@@ -14035,47 +13944,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Admin access required */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    get_pending_demos: {
-        parameters: {
-            query?: {
-                /** @description Maximum number of demos to return */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Pending demos */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataResponse_Vec_DemoResponse"];
                 };
             };
             /** @description Unauthorized */
@@ -21592,40 +21460,6 @@ export interface operations {
             };
         };
     };
-    get_evidence: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Match ID */
-                match_id: string;
-                /** @description Evidence ID */
-                evidence_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Evidence details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataResponse_EvidenceResponse"];
-                };
-            };
-            /** @description Evidence not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
     delete_evidence: {
         parameters: {
             query?: never;
@@ -21761,38 +21595,6 @@ export interface operations {
                 };
             };
             /** @description Evidence not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    get_progression: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Match ID */
-                match_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Progression details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataResponse_ProgressionResponse"];
-                };
-            };
-            /** @description Match not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -23059,35 +22861,6 @@ export interface operations {
             };
         };
     };
-    get_my_game_profiles: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of game profiles */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataResponse_Vec_PlayerGameProfileResponse"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
     get_my_league_teams: {
         parameters: {
             query?: never;
@@ -23369,40 +23142,6 @@ export interface operations {
                 };
             };
             /** @description Player not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    get_player_game_profile: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Player ID */
-                player_id: string;
-                /** @description Game slug (e.g., cs2) or UUID */
-                game_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Game profile found */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataResponse_PlayerGameProfileResponse"];
-                };
-            };
-            /** @description Profile or player not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -25280,71 +25019,6 @@ export interface operations {
             };
         };
     };
-    schedule_match: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tournament ID */
-                tournament_id: string;
-                /** @description Match ID */
-                match_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ScheduleMatchRequest"];
-            };
-        };
-        responses: {
-            /** @description Match scheduled */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataResponse_TournamentMatchResponse"];
-                };
-            };
-            /** @description Invalid request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Requires admin.tournaments.manage_any — participants use the schedule/propose flow */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Match not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
     accept_schedule_proposal: {
         parameters: {
             query?: never;
@@ -26211,58 +25885,6 @@ export interface operations {
             };
             /** @description Already registered */
             409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    withdraw: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tournament ID */
-                tournament_id: string;
-                /** @description Registration ID */
-                registration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Withdrawn successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataResponse_TournamentRegistrationResponse"];
-                };
-            };
-            /** @description Cannot withdraw */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Registration not found */
-            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -27141,6 +26763,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_UserResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_my_action_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending action items */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_ActionItemResponse"];
                 };
             };
             /** @description Unauthorized */

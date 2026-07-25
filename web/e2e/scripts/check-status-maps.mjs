@@ -122,11 +122,26 @@ const maps = readFileSync(join(SRC, 'utils', 'statusMaps.ts'), 'utf-8')
 const total = (maps.match(/^export const \w+Map: StatusMap/gm) ?? []).length
 const keyed = (maps.match(/^export const \w+Map: StatusMap</gm) ?? []).length
 const unlocked = total - keyed
-// 11 after `stageFormatMap` (P-117). This number is a DEBT METER, not a target:
-// every unkeyed map is one the API stringifies, so it can still drift the way
-// P-79 and P-91 did. It rises only when a new map is added for an enum the API
-// has not declared, and must fall to 0 as P-112 is worked through.
-const MAX_UNLOCKED = 11
+// 11 after `stageFormatMap` (P-117), then 5 once P-112 was worked: typing six DTO
+// fields that stood in front of enums which already derived `Serialize` +
+// `ToSchema` unlocked `disputePriorityMap`, `demoCategoryMap`, `banTypeMap`,
+// `stageFormatMap`, `teamRoleMap` — and `tournamentPublicStatusMap`, which needed
+// no API change whatsoever and had simply never been converted.
+//
+// This number is a DEBT METER, not a target: every unkeyed map is one that can
+// still drift the way P-79 and P-91 did. It rises only when a new map is added for
+// an enum the API has not declared, and must fall as P-112 is worked through.
+//
+// The 5 that remain are NOT all the same kind of debt, and the distinction matters
+// before anyone tries to drive this to 0:
+//   - `leagueAccessTypeMap`, `leagueRoleMap` — the enums exist and are spec-ready;
+//     only `dto/responses/league.rs` still stringifies them. Two one-line fixes.
+//   - `gameStatusMap` — no Rust enum exists. The DB CHECK constraint names the
+//     five legal values, so an enum is transcribable, but nobody has written it.
+//   - `permissionCategoryMap` — free-text column, no constraint. Nothing to key.
+//   - `banStatusMap` — not a wire field at all; the key is derived client-side.
+// So the floor reachable without new product decisions is 3, not 0.
+const MAX_UNLOCKED = 5
 
 if (unlocked > MAX_UNLOCKED) {
   failed = true

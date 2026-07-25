@@ -1,50 +1,28 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api, getAuthToken } from '@/api'
-import { createActionState, withActionState } from '@/stores/helpers/apiAction'
+import { createActionState, unwrapApi, withActionState } from '@/stores/helpers/apiAction'
+import type { components } from '@/api/types'
 
-/** Provenance of a lineup player row (mirrors portal_core::LineupSource). */
-export type LineupSource = 'declared' | 'demo' | 'evidence' | 'admin'
-/** Lineup lifecycle status (mirrors portal_core::LineupStatus). */
-export type LineupStatus = 'draft' | 'submitted' | 'locked'
-export type ParticipationStatus =
-  | 'confirmed'
-  | 'no_show'
-  | 'left_early'
-  | 'substituted'
-  | 'removed'
+type S = components['schemas']
 
-export interface MatchLineupPlayer {
-  id: string
-  player_id: string
-  source: LineupSource
-  game_number?: number | null
-  is_substitute: boolean
-  was_rostered: boolean
-  participation_status: ParticipationStatus
-}
+/**
+ * These were five hand-written re-declarations of types the generated client
+ * already carries — the same defect P-112 is about, one layer up: three of them
+ * were status unions transcribed from Rust by hand, which is exactly how P-79
+ * (`critical` vs `urgent`) happened. `LineupStatus`, `LineupSource` and
+ * `ParticipationStatus` are all registered in `openapi.rs`, so they are aliased
+ * rather than restated and can no longer drift from the backend.
+ */
+/** Provenance of a lineup player row. */
+export type LineupSource = S['LineupSource']
+/** Lineup lifecycle status. */
+export type LineupStatus = S['LineupStatus']
+export type ParticipationStatus = S['ParticipationStatus']
 
-export interface MatchLineup {
-  id: string
-  match_id: string
-  registration_id: string
-  status: LineupStatus
-  declared_by?: string | null
-  declared_at?: string | null
-  locked_at?: string | null
-  short_handed: boolean
-  notes?: string | null
-  /** Whether the caller may see the player list (opponent sees only once locked). */
-  players_visible: boolean
-  players: MatchLineupPlayer[]
-}
-
-export interface DeclareLineupPayload {
-  registration_id: string
-  player_ids: string[]
-  submit?: boolean
-  notes?: string | null
-}
+export type MatchLineupPlayer = S['MatchLineupPlayerResponse']
+export type MatchLineup = S['MatchLineupResponse']
+export type DeclareLineupPayload = S['DeclareLineupRequest']
 
 /**
  * Store for match lineups (who actually played) — distinct from the roster
@@ -64,16 +42,17 @@ export const useLineupsStore = defineStore('lineups', () => {
     await withActionState(
       fetchState,
       async () => {
-        const { data, error } = await api.GET(
-          '/v1/tournaments/{tournament_id}/matches/{match_id}/lineups' as never,
-          { params: { path: { tournament_id: tournamentId, match_id: matchId } } } as never
+        // P-65: the `as never` casts here were believed to mirror the
+        // action-items gap, but both lineup operations HAVE been registered in
+        // `openapi.rs` all along (`tournaments::declare_lineup`,
+        // `tournaments::get_match_lineups`) — the casts were simply stale, and
+        // they suppressed the very type checking the registration bought.
+        const result = await unwrapApi(
+          api.GET('/v1/tournaments/{tournament_id}/matches/{match_id}/lineups', {
+            params: { path: { tournament_id: tournamentId, match_id: matchId } },
+          })
         )
-        if (error) {
-          throw new Error(
-            (error as Record<string, string>).detail || 'Failed to load lineups'
-          )
-        }
-        lineups.value = ((data as Record<string, unknown>)?.data as MatchLineup[]) ?? []
+        lineups.value = result.data
       },
       'Failed to load lineups'
     )
@@ -88,19 +67,13 @@ export const useLineupsStore = defineStore('lineups', () => {
     return withActionState(
       declareState,
       async () => {
-        const { data, error } = await api.POST(
-          '/v1/tournaments/{tournament_id}/matches/{match_id}/lineup' as never,
-          {
+        const result = await unwrapApi(
+          api.POST('/v1/tournaments/{tournament_id}/matches/{match_id}/lineup', {
             params: { path: { tournament_id: tournamentId, match_id: matchId } },
             body: payload,
-          } as never
+          })
         )
-        if (error) {
-          throw new Error(
-            (error as Record<string, string>).detail || 'Failed to declare lineup'
-          )
-        }
-        const declared = (data as Record<string, unknown>)?.data as MatchLineup
+        const declared = result.data
         // Reflect the update locally.
         const idx = lineups.value.findIndex((l) => l.registration_id === declared.registration_id)
         if (idx >= 0) lineups.value[idx] = declared

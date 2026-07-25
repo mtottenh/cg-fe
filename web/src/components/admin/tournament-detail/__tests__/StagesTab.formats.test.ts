@@ -85,23 +85,53 @@ function formatSelect(w: VueWrapper) {
   return select!
 }
 
+/**
+ * The offered wire values.
+ *
+ * P-117 changed `items` from bare strings to `{ value, title }` objects so the
+ * picker could show human labels instead of `round_robin`, and did not update
+ * the three assertions below — so all three had been failing since that landed
+ * (a P-103 recurrence: a fix shipping without the test that depended on the old
+ * shape). Reading the values through one helper means the next presentational
+ * change to the picker cannot rot the *semantic* assertions again.
+ */
+function offeredFormats(w: VueWrapper): string[] {
+  const items = formatSelect(w).props('items') as ({ value: string } | string)[]
+  return items.map((i) => (typeof i === 'string' ? i : i.value))
+}
+
 describe('StagesTab format picker', () => {
   it('offers exactly the formats StageFormat::from_str accepts', async () => {
     // P-99. Order matters here on purpose: it makes the diff on failure read
     // as "you added/removed X" rather than a set-difference puzzle.
     const w = await mountTab()
-    expect(formatSelect(w).props('items')).toEqual(BACKEND_STAGE_FORMATS)
+    expect(offeredFormats(w)).toEqual(BACKEND_STAGE_FORMATS)
   })
 
   it('does not offer groups_and_playoffs, which the backend always rejects', async () => {
     // The exact dead option from the finding, named so a regression says why.
     const w = await mountTab()
-    expect(formatSelect(w).props('items')).not.toContain('groups_and_playoffs')
+    expect(offeredFormats(w)).not.toContain('groups_and_playoffs')
   })
 
   it('offers group_stage, the valid format that was missing', async () => {
     const w = await mountTab()
-    expect(formatSelect(w).props('items')).toContain('group_stage')
+    expect(offeredFormats(w)).toContain('group_stage')
+  })
+
+  it('labels every offered format through stageFormatMap', async () => {
+    // P-112: `stageFormatMap` is now keyed to `S['StageFormat']`, so the titles
+    // cannot silently fall back to the wire value the way P-117 found them
+    // doing. Assert the human labels, not just the values.
+    const w = await mountTab()
+    const items = formatSelect(w).props('items') as { value: string; title: string }[]
+    expect(items.map((i) => i.title)).toEqual([
+      'Single Elimination',
+      'Double Elimination',
+      'Round Robin',
+      'Swiss',
+      'Group Stage',
+    ])
   })
 })
 

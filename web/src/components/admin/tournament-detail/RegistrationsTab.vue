@@ -3,6 +3,7 @@
     <v-data-table
       :headers="headers"
       :items="registrations"
+      :items-per-page="pagination.per_page"
       :loading="loading"
       density="comfortable"
     >
@@ -108,12 +109,32 @@
           <p class="text-medium-emphasis">No registrations yet</p>
         </div>
       </template>
+
+      <!-- Server-side pager (P-167). This list is paginated by the API, so
+           without it the tab showed the first 20 rows and nothing else — an
+           organiser of a 64-team event could not approve, reject or
+           disqualify anyone past row 20 at all. -->
+      <template v-slot:bottom>
+        <div v-if="pagination.total_pages > 1" class="d-flex justify-center pa-4">
+          <v-pagination
+            :model-value="page"
+            :length="pagination.total_pages"
+            :total-visible="7"
+            data-testid="admin-registrations-pagination"
+            @update:model-value="$emit('update:page', $event)"
+          />
+        </div>
+        <div class="text-center text-caption text-medium-emphasis pb-2">
+          Showing {{ registrations.length }} of {{ pagination.total_items }} registrations
+        </div>
+      </template>
     </v-data-table>
   </v-card-text>
 </template>
 
 <script setup lang="ts">
 import type { TournamentRegistrationResponse } from '@/stores/tournaments'
+import type { components } from '@/api/types'
 import { formatDateTime } from '@/utils/formatters'
 import {
   registrationStatusMap,
@@ -121,8 +142,14 @@ import {
   getStatusLabel as mapStatusLabel,
 } from '@/utils/statusMaps'
 
+type PaginationMeta = components['schemas']['PaginationMeta']
+
 defineProps<{
   registrations: TournamentRegistrationResponse[]
+  /** Server pagination meta for `registrations` — the list is one page of it. */
+  pagination: PaginationMeta
+  /** Current page number (v-model:page). */
+  page: number
   loading: boolean
   checkInRequired: boolean
   actionLoadingId: string | null
@@ -133,6 +160,7 @@ defineEmits<{
   reject: [registration: TournamentRegistrationResponse]
   disqualify: [registration: TournamentRegistrationResponse]
   'admin-check-in': [registration: TournamentRegistrationResponse]
+  'update:page': [page: number]
 }>()
 
 const headers = [

@@ -43,7 +43,7 @@
           <v-tab value="participants">
             Participants
             <v-chip size="x-small" class="ml-2" variant="tonal">
-              {{ registrations.length }}
+              {{ participantCount }}
             </v-chip>
           </v-tab>
           <v-tab value="bracket" :disabled="!hasBracket">Bracket</v-tab>
@@ -120,7 +120,7 @@
                         </template>
                         <v-list-item-title>Participants</v-list-item-title>
                         <v-list-item-subtitle>
-                          {{ registrations.length }} / {{ tournament.max_participants }}
+                          {{ participantCount }} / {{ tournament.max_participants }}
                         </v-list-item-subtitle>
                       </v-list-item>
 
@@ -169,6 +169,7 @@
                 <v-data-table
                   :headers="participantHeaders"
                   :items="registrations"
+                  :items-per-page="PARTICIPANTS_PER_PAGE"
                   :loading="loading"
                   density="comfortable"
                 >
@@ -228,6 +229,26 @@
                   <template v-slot:no-data>
                     <div class="text-center pa-4">
                       <p class="text-medium-emphasis">No participants registered yet</p>
+                    </div>
+                  </template>
+
+                  <!-- Server-side pager. The list is paginated by the API, so
+                       without this the tab silently showed the first 20 rows of
+                       a 128-player event and offered no way to reach the rest —
+                       including, for an organiser, the pending rows that needed
+                       approving (P-167). -->
+                  <template v-slot:bottom>
+                    <div v-if="registrationsPagination.total_pages > 1" class="d-flex justify-center pa-4">
+                      <v-pagination
+                        :model-value="participantsPage"
+                        :length="registrationsPagination.total_pages"
+                        :total-visible="7"
+                        data-testid="participants-pagination"
+                        @update:model-value="goToParticipantsPage"
+                      />
+                    </div>
+                    <div class="text-center text-caption text-medium-emphasis pb-2">
+                      Showing {{ registrations.length }} of {{ registrationsPagination.total_items }} registrations
                     </div>
                   </template>
                 </v-data-table>
@@ -307,11 +328,16 @@
     </EmptyState>
 
     <!-- Registration Modals -->
+    <!-- `registrations` here answers "which of MY teams are already in?", so it
+         is fed the caller's own rows, not a page of the tournament's list: past
+         row 20 the page sample missed the caller's registered team and offered
+         it again, and the API then rejected the duplicate with no explanation
+         (P-167). -->
     <TeamRegistrationModal
       v-if="tournament"
       v-model="showTeamRegistrationModal"
       :tournament="tournament"
-      :registrations="registrations"
+      :registrations="myRegistrations"
       @register="handleTeamRegister"
     />
 
@@ -380,6 +406,7 @@ const {
   loading, error,
   currentTournament: tournament,
   registrations: allRegistrations,
+  myRegistrations, registrationCounts, registrationsPagination,
   matches, brackets,
 } = storeToRefs(tournamentsStore)
 
@@ -435,9 +462,27 @@ const registering = computed(() =>
     || tournamentsStore.withdrawState.loading
     || tournamentsStore.checkInState.loading
 )
-const registrations = computed(() =>
-  allRegistrations.value.filter((r) => r.status !== 'withdrawn' && r.status !== 'disqualified'),
-)
+/**
+ * The rows of the participants table.
+ *
+ * These are whatever page the server returned, unfiltered: the table is
+ * server-paginated now, so dropping rows client-side would make "page 3 of 7"
+ * a lie about a page it had already shrunk. Withdrawn and disqualified rows
+ * carry their status chip and are honest about themselves; the headline
+ * participant count uses the server's `participating` figure, which excludes
+ * them.
+ */
+const registrations = computed(() => allRegistrations.value)
+
+/**
+ * How many participants this tournament actually has (P-167).
+ *
+ * Was `registrations.length` — the size of ONE PAGE. A 64-slot tournament with
+ * 40 entrants rendered "20 / 64" in the overview, advertising 44 free slots
+ * that do not exist, and the tab badge agreed with it.
+ */
+const participantCount = computed(() => registrationCounts.value?.participating ?? 0)
+
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 const game = computed<GameSummary | undefined>(() => {
@@ -473,6 +518,23 @@ const schedulingModeLabel = computed(() =>
 
 // Registration action state
 const regActionLoadingId = ref<string | null>(null)
+
+// Participants table paging. The API pages this list, so the page number is
+// state the page owns and refetches on — the previous version rendered page 1
+// and had no way to reach any other.
+const PARTICIPANTS_PER_PAGE = 20
+const participantsPage = ref(1)
+
+/**
+ * Paging is an explicit fetch rather than a watcher, so that resetting the page
+ * on a route change cannot fire a request for the tournament being navigated
+ * away from and clobber the new one's list.
+ */
+function goToParticipantsPage(page: number) {
+  participantsPage.value = page
+  const id = tournamentsStore.currentTournament?.id
+  if (id) tournamentsStore.fetchRegistrations(id, { page, per_page: PARTICIPANTS_PER_PAGE })
+}
 
 // Table headers
 const participantHeaders = computed(() => {
@@ -592,6 +654,15 @@ async function handleCheckIn() {
 }
 
 // Organizer registration actions
+//
+// The counts are refetched after each decision: the pending badge is a server
+// figure now, so approving a registration has to ask the server again or the
+// badge sits at its old number (P-179 — reported against the previous,
+// client-counted version of the same badge).
+async function refreshRegistrationCounts() {
+  if (tournament.value) await tournamentsStore.fetchRegistrationCounts(tournament.value.id)
+}
+
 async function handleApproveRegistration(registration: { id: string; participant_name: string }) {
   if (!tournament.value) return
   regActionLoadingId.value = registration.id
@@ -601,6 +672,7 @@ async function handleApproveRegistration(registration: { id: string; participant
       success: `${registration.participant_name} approved`,
       failureFallback: 'Failed to approve registration',
       errorSource: tournamentsStore,
+      after: refreshRegistrationCounts,
     },
   )
   regActionLoadingId.value = null
@@ -622,6 +694,7 @@ function handleRejectRegistration(registration: { id: string; participant_name: 
             success: `${registration.participant_name} rejected`,
             failureFallback: 'Failed to reject registration',
             errorSource: tournamentsStore,
+            after: refreshRegistrationCounts,
             rethrow: true,
           },
         )
@@ -639,11 +712,26 @@ async function fetchData() {
     if (tournamentsStore.currentTournament) {
       const id = tournamentsStore.currentTournament.id
       const fetchPromises: Promise<unknown>[] = [
-        tournamentsStore.fetchRegistrations(id),
+        // The visible page of the participants table — explicitly paged, and
+        // read ONLY as a table. Nothing is derived from it: identity and the
+        // counts come from the two self-scoped endpoints below, because
+        // deriving either from a page is what broke for every participant past
+        // row 20 (P-167).
+        tournamentsStore.fetchRegistrations(id, {
+          page: participantsPage.value,
+          per_page: PARTICIPANTS_PER_PAGE,
+        }),
+        tournamentsStore.fetchRegistrationCounts(id),
         tournamentsStore.fetchMatches(id),
         tournamentsStore.fetchBrackets(id),
         gamesStore.fetchGames(),
       ]
+
+      // "Am I registered?" — resolved server-side, so the answer does not
+      // depend on where the caller's row happens to sort (P-167).
+      if (authStore.isAuthenticated) {
+        fetchPromises.push(tournamentsStore.fetchMyRegistrations(id).catch(() => []))
+      }
 
       // Fetch user's teams for team tournaments when authenticated
       if (
@@ -682,7 +770,11 @@ watch(
   () => route.params.slug,
   (slug) => {
     // Param empties out while navigating away — don't fire a spurious fetch.
-    if (slug) fetchData()
+    if (!slug) return
+    // A new tournament starts at page 1 of its participants, not at whatever
+    // page the previous one was left on.
+    participantsPage.value = 1
+    fetchData()
   }
 )
 

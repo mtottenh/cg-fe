@@ -150,7 +150,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get demo status counts for admin dashboard. */
+        /**
+         * Get demo status counts for admin dashboard.
+         * @description Scoped to `game_id` when given; unscoped otherwise (P-144).
+         */
         get: operations["get_demo_status_counts"];
         put?: never;
         post?: never;
@@ -170,7 +173,12 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Unlink a demo from a match (admin only). */
+        /**
+         * Detach a demo from a match (admin only).
+         * @description Removes the `demo_match_link` **and** the `match_evidence` row that names
+         *     the same demo, because they are one fact: "this demo is evidence for this
+         *     match". See the body for why (P-158).
+         */
         delete: operations["unlink_demo_from_match"];
         options?: never;
         head?: never;
@@ -3553,10 +3561,13 @@ export interface paths {
          *     the match row removes it: the match already names both registrations, so
          *     this is two lookups by id regardless of how large the tournament is.
          *
-         *     `my_registration_id` uses the same "belongs to" test as the dispute thread
-         *     (`is_dispute_participant`): the registered player themself, or an active
-         *     member of the registration's team-season. Staff and spectators get `null`,
-         *     which is exactly what the participant-only panels should key off.
+         *     `my_registration_id` uses `RegistrationService::speaks_for`, the single
+         *     definition of "acts for this participant" (P-168): the registered player
+         *     themself, or an active member of the registration's team-season. Staff and
+         *     spectators get `null`, which is exactly what the participant-only panels
+         *     should key off — and, since submission and confirmation are authorized
+         *     under the same rule, a panel is never offered to someone the backend will
+         *     refuse.
          */
         get: operations["get_match_participants"];
         put?: never;
@@ -3814,6 +3825,72 @@ export interface paths {
         };
         /** Get registrations for a tournament. */
         get: operations["get_registrations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/registrations/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Real per-status registration counts for a tournament.
+         * @description # Why this endpoint exists (P-167)
+         *
+         *     "27 participants" and "12 pending approvals" were `page.length` of a
+         *     20-row page of the registrations list. A 64-slot tournament with 40
+         *     entrants rendered "20 / 64" — advertising 44 free slots that do not
+         *     exist — and an organiser with 40 people waiting on approval saw "20
+         *     pending". Public: the participant count is on the public tournament page.
+         */
+        get: operations["get_registration_counts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/registrations/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's own registrations in this tournament.
+         * @description # Why this endpoint exists (P-167)
+         *
+         *     `TournamentDetailPage` decided whether the viewer was registered by
+         *     fetching `GET /v1/tournaments/{id}/registrations` — with **no `per_page`,
+         *     so the default 20** — and scanning the returned page for them. Past row 20
+         *     every participant was told they were not registered: the page rendered the
+         *     "Join This Tournament" call to action, with no Registered chip, no
+         *     withdraw control and no check-in, on the page every entrant lands on
+         *     first. The organiser's derived numbers (`hasEligibleTeams`, the pending
+         *     count) were computed from the same 20-row sample.
+         *
+         *     Raising `per_page` would only move the ceiling — this codebase has now hit
+         *     exactly this defect at 20 and at 100 — so identity is resolved directly.
+         *     Cost is bounded by the caller's own team memberships, not by the size of
+         *     the tournament.
+         *
+         *     "Mine" is [`RegistrationService::speaks_for`], the same rule that
+         *     authorizes result submission, confirmation and disputes (P-168): the
+         *     registered player, or an active member of the registered team-season. A
+         *     client can therefore trust that what this returns is what the write
+         *     endpoints will accept.
+         */
+        get: operations["get_my_registrations"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6515,6 +6592,43 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_MyTournamentRegistrationsResponse: {
+            /**
+             * @description Every registration in one tournament that the caller speaks for.
+             *
+             *     # Why this exists
+             *
+             *     The tournament page decided "am I registered?" by fetching
+             *     `GET /v1/tournaments/{id}/registrations` **at the default `per_page` of
+             *     20** and scanning the page for the viewer. Past row 20 every participant
+             *     was shown the "Join This Tournament" call to action instead of their own
+             *     registration: no Registered chip, no withdraw control, no check-in — the
+             *     product told them, on the page they land on first, that they were not in a
+             *     tournament they were in.
+             *
+             *     Widening the page only moves the ceiling (the same defect was already
+             *     fixed once at 100), so the question is answered directly: at most one
+             *     lookup by player plus one per team-season the caller belongs to,
+             *     regardless of how large the tournament is.
+             *
+             *     Usually zero or one row. It is a list because a player can legitimately
+             *     hold both an individual row and a team row (different tournaments allow
+             *     different things), and because silently picking one of several would be
+             *     the same class of lie this replaces.
+             */
+            data: {
+                /**
+                 * @description The caller's registrations, including terminal ones (`withdrawn`,
+                 *     `disqualified`) so the client can tell "withdrew" from "never entered".
+                 */
+                registrations: components["schemas"]["TournamentRegistrationResponse"][];
+                /** @description Tournament the rows belong to. */
+                tournament_id: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_Option_ScheduleProposalResponse: {
             data: null | {
                 /** @description Counter-proposal ID if this was counter-proposed. */
@@ -7394,6 +7508,76 @@ export interface components {
                 veto_required: boolean;
                 vod_url?: string | null;
                 winner_registration_id?: string | null;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_TournamentRegistrationCountsResponse: {
+            /**
+             * @description Real per-status registration counts for a tournament.
+             *
+             *     The participant count and the pending-approvals badge used to be the
+             *     `.length` of a **page** of the registrations list, so a 64-slot event with
+             *     40 entrants displayed "20 / 64" — telling every viewer there were 44 free
+             *     slots — and an organiser with 40 people waiting saw "20 pending approvals"
+             *     (P-167).
+             */
+            data: {
+                /**
+                 * Format: int64
+                 * @description Currently competing.
+                 */
+                active: number;
+                /**
+                 * Format: int64
+                 * @description Approved, awaiting check-in.
+                 */
+                approved: number;
+                /**
+                 * Format: int64
+                 * @description Checked in.
+                 */
+                checked_in: number;
+                /**
+                 * Format: int64
+                 * @description Removed for a rule violation.
+                 */
+                disqualified: number;
+                /**
+                 * Format: int64
+                 * @description Eliminated.
+                 */
+                eliminated: number;
+                /**
+                 * Format: int64
+                 * @description Failed to check in.
+                 */
+                no_show: number;
+                /**
+                 * Format: int64
+                 * @description Rows that still represent someone taking part — everything except
+                 *     `withdrawn` and `disqualified`. This is the number to show against
+                 *     `max_participants`.
+                 */
+                participating: number;
+                /**
+                 * Format: int64
+                 * @description Awaiting organiser approval.
+                 */
+                pending: number;
+                /**
+                 * Format: int64
+                 * @description Every registration row, whatever its status.
+                 */
+                total: number;
+                /** @description Tournament these counts describe. */
+                tournament_id: string;
+                /**
+                 * Format: int64
+                 * @description Voluntarily withdrawn.
+                 */
+                withdrawn: number;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -11489,6 +11673,38 @@ export interface components {
             /** @description Filter by tournament ID. */
             tournament_id?: string | null;
         };
+        /**
+         * @description Every registration in one tournament that the caller speaks for.
+         *
+         *     # Why this exists
+         *
+         *     The tournament page decided "am I registered?" by fetching
+         *     `GET /v1/tournaments/{id}/registrations` **at the default `per_page` of
+         *     20** and scanning the page for the viewer. Past row 20 every participant
+         *     was shown the "Join This Tournament" call to action instead of their own
+         *     registration: no Registered chip, no withdraw control, no check-in — the
+         *     product told them, on the page they land on first, that they were not in a
+         *     tournament they were in.
+         *
+         *     Widening the page only moves the ceiling (the same defect was already
+         *     fixed once at 100), so the question is answered directly: at most one
+         *     lookup by player plus one per team-season the caller belongs to,
+         *     regardless of how large the tournament is.
+         *
+         *     Usually zero or one row. It is a list because a player can legitimately
+         *     hold both an individual row and a team row (different tournaments allow
+         *     different things), and because silently picking one of several would be
+         *     the same class of lie this replaces.
+         */
+        MyTournamentRegistrationsResponse: {
+            /**
+             * @description The caller's registrations, including terminal ones (`withdrawn`,
+             *     `disqualified`) so the client can tell "withdrew" from "never entered".
+             */
+            registrations: components["schemas"]["TournamentRegistrationResponse"][];
+            /** @description Tournament the rows belong to. */
+            tournament_id: string;
+        };
         /** @description Wrapper for paginated list responses. */
         PaginatedResponse_GameSummaryResponse: {
             /** @description The list of items. */
@@ -13328,6 +13544,71 @@ export interface components {
          * @enum {string}
          */
         TournamentMatchStatus: "pending" | "ready" | "scheduled" | "checking_in" | "pick_ban" | "in_progress" | "awaiting_result" | "completed" | "cancelled" | "forfeit" | "disputed";
+        /**
+         * @description Real per-status registration counts for a tournament.
+         *
+         *     The participant count and the pending-approvals badge used to be the
+         *     `.length` of a **page** of the registrations list, so a 64-slot event with
+         *     40 entrants displayed "20 / 64" — telling every viewer there were 44 free
+         *     slots — and an organiser with 40 people waiting saw "20 pending approvals"
+         *     (P-167).
+         */
+        TournamentRegistrationCountsResponse: {
+            /**
+             * Format: int64
+             * @description Currently competing.
+             */
+            active: number;
+            /**
+             * Format: int64
+             * @description Approved, awaiting check-in.
+             */
+            approved: number;
+            /**
+             * Format: int64
+             * @description Checked in.
+             */
+            checked_in: number;
+            /**
+             * Format: int64
+             * @description Removed for a rule violation.
+             */
+            disqualified: number;
+            /**
+             * Format: int64
+             * @description Eliminated.
+             */
+            eliminated: number;
+            /**
+             * Format: int64
+             * @description Failed to check in.
+             */
+            no_show: number;
+            /**
+             * Format: int64
+             * @description Rows that still represent someone taking part — everything except
+             *     `withdrawn` and `disqualified`. This is the number to show against
+             *     `max_participants`.
+             */
+            participating: number;
+            /**
+             * Format: int64
+             * @description Awaiting organiser approval.
+             */
+            pending: number;
+            /**
+             * Format: int64
+             * @description Every registration row, whatever its status.
+             */
+            total: number;
+            /** @description Tournament these counts describe. */
+            tournament_id: string;
+            /**
+             * Format: int64
+             * @description Voluntarily withdrawn.
+             */
+            withdrawn: number;
+        };
         /** @description Response DTO for a tournament registration. */
         TournamentRegistrationResponse: {
             checked_in: boolean;
@@ -14744,7 +15025,10 @@ export interface operations {
     };
     get_demo_status_counts: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Restrict the counts to one game. Omit to count every game. */
+                game_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -14794,7 +15078,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Demo unlinked from match */
+            /** @description Demo detached from the match (link and evidence row) */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -17606,7 +17890,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Not an admin */
+            /** @description Not an admin, or the role is at or above the caller's own highest role */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -17615,7 +17899,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Role assignment not found */
+            /** @description Role or role assignment not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -22598,6 +22882,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description The demo could not be detached; nothing was deleted */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     get_access_url: {
@@ -26892,6 +27185,70 @@ export interface operations {
             };
             /** @description Tournament not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_registration_counts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Registration counts by status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentRegistrationCountsResponse"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_my_registrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's registrations in this tournament */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_MyTournamentRegistrationsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

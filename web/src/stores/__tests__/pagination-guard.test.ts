@@ -76,11 +76,6 @@ const KNOWN_BLIND: Record<string, string> = {
     'stores/tournament/_lifecycle.ts — pass-through; both page callers do pass ' +
     'per_page today, so this is a latent trap rather than a live bug. Needs a ' +
     'default at the store boundary.',
-  '/v1/tournaments/{tournament_id}/registrations':
-    'stores/tournament/_registrations.ts — LIVE BUG. No caller passes ' +
-    'per_page, so a tournament with more than 20 registrations shows only 20 ' +
-    'participants, and useMatchDetail.ts:298 cannot resolve the registration id ' +
-    'of a player past row 20 (result submission breaks for them).',
 }
 
 /** path → the operation id of its GET, straight out of the generated types. */

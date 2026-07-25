@@ -2,13 +2,18 @@ import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
-import { replaceById } from '@/utils/collections'
+import { replaceById, upsertById } from '@/utils/collections'
 
 type TournamentRegistrationResponse = components['schemas']['TournamentRegistrationResponse']
 type RegisterTeamRequest = components['schemas']['RegisterTeamRequest']
 type RegisterPlayerRequest = components['schemas']['RegisterPlayerRequest']
 type PaginationMeta = components['schemas']['PaginationMeta']
 type CheckInStatusResponse = components['schemas']['CheckInStatusResponse']
+type TournamentRegistrationCountsResponse =
+  components['schemas']['TournamentRegistrationCountsResponse']
+
+/** Rows per page for the registrations table feed. */
+export const REGISTRATIONS_PAGE_SIZE = 20
 
 /**
  * Registrations slice: registration CRUD, approvals, check-in, no-show handling.
@@ -17,8 +22,29 @@ export function createRegistrationsSlice() {
   const registrations = ref<TournamentRegistrationResponse[]>([])
   const checkInStatus = ref<CheckInStatusResponse | null>(null)
   const registrationsPagination = ref<PaginationMeta>({ page: 1, per_page: 20, total_items: 0, total_pages: 0 })
+  /**
+   * The current user's own registrations in the tournament on screen (P-167).
+   *
+   * NOT derived from `registrations`: that list is one page (20 rows by
+   * default, 100 at most), and searching it for yourself told every
+   * participant past row 20 that they were not registered — no Registered
+   * state, no withdraw control, no check-in. Resolved server-side instead, by
+   * the same rule that authorizes result submission and disputes, so the page
+   * cannot offer an affordance the API will refuse.
+   */
+  const myRegistrations = ref<TournamentRegistrationResponse[]>([])
+  /**
+   * Real per-status counts (P-167). The participant chip, the
+   * `n / max_participants` capacity read and the pending-approvals badge were
+   * all `page.length`, so a 64-slot tournament with 40 entrants rendered
+   * "20 / 64" and an organiser saw "20 pending approvals" however many were
+   * waiting.
+   */
+  const registrationCounts = ref<TournamentRegistrationCountsResponse | null>(null)
 
   const fetchRegistrationsState = createActionState()
+  const fetchMyRegistrationsState = createActionState()
+  const fetchRegistrationCountsState = createActionState()
   const registerTeamState = createActionState()
   const registerPlayerState = createActionState()
   const withdrawState = createActionState()
@@ -30,18 +56,64 @@ export function createRegistrationsSlice() {
   const processNoShowsState = createActionState()
   const adminCheckInState = createActionState()
 
+  /**
+   * One page of a tournament's registrations, for a table to render.
+   *
+   * The page size is now explicit at the store boundary rather than inherited
+   * from the API default, because "20" arriving invisibly is what let every
+   * caller treat this list as if it were the whole thing (P-167). It is a
+   * TABLE FEED: do not answer "am I registered?", "is my team in?" or "how
+   * many are there?" from it — use `fetchMyRegistrations` and
+   * `fetchRegistrationCounts`, which do not depend on where a row sorts.
+   */
   async function fetchRegistrations(
     tournamentId: string,
     filters?: { status?: string; page?: number; per_page?: number }
   ): Promise<TournamentRegistrationResponse[]> {
     return withActionState(fetchRegistrationsState, async () => {
       const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/registrations', {
-        params: { path: { tournament_id: tournamentId }, query: filters },
+        params: {
+          path: { tournament_id: tournamentId },
+          query: {
+            ...filters,
+            page: filters?.page ?? 1,
+            per_page: filters?.per_page ?? REGISTRATIONS_PAGE_SIZE,
+          },
+        },
       }))
       registrations.value = result.data
       registrationsPagination.value = result.pagination
       return registrations.value
     }, 'Failed to fetch registrations')
+  }
+
+  /**
+   * Resolve the caller's own registrations in a tournament (P-167).
+   *
+   * Deliberately a separate request rather than a filter over
+   * `fetchRegistrations`: the answer must not depend on where the caller's row
+   * happens to sort. Returns terminal rows too (withdrawn / disqualified), so
+   * callers can tell "withdrew" from "never entered" — they filter.
+   */
+  async function fetchMyRegistrations(tournamentId: string): Promise<TournamentRegistrationResponse[]> {
+    return withActionState(fetchMyRegistrationsState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/registrations/me', {
+        params: { path: { tournament_id: tournamentId } },
+      }))
+      myRegistrations.value = result.data.registrations
+      return myRegistrations.value
+    }, 'Failed to resolve your registration')
+  }
+
+  /** Real per-status registration counts for a tournament (P-167). */
+  async function fetchRegistrationCounts(tournamentId: string): Promise<TournamentRegistrationCountsResponse> {
+    return withActionState(fetchRegistrationCountsState, async () => {
+      const result = await unwrapApi(api.GET('/v1/tournaments/{tournament_id}/registrations/counts', {
+        params: { path: { tournament_id: tournamentId } },
+      }))
+      registrationCounts.value = result.data
+      return result.data
+    }, 'Failed to fetch registration counts')
   }
 
   async function registerTeam(
@@ -54,6 +126,9 @@ export function createRegistrationsSlice() {
         body: request,
       }))
       registrations.value.push(result.data)
+      // The row is the caller's by construction — keep the identity list
+      // coherent without a refetch.
+      upsertById(myRegistrations.value, result.data)
       return result.data
     }, 'Failed to register team for tournament')
   }
@@ -68,6 +143,7 @@ export function createRegistrationsSlice() {
         body: request,
       }))
       registrations.value.push(result.data)
+      upsertById(myRegistrations.value, result.data)
       return result.data
     }, 'Failed to register for tournament')
   }
@@ -79,10 +155,12 @@ export function createRegistrationsSlice() {
         body: {},
       }))
       // Withdraw returns a WithdrawalResponse, not a registration. Patch locally.
-      const reg = registrations.value.find((r) => r.id === registrationId)
-      if (reg) {
-        reg.status = 'withdrawn'
-        reg.withdrawn_at = new Date().toISOString()
+      for (const list of [registrations.value, myRegistrations.value]) {
+        const reg = list.find((r) => r.id === registrationId)
+        if (reg) {
+          reg.status = 'withdrawn'
+          reg.withdrawn_at = new Date().toISOString()
+        }
       }
     }, 'Failed to withdraw from tournament')
   }
@@ -93,6 +171,7 @@ export function createRegistrationsSlice() {
         params: { path: { tournament_id: tournamentId, registration_id: registrationId } },
       }))
       replaceById(registrations.value, result.data)
+      replaceById(myRegistrations.value, result.data)
       return result.data
     }, 'Failed to check in')
   }
@@ -168,15 +247,25 @@ export function createRegistrationsSlice() {
 
   function clear() {
     registrations.value = []
+    myRegistrations.value = []
+    registrationCounts.value = null
     checkInStatus.value = null
   }
 
   return {
     // State
     registrations,
+    // Exposed so the participant tables can render a real pager: the list is
+    // server-paginated, and without the meta the pages past the first were
+    // simply unreachable (P-167).
+    registrationsPagination,
+    myRegistrations,
+    registrationCounts,
     checkInStatus,
     // Per-action states
     fetchRegistrationsState,
+    fetchMyRegistrationsState,
+    fetchRegistrationCountsState,
     registerTeamState,
     registerPlayerState,
     withdrawState,
@@ -189,6 +278,8 @@ export function createRegistrationsSlice() {
     adminCheckInState,
     // Actions
     fetchRegistrations,
+    fetchMyRegistrations,
+    fetchRegistrationCounts,
     registerTeam,
     registerPlayer,
     withdrawFromTournament,

@@ -18,26 +18,32 @@ export function useTournamentContext(tournament: Ref<TournamentResponse | null>)
 
   const isTeamTournament = computed(() => tournament.value?.participant_type === 'team')
 
-  /** Current user's active registration in this tournament (handles both individual and team). */
+  /** A registration that still represents taking part. */
+  const isLive = (r: TournamentRegistrationResponse) =>
+    r.status !== 'withdrawn' && r.status !== 'disqualified'
+
+  /**
+   * Current user's active registration in this tournament.
+   *
+   * # Why this no longer searches the registrations list (P-167)
+   *
+   * It used to scan `tournamentsStore.registrations` — a list
+   * `TournamentDetailPage` fetched with **no `per_page`, so the API default of
+   * 20**. Every participant whose row sorted past #20 resolved to `null`, and
+   * `null` here is indistinguishable from "not registered": the page rendered
+   * the join call-to-action, with no Registered chip, no withdraw button and
+   * no check-in, to people who were registered. Silently, on the page every
+   * entrant lands on first.
+   *
+   * `GET /v1/tournaments/{id}/registrations/me` answers it directly, using the
+   * same "speaks for this registration" rule the write endpoints authorize
+   * against, so the page cannot offer an affordance the API will refuse. The
+   * scan is deliberately NOT kept as a fallback — a fallback that works below
+   * 20 participants is the defect.
+   */
   const myRegistration = computed((): TournamentRegistrationResponse | null => {
-    if (!authStore.playerId || !tournament.value) return null
-
-    const regs = tournamentsStore.registrations
-
-    // Individual tournaments: match by player_id
-    if (!isTeamTournament.value) {
-      return regs.find(
-        r => r.player_id === authStore.playerId
-          && r.status !== 'withdrawn' && r.status !== 'disqualified'
-      ) ?? null
-    }
-
-    // Team tournaments: match by team_season_id against user's teams
-    const myTeamSeasonIds = leagueTeamsStore.myTeams.map(t => t.team_season_id)
-    return regs.find(
-      r => r.team_season_id && myTeamSeasonIds.includes(r.team_season_id)
-        && r.status !== 'withdrawn' && r.status !== 'disqualified'
-    ) ?? null
+    if (!tournament.value) return null
+    return tournamentsStore.myRegistrations.find(isLive) ?? null
   })
 
   const isParticipant = computed(() => !!myRegistration.value)
@@ -71,12 +77,21 @@ export function useTournamentContext(tournament: Ref<TournamentResponse | null>)
     })
   })
 
-  /** Whether the current user has eligible teams they could register (captain/manager, not already registered). */
+  /**
+   * Whether the current user has eligible teams they could register
+   * (captain/manager, not already registered).
+   *
+   * "Already registered" is read off the caller's own registrations, not off a
+   * page of the tournament's list (P-167): only the caller's teams can make
+   * this answer differ, and above 20 participants the page sample missed them,
+   * so a captain was offered a team that was already in — and got an
+   * unexplained duplicate-registration rejection from the API.
+   */
   const hasEligibleTeams = computed((): boolean | undefined => {
     if (!isTeamTournament.value || !tournament.value) return undefined
     if (!authStore.isAuthenticated) return false
-    const registeredIds = tournamentsStore.registrations
-      .filter(r => r.status !== 'withdrawn' && r.status !== 'disqualified')
+    const registeredIds = tournamentsStore.myRegistrations
+      .filter(isLive)
       .map(r => r.team_season_id)
     return leagueTeamsStore.myTeams.some(team => {
       if (!['captain', 'manager'].includes(team.role)) return false
@@ -116,9 +131,17 @@ export function useTournamentContext(tournament: Ref<TournamentResponse | null>)
   const isSwissFormat = swissProgress.isSwissFormat
   const canAdvanceRound = swissProgress.canAdvanceRound
 
-  // Pending registrations count
+  /**
+   * Pending registrations awaiting this organiser's approval.
+   *
+   * A real count from `GET .../registrations/counts`, not `page.length`
+   * (P-167): counting the `pending` rows of a 20-row page of a 40-entrant
+   * tournament reported exactly 20 — a number that looks plausible, is wrong,
+   * and stops moving no matter how long the queue gets. `0` until the counts
+   * land, which is what the badge already treats as "nothing to show".
+   */
   const pendingRegistrationCount = computed(() =>
-    tournamentsStore.registrations.filter(r => r.status === 'pending').length
+    tournamentsStore.registrationCounts?.pending ?? 0
   )
 
   // Load organizer scoped roles (for non-admin organizers)

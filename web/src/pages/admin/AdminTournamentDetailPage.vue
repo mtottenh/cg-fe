@@ -177,7 +177,10 @@
           <!-- Registrations Tab -->
           <v-tabs-window-item value="registrations">
             <RegistrationsTab
+              :page="registrationsPage"
+              @update:page="goToRegistrationsPage"
               :registrations="registrations"
+              :pagination="registrationsPagination"
               :loading="loading"
               :check-in-required="tournament?.check_in_required ?? false"
               :action-loading-id="actionLoadingId"
@@ -332,10 +335,31 @@ const selectedRegistration = ref<TournamentRegistrationResponse | null>(null)
 const {
   loading, error,
   currentTournament: tournament,
-  registrations, matches, seeding,
+  registrations, registrationsPagination, matches, seeding,
 } = storeToRefs(tournamentsStore)
 
-const registrationCount = computed(() => registrations.value.length)
+// Registrations tab paging. The list is server-paginated; before this the tab
+// rendered page 1 and offered no way to reach the rest, so an organiser
+// literally could not approve pending registration #21 (P-167).
+const REGISTRATIONS_PER_PAGE = 20
+const registrationsPage = ref(1)
+
+/** Explicit fetch on page change — see the note on the public page. */
+function goToRegistrationsPage(page: number) {
+  registrationsPage.value = page
+  const id = route.params.id as string
+  if (id) tournamentsStore.fetchRegistrations(id, { page, per_page: REGISTRATIONS_PER_PAGE })
+}
+
+/**
+ * Real registration total (P-167).
+ *
+ * Was `registrations.value.length` — the length of ONE PAGE of the list, and
+ * the list is fetched 20 rows at a time. The admin dashboard's headline
+ * "Registrations" figure therefore read 20 for a 64-team tournament and never
+ * moved. `total_items` comes from the same response, and is a COUNT.
+ */
+const registrationCount = computed(() => registrationsPagination.value.total_items)
 const matchCount = computed(() => matches.value.length)
 
 const canEditSeeding = computed(() =>
@@ -542,7 +566,10 @@ async function fetchData() {
   try {
     await Promise.all([
       tournamentsStore.fetchTournament(id),
-      tournamentsStore.fetchRegistrations(id),
+      tournamentsStore.fetchRegistrations(id, {
+        page: registrationsPage.value,
+        per_page: REGISTRATIONS_PER_PAGE,
+      }),
       tournamentsStore.fetchMatches(id),
       tournamentsStore.fetchBrackets(id),
       tournamentsStore.fetchStages(id),

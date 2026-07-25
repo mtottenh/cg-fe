@@ -397,9 +397,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 133 found · 101 fixed · 32 open** (P-53 mitigated).
+**Status (derived): 134 found · 104 fixed · 30 open** (P-53 mitigated).
 
-Open: P-14, P-15, P-16, P-18, P-53, P-56, P-58, P-61, P-64, P-66, P-68, P-70, P-72, P-73, P-75, P-80, P-109, P-110, P-111, P-120, P-121, P-122, P-123, P-124, P-125, P-126, P-127, P-128, P-129, P-131, P-132, P-133.
+Open: P-14, P-15, P-16, P-18, P-53, P-56, P-58, P-61, P-64, P-66, P-68, P-70, P-72, P-73, P-75, P-80, P-109, P-110, P-111, P-120, P-121, P-122, P-123, P-125, P-128, P-129, P-131, P-132, P-133, P-134.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -518,17 +518,18 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | **fixed** `4166015` |
 | P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | **fixed** `b137146` |
 | P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
-| P-127 | **The result-panel event system is dead by construction, not just for dispute** | **feature dead** | open |
+| P-127 | **The result-panel event system is dead by construction, not just for dispute** | **feature dead** | **fixed** `5d040f1` |
 | P-128 | Team colour fields have no client validation against a backend bound | user trap | open |
 | P-129 | Review queue still has no server-side sort control (P-55 follow-up) | admin friction | open |
 | P-130 | Fixtures picked a game positionally; a sort_order test reordered them | test-infra | **fixed** `3a0df22` |
 | P-131 | `dispute.reason` rendered raw on two admin surfaces | user-facing | open |
 | P-132 | Eight `.role` raw renders across six files | user-facing | open |
 | P-133 | `MyLeagueTeamsPage` feeds `membership_type` through `teamRoleMap` — never matches | user-facing | open |
+| P-134 | A match completed in-page never fetches its result review | user-facing | open |
 | P-123 | **Ban-lift confirm dialog identifies the user by a truncated UUID** | **safety** | open |
-| P-124 | P-116 recurs in 6 more sites reading a whole-store error alias | user-facing | open |
+| P-124 | P-116 recurs in 6 more sites reading a whole-store error alias | user-facing | **fixed** `c99ae81` |
 | P-125 | `TeamDetailPage` renders roster/invitation roles raw | user-facing | open |
-| P-126 | A disbanded team can still be renamed — no terminal check on update | integrity | open |
+| P-126 | A disbanded team can still be renamed — no terminal check on update | integrity | **fixed** `f3c6550` |
 | P-118 | **Evidence upload URL hard-coded to the dev stack** | **cross-env** | **fixed** `a9e2988` |
 | P-119 | Stale specs asserted raw enums the status-map sweeps humanised | test rot | **fixed** `3bcfd12` |
 | P-120 | Rank tiers can never be cleared once set | product gap | open |

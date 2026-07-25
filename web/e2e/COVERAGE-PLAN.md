@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **117 product findings** from what
+*"what should happen here?"* — and that question surfaced **122 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **117 findings · 83 fixed** → the status-drift defect class closed at the source
+112 → 0) → **122 findings · 88 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -337,9 +337,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 117 found · 83 fixed · 34 open** (P-53 mitigated).
+**Status (derived): 122 found · 88 fixed · 34 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-72, P-73, P-75, P-80, P-88, P-90, P-92, P-109, P-110, P-111.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-72, P-73, P-75, P-80, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -458,6 +458,11 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | **fixed** `4166015` |
 | P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | **fixed** `b137146` |
 | P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
+| P-118 | **Evidence upload URL hard-coded to the dev stack** | **cross-env** | **fixed** `a9e2988` |
+| P-119 | Stale specs asserted raw enums the status-map sweeps humanised | test rot | **fixed** `PENDING119` |
+| P-120 | Rank tiers can never be cleared once set | product gap | open |
+| P-121 | `per_page` on `GET /v1/games` is decorative — no limit/offset applied | correctness | open |
+| P-122 | `gamesStore.error` is app-wide; one page's failure alerts another | user-facing | open |
 | P-117 | Stage formats rendered and offered raw; ratchet regex missed `.format` | user-facing | **fixed** `af05f75` |
 | P-113 | **Ownership transfer leaves the RBAC role behind — new owner 403s, old owner retains power** | **authorization** | open |
 | P-114 | Invitations table has no Message column, so P-94's message is invisible | user-facing | open |
@@ -466,11 +471,11 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-112 | **API stringifies enums it already declares — 10 maps unlockable** | **architectural** | open |
 | P-93 | **Date overrides saved one day early in every positive UTC offset** | **data corruption** | **fixed** `2b4d4ee` |
 | P-87 | **Every game-config WRITE 404s — handler passes UUID to a slug-keyed update** | **feature dead** | **fixed** `024513b` |
-| P-88 | A disabled game vanishes from admin and can never be re-enabled | **traps admin** | open |
+| P-88 | A disabled game vanishes from admin and can never be re-enabled | **traps admin** | **fixed** `f9d2fe1` |
 | P-89 | `AdminGamesPage` aria-labels rotated by one — **P-45 recurrence** | **a11y/safety** | **fixed** `b137146` |
-| P-90 | `GameEditModal` Sort Order shows a fake 0 and can never be set to 0 | user-facing | open |
+| P-90 | `GameEditModal` Sort Order shows a fake 0 and can never be set to 0 | user-facing | **fixed** `f9d2fe1` |
 | P-91 | Disable writes `maintenance`; status chip prints the raw enum | user-facing | **fixed** `b992f2a` |
-| P-92 | Rank tiers + team size are read-only with no editing surface anywhere | product gap | open |
+| P-92 | Rank tiers + team size are read-only with no editing surface anywhere | product gap | **fixed** `f9d2fe1` |
 | P-86 | e2e fixtures type statuses as bare `string` — P-31 stops at the test boundary | gate gap | **fixed** `ccd4850` |
 | P-82 | **"Revert to Awaiting Result" always 400s — dead control ×2** | feature dead | **fixed** `4166015` |
 | P-83 | **Revert Progression is a no-op on elimination, claims success** | **integrity** | **fixed** `8e56adf` |

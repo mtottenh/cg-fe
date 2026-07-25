@@ -184,7 +184,12 @@ async function inviteTeamThroughUi(page: Page, scenario: InviteOnlyScenario): Pr
   // The new invitation shows in the panel's list, pending.
   const row = invitationRow(page, scenario)
   await expect(row).toBeVisible({ timeout: 15_000 })
-  await expect(row.locator('.v-chip')).toHaveText('pending')
+  // GROUND RULE 9 — the SPECIFICATION changed, not the expectation. The C1
+  // sweep (b992f2a) routed this chip through `tournamentInvitationStatusMap`,
+  // so it renders the human label. The raw wire value is still pinned by the
+  // API cross-check below, which is the pair that makes a raw-enum regression
+  // visible rather than silently passing.
+  await expect(row.locator('.v-chip')).toHaveText('Pending')
 }
 
 /** Captain path: take the register affordance through to a submitted registration. */
@@ -310,7 +315,10 @@ test.describe('Invite-only tournament registration', () => {
     const confirm = page.getByRole('dialog').filter({ hasText: 'Revoke Invitation' })
     await confirm.getByRole('button', { name: 'Revoke' }).click()
 
-    await expect(row.locator('.v-chip')).toHaveText('revoked', { timeout: 15_000 })
+    // GROUND RULE 9, same as the 'Pending' assertion above: the C1 sweep routed
+    // this chip through `tournamentInvitationStatusMap`. The wire value is still
+    // pinned by the API cross-check below.
+    await expect(row.locator('.v-chip')).toHaveText('Revoked', { timeout: 15_000 })
     await expect(row.getByRole('button', { name: 'Revoke' })).toHaveCount(0)
 
     // 2. The revoked team is refused at the UI now (P-51): the self-scoped

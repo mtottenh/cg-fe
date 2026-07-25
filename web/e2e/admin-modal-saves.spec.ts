@@ -484,16 +484,26 @@ test.describe('Admin modal saves', () => {
     const inviteDialog = page.getByRole('dialog').filter({ hasText: 'Invite User to League' })
     await expect(inviteDialog).toBeVisible()
 
-    // The modal takes a raw UUID typed by hand — there is no user search here,
-    // unlike BanCreateModal's UserSearchAutocomplete. See the finding filed
-    // with this spec; the test supplies the id the way the product requires.
-    await inviteDialog.getByLabel('User ID').fill(invitee.userId)
-    // "Message (Optional)" is collected and validated but never sent — the
-    // store's `sendInvitation` takes no message argument (stores/leagues.ts:238)
-    // even though the API accepts one (handlers/leagues.rs:597). Filled here to
-    // drive the field, and deliberately NOT asserted anywhere: an assertion
-    // either way would certify the defect. Filed as a finding with this spec.
-    await inviteDialog.getByLabel('Message (Optional)').fill('Welcome to the league')
+    // GROUND RULE 9 — both changes below are SPECIFICATION changes, and both
+    // were findings this spec originally documented as unfixable.
+    //
+    // P-95 (fixed 4dd4f60): the modal demanded a raw UUID typed by hand, which
+    // nothing in the product displays. It now uses UserSearchAutocomplete, so
+    // the test searches by NAME — the same way a human can now do it. Driving
+    // the old control would be testing a control that no longer exists.
+    const inviteeInput = inviteDialog.getByPlaceholder(/search by display name/i)
+    await inviteeInput.click()
+    await inviteeInput.fill(invitee.displayName)
+    const inviteeOption = page.getByRole('option', { name: invitee.displayName })
+    await expect(inviteeOption).toBeVisible({ timeout: 15_000 })
+    await inviteeOption.click()
+
+    // P-94 (fixed c49380d): the message used to be collected, validated, and
+    // dropped — so this spec deliberately asserted nothing about it, because an
+    // assertion either way would have certified the defect. It is forwarded
+    // now, so it IS asserted, over the API, below.
+    const inviteMessage = 'Welcome to the league'
+    await inviteDialog.getByLabel('Message (Optional)').fill(inviteMessage)
 
     const sendButton = inviteDialog.getByRole('button', { name: 'Send Invitation' })
     await expect(sendButton).toBeEnabled()
@@ -528,6 +538,8 @@ test.describe('Admin modal saves', () => {
     const invitations = await listInvitations(adminToken, league.leagueId)
     expect(invitations).toHaveLength(1)
     expect(invitations[0]!.user_id).toBe(invitee.userId)
+    // P-94: the message now reaches the API instead of being discarded.
+    expect(invitations[0]!.message).toBe(inviteMessage)
     expect(invitations[0]!.status).toBe('pending')
     expect(invitations[0]!.invitation_type).toBe('invite')
   })

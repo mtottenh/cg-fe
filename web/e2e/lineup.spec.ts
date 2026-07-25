@@ -80,7 +80,10 @@ test.describe('Match lineups', () => {
     expect(resp.status()).toBe(200)
 
     // The declaration shows back: the panel's status chip flips to "submitted".
-    await expect(panel.getByText('submitted', { exact: true })).toBeVisible()
+    // GROUND RULE 9 — the C1 sweep (b992f2a) added `lineupStatusMap`, so the
+    // chip shows "Submitted" instead of the wire value. `exact: true` is
+    // case-sensitive, which is what makes this a real assertion.
+    await expect(panel.getByText('Submitted', { exact: true })).toBeVisible()
   })
 
   test('the opponent sees the lineup only once it locks', async ({ request, browser }) => {

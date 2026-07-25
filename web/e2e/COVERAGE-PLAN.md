@@ -416,9 +416,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 202 found · 162 fixed · 40 open** (P-53 mitigated).
+**Status (derived): 206 found · 168 fixed · 38 open** (P-53 mitigated).
 
-Open: P-61, P-66, P-80, P-120, P-128, P-129, P-142, P-143, P-144, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-173, P-175, P-176, P-177, P-178, P-180, P-181, P-182, P-183, P-186, P-187, P-188, P-189, P-190, P-191, P-193, P-194, P-195, P-198, P-199, P-200.
+Open: P-61, P-66, P-80, P-120, P-128, P-129, P-142, P-143, P-149, P-150, P-154, P-155, P-156, P-173, P-175, P-176, P-177, P-178, P-180, P-181, P-182, P-183, P-186, P-187, P-188, P-189, P-190, P-191, P-193, P-194, P-195, P-198, P-199, P-200, P-203, P-204, P-205, P-206.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -581,13 +581,17 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-141 | `admin.audit.view` declared, seeded nowhere, gated on by nothing, guards a subsystem that does not exist | dead code | **fixed** `2751a44` |
 | P-142 | **`PermissionChecker` short-circuits for the dev user in `test-utils` builds, so no integration test calling as `dev-token` ever consults the permissions table** | **gate gap** | open |
 | P-143 | Enrichment-failure rendering is API-covered but not UI-covered — the e2e stack mints no `X-API-Key`, so no test can drive a failure into the page | coverage gap | open |
-| P-144 | Demo-catalog counts are global, not game-scoped — a CS2 admin sees totals inflated by every other game | correctness | open |
+| P-144 | Demo-catalog counts were global, not game-scoped — a CS2 admin saw totals inflated by every other game | correctness | **fixed** `731f638+c4c8b6b` |
 | P-145 | **Every `entity_changes` insert failed — `ip_address` bound as text into an INET column. The audit trail was CLI-read-only and had never been written to** | **audit dead** | **fixed** `297a19e` |
 | P-146 | `seed reset` ran `UPDATE entity_changes SET changed_by = NULL` against a `NOT NULL` column — impossible by construction, harmless only while nothing wrote to the table | latent | **fixed** `261e302` |
 | P-147 | `create_team` / `register_for_season` seated a captain WITHOUT the roster-lock enforcement point — same shape as P-15. Decided: founding is governed by REGISTRATION, not the lock (a second veto would let two mechanisms disagree), and the exemption is now a named `RosterChange::Founding` arm inside `refusal_reason` rather than an omission at two call sites | enforcement | **fixed** `0d2981b` |
 | P-148 | **The roster lock was inert once a season went active — season STATUS was the gate, so the lock only ever spoke when it did not need to.** Owner ruled the lock should be the control and optional (casual league). `SeasonStatus::allows_roster_changes()` deleted; non-terminal phases defer entirely to `roster_lock_status`, terminal seasons refuse regardless. **Granularity is per-SEASON; per-tournament would be new work** | **blocker rationale wrong** | **fixed** `0d2981b+085e7c5` |
 | P-201 | **An operator could not TIGHTEN the lock on a season that had started** — `ensure_lock_change_allowed` gated setting the lock on the same `draft|registration` predicate, i.e. it refused at exactly the moment a league decides rosters are final | product gap | **fixed** `0d2981b` |
 | P-202 | **`create_join_request` was the only roster path still frozen by phase** — it opened with `is_registration_open()`, so a player could be *invited* onto a mid-season open roster but not *ask* to join it. P-15's shape via a different predicate | enforcement | **fixed** `0d2981b` |
+| P-203 | `evidence_ids_by_demo` builds `HashMap<DemoId, Uuid>`, so a demo linked to two games of one match collapses to a single entry and both links point at the same evidence row — P-159's defect class living server-side | correctness | open |
+| P-204 | `get_demo_status_counts` gates on `is_admin` (`users.view_all`) while every demo MUTATION in the same file uses `require_demos_manage` — the two gates disagree about who an admin is | inconsistent | open |
+| P-205 | `AdminDemoDetailPage:718` is the only remaining caller of `unlinkFromMatch`; correct today because the API maintains the pair, but it would silently regress to P-158 with no test on it | coverage gap | open |
+| P-206 | An `#[ignore]`d test still issues live outbound requests when `CS2_DEMO_SERVICE_URL` is set — the ignore attribute is the only thing between `cargo test` and a third-party host | **config safety** | open |
 | P-149 | Override audit rows are written but have no HTTP read surface — only `portal-cli` can read them | ops gap | open |
 | P-150 | `entity_changes.changed_by` is `NOT NULL REFERENCES players(id) ON DELETE SET NULL` — a self-contradictory pair | schema | open |
 | P-151 | **Permission strings used as bare literals (10 sites) are absent from the registry, so the P-140 guard cannot see them** | **gate gap** | **fixed** `61fa1f1` |
@@ -596,11 +600,11 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-154 | After selecting from any `SearchAutocomplete`, the next click anywhere is swallowed — measured app-wide, pre-existing | user-facing | open |
 | P-155 | `BanCreateModal` posts a *player* id as `user_id`; works only via the deliberate 1:1 `make_shared_account_ids` invariant, whose own doc reserves the right to migrate away | latent | open |
 | P-156 | The admin games handler hardcodes an in-memory catalog slice; past 100 games it needs a real `LIMIT/OFFSET` query (the store now warns rather than truncating silently) | scale | open |
-| P-157 | **Deleting evidence unlinks the demo best-effort (`let _ = ...`) and still returns 204** — P-135's mechanism one layer down: a failure leaves a link pointing at deleted evidence while the caller is told it worked | **trust** | open |
-| P-158 | The identical "Unlink" gesture means different things on the participant panel and the admin tab — the admin path removes only the link, leaving the `match_evidence` row listed | correctness | open |
-| P-159 | `linkDiscoveredDemo` recovers the new link by matching `game_number`, so on bo3+ it can map the evidence id onto the WRONG link | correctness | open |
-| P-160 | `docker-compose.yml:76` defaults `CS2_DEMO_SERVICE_URL` to the live third-party host — P-137's mechanism surviving in deployment config | **config safety** | open |
-| P-161 | `POST /evidence/validate-demo` and `GET /evidence/demo-stats/{name}` are dead API surface — the store actions exist, no component calls them, so P-137 has no UI to drive | feature dead | open |
+| P-157 | **Deleting evidence unlinked the demo best-effort and still returned 204.** Fixed by ORDERING, not a transaction (no unit-of-work exists): the pointer goes first, so an unlink failure deletes nothing and the whole call is retryable. A second swallowed error on the same line is now hard. Moving the unlink ahead of `delete_evidence` exposed its authz, now a pre-flight | **trust** | **fixed** `731f638` |
+| P-158 | The identical "Unlink" gesture meant different things on two surfaces. Fixed at BOTH levels — the component emits the link id (the demo id was what made the link-only route reachable) and the admin route now removes the paired evidence row too — so they cannot drift apart again | correctness | **fixed** `731f638+c4c8b6b` |
+| P-159 | `linkDiscoveredDemo` recovered the new link by matching `game_number`, mapping the evidence id onto the wrong link on bo3+. `evidenceIdMap` REMOVED outright rather than demoted — while it existed it took precedence, so a stale wrong entry would still have won | correctness | **fixed** `c4c8b6b` |
+| P-160 | `docker-compose.yml` defaulted `CS2_DEMO_SERVICE_URL` to the live third-party host. **OPERATOR ACTION REQUIRED**: anyone running `docker compose --profile scanner up` who relied on the default must now set it in `.env` or the scanner exits at startup naming the variable. The `api` service is unaffected | **config safety** | **fixed** `731f638` |
+| P-161 | `validate-demo` / `demo-stats` were dead API surface. **Decided: do NOT wire, and removed.** `validate-demo` records no verdict at all, so an admin's answer vanishes on reload — the exact failure P-136/P-138 fixed. The gesture already exists via `EvidenceDisplay` → `validateDemoLink`; a second button answering the same question differently would have created a fresh P-158 inside the commit fixing P-158 | feature dead | **fixed** `731f638+c4c8b6b` |
 | P-162 | `derive_result_outcome` was dead code — **no longer dead**: P-165's tie fix routed `dispute.rs:517` and `result.rs:453` through it, which is what stopped a tie fabricating a winner. Verified clean | debt | **fixed** `1a6743b` |
 | P-163 | **`league.create` was declared but never seeded — a second P-139. The first handler to gate on it would 403 everyone including super_admin** | **authorization** | **fixed** `0081` |
 | P-164 | **The P-140 guard covered `admin::ALL` only — 1 of 5 registries — so an unseeded `tournament.results.manage` would have slipped through it too** | **gate gap** | **fixed** `1a6743b` |

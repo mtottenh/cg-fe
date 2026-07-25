@@ -282,12 +282,12 @@ through the UI — not an API-level check.
 **BLOCKERS — core action cannot be completed or corrected**
 | # | Why it blocks |
 |---|---|
-| P-127 | Result submission leaves a stale page — the panel is `v-else-if`'d off by the very store write that precedes its own emit, so `emit('submitted')` lands in a torn-down tree. Same defect as P-6, on the most-used flow in the product |
-| P-53 / P-56 | Past registration #100 a player **cannot submit a result at all**. Silent hard ceiling; 128-player CS2 events are routine |
-| P-72 | A wrong result that auto-confirms (24h since P-57) with no dispute is **permanently uncorrectable** by any operator |
-| P-14 · P-15 · P-16 · P-18 | Roster lock is unreachable, so all enforcement is dead — teams can swap players mid-playoffs. This is the competitive-integrity guarantee of a league product |
-| P-70 | Admin/organizer can only be granted by SQL — no moderator can be onboarded on day one |
-| P-123 | Ban-lift confirms against a truncated UUID; v7 prefixes are timestamps, so two bans minutes apart are indistinguishable. Destructive action, ambiguous target |
+| P-127 | ✅ `fixed` — result submission left a stale page; the panel was `v-else-if`'d off by the very store write preceding its own emit, so `emit('submitted')` landed in a torn-down tree. Same defect as P-6, on the most-used flow in the product |
+| P-53 / P-56 | Past registration #100 a player **cannot submit a result at all**. Silent hard ceiling; 128-player CS2 events are routine — **Lane T in flight** |
+| P-72 | A wrong result that auto-confirms (24h since P-57) with no dispute is **permanently uncorrectable** by any operator — **Lane T in flight** |
+| P-14 · P-15 · P-16 · P-18 | ✅ `297a19e` — roster lock was unreachable, so all enforcement was dead. **But see P-148: the stated rationale was wrong.** Teams cannot swap players mid-playoffs today because `allows_roster_changes()` is `Draft \| Registration` only — i.e. season *status* forbids it, and the lock is inert once a season is active. The lock is still required (it governs draft/registration, and P-15 showed substitutes could be seated on a hard-locked roster), but whether it should govern the competitive phase is an unresolved product ruling, not a landed guarantee |
+| P-70 | Admin/organizer can only be granted by SQL — no moderator can be onboarded on day one — **Lane R in flight** |
+| P-123 | Ban-lift confirms against a truncated UUID; v7 prefixes are timestamps, so two bans minutes apart are indistinguishable. Destructive action, ambiguous target — **Lane R in flight** |
 
 **BLOCKERS — the demo/evidence pipeline (owner: integral, must be e2e-covered)**
 | # | Why it blocks |
@@ -296,9 +296,13 @@ through the UI — not an API-level check.
 | P-110 | The browse catalog offers demos the link endpoint will refuse (resolves by file name against the stats service while holding the id) |
 | P-111 | Nothing ever validates a demo against a result; the "Validated" chip is dead template. The backend validator, plugin, and DB columns all exist unconnected |
 | P-75 | A demo stamped onto the wrong league/tournament cannot be corrected — the P-42 repair path — and the card shows raw UUIDs |
-| P-73 | No operator visibility into tracking health, the discovered-match queue, or enrichment failures. Silent ingestion stoppage is undetectable |
-| P-64 | The auto-link backfill has no control |
-| P-68 | A bad scraped Premier rating cannot be corrected, and it drives seeding and league entry gates |
+| P-73 | ✅ `0dd69e1`+`4ead184` — no operator visibility into tracking health, the discovered-match queue, or enrichment failures. Silent ingestion stoppage was undetectable |
+| P-64 | ✅ `0dd69e1`+`4ead184` — the auto-link backfill had no control |
+| P-68 | ✅ `0dd69e1`+`4ead184`+`2751a44` — a bad scraped Premier rating could not be corrected, and it drives seeding and league entry gates. The endpoint existed but **403'd for everyone including super_admin** (P-139) |
+| P-138 | **A FAILED validation still stamps the green "Validated" chip** — `mark_validated` hardcodes `validated = true` regardless of outcome. Worse than no validation: it asserts a false guarantee on the dispute-resolution surface — **Lane U in flight** |
+| P-136 | Admins cannot access ANY evidence file from admin match detail — `MatchEvidenceTab` omits `:match-id`, which gates the whole Actions column — **Lane U in flight** |
+| P-135 | Unlinking a demo silently no-ops after a reload **and reports success** — `evidenceIdMap` is session-local, so the DELETE is skipped while the row is pruned locally anyway — **Lane U in flight** |
+| P-137 | `Cs2DemoClient::default()` points at a real external host, so a misconfiguration silently talks to a live third party instead of failing — **Lane U in flight** |
 
 **Strongly recommended, cheap:** P-61 (DQ strands matches mid-bracket) · P-126
 (disbanded teams renameable) · P-124 (six sites showing a generic error instead
@@ -412,9 +416,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 144 found · 114 fixed · 30 open** (P-53 mitigated).
+**Status (derived): 151 found · 120 fixed · 31 open** (P-53 mitigated).
 
-Open: P-14, P-15, P-16, P-18, P-53, P-56, P-58, P-61, P-66, P-70, P-72, P-80, P-120, P-121, P-122, P-123, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-135, P-136, P-137, P-138, P-142, P-143, P-144.
+Open: P-53, P-56, P-58, P-61, P-66, P-70, P-72, P-80, P-120, P-121, P-122, P-123, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-135, P-136, P-137, P-138, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-151.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -447,11 +451,11 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-11 | Roster lock never enforced in admin UI | enforcement | **fixed** `ce732a0` |
 | P-12 | No captain entry point to invite modal | blocks flow | **fixed** `ce732a0` |
 | P-13 | `TeamEditPage` blank form to non-owners | confusing | **fixed** `ce732a0` |
-| P-14 | **Roster lock cannot be set via API at all** | feature dead | open |
-| P-15 | Invitation path bypasses the lock check | inconsistent | open |
-| P-16 | Role changes not lock-checked | enforcement | open |
+| P-14 | **Roster lock cannot be set via API at all** | feature dead | **fixed** `297a19e` |
+| P-15 | Invitation path bypasses the lock check — wider than filed: join-requests applied *neither* predicate | inconsistent | **fixed** `297a19e` |
+| P-16 | Role changes not lock-checked | enforcement | **fixed** `297a19e` |
 | P-17 | Edit modal offers a lock value the API 400s | user-facing | **fixed** `7b4aa8d` |
-| P-18 | No admin/emergency override of the lock | design gap | open |
+| P-18 | No admin/emergency override of the lock | design gap | **fixed** `297a19e` |
 | P-19 | **"Upcoming" tournaments tab always empty** | user-facing | **fixed** `c4bca02` |
 | P-20 | Home page hides `pick_ban`/`ready`/`awaiting_result` matches | user-facing | **fixed** `c727267` |
 | P-21 | Tournament **list** cards print raw enum | user-facing | **fixed** `c4bca02` |
@@ -578,6 +582,13 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-142 | **`PermissionChecker` short-circuits for the dev user in `test-utils` builds, so no integration test calling as `dev-token` ever consults the permissions table** | **gate gap** | open |
 | P-143 | Enrichment-failure rendering is API-covered but not UI-covered — the e2e stack mints no `X-API-Key`, so no test can drive a failure into the page | coverage gap | open |
 | P-144 | Demo-catalog counts are global, not game-scoped — a CS2 admin sees totals inflated by every other game | correctness | open |
+| P-145 | **Every `entity_changes` insert failed — `ip_address` bound as text into an INET column. The audit trail was CLI-read-only and had never been written to** | **audit dead** | **fixed** `297a19e` |
+| P-146 | `seed reset` ran `UPDATE entity_changes SET changed_by = NULL` against a `NOT NULL` column — impossible by construction, harmless only while nothing wrote to the table | latent | **fixed** `261e302` |
+| P-147 | `create_team` / `register_for_season` seat a captain WITHOUT the roster-lock enforcement point — same shape as P-15 | enforcement | open |
+| P-148 | **`allows_roster_changes()` is `Draft \| Registration` only, so the roster lock is inert once a season is active — the mid-playoffs guarantee comes from season status, not the lock** | **blocker rationale wrong** | open |
+| P-149 | Override audit rows are written but have no HTTP read surface — only `portal-cli` can read them | ops gap | open |
+| P-150 | `entity_changes.changed_by` is `NOT NULL REFERENCES players(id) ON DELETE SET NULL` — a self-contradictory pair | schema | open |
+| P-151 | **Permission strings used as bare literals (`"admin.games.manage"`, 6 sites) are absent from the registry, so the P-140 guard cannot see them** | **gate gap** | open |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service

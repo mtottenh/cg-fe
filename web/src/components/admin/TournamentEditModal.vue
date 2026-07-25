@@ -32,11 +32,15 @@
         </v-chip>
         <v-spacer />
         <v-btn variant="text" @click="close">Cancel</v-btn>
+        <!-- P-104: `mapPoolValid` is exposed by TournamentForm and was never
+             consulted here, while TournamentCreateModal DOES gate on it. So
+             clearing every map showed the "Select at least one map" warning and
+             left Save enabled. -->
         <v-btn
           color="primary"
           variant="flat"
           :loading="saving"
-          :disabled="!formRef?.formValid || !formRef?.hasChanges"
+          :disabled="!formRef?.formValid || !formRef?.hasChanges || !formRef?.mapPoolValid"
           @click="save"
         >
           Save Changes
@@ -51,6 +55,7 @@
 </template>
 
 <script setup lang="ts">
+import { ApiError } from '@/api'
 import { useDisplay } from 'vuetify'
 import { ref, computed, useTemplateRef } from 'vue'
 import {
@@ -104,9 +109,25 @@ async function save() {
     // the tournament override so it falls back.
     if (form.mapPoolChangedFromOriginal) {
       if (!form.mapPoolIsCustom) {
-        await tournamentsStore.deleteTournamentMapPool(props.tournament.id).catch(() => {})
+        // P-105: this used to be `.catch(() => {})`. The DELETE 404s whenever no
+        // override row exists, and swallowing that made a genuinely failed reset
+        // indistinguishable from success — the modal still emitted `saved` and
+        // the page still showed the success snackbar. A 404 here means "there
+        // was no override to remove", which IS the desired end state, so it is
+        // tolerated explicitly; anything else must surface.
+        try {
+          await tournamentsStore.deleteTournamentMapPool(props.tournament.id)
+        } catch (e) {
+          if (!(e instanceof ApiError && e.status === 404)) throw e
+        }
       } else if (form.selectedMapIds.length > 0) {
         await tournamentsStore.setTournamentMapPool(props.tournament.id, form.selectedMapIds)
+      } else {
+        // P-104: previously neither branch ran — `mapPoolIsCustom` was true and
+        // `selectedMapIds` was empty — so the edit evaporated behind a success
+        // message. The Save gate above now prevents reaching this, and this
+        // throws rather than silently doing nothing if it ever is reached.
+        throw new Error('A custom map pool must contain at least one map.')
       }
     }
 

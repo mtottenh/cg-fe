@@ -69,6 +69,7 @@ export const useDemosStore = defineStore('demos', () => {
   const downloadDemoState = createActionState()
   const fetchStatusCountsState = createActionState()
   const submitStatsState = createActionState()
+  const requeueState = createActionState()
   const markFailedState = createActionState()
   const fetchAutoLinkSettingState = createActionState()
   const updateAutoLinkSettingState = createActionState()
@@ -249,6 +250,27 @@ export const useDemosStore = defineStore('demos', () => {
     }, 'Failed to fetch status counts')
   }
 
+  /**
+   * P-74: put a failed demo back in the processing queue.
+   *
+   * The "Retry Processing" button used to call nothing at all — it popped a
+   * success snackbar and returned, telling the operator a demo had been
+   * requeued when it had not. There was also nothing to call: `submitStats`
+   * takes a parsed-stats body (the scanner's endpoint), so this endpoint was
+   * added for the control.
+   */
+  async function requeue(id: string): Promise<DemoResponse> {
+    return withActionState(requeueState, async () => {
+      const result = await unwrapApi(api.POST('/v1/admin/demos/{id}/requeue', {
+        params: { path: { id } },
+      }))
+      const updated = result.data
+      replaceById(demos.value, updated)
+      if (currentDemo.value?.id === id) currentDemo.value = updated
+      return updated
+    }, 'Failed to requeue demo')
+  }
+
   async function submitStats(id: string, request: components['schemas']['SubmitDemoStatsRequest']): Promise<DemoResponse> {
     return withActionState(submitStatsState, async () => {
       const result = await unwrapApi(api.POST('/v1/admin/demos/{id}/stats', {
@@ -346,6 +368,8 @@ export const useDemosStore = defineStore('demos', () => {
     deleteDemo,
     fetchStatusCounts,
     submitStats,
+    requeue,
+    requeueState,
     markFailed,
     fetchAutoLinkSetting,
     updateAutoLinkSetting,

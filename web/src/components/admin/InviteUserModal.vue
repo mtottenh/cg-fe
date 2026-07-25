@@ -114,7 +114,8 @@ async function sendInvitation() {
   error.value = null
 
   try {
-    await leaguesStore.sendInvitation(props.leagueId, form.value.user_id)
+    // P-94: the message is now forwarded instead of being validated and dropped.
+    await leaguesStore.sendInvitation(props.leagueId, form.value.user_id, form.value.message)
     emit('invited')
     close()
   } catch {

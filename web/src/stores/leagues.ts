@@ -235,11 +235,23 @@ export const useLeaguesStore = defineStore('leagues', () => {
     }, 'Failed to fetch league invitations')
   }
 
-  async function sendInvitation(leagueId: string, userId: string): Promise<void> {
+  /**
+   * P-94: `message` was collected by InviteUserModal, validated there
+   * (`maxLength(500)`), and then dropped on the floor — this function did not
+   * take it and sent `{ user_id }` alone. The backend has always accepted it
+   * (`InviteToLeagueRequest.message`, forwarded at handlers/leagues.rs:597), and
+   * LeagueMembersModal renders a Message column that could therefore never be
+   * populated for an invitation. Same shape as P-84.
+   */
+  async function sendInvitation(
+    leagueId: string,
+    userId: string,
+    message?: string | null,
+  ): Promise<void> {
     return withActionState(sendInvitationState, async () => {
       await unwrapApi(api.POST('/v1/leagues/{league_id}/invitations', {
         params: { path: { league_id: leagueId } },
-        body: { user_id: userId },
+        body: { user_id: userId, message: message?.trim() || null },
       }))
     }, 'Failed to send invitation')
   }

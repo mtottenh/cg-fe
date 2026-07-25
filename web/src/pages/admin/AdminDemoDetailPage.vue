@@ -459,11 +459,19 @@ async function handleSaveNotes() {
   }
 }
 
+// P-74: this used to be a null check followed by `snackbar.success(...)` — it
+// called NO API. The operator was told a failed demo had been requeued when
+// nothing had happened, which is worse than a missing button: it converts a
+// known-broken demo into one believed to be recovering. It now calls the
+// requeue endpoint added for it, and reports failure when it fails.
 async function handleReprocess() {
-  // For failed demos — effectively re-submit to the pipeline by clearing the error state
-  // This would be handled server-side; for now just refresh
   if (!currentDemo.value) return
-  snackbar.success('Demo queued for reprocessing')
+  try {
+    await demosStore.requeue(currentDemo.value.id)
+    snackbar.success('Demo queued for reprocessing')
+  } catch {
+    snackbar.show(demosStore.requeueState.error || 'Failed to requeue demo', 'error')
+  }
 }
 
 function confirmDelete() {

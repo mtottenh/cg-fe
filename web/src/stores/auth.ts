@@ -26,8 +26,26 @@ interface JwtClaims {
  * `role.name` appears in this set unlocks the admin sidebar button and the
  * `requiresAdmin` router guard. Scope is intentionally coarse (system-wide
  * admin only, not league/tournament moderators).
+ *
+ * P-152: this set named `'admin'`, and **no migration has ever seeded a role
+ * called `admin`** — `0014_seed_rbac.sql` seeds `super_admin`, `platform_admin`,
+ * `moderator` and `user`. So the second entry matched nothing, and the set was
+ * effectively `{super_admin}`: a freshly-granted `platform_admin` was bounced
+ * off every admin route by `router/index.ts:254` and never saw the sidebar.
+ *
+ * That silently halved P-70. Its deploy-gate rationale was "no moderator can be
+ * onboarded on day one" — Lane R made *granting* possible without SQL, but the
+ * grantee still could not USE the admin area, so the blocker was only half
+ * retired until this.
+ *
+ * `platform_admin` is the seeded platform-level admin (0014: category
+ * `platform`, priority 900), which is exactly what the "system-wide admin only"
+ * comment above describes. `moderator` (priority 500) stays out, per that same
+ * comment. This is a UI route guard, not an authorization boundary — every
+ * admin endpoint enforces its own permission server-side — so this fixes who
+ * gets shown the door, not who gets let through it.
  */
-const SYSTEM_ADMIN_ROLES = new Set(['super_admin', 'admin'])
+const SYSTEM_ADMIN_ROLES = new Set(['super_admin', 'platform_admin'])
 
 /**
  * True when the error is a definitive auth rejection (401/403) from the

@@ -195,6 +195,11 @@ const router = createRouter({
           component: () => import('@/pages/admin/AdminDemosPage.vue'),
         },
         {
+          path: 'game-servers',
+          name: 'admin-game-servers',
+          component: () => import('@/pages/admin/AdminGameServersPage.vue'),
+        },
+        {
           path: 'demos/:id',
           name: 'admin-demo-detail',
           component: () => import('@/pages/admin/AdminDemoDetailPage.vue'),

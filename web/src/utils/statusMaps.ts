@@ -201,6 +201,16 @@ export const gameStatusMap: StatusMap = {
   maintenance: { color: 'warning', label: 'Disabled' },
 }
 
+export const serverStatusMap: StatusMap<S['GameServerStatus']> = {
+  offline: { color: 'grey', label: 'Offline', icon: 'mdi-lan-disconnect' },
+  available: { color: 'success', label: 'Available', icon: 'mdi-check-circle' },
+  reserved: { color: 'info', label: 'Reserved', icon: 'mdi-lock-clock' },
+  configuring: { color: 'info', label: 'Configuring', icon: 'mdi-cog-sync' },
+  in_match: { color: 'primary', label: 'In Match', icon: 'mdi-sword-cross' },
+  busy_external: { color: 'warning', label: 'Busy (external)', icon: 'mdi-alert-circle' },
+  error: { color: 'error', label: 'Error', icon: 'mdi-alert-octagon' },
+}
+
 // P-112: every `role` field on the league-team responses (member, member-with-player,
 // player-membership, and both invitation shapes) was `String` in front of
 // `LeagueTeamRole`. Typing them produced the union — and keying this map to it

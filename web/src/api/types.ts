@@ -476,6 +476,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/game-servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all registered game servers. */
+        get: operations["list_game_servers"];
+        put?: never;
+        /** Register a new game server. */
+        post: operations["create_game_server"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a game server. */
+        get: operations["get_game_server"];
+        put?: never;
+        post?: never;
+        /** Remove a game server. Refused while it is busy with a match. */
+        delete: operations["delete_game_server"];
+        options?: never;
+        head?: never;
+        /** Update a game server's registration fields. */
+        patch: operations["update_game_server"];
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}/bookings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List current and upcoming bookings for a server. */
+        get: operations["list_bookings"];
+        put?: never;
+        /** Create a booking (scheduled event hold) on a server. */
+        post: operations["create_booking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}/bookings/{booking_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a booking. */
+        delete: operations["delete_booking"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}/enrollment-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mint a one-time enrollment token for a server's agent.
+         * @description The raw token is returned exactly once; minting again invalidates any
+         *     previous token.
+         */
+        post: operations["mint_enrollment_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a server's agent certificates and drop its connection. */
+        post: operations["revoke_agent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/matches/{match_id}/progression/process": {
         parameters: {
             query?: never;
@@ -2295,7 +2405,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get evidence details. */
+        /**
+         * Get evidence details.
+         * @description P-67 listed this as a redundant single-getter over the summary list, and it
+         *     is not: `find_by_match` excludes `pending` and `deleted`
+         *     (`portal-db/src/adapters/evidence.rs:53`), so the list cannot show an
+         *     in-flight upload at all. Between `initiate` and `complete` — the exact window
+         *     the three-step upload flow occupies — this is the only way to read an
+         *     evidence row's state. It has no frontend consumer today, which is why it was
+         *     proposed for deletion; deleting it would have removed the only read path for
+         *     a state the product genuinely has.
+         */
         get: operations["get_evidence"];
         put?: never;
         post?: never;
@@ -4692,6 +4812,27 @@ export interface components {
              */
             user_id: string;
         };
+        /** @description Request to register a game server. */
+        CreateGameServerRequest: {
+            /** @description Game UUID this server hosts. */
+            game_id: string;
+            /**
+             * Format: int32
+             * @description GOTV port, if GOTV is enabled.
+             */
+            gotv_port?: number | null;
+            /** @description Public IPv4/IPv6 address players connect to. */
+            ip_address: string;
+            /** @description Display name (e.g. "London #1"). */
+            name: string;
+            /**
+             * Format: int32
+             * @description Game port (also the RCON port on the server host).
+             */
+            port: number;
+            /** @description Region label used by allocation (e.g. "eu-west"). */
+            region: string;
+        };
         /** @description Request to create a new league. */
         CreateLeagueRequest: {
             /** @description Access type: open, `invite_only`, or application. */
@@ -4816,6 +4957,16 @@ export interface components {
              * @example 50
              */
             priority?: number | null;
+        };
+        /** @description Request to create a booking (scheduled event hold). */
+        CreateServerBookingRequest: {
+            /** Format: date-time */
+            ends_at: string;
+            reason?: string | null;
+            /** Format: date-time */
+            starts_at: string;
+            /** @description Tournament the hold is for; omit for a hard hold (maintenance). */
+            tournament_id?: string | null;
         };
         /**
          * @description Request to invite a user or team to an invite-only tournament.
@@ -5674,6 +5825,17 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_EnrollmentTokenResponse: {
+            /** @description A freshly minted enrollment token — shown exactly once. */
+            data: {
+                expires_at: string;
+                /** @description The raw one-time token. Never retrievable again. */
+                token: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_EvidenceResponse: {
             /** @description Response for evidence details. */
             data: {
@@ -5803,6 +5965,37 @@ export interface components {
                 supported_match_formats: string[];
                 /** @description Team size configuration. */
                 team_size: components["schemas"]["TeamSizeConfig"];
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_GameServerResponse: {
+            /** @description A registered game server. */
+            data: {
+                agent_cert_expires_at?: string | null;
+                /** @description Whether the agent's WebSocket is connected right now. */
+                agent_connected: boolean;
+                agent_version?: string | null;
+                created_at: string;
+                current_match_id?: string | null;
+                enabled: boolean;
+                /** @description Whether an unexpired enrollment token is outstanding. */
+                enrollment_open: boolean;
+                game_id: string;
+                /** Format: int32 */
+                gotv_port?: number | null;
+                id: string;
+                ip_address: string;
+                /** @description MatchZy gamestate from the last heartbeat. */
+                last_gamestate?: string | null;
+                last_heartbeat_at?: string | null;
+                name: string;
+                /** Format: int32 */
+                port: number;
+                region: string;
+                status: components["schemas"]["GameServerStatus"];
+                updated_at: string;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -6793,6 +6986,19 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_RevokeAgentResponse: {
+            /** @description Result of revoking a server's agent certificates. */
+            data: {
+                /**
+                 * Format: int64
+                 * @description Number of certificates revoked.
+                 */
+                revoked_count: number;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_RoleResponse: {
             /** @description Response DTO for a role. */
             data: {
@@ -6915,6 +7121,22 @@ export interface components {
                  * @description Last update timestamp.
                  */
                 updated_at: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_ServerBookingResponse: {
+            /** @description A server booking. */
+            data: {
+                created_at: string;
+                created_by: string;
+                ends_at: string;
+                id: string;
+                reason?: string | null;
+                server_id: string;
+                starts_at: string;
+                tournament_id?: string | null;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -7683,6 +7905,36 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_GameServerResponse: {
+            data: {
+                agent_cert_expires_at?: string | null;
+                /** @description Whether the agent's WebSocket is connected right now. */
+                agent_connected: boolean;
+                agent_version?: string | null;
+                created_at: string;
+                current_match_id?: string | null;
+                enabled: boolean;
+                /** @description Whether an unexpired enrollment token is outstanding. */
+                enrollment_open: boolean;
+                game_id: string;
+                /** Format: int32 */
+                gotv_port?: number | null;
+                id: string;
+                ip_address: string;
+                /** @description MatchZy gamestate from the last heartbeat. */
+                last_gamestate?: string | null;
+                last_heartbeat_at?: string | null;
+                name: string;
+                /** Format: int32 */
+                port: number;
+                region: string;
+                status: components["schemas"]["GameServerStatus"];
+                updated_at: string;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_Vec_LeaderboardEntryResponse: {
             data: {
                 avatar_url?: string | null;
@@ -8416,6 +8668,21 @@ export interface components {
                  * @description Rating used for seeding (if applicable).
                  */
                 seed_rating?: number | null;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_ServerBookingResponse: {
+            data: {
+                created_at: string;
+                created_by: string;
+                ends_at: string;
+                id: string;
+                reason?: string | null;
+                server_id: string;
+                starts_at: string;
+                tournament_id?: string | null;
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -9662,6 +9929,12 @@ export interface components {
              */
             min_rating_per_player?: number | null;
         };
+        /** @description A freshly minted enrollment token — shown exactly once. */
+        EnrollmentTokenResponse: {
+            expires_at: string;
+            /** @description The raw one-time token. Never retrievable again. */
+            token: string;
+        };
         /** @description Response for evidence details. */
         EvidenceResponse: {
             /** Format: date-time */
@@ -9917,6 +10190,37 @@ export interface components {
             /** @description Registration ID of game winner. */
             winner_registration_id: string;
         };
+        /** @description A registered game server. */
+        GameServerResponse: {
+            agent_cert_expires_at?: string | null;
+            /** @description Whether the agent's WebSocket is connected right now. */
+            agent_connected: boolean;
+            agent_version?: string | null;
+            created_at: string;
+            current_match_id?: string | null;
+            enabled: boolean;
+            /** @description Whether an unexpired enrollment token is outstanding. */
+            enrollment_open: boolean;
+            game_id: string;
+            /** Format: int32 */
+            gotv_port?: number | null;
+            id: string;
+            ip_address: string;
+            /** @description MatchZy gamestate from the last heartbeat. */
+            last_gamestate?: string | null;
+            last_heartbeat_at?: string | null;
+            name: string;
+            /** Format: int32 */
+            port: number;
+            region: string;
+            status: components["schemas"]["GameServerStatus"];
+            updated_at: string;
+        };
+        /**
+         * @description Operational status of a registered game server.
+         * @enum {string}
+         */
+        GameServerStatus: "offline" | "available" | "reserved" | "configuring" | "in_match" | "busy_external" | "error";
         /** @description Summary response for a game (used in list endpoints). */
         GameSummaryResponse: {
             /**
@@ -12083,6 +12387,14 @@ export interface components {
             /** @description Whether there's a winner mismatch. */
             winner_mismatch: boolean;
         };
+        /** @description Result of revoking a server's agent certificates. */
+        RevokeAgentResponse: {
+            /**
+             * Format: int64
+             * @description Number of certificates revoked.
+             */
+            revoked_count: number;
+        };
         /** @description Request body for revoking a role from a user. */
         RevokeRoleRequest: {
             /**
@@ -12261,6 +12573,17 @@ export interface components {
             action_number: number;
             /** @description Selected side (e.g., "ct", "t"). */
             side: string;
+        };
+        /** @description A server booking. */
+        ServerBookingResponse: {
+            created_at: string;
+            created_by: string;
+            ends_at: string;
+            id: string;
+            reason?: string | null;
+            server_id: string;
+            starts_at: string;
+            tournament_id?: string | null;
         };
         /** @description Request to set admin notes on a demo. */
         SetDemoNotesRequest: {
@@ -12921,6 +13244,18 @@ export interface components {
              * @description Sort order for display (lower = higher priority).
              */
             sort_order?: number | null;
+        };
+        /** @description Partial update of a game server. Absent fields are unchanged. */
+        UpdateGameServerRequest: {
+            /** @description Admin kill-switch; a disabled server is never allocated. */
+            enabled?: boolean | null;
+            /** Format: int32 */
+            gotv_port?: number | null;
+            ip_address?: string | null;
+            name?: string | null;
+            /** Format: int32 */
+            port?: number | null;
+            region?: string | null;
         };
         /** @description Request to update a member's role. */
         UpdateLeagueMemberRoleRequest: {
@@ -15133,6 +15468,366 @@ export interface operations {
                 };
             };
             /** @description Dispute not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_game_servers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Registered servers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_GameServerResponse"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    create_game_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGameServerRequest"];
+            };
+        };
+        responses: {
+            /** @description Server registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_GameServerResponse"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_game_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_GameServerResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    delete_game_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Server is busy */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    update_game_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGameServerRequest"];
+            };
+        };
+        responses: {
+            /** @description Server updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_GameServerResponse"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_bookings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bookings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_ServerBookingResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    create_booking: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateServerBookingRequest"];
+            };
+        };
+        responses: {
+            /** @description Booking created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_ServerBookingResponse"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    delete_booking: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+                /** @description Booking ID */
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Booking deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    mint_enrollment_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Token minted */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_EnrollmentTokenResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    revoke_agent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Certificates revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_RevokeAgentResponse"];
+                };
+            };
+            /** @description Not found */
             404: {
                 headers: {
                     [name: string]: unknown;

@@ -40,6 +40,15 @@
         :active="route.name?.toString().startsWith('admin-demo')"
       />
 
+      <v-list-subheader v-if="!rail">Infrastructure</v-list-subheader>
+
+      <v-list-item
+        prepend-icon="mdi-server-network"
+        title="Game Servers"
+        :to="{ name: 'admin-game-servers' }"
+        :active="route.name?.toString().startsWith('admin-game-servers')"
+      />
+
       <v-list-subheader v-if="!rail">Players & Moderation</v-list-subheader>
 
       <v-list-item

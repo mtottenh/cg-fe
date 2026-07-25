@@ -39,12 +39,16 @@
       <v-card-text>
         <v-text-field v-model="newStage.name" label="Stage Name" class="mb-2" />
         <v-text-field v-model.number="newStage.stage_order" label="Stage Order" type="number" class="mb-2" />
+        <!-- P-98/P-99: NOT `clearable`, and NOT "(optional)". `format` is a
+             required field on CreateTournamentStageRequest and the backend
+             parses it with `StageFormat::from_str`, which rejects `""`. The
+             field being clearable + labelled optional is what made a blank
+             submission — a guaranteed 400 — the natural path. -->
         <v-select
-          aria-label="Format (optional)"
+          aria-label="Format"
           v-model="newStage.format"
-          :items="['single_elimination', 'double_elimination', 'round_robin', 'swiss', 'groups_and_playoffs']"
-          label="Format (optional)"
-          clearable
+          :items="STAGE_FORMATS"
+          label="Format"
           class="mb-2"
         />
         <v-select
@@ -78,6 +82,36 @@ import { useTournamentsStore } from '@/stores/tournaments'
 import { useActionFeedback } from '@/composables/useActionFeedback'
 import { formatMatchFormat } from '@/utils/matchStatus'
 
+/**
+ * P-99 — the stage formats the backend actually accepts.
+ *
+ * Mirrors `StageFormat::from_str` (api/crates/portal-core/src/types/
+ * tournament.rs:669-678). This list used to offer `groups_and_playoffs`, which
+ * that match arm has never had — so picking it produced a guaranteed 400
+ * "invalid stage format" — while omitting `group_stage`, the value it does
+ * accept. The only multi-group format the product has was therefore
+ * unreachable, and the option in its place was dead.
+ *
+ * It is a hand-written literal rather than a generated union because
+ * `CreateTournamentStageRequest.format` is typed `string` on the wire — the API
+ * stringifies `StageFormat` instead of declaring it (P-112), so there is no
+ * `components['schemas']['StageFormat']` to key this to. `as const` at least
+ * makes the list the single source of truth for `newStage.format`, so a value
+ * that is not in it is a compile error; agreement with the *backend* is pinned
+ * by the tests instead — `StagesTab.formats.test.ts` locks the list, and
+ * `stage-formats.spec.ts` drives every entry through the real API, so a dead
+ * option fails rather than shipping.
+ */
+const STAGE_FORMATS = [
+  'single_elimination',
+  'double_elimination',
+  'round_robin',
+  'swiss',
+  'group_stage',
+] as const
+
+type StageFormat = (typeof STAGE_FORMATS)[number]
+
 const props = defineProps<{
   tournamentId: string
   tournamentStatus: string
@@ -93,12 +127,33 @@ const sortedStages = computed(() =>
   [...stages.value].sort((a, b) => a.stage_order - b.stage_order)
 )
 
-// Create-dialog state is owned by this tab
+// Create-dialog state is owned by this tab.
+//
+// P-98: `format` is NOT nullable here. It used to be `null`-by-default behind a
+// "(optional)" label, and `handleCreateStage` papered over that with `?? ''` —
+// so an organiser who believed the label got a hard 400 with no way to tell
+// which field was wrong. `StageFormat` derives `#[default] SingleElimination`
+// (tournament.rs:641-645), so the backend already has an opinion about the
+// default; the picker now starts on it. Typed to the union, the empty string is
+// not representable, which is what removes the failure mode rather than hiding
+// it. `match_format` stays nullable — it is genuinely optional
+// (`match_format?: string | null` in the request DTO).
 const stageCreateModalOpen = ref(false)
-const newStage = ref({ name: '', stage_order: 1, format: null as string | null, match_format: null as string | null })
+const DEFAULT_STAGE_FORMAT: StageFormat = 'single_elimination'
+const newStage = ref({
+  name: '',
+  stage_order: 1,
+  format: DEFAULT_STAGE_FORMAT as StageFormat,
+  match_format: null as string | null,
+})
 
 function openCreateModal() {
-  newStage.value = { name: '', stage_order: stages.value.length + 1, format: null, match_format: null }
+  newStage.value = {
+    name: '',
+    stage_order: stages.value.length + 1,
+    format: DEFAULT_STAGE_FORMAT,
+    match_format: null,
+  }
   stageCreateModalOpen.value = true
 }
 
@@ -108,7 +163,10 @@ async function handleCreateStage() {
     () => tournamentsStore.createStage(props.tournamentId, {
       name: newStage.value.name,
       stage_order: newStage.value.stage_order,
-      format: newStage.value.format ?? '',
+      // No `?? ''` fallback: `format` is non-nullable above, so there is no
+      // blank to fall back FROM. The old fallback turned a UI-level "you did
+      // not pick one" into a server-side parse failure (P-98).
+      format: newStage.value.format,
       match_format: newStage.value.match_format,
     }),
     { success: 'Stage created', errorSource: tournamentsStore },

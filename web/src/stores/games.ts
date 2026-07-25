@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
-import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 import { replaceById } from '@/utils/collections'
 
 // Use generated types
@@ -23,14 +23,23 @@ export const useGamesStore = defineStore('games', () => {
    */
   const allGames = ref<GameSummary[]>([])
   const currentGame = ref<GameDetail | null>(null)
-  const loading = computed(() => fetchGamesState.loading || fetchAllGamesState.loading)
-  const error = computed({
-    get: () => fetchGamesState.error ?? fetchAllGamesState.error,
-    set: (val: string | null) => {
-      fetchGamesState.error = val
-      fetchAllGamesState.error = val
-    },
-  })
+  // P-122: `loading` and `error` used to alias BOTH fetch states — `error` read
+  // `fetchGamesState.error ?? fetchAllGamesState.error` and its setter wrote to
+  // both. Only `AdminGamesPage` calls `fetchAllGames` (it is the admin-only
+  // `include_inactive` catalog and 403s for everyone else, by design — see
+  // `fetchAllGames`). Every other consumer calls `fetchGames`.
+  //
+  // So the alias produced two distinct failures. Reading: an admin's 403 from
+  // `fetchAllGames` surfaced verbatim in the PUBLIC HomePage alert, because
+  // HomePage read the OR of both. Writing: `gamesStore.error = null` on
+  // AdminLeaguesPage silently discarded an AdminGamesPage error the operator
+  // had not seen yet.
+  //
+  // Same class as P-116 and P-124 — a whole-store error alias reporting one
+  // action's failure on another action's surface. The remedy is the same one
+  // used there: consumers read the specific action state they awaited. The
+  // aliases are removed rather than deprecated so a new consumer cannot
+  // reintroduce the coupling by reaching for the convenient name.
 
   const fetchGamesState = createActionState()
   const fetchAllGamesState = createActionState()
@@ -47,22 +56,80 @@ export const useGamesStore = defineStore('games', () => {
   const updateTeamSizeState = createActionState()
 
   /**
-   * The game catalog. Every caller treats this as "all the games" — it backs
-   * the game filter selects on `/tournaments`, `/leagues` and `/players` — but
-   * `GET /v1/games` is paginated server-side and the request carried no
-   * `per_page`, so it silently returned only the first 20
-   * (portal-api/src/handlers/games.rs:32 takes `Query<PaginationParams>`,
-   * default 20). The catalog is admin-curated and tiny today, so 100 — the
-   * server's hard cap (portal-api/src/dto/common.rs:47) — covers it with room
-   * to spare. Past 100 games this needs a real pager; there is no response
-   * `PaginationMeta` on this endpoint to detect that from, which is recorded in
-   * the sweep notes.
+   * The admin games surface performs eleven different writes and needs a single
+   * banner for whichever one failed, so it genuinely wants an aggregate — unlike
+   * the public pages, which each await exactly one action.
+   *
+   * `AdminGamesPage` already carried a comment saying its `loading`/`error` came
+   * from `aggregateActionStates`. They did not: the store hand-rolled a computed
+   * over just `fetchGamesState` and `fetchAllGamesState`, so the comment
+   * described a helper that was never called, over "every games-action state"
+   * when it covered two of thirteen. Enabling a game and having it fail left the
+   * page silent.
+   *
+   * Deliberately EXCLUDES `fetchGamesState` — that is the public catalog fetch
+   * (P-122). Including it is what let an admin-only 403 reach the public
+   * HomePage alert, and it would put a public failure in the admin banner too.
    */
+  const { loading: adminLoading, error: adminError } = aggregateActionStates([
+    fetchAllGamesState,
+    fetchGameState,
+    enableGameState,
+    disableGameState,
+    fetchMapsState,
+    setMapPoolState,
+    catalogMapState,
+    updateCatalogMapState,
+    deleteCatalogMapState,
+    fetchRankTiersState,
+    setRankTiersState,
+    updateTeamSizeState,
+  ])
+
+  /**
+   * A page-1 fetch that silently drops everything past `per_page` is
+   * indistinguishable from a complete catalog, and every caller here treats the
+   * result as "all the games" — it backs the game filter selects on
+   * `/tournaments`, `/leagues` and `/players`, where a missing game means a
+   * tournament nobody can filter to.
+   *
+   * `warnIfTruncated` exists because the truncation risk is NEW. `per_page` on
+   * this endpoint used to be decorative: the handler threaded it into the
+   * response metadata and never applied it to the list (P-121), so this request
+   * always received the whole catalog no matter what it asked for. Fixing the
+   * handler to actually paginate made the cap real for the first time, which
+   * means the comment that used to sit here — "past 100 games this needs a real
+   * pager" — went from a hypothetical to a live cliff.
+   *
+   * It also made the cliff detectable, which it previously was not. The old
+   * comment claimed there was no `PaginationMeta` to check; there is
+   * (`PaginatedResponse` serialises `{data, pagination, meta}`), so the honest
+   * thing is to compare the two and say so rather than truncate in silence. 100
+   * is the server's hard cap (portal-api/src/dto/common.rs:47), so past that a
+   * real pager is required and no `per_page` value can paper over it.
+   */
+  function warnIfTruncated(
+    label: string,
+    received: number,
+    pagination: { total_items: number },
+  ): void {
+    if (pagination.total_items > received) {
+      console.warn(
+        `[games] ${label} returned ${received} of ${pagination.total_items} games. ` +
+          `The catalog has outgrown the server's per_page cap of 100 and this list ` +
+          `is now incomplete — game filters will be missing entries. This needs a ` +
+          `real pager, not a larger per_page.`,
+      )
+    }
+  }
+
+  /** The public game catalog (active games only). */
   async function fetchGames(): Promise<GameSummary[]> {
     return withActionState(fetchGamesState, async () => {
       const result = await unwrapApi(api.GET('/v1/games', {
         params: { query: { per_page: 100 } },
       }))
+      warnIfTruncated('fetchGames', result.data.length, result.pagination)
       games.value = result.data
       return games.value
     }, 'Failed to fetch games')
@@ -86,6 +153,7 @@ export const useGamesStore = defineStore('games', () => {
       const result = await unwrapApi(api.GET('/v1/games', {
         params: { query: { per_page: 100, include_inactive: true } },
       }))
+      warnIfTruncated('fetchAllGames', result.data.length, result.pagination)
       allGames.value = result.data
       return allGames.value
     }, 'Failed to fetch games')
@@ -221,8 +289,8 @@ export const useGamesStore = defineStore('games', () => {
     games,
     allGames,
     currentGame,
-    loading,
-    error,
+    adminLoading,
+    adminError,
     fetchGamesState,
     fetchAllGamesState,
     fetchGameState,

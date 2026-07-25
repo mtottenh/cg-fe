@@ -1,9 +1,9 @@
 <template>
   <v-container>
     <ErrorAlert
-      :error="gamesStore.error"
+      :error="gamesStore.fetchGamesState.error"
       retryable
-      @clear="gamesStore.error = null"
+      @clear="gamesStore.fetchGamesState.error = null"
       @retry="gamesStore.fetchGames()"
     />
 
@@ -27,7 +27,7 @@
             Choose Your Game
           </h2>
         </v-col>
-        <v-col v-if="gamesStore.loading" cols="12" class="text-center py-8">
+        <v-col v-if="gamesStore.fetchGamesState.loading" cols="12" class="text-center py-8">
           <v-progress-circular indeterminate color="primary" />
         </v-col>
         <v-col v-else-if="activeGames.length === 0" cols="12" class="text-center py-8">
@@ -250,7 +250,7 @@
             Available Games
           </h2>
         </v-col>
-        <v-col v-if="gamesStore.loading" cols="12" class="text-center py-8">
+        <v-col v-if="gamesStore.fetchGamesState.loading" cols="12" class="text-center py-8">
           <v-progress-circular indeterminate color="primary" />
         </v-col>
         <template v-else>

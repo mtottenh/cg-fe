@@ -159,9 +159,13 @@ const selectedGame = ref<GameSummary | null>(null)
 const configDialogOpen = ref(false)
 const configGame = ref<GameSummary | null>(null)
 
-// `loading` aggregates every games-action state; `error` is a WritableComputedRef
-// (see `aggregateActionStates`) that storeToRefs exposes with get/set intact.
-const { loading, error } = storeToRefs(gamesStore)
+// P-122: this comment used to be false. `loading`/`error` claimed to come from
+// `aggregateActionStates` over every games-action state; the store actually
+// hand-rolled a computed over two of thirteen, so a failed enable/disable/map
+// write left this page silent. They now come from a real aggregate over the
+// twelve admin actions — excluding the PUBLIC fetchGames state, whose inclusion
+// was what leaked admin 403s onto HomePage.
+const { adminLoading: loading, adminError: error } = storeToRefs(gamesStore)
 
 const headers = [
   { title: '', key: 'icon_url', width: '50px', sortable: false },

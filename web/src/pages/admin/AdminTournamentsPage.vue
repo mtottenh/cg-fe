@@ -318,7 +318,10 @@ const TOURNAMENT_CONFIRM_ACTIONS: Record<string, {
 
 // Store-backed reactive refs
 const { tournaments, loading: tournamentsLoading, error: tournamentsError } = storeToRefs(tournamentsStore)
-const { loading: gamesLoading, error: gamesError } = storeToRefs(gamesStore)
+// P-122: was `storeToRefs(gamesStore)`, which surfaced AdminGamesPage's
+// admin-only fetchAllGames failures on this page. It awaits fetchGames alone.
+const gamesLoading = computed(() => gamesStore.fetchGamesState.loading)
+const gamesError = computed(() => gamesStore.fetchGamesState.error)
 const { loading: leaguesLoading, error: leaguesError } = storeToRefs(leaguesStore)
 const loading = computed(() => gamesLoading.value || tournamentsLoading.value || leaguesLoading.value)
 const error = computed(() => gamesError.value || tournamentsError.value || leaguesError.value)
@@ -432,7 +435,7 @@ function clearFilters() {
 
 function clearError() {
   tournamentsStore.error = null
-  gamesStore.error = null
+  gamesStore.fetchGamesState.error = null
   leaguesStore.error = null
 }
 

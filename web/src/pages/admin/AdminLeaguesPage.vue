@@ -228,11 +228,14 @@ const selectedLeagueForDetail = ref<UserLeagueMembership | null>(null)
 const snackbar = useSnackbar()
 
 // Computed: loading from either store
-const loading = computed(() => gamesStore.loading || leaguesStore.loading)
-const error = computed(() => gamesStore.error || leaguesStore.error)
+// P-122: `gamesStore.loading`/`.error` aliased BOTH fetch states, so this page
+// surfaced (and cleared) errors raised by AdminGamesPage's admin-only
+// `fetchAllGames`. This page only ever awaits `fetchGames`, so it reads that.
+const loading = computed(() => gamesStore.fetchGamesState.loading || leaguesStore.loading)
+const error = computed(() => gamesStore.fetchGamesState.error || leaguesStore.error)
 
 function clearError() {
-  gamesStore.error = null
+  gamesStore.fetchGamesState.error = null
   leaguesStore.error = null
 }
 

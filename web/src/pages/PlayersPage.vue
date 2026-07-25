@@ -53,7 +53,7 @@
               variant="outlined"
               clearable
               hide-details
-              :loading="gamesStore.loading"
+              :loading="gamesStore.fetchGamesState.loading"
             />
           </v-col>
 

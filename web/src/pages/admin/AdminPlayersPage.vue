@@ -368,7 +368,10 @@ const gameFilter = ref<string | null>(null)
 const teamStatusFilter = ref<string | null>(null)
 
 // Game and team status options (for future backend support)
-const { games, loading: loadingGames } = storeToRefs(gamesStore)
+// P-122: `loading` OR'd in the admin-only fetchAllGames state; this page awaits
+// fetchGames alone.
+const { games } = storeToRefs(gamesStore)
+const loadingGames = computed(() => gamesStore.fetchGamesState.loading)
 const teamStatusOptions = [
   { title: 'Any', value: null },
   { title: 'On a team', value: 'has_team' },

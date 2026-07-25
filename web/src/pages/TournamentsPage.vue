@@ -170,7 +170,9 @@ const filters = ref<{ game_id?: string; status?: string }>({
 
 // Store-backed reactive refs
 const { loading: tournamentsLoading, error } = storeToRefs(tournamentsStore)
-const { loading: gamesLoading } = storeToRefs(gamesStore)
+// P-122: was `storeToRefs(gamesStore).loading`, which OR'd in the admin-only
+// fetchAllGames state. This page awaits fetchGames alone.
+const gamesLoading = computed(() => gamesStore.fetchGamesState.loading)
 const loading = computed(() => tournamentsLoading.value || gamesLoading.value)
 const games = computed(() => gamesStore.games.filter((g) => g.status === 'active'))
 

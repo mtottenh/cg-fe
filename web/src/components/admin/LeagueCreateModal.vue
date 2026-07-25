@@ -164,6 +164,32 @@
                 </v-expansion-panel>
               </v-expansion-panels>
             </v-col>
+
+            <!--
+              P-97: creating a league also creates a season, and nothing said
+              so. `trg_leagues_create_default_season`
+              (api/migrations/0028_fix_league_season_trigger.sql:49-53, AFTER
+              INSERT ON leagues) inserts "Season 1" in status `registration`
+              with the league's default team sizes — so the admin who clicks
+              Create League immediately owns an OPEN-REGISTRATION season they
+              never configured and had no way to know existed. Surfaced rather
+              than removed: see the note in the fix report.
+            -->
+            <v-col cols="12">
+              <v-alert
+                type="info"
+                variant="tonal"
+                density="compact"
+                data-testid="default-season-notice"
+              >
+                <div class="text-body-2">
+                  A first season, <strong>Season 1</strong>, is created with the league and is
+                  <strong>open for registration immediately</strong> — teams can sign up as soon as
+                  the league exists. Rename it, set its dates or close registration from
+                  <strong>Manage Seasons &amp; Teams</strong> on the league's row.
+                </div>
+              </v-alert>
+            </v-col>
           </v-row>
         </v-form>
       </v-card-text>

@@ -34,8 +34,8 @@
                   <v-icon start size="small">mdi-gamepad-variant</v-icon>
                   {{ gameName }}
                 </v-chip>
-                <v-chip size="small" :color="league.status === 'active' ? 'success' : 'grey'" variant="tonal">
-                  {{ league.status }}
+                <v-chip size="small" :color="leagueStatusColor" variant="tonal">
+                  {{ leagueStatusLabel }}
                 </v-chip>
                 <v-chip size="small" :color="accessTypeColor" variant="tonal" class="ml-1">
                   <v-icon start size="small">{{ accessTypeIcon }}</v-icon>
@@ -468,7 +468,26 @@ import EmptyState from '@/components/EmptyState.vue'
 import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
 import type { TournamentSummaryResponse } from '@/stores/tournaments'
 import type { LeagueSettings } from '@/api/overrides'
-import { seasonStatusMap, leagueAccessTypeMap, getStatusColor, getStatusLabel, getStatusIcon } from '@/utils/statusMaps'
+import { seasonStatusMap, leagueAccessTypeMap, getStatusColor, getStatusLabel, getStatusIcon, type StatusMap } from '@/utils/statusMaps'
+
+/**
+ * P-112 baseline entry: the header chip printed the raw `league.status`, so a
+ * suspended or archived league announced itself to visitors as the literal
+ * wire value.
+ *
+ * Keys mirror `LeagueStatus`
+ * (api/crates/portal-domain/src/entities/league.rs:80) /
+ * `leagues_check_status` (api/migrations/0020_create_leagues.sql:19).
+ * Duplicated locally (also in `LeaguesPage` and `LeagueSearchAutocomplete`)
+ * because `src/utils/statusMaps.ts` was owned by a concurrent lane — it belongs
+ * there as `leagueStatusMap`. Not compile-lockable: `LeagueResponse.status` is
+ * a bare `String` on the wire (P-112).
+ */
+const leagueStatusMap: StatusMap = {
+  active: { color: 'success', label: 'Active' },
+  archived: { color: 'grey', label: 'Archived' },
+  suspended: { color: 'error', label: 'Suspended' },
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -536,6 +555,9 @@ const entryRequirementsList = computed((): string[] => {
     reqs.push(`Rank Tiers: ${e.allowed_rank_tiers.join(', ')}`)
   return reqs
 })
+
+const leagueStatusLabel = computed(() => getStatusLabel(leagueStatusMap, league.value?.status ?? ''))
+const leagueStatusColor = computed(() => getStatusColor(leagueStatusMap, league.value?.status ?? ''))
 
 // Access type display helpers
 const accessTypeLabel = computed(() => getStatusLabel(leagueAccessTypeMap, league.value?.access_type ?? ''))

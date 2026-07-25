@@ -142,14 +142,15 @@
               :items="invitations"
               :items-per-page="10"
               class="elevation-0"
+              data-testid="league-invitations-table"
             >
               <template v-slot:item.user_id="{ item }">
                 <span class="text-caption">{{ item.user_id.substring(0, 8) }}...</span>
               </template>
 
               <template v-slot:item.status="{ item }">
-                <v-chip size="small" color="info" variant="flat">
-                  {{ item.status }}
+                <v-chip :color="getInvitationStatusColor(item.status)" size="small" variant="flat">
+                  {{ getInvitationStatusLabel(item.status) }}
                 </v-chip>
               </template>
 
@@ -196,6 +197,7 @@
               :items="applications"
               :items-per-page="10"
               class="elevation-0"
+              data-testid="league-applications-table"
             >
               <template v-slot:item.user_id="{ item }">
                 <span class="text-caption">{{ item.user_id.substring(0, 8) }}...</span>
@@ -209,8 +211,8 @@
               </template>
 
               <template v-slot:item.status="{ item }">
-                <v-chip size="small" color="warning" variant="flat">
-                  {{ item.status }}
+                <v-chip :color="getInvitationStatusColor(item.status)" size="small" variant="flat">
+                  {{ getInvitationStatusLabel(item.status) }}
                 </v-chip>
               </template>
 
@@ -284,7 +286,30 @@ import { useLeaguesStore, type UserLeagueMembership, type LeagueMemberResponse, 
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatDate } from '@/utils/formatters'
 import InviteUserModal from './InviteUserModal.vue'
-import { leagueRoleMap, getStatusColor, formatRole } from '@/utils/statusMaps'
+import { leagueRoleMap, getStatusColor, getStatusLabel, formatRole, type StatusMap } from '@/utils/statusMaps'
+
+/**
+ * P-96: both tables interpolated `item.status` raw — the wire value — while
+ * the members table beside them mapped roles through `formatRole`. Invitations
+ * and applications are rows of the SAME `league_invitations` table, so they
+ * share one status enum: `LeagueInvitationStatus`
+ * (api/crates/portal-domain/src/entities/league.rs:264) and the
+ * `league_invitations_check_status` CHECK
+ * (api/migrations/0022_create_league_invitations.sql:18) both say
+ * pending / accepted / rejected / expired.
+ *
+ * Defined locally rather than in `src/utils/statusMaps.ts` only because that
+ * file was owned by a concurrent lane; it belongs there as
+ * `leagueInvitationStatusMap`. It cannot be compile-locked yet either —
+ * `LeagueInvitationResponse.status` is a bare `String` on the wire, so no
+ * union is generated (P-112).
+ */
+const leagueInvitationStatusMap: StatusMap = {
+  pending: { color: 'warning', label: 'Pending' },
+  accepted: { color: 'success', label: 'Accepted' },
+  rejected: { color: 'error', label: 'Rejected' },
+  expired: { color: 'grey', label: 'Expired' },
+}
 
 // Long scrolling forms in a small floating dialog are unusable on phones.
 const { smAndDown } = useDisplay()
@@ -352,6 +377,10 @@ const availableRoles = [
 ]
 
 const getRoleColor = (role: string) => getStatusColor(leagueRoleMap, role)
+const getInvitationStatusColor = (status: string) =>
+  getStatusColor(leagueInvitationStatusMap, status)
+const getInvitationStatusLabel = (status: string) =>
+  getStatusLabel(leagueInvitationStatusMap, status)
 
 // Watch for dialog opening
 watch(open, async (isOpen) => {

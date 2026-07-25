@@ -4,7 +4,7 @@
     max-width="500"
     persistent
   >
-    <v-card>
+    <v-card data-testid="invite-user-modal">
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Invite User to League</span>
         <v-btn aria-label="Close" icon variant="text" @click="close">
@@ -18,14 +18,22 @@
         <v-form ref="formRef" v-model="formValid">
           <v-row>
             <v-col cols="12">
-              <v-text-field
-                v-model="form.user_id"
-                label="User ID"
-                :rules="[rules.required, rules.uuid]"
-                variant="outlined"
+              <!--
+                P-95: this was a bare UUID text field ("Enter the UUID of the
+                user to invite"). No surface in the product ever displays a
+                user's UUID — the members table shows username/email, the
+                invitations and applications tables truncate the id to 8
+                characters — so an invite-only league could not actually be
+                invited to by a human. `BanCreateModal` on the same admin
+                surface already searched players by name; this now does the
+                same.
+              -->
+              <UserSearchAutocomplete
+                v-model="selectedPlayer"
+                label="User to Invite"
+                placeholder="Search by display name..."
+                :rules="[rules.required]"
                 density="comfortable"
-                hint="Enter the UUID of the user to invite"
-                persistent-hint
               />
             </v-col>
 
@@ -72,6 +80,12 @@
 import { ref, watch } from 'vue'
 import { useLeaguesStore } from '@/stores/leagues'
 import { useFormRules } from '@/composables/useFormRules'
+import UserSearchAutocomplete from '@/components/admin/UserSearchAutocomplete.vue'
+import { api } from '@/api'
+import { unwrapApi } from '@/stores/helpers'
+import type { components } from '@/api/types'
+
+type PlayerSearchResponse = components['schemas']['PlayerSearchResponse']
 
 const props = defineProps<{  leagueId: string
 }>()
@@ -88,8 +102,9 @@ const formValid = ref(false)
 const sending = ref(false)
 const error = ref<string | null>(null)
 
+const selectedPlayer = ref<PlayerSearchResponse | null>(null)
+
 const form = ref({
-  user_id: '',
   message: '',
 })
 
@@ -97,10 +112,23 @@ const rules = useFormRules()
 
 watch(open, (isOpen) => {
   if (isOpen) {
-    form.value = { user_id: '', message: '' }
+    selectedPlayer.value = null
+    form.value = { message: '' }
     error.value = null
   }
 })
+
+/**
+ * League invitations are keyed by `user_id`, but player search returns PLAYER
+ * ids — the same asymmetry `TournamentInvitationsModal.resolveUserId` handles.
+ * Resolve it here rather than making an organiser paste a UUID (P-95).
+ */
+async function resolveUserId(player: PlayerSearchResponse): Promise<string> {
+  const result = await unwrapApi(api.GET('/v1/players/{player_id}', {
+    params: { path: { player_id: player.id } },
+  }))
+  return result.data.user_id
+}
 
 function close() {
   error.value = null
@@ -108,14 +136,15 @@ function close() {
 }
 
 async function sendInvitation() {
-  if (!formValid.value || !props.leagueId) return
+  if (!formValid.value || !props.leagueId || !selectedPlayer.value) return
 
   sending.value = true
   error.value = null
 
   try {
+    const userId = await resolveUserId(selectedPlayer.value)
     // P-94: the message is now forwarded instead of being validated and dropped.
-    await leaguesStore.sendInvitation(props.leagueId, form.value.user_id, form.value.message)
+    await leaguesStore.sendInvitation(props.leagueId, userId, form.value.message)
     emit('invited')
     close()
   } catch {

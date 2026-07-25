@@ -71,8 +71,8 @@
             {{ league.description }}
           </v-card-text>
           <v-card-actions>
-            <v-chip size="small" :color="league.status === 'active' ? 'success' : 'grey'" variant="tonal">
-              {{ league.status }}
+            <v-chip size="small" :color="getLeagueStatusColor(league.status)" variant="tonal">
+              {{ getLeagueStatusLabel(league.status) }}
             </v-chip>
             <v-chip size="small" :color="getAccessTypeColor(league.access_type)" variant="tonal" class="ml-1">
               {{ getAccessTypeLabel(league.access_type) }}
@@ -115,9 +115,28 @@ import { useRoute, useRouter } from 'vue-router'
 import { useLeaguesStore } from '@/stores/leagues'
 import { useGamesStore } from '@/stores/games'
 import { useAuthStore } from '@/stores/auth'
-import { leagueAccessTypeMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import { leagueAccessTypeMap, getStatusColor, getStatusLabel, type StatusMap } from '@/utils/statusMaps'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import EmptyState from '@/components/EmptyState.vue'
+
+/**
+ * P-112 baseline entry: the card chip printed the raw `league.status` at every
+ * visitor of /leagues, so an archived league read "archived" and a suspended
+ * one "suspended", both greyed identically by the colour ternary.
+ *
+ * Keys mirror `LeagueStatus`
+ * (api/crates/portal-domain/src/entities/league.rs:80) /
+ * `leagues_check_status` (api/migrations/0020_create_leagues.sql:19).
+ * Duplicated locally (also in `LeagueDetailPage` and
+ * `LeagueSearchAutocomplete`) because `src/utils/statusMaps.ts` was owned by a
+ * concurrent lane — it belongs there as `leagueStatusMap`. Not compile-lockable:
+ * `LeagueResponse.status` is a bare `String` on the wire (P-112).
+ */
+const leagueStatusMap: StatusMap = {
+  active: { color: 'success', label: 'Active' },
+  archived: { color: 'grey', label: 'Archived' },
+  suspended: { color: 'error', label: 'Suspended' },
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -216,6 +235,8 @@ function getGameName(gameId: string): string {
 
 const getAccessTypeLabel = (type: string) => getStatusLabel(leagueAccessTypeMap, type)
 const getAccessTypeColor = (type: string) => getStatusColor(leagueAccessTypeMap, type)
+const getLeagueStatusLabel = (status: string) => getStatusLabel(leagueStatusMap, status)
+const getLeagueStatusColor = (status: string) => getStatusColor(leagueStatusMap, status)
 
 function isMyLeague(leagueId: string): boolean {
   return leaguesStore.myLeagues.some(m => m.league_id === leagueId)

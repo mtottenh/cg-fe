@@ -21,7 +21,8 @@
               <v-text-field
                 v-model="form.name"
                 label="Team Name"
-                :rules="[rules.required, rules.minLength(2), rules.maxLength(100)]"
+                :rules="[rules.required, rules.minLength(2), rules.maxLength(50)]"
+                counter="50"
                 variant="outlined"
                 density="comfortable"
               />
@@ -31,10 +32,11 @@
               <v-text-field
                 v-model="form.tag"
                 label="Team Tag"
-                :rules="[rules.required, rules.minLength(2), rules.maxLength(8), rules.tag]"
+                :rules="[rules.required, rules.minLength(2), rules.maxLength(5), rules.tag]"
+                counter="5"
                 variant="outlined"
                 density="comfortable"
-                hint="2-8 character tag (e.g., AST, NAV, G2)"
+                hint="2-5 character tag (e.g., AST, NAV, G2)"
                 persistent-hint
               />
             </v-col>
@@ -43,7 +45,8 @@
               <v-textarea
                 v-model="form.description"
                 label="Description (Optional)"
-                :rules="[rules.maxLength(2000)]"
+                :rules="[rules.maxLength(1000)]"
+                counter="1000"
                 rows="2"
                 variant="outlined"
                 density="comfortable"
@@ -156,12 +159,23 @@ const form = ref({
   logo_url: '',
 })
 
+/**
+ * P-41: every bound here mirrors `CreateLeagueTeamRequest`
+ * (api/crates/portal-api/src/dto/requests/league_team.rs:247-275), which the
+ * `ValidatedJson` extractor enforces on the endpoint this modal POSTs to —
+ * name 2..=50, tag 2..=5, description ..=1000.
+ *
+ * This form used to offer name ≤ 100, tag ≤ 8 and description ≤ 2000, so it
+ * accepted three classes of input it then sent to a guaranteed 400, while the
+ * public form on `LeagueDetailPage` disagreed with BOTH by demanding name ≥ 3.
+ * Neither form was right; the DTO is.
+ */
 const rules = {
   ...useFormRules(),
   tag: (v: string) => {
     if (!v) return true
-    if (!/^[A-Z0-9]{2,8}$/.test(v.toUpperCase())) {
-      return 'Must be 2-8 alphanumeric characters'
+    if (!/^[A-Z0-9]{2,5}$/.test(v.toUpperCase())) {
+      return 'Must be 2-5 alphanumeric characters'
     }
     return true
   },

@@ -308,28 +308,39 @@
       <v-card>
         <v-card-title>Create Team</v-card-title>
         <v-card-text>
+          <!--
+            P-41: bounds mirror `CreateLeagueTeamRequest`
+            (api/crates/portal-api/src/dto/requests/league_team.rs:247-275),
+            which `ValidatedJson` enforces on the endpoint both create-team
+            forms POST to — name 2..=50, tag 2..=5, description ..=1000.
+
+            This form demanded name ≥ 3, refusing a two-character name the
+            backend accepts, while allowing an 8-character tag the backend
+            rejects with a 400. The admin modal disagreed with both. Neither
+            form was right; the DTO is.
+          -->
           <v-form ref="createTeamForm" v-model="createTeamValid">
             <v-text-field
               v-model="newTeam.name"
               label="Team Name"
-              :rules="[rules.required, rules.minLength(3), rules.maxLength(50)]"
+              :rules="[rules.required, rules.minLength(2), rules.maxLength(50)]"
               counter="50"
               class="mb-2"
             />
             <v-text-field
               v-model="newTeam.tag"
               label="Team Tag"
-              :rules="[rules.required, rules.minLength(2), rules.maxLength(8)]"
-              counter="8"
-              hint="Short identifier for your team (2-8 characters)"
+              :rules="[rules.required, rules.minLength(2), rules.maxLength(5)]"
+              counter="5"
+              hint="Short identifier for your team (2-5 characters)"
               class="mb-2"
             />
             <v-textarea
               v-model="newTeam.description"
               label="Description (optional)"
               rows="3"
-              counter="500"
-              :rules="[rules.maxLength(500)]"
+              counter="1000"
+              :rules="[rules.maxLength(1000)]"
             />
           </v-form>
         </v-card-text>

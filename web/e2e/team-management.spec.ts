@@ -287,7 +287,22 @@ test.describe('League Team Management Flows', () => {
       await expect(submit).toBeEnabled()
     })
 
-    test('should reject a team name shorter than three characters', async ({ page }) => {
+    /**
+     * COVERAGE-PLAN **P-41**. This test used to be
+     * "should reject a team name shorter than three characters", pinning
+     * `rules.minLength(3)` on this form — a bound the BACKEND does not have.
+     * `CreateLeagueTeamRequest` (api/crates/portal-api/src/dto/requests/
+     * league_team.rs:247-275) is `length(min = 2, max = 50)` for the name and
+     * `length(min = 2, max = 5)` for the tag, and the admin modal used a third
+     * set of numbers again (2..100 / 2..8).
+     *
+     * Ground rule 9: the assertion changed because the test was pinning a bug —
+     * a client rule stricter than the server's, which refused input the product
+     * accepts. The rejection half is NOT relaxed away, it is retargeted at the
+     * real minimum below, and the two tests after it pin the maxima that this
+     * form used to let through into a guaranteed 400.
+     */
+    test('should accept a two-character team name — the backend minimum', async ({ page }) => {
       await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
@@ -295,13 +310,49 @@ test.describe('League Team Management Flows', () => {
       const modal = page.getByRole('dialog')
       await expect(modal).toBeVisible()
 
-      // `rules.minLength(3)` on the name field (LeagueDetailPage.vue:314) —
-      // message text from useFormRules.ts:9-10.
       await modal.getByLabel('Team Name').fill('AB')
       await modal.getByLabel('Team Tag').fill(uniqueId().substring(0, 4).toUpperCase())
 
-      await expect(modal.getByText('Must be at least 3 characters')).toBeVisible()
+      await expect(modal.getByText('Must be at least 2 characters')).toHaveCount(0)
+      await expect(modal.getByText('Must be at least 3 characters')).toHaveCount(0)
+      await expect(modal.getByRole('button', { name: 'Create Team' })).toBeEnabled()
+    })
+
+    test('should reject a one-character team name', async ({ page }) => {
+      await page.goto(`/leagues/${scenario.leagueId}`)
+      await page.waitForLoadState('networkidle')
+
+      await page.getByRole('button', { name: 'Create Team' }).first().click()
+      const modal = page.getByRole('dialog')
+      await expect(modal).toBeVisible()
+
+      await modal.getByLabel('Team Name').fill('A')
+      await modal.getByLabel('Team Tag').fill(uniqueId().substring(0, 4).toUpperCase())
+
+      await expect(modal.getByText('Must be at least 2 characters')).toBeVisible()
       await expect(modal.getByRole('button', { name: 'Create Team' })).toBeDisabled()
+    })
+
+    test('should reject a team tag longer than the backend maximum', async ({ page }) => {
+      await page.goto(`/leagues/${scenario.leagueId}`)
+      await page.waitForLoadState('networkidle')
+
+      await page.getByRole('button', { name: 'Create Team' }).first().click()
+      const modal = page.getByRole('dialog')
+      await expect(modal).toBeVisible()
+
+      // Six characters. The backend caps the tag at five, so this form used to
+      // enable Create and then take a 400 on submit.
+      await modal.getByLabel('Team Name').fill(`E2E Tag Bound ${uniqueId()}`)
+      await modal.getByLabel('Team Tag').fill('ABCDEF')
+
+      await expect(modal.getByText('Must be at most 5 characters')).toBeVisible()
+      await expect(modal.getByRole('button', { name: 'Create Team' })).toBeDisabled()
+
+      // Five is the boundary and must still be accepted.
+      await modal.getByLabel('Team Tag').fill('ABCDE')
+      await expect(modal.getByText('Must be at most 5 characters')).toHaveCount(0)
+      await expect(modal.getByRole('button', { name: 'Create Team' })).toBeEnabled()
     })
 
     test('should create a team that appears in the season list and on the roster', async ({

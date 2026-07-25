@@ -201,6 +201,16 @@ export const gameStatusMap: StatusMap = {
   maintenance: { color: 'warning', label: 'Disabled' },
 }
 
+export const reservationStatusMap: StatusMap<S['ReservationStatus']> = {
+  pending: { color: 'grey', label: 'Waiting for a server', icon: 'mdi-timer-sand' },
+  configuring: { color: 'info', label: 'Configuring server', icon: 'mdi-cog-sync' },
+  ready: { color: 'success', label: 'Server ready', icon: 'mdi-check-circle' },
+  live: { color: 'primary', label: 'Live', icon: 'mdi-access-point' },
+  completed: { color: 'success', label: 'Finished', icon: 'mdi-trophy' },
+  failed: { color: 'error', label: 'Setup failed', icon: 'mdi-alert-octagon' },
+  cancelled: { color: 'grey', label: 'Cancelled', icon: 'mdi-close-circle' },
+}
+
 export const serverStatusMap: StatusMap<S['GameServerStatus']> = {
   offline: { color: 'grey', label: 'Offline', icon: 'mdi-lan-disconnect' },
   available: { color: 'success', label: 'Available', icon: 'mdi-check-circle' },

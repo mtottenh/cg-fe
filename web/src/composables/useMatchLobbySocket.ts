@@ -107,6 +107,29 @@ export interface TimeoutWarningMessage {
   current_team_registration_id: string
 }
 
+export interface ServerConnectInfo {
+  ip_address: string
+  port: number
+  connect_password: string
+  gotv_port?: number | null
+  gotv_password?: string | null
+}
+
+export interface ServerAssignmentUpdateMessage {
+  type: 'server_assignment_update'
+  status: string
+  connect?: ServerConnectInfo | null
+  reason?: string | null
+}
+
+export interface LiveScoreUpdateMessage {
+  type: 'live_score_update'
+  map_number: number
+  team1_score: number
+  team2_score: number
+  round_number?: number | null
+}
+
 export interface ErrorMessage {
   type: 'error'
   code: string
@@ -130,6 +153,8 @@ export type ServerMessage =
   | PlayerDisconnectedMessage
   | SpectatorCountMessage
   | TimeoutWarningMessage
+  | ServerAssignmentUpdateMessage
+  | LiveScoreUpdateMessage
   | ErrorMessage
   | PongMessage
 
@@ -169,6 +194,8 @@ const SERVER_MESSAGE_TYPES = new Set<ServerMessage['type']>([
   'player_disconnected',
   'spectator_count',
   'timeout_warning',
+  'server_assignment_update',
+  'live_score_update',
   'error',
   'pong',
 ])

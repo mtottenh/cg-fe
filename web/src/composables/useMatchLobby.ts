@@ -1,5 +1,6 @@
 import { computed, inject, provide, ref, watch, onUnmounted, type InjectionKey, type Ref } from 'vue'
 import { useVetoStore, type MapStatusResponse } from '@/stores/veto'
+import { useMatchServerStore } from '@/stores/matchServer'
 import {
   useMatchLobbySocket,
   type ChatMessage,
@@ -15,6 +16,8 @@ import {
   type PlayerDisconnectedMessage,
   type SpectatorCountMessage,
   type TimeoutWarningMessage,
+  type ServerAssignmentUpdateMessage,
+  type LiveScoreUpdateMessage,
 } from './useMatchLobbySocket'
 
 export type VetoPhase = 'waiting' | 'coin_flip' | 'banning' | 'picking' | 'side_select' | 'completed' | 'cancelled'
@@ -24,6 +27,7 @@ export function useMatchLobby(
   userRegistrationId: Ref<string | null | undefined>,
 ) {
   const vetoStore = useVetoStore()
+  const matchServerStore = useMatchServerStore()
 
   // ── Socket layer ──
   const socket = useMatchLobbySocket(() => matchId.value)
@@ -120,6 +124,17 @@ export function useMatchLobby(
       spectatorCount.value = msg.count
     },
 
+    server_assignment_update(msg: ServerAssignmentUpdateMessage) {
+      matchServerStore.applyAssignmentUpdate(msg)
+    },
+    live_score_update(msg: LiveScoreUpdateMessage) {
+      matchServerStore.applyLiveScore({
+        map_number: msg.map_number,
+        team1_score: msg.team1_score,
+        team2_score: msg.team2_score,
+        round_number: msg.round_number,
+      })
+    },
     timeout_warning(msg: TimeoutWarningMessage) {
       timeoutWarning.value = {
         seconds_remaining: msg.seconds_remaining,
@@ -258,7 +273,12 @@ export function useMatchLobby(
   watch(() => session.value?.status, (status) => {
     if (status === 'completed' || status === 'cancelled') {
       stopCountdown()
-      socket.disconnect()
+      // §7.3: veto completion used to close the socket, blinding the page
+      // exactly when server setup starts. Keep it open while a server
+      // assignment is (or may become) active; it closes on unmount.
+      if (status === 'cancelled' && !matchServerStore.isActive()) {
+        socket.disconnect()
+      }
     }
   })
 

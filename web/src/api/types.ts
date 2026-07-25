@@ -2579,6 +2579,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/matches/{match_id}/server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the server reservation for a match.
+         * @description Participants and admins receive connect details once the server is
+         *     ready; everyone else gets status + GOTV once live.
+         */
+        get: operations["get_match_server"];
+        put?: never;
+        post?: never;
+        /** Cancel a match's server reservation (admin). */
+        delete: operations["cancel_match_server"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/matches/{match_id}/server/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Manually assign a server to a match (admin). */
+        post: operations["assign_match_server"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/matches/{match_id}/veto": {
         parameters: {
             query?: never;
@@ -6363,6 +6402,35 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_MatchServerResponse: {
+            /** @description A match's server reservation, scoped to what the caller may see. */
+            data: {
+                /** @description `sv_password` — participants and admins only. */
+                connect_password?: string | null;
+                /** @description Failure/cancellation reason, when terminal. */
+                failure_reason?: string | null;
+                gotv_password?: string | null;
+                /**
+                 * Format: int32
+                 * @description GOTV details — visible to everyone once the match is live.
+                 */
+                gotv_port?: number | null;
+                /** @description Connect address — participants and admins only, once ready. */
+                ip_address?: string | null;
+                /** @description Whether the caller received the participant view. */
+                is_participant: boolean;
+                live_score?: null | components["schemas"]["LiveScoreResponse"];
+                /** Format: int32 */
+                port?: number | null;
+                /** @description Server display name. */
+                server_name?: string | null;
+                /** @description Reservation status. */
+                status: components["schemas"]["ReservationStatus"];
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_MatchStatusDetailsResponse: {
             /** @description Response DTO for match status details. */
             data: {
@@ -6838,6 +6906,8 @@ export interface components {
                 id: string;
                 /** @description Match ID. */
                 match_id: string;
+                /** @description Claim origin: `participant`, `server`, or `admin`. */
+                source: string;
                 /** @description Current claim status. */
                 status: components["schemas"]["ClaimStatus"];
                 /**
@@ -6845,10 +6915,13 @@ export interface components {
                  *     history/list handlers; absent when the player could not be resolved).
                  */
                 submitted_by_display_name?: string | null;
-                /** @description Registration ID of who submitted the claim. */
-                submitted_by_registration_id: string;
-                /** @description User ID of who submitted the claim. */
-                submitted_by_user_id: string;
+                /**
+                 * @description Registration ID of who submitted the claim. Absent for
+                 *     server-sourced claims (`source == "server"`).
+                 */
+                submitted_by_registration_id?: string | null;
+                /** @description User ID of who submitted the claim. Absent for server claims. */
+                submitted_by_user_id?: string | null;
                 /** @description Submitter's notes. */
                 submitter_notes?: string | null;
                 /**
@@ -8512,6 +8585,8 @@ export interface components {
                 id: string;
                 /** @description Match ID. */
                 match_id: string;
+                /** @description Claim origin: `participant`, `server`, or `admin`. */
+                source: string;
                 /** @description Current claim status. */
                 status: components["schemas"]["ClaimStatus"];
                 /**
@@ -8519,10 +8594,13 @@ export interface components {
                  *     history/list handlers; absent when the player could not be resolved).
                  */
                 submitted_by_display_name?: string | null;
-                /** @description Registration ID of who submitted the claim. */
-                submitted_by_registration_id: string;
-                /** @description User ID of who submitted the claim. */
-                submitted_by_user_id: string;
+                /**
+                 * @description Registration ID of who submitted the claim. Absent for
+                 *     server-sourced claims (`source == "server"`).
+                 */
+                submitted_by_registration_id?: string | null;
+                /** @description User ID of who submitted the claim. Absent for server claims. */
+                submitted_by_user_id?: string | null;
                 /** @description Submitter's notes. */
                 submitter_notes?: string | null;
                 /**
@@ -10827,6 +10905,20 @@ export interface components {
             /** @description Filter by tournament ID. */
             tournament_id?: string | null;
         };
+        /** @description Live per-map score snapshot. */
+        LiveScoreResponse: {
+            /**
+             * Format: int64
+             * @description 0-based map number (MatchZy convention).
+             */
+            map_number: number;
+            /** Format: int64 */
+            round_number?: number | null;
+            /** Format: int32 */
+            team1_score: number;
+            /** Format: int32 */
+            team2_score: number;
+        };
         /** @description Request body for user login. */
         LoginRequest: {
             /** @description Password. */
@@ -11063,6 +11155,30 @@ export interface components {
             short_handed: boolean;
             /** @description Lifecycle status (draft/submitted/locked). */
             status: components["schemas"]["LineupStatus"];
+        };
+        /** @description A match's server reservation, scoped to what the caller may see. */
+        MatchServerResponse: {
+            /** @description `sv_password` — participants and admins only. */
+            connect_password?: string | null;
+            /** @description Failure/cancellation reason, when terminal. */
+            failure_reason?: string | null;
+            gotv_password?: string | null;
+            /**
+             * Format: int32
+             * @description GOTV details — visible to everyone once the match is live.
+             */
+            gotv_port?: number | null;
+            /** @description Connect address — participants and admins only, once ready. */
+            ip_address?: string | null;
+            /** @description Whether the caller received the participant view. */
+            is_participant: boolean;
+            live_score?: null | components["schemas"]["LiveScoreResponse"];
+            /** Format: int32 */
+            port?: number | null;
+            /** @description Server display name. */
+            server_name?: string | null;
+            /** @description Reservation status. */
+            status: components["schemas"]["ReservationStatus"];
         };
         /** @description Response DTO for match status details. */
         MatchStatusDetailsResponse: {
@@ -12141,6 +12257,11 @@ export interface components {
             /** @description Optional reason for the rejection, shown to the proposer. */
             reason?: string | null;
         };
+        /**
+         * @description Lifecycle of a match's server reservation.
+         * @enum {string}
+         */
+        ReservationStatus: "pending" | "configuring" | "ready" | "live" | "completed" | "failed" | "cancelled";
         /** @description Request to resolve a dispute by adjusting scores. */
         ResolveAdjustedRequest: {
             /**
@@ -12243,6 +12364,8 @@ export interface components {
             id: string;
             /** @description Match ID. */
             match_id: string;
+            /** @description Claim origin: `participant`, `server`, or `admin`. */
+            source: string;
             /** @description Current claim status. */
             status: components["schemas"]["ClaimStatus"];
             /**
@@ -12250,10 +12373,13 @@ export interface components {
              *     history/list handlers; absent when the player could not be resolved).
              */
             submitted_by_display_name?: string | null;
-            /** @description Registration ID of who submitted the claim. */
-            submitted_by_registration_id: string;
-            /** @description User ID of who submitted the claim. */
-            submitted_by_user_id: string;
+            /**
+             * @description Registration ID of who submitted the claim. Absent for
+             *     server-sourced claims (`source == "server"`).
+             */
+            submitted_by_registration_id?: string | null;
+            /** @description User ID of who submitted the claim. Absent for server claims. */
+            submitted_by_user_id?: string | null;
             /** @description Submitter's notes. */
             submitter_notes?: string | null;
             /**
@@ -22702,6 +22828,118 @@ export interface operations {
             };
             /** @description Claim not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_match_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reservation state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_MatchServerResponse"];
+                };
+            };
+            /** @description No reservation for this match */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    cancel_match_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reservation cancelled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No live reservation */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    assign_match_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reservation created/queued */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_MatchServerResponse"];
+                };
+            };
+            /** @description Match not ready for a server */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

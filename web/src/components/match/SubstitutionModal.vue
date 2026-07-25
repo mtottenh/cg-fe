@@ -62,7 +62,7 @@
           variant="flat"
           :loading="store.substitutionState.loading"
           :disabled="!playerOut || (!playerIn && !shortHanded)"
-          @click="submit"
+          @click="confirmSubmit"
         >
           Request Substitution
         </v-btn>
@@ -71,6 +71,7 @@
       <v-alert v-if="error" type="error" class="ma-4" closable @click:close="error = null">
         {{ error }}
       </v-alert>
+      <ConfirmDialogHost :dialog="confirmDialog" />
     </v-card>
   </v-dialog>
 </template>
@@ -81,6 +82,8 @@ import { api, ApiError } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi } from '@/stores/helpers'
 import { useMatchServerStore } from '@/stores/matchServer'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
 
 type OptionsSide = components['schemas']['SubstitutionOptionsSide']
 
@@ -100,6 +103,7 @@ const playerOut = ref<string | null>(null)
 const playerIn = ref<string | null>(null)
 const shortHanded = ref(false)
 const error = ref<string | null>(null)
+const confirmDialog = useConfirmDialog()
 
 // The side containing the selected outgoing player drives the bench list.
 const selectedSide = computed(() =>
@@ -150,6 +154,21 @@ watch(shortHanded, (isShort) => {
 
 function close() {
   open.value = false
+}
+
+// §7.2: substitutions kick a player from the live server — confirm-gated.
+function confirmSubmit() {
+  const outName =
+    activeItems.value.find((i) => i.value === playerOut.value)?.label ?? 'this player'
+  confirmDialog.confirm({
+    title: 'Request substitution?',
+    message: shortHanded.value
+      ? `${outName} will be kicked and the team plays short-handed.`
+      : `${outName} will be kicked; the substitute connects with the same details.`,
+    action: 'Substitute',
+    color: 'warning',
+    handler: submit,
+  })
 }
 
 async function submit() {

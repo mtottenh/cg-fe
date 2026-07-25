@@ -107,7 +107,9 @@ export const useMatchServerStore = defineStore('matchServer', () => {
       connect_password: update.connect?.connect_password ?? current?.connect_password,
       gotv_port: update.connect?.gotv_port ?? current?.gotv_port,
       gotv_password: update.connect?.gotv_password ?? current?.gotv_password,
-      is_participant: current?.is_participant ?? true,
+      // Unknown viewer = not a participant until the gated REST fetch says
+      // otherwise (review minor — spectators must not render connect UI).
+      is_participant: current?.is_participant ?? false,
       live_score: current?.live_score,
     }
   }

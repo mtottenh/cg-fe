@@ -267,6 +267,11 @@ export function useMatchLobby(
       if (session.value && session.value.status !== 'completed') {
         socket.connect()
         startCountdown()
+      } else if (matchServerStore.isActive()) {
+        // §7.3 (review M7): a reload during server setup / a live match
+        // must still get realtime pushes — the veto being finished no
+        // longer means the lobby is dead.
+        socket.connect()
       }
     } catch {
       // No veto session exists yet — try connecting anyway for lobby features

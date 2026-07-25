@@ -9,6 +9,7 @@ import { useEvidenceStore } from '@/stores/evidence'
 import { useResultReviewsStore } from '@/stores/resultReviews'
 import { useDisputesStore } from '@/stores/disputes'
 import { useVetoStore } from '@/stores/veto'
+import { useMatchServerStore } from '@/stores/matchServer'
 import { useMatchContext } from './useMatchContext'
 import { api } from '@/api'
 import { unwrapApi } from '@/stores/helpers/apiAction'
@@ -247,6 +248,10 @@ export function useMatchDetail() {
    * none of which change during an in-flight match.
    */
   async function pollMatch() {
+    // Keep the server panel fresh on the polling path too (§7.3 / M7).
+    if (match.value?.id) {
+      void useMatchServerStore().fetchMatchServer(match.value.id)
+    }
     const tournament = tournamentsStore.currentTournament
     if (!tournament || !match.value) return
     const gen = fetchGen

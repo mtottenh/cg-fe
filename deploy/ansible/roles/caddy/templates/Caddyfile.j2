@@ -12,6 +12,27 @@
 {{ portal_domain }} {
     encode zstd gzip
 
+    # MatchZy demo/backup uploads: 100-300 MB .dem files need far more
+    # than the default 60s (§8 / review M5).
+    @gameserver_uploads {
+        path /v1/gameserver/demos /v1/gameserver/backups
+    }
+    handle @gameserver_uploads {
+        reverse_proxy 127.0.0.1:3000 {
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+            # Agent identity headers are trusted ONLY from the agents
+            # vhost (§5.4 / review C1) — never from the public site.
+            header_up -X-Client-Cert-Serial
+            header_up -X-Client-Cert-Fingerprint
+            header_up -X-Portal-Agent-Vhost
+            transport http {
+                read_timeout 600s
+                write_timeout 600s
+            }
+        }
+    }
+
     # API routes — everything the backend owns.
     @api {
         path /v1/* /uploads/* /swagger-ui/* /api-docs/* /health
@@ -22,6 +43,11 @@
             header_up X-Forwarded-For {remote}
             header_up X-Forwarded-Proto {scheme}
             header_up X-Real-IP {remote}
+            # Agent identity headers are trusted ONLY from the agents
+            # vhost (§5.4 / review C1) — never from the public site.
+            header_up -X-Client-Cert-Serial
+            header_up -X-Client-Cert-Fingerprint
+            header_up -X-Portal-Agent-Vhost
             # 60s is plenty; bump if you add long-polling routes.
             transport http {
                 read_timeout 60s
@@ -104,6 +130,9 @@ agents.{{ portal_domain }} {
         # Identity for the API: hex serial of the verified client cert.
         header_up X-Client-Cert-Serial {tls_client_serial}
         header_up X-Client-Cert-Fingerprint {tls_client_fingerprint}
+        # Trust marker: the API honors the serial only when this is set
+        # (§5.4 / review C1). The public site strips it.
+        header_up X-Portal-Agent-Vhost 1
         # Long-lived agent WebSocket.
         transport http {
             read_timeout 300s

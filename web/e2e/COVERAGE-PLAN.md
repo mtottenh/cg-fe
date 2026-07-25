@@ -250,6 +250,49 @@ two each and together retire most of the dead-control class.
 | **T7** | **Roster-lock rework** (together) | P-14 · P-15 · P-16 · P-18 | Design §9 sequences these as one unit, after the lineup proved out. Do not pick off individually |
 | **T8** | **Decide, then act** | P-3 · P-6 · P-41 · P-53/P-56 · P-55 · P-80 · P-97 | Each needs a product decision or a confirm-or-kill before it is actionable |
 
+### 4b. Deployment gate — what blocks launch (owner-set, 2026-07-25)
+
+Not all open findings block deploy. These do. Everything else is polish, ops
+convenience, or debt that a ratchet already holds.
+
+**Owner correction (2026-07-25): the demo pipeline is INTEGRAL to this product and
+must be fully functioning and covered end-to-end.** My first triage classed the
+demo *ops* surfaces as ship-without on the reasoning that they are operable via
+DB and logs at launch volume. That was wrong about the product: demos are the
+evidence backbone for disputes and anti-cheat, and an evidence system that an
+operator cannot see, correct, or validate is not a working evidence system.
+All seven demo findings are blockers, and each needs an e2e test that drives it
+through the UI — not an API-level check.
+
+**BLOCKERS — core action cannot be completed or corrected**
+| # | Why it blocks |
+|---|---|
+| P-127 | Result submission leaves a stale page — the panel is `v-else-if`'d off by the very store write that precedes its own emit, so `emit('submitted')` lands in a torn-down tree. Same defect as P-6, on the most-used flow in the product |
+| P-53 / P-56 | Past registration #100 a player **cannot submit a result at all**. Silent hard ceiling; 128-player CS2 events are routine |
+| P-72 | A wrong result that auto-confirms (24h since P-57) with no dispute is **permanently uncorrectable** by any operator |
+| P-14 · P-15 · P-16 · P-18 | Roster lock is unreachable, so all enforcement is dead — teams can swap players mid-playoffs. This is the competitive-integrity guarantee of a league product |
+| P-70 | Admin/organizer can only be granted by SQL — no moderator can be onboarded on day one |
+| P-123 | Ban-lift confirms against a truncated UUID; v7 prefixes are timestamps, so two bans minutes apart are indistinguishable. Destructive action, ambiguous target |
+
+**BLOCKERS — the demo/evidence pipeline (owner: integral, must be e2e-covered)**
+| # | Why it blocks |
+|---|---|
+| P-109 | A linked demo is invisible on every evidence surface — an admin resolving a dispute cannot see the evidence attached to it |
+| P-110 | The browse catalog offers demos the link endpoint will refuse (resolves by file name against the stats service while holding the id) |
+| P-111 | Nothing ever validates a demo against a result; the "Validated" chip is dead template. The backend validator, plugin, and DB columns all exist unconnected |
+| P-75 | A demo stamped onto the wrong league/tournament cannot be corrected — the P-42 repair path — and the card shows raw UUIDs |
+| P-73 | No operator visibility into tracking health, the discovered-match queue, or enrichment failures. Silent ingestion stoppage is undetectable |
+| P-64 | The auto-link backfill has no control |
+| P-68 | A bad scraped Premier rating cannot be corrected, and it drives seeding and league entry gates |
+
+**Strongly recommended, cheap:** P-61 (DQ strands matches mid-bracket) · P-126
+(disbanded teams renameable) · P-124 (six sites showing a generic error instead
+of the real one) · **verify P-58** (implemented at `stats_updater.rs:178`, never
+verified — verify, do not rebuild).
+
+**Ship without:** P-66 · P-80 · P-120 · P-121 · P-122 · P-125 · P-128 · P-129 ·
+P-65 · P-67 · P-69 · P-112 (debt; its ratchet stops it worsening).
+
 ### 4a. Root-cause clusters — what to fix ONCE instead of 51 times
 
 **Added 2026-07-25 after re-reading the whole register.** The tiers above order by *urgency*;

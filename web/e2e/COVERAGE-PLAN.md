@@ -412,9 +412,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 138 found · 108 fixed · 30 open** (P-53 mitigated).
+**Status (derived): 144 found · 114 fixed · 30 open** (P-53 mitigated).
 
-Open: P-14, P-15, P-16, P-18, P-53, P-56, P-58, P-61, P-64, P-66, P-68, P-70, P-72, P-73, P-80, P-120, P-121, P-122, P-123, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-135, P-136, P-137, P-138.
+Open: P-14, P-15, P-16, P-18, P-53, P-56, P-58, P-61, P-66, P-70, P-72, P-80, P-120, P-121, P-122, P-123, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-135, P-136, P-137, P-138, P-142, P-143, P-144.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -445,7 +445,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-9 | Proposer cannot withdraw own proposal | API gap | **fixed** `a3c1876`+`4b7edb4` |
 | P-10 | Admin registrations table prints raw enum | user-facing | **fixed** `f2694b0` |
 | P-11 | Roster lock never enforced in admin UI | enforcement | **fixed** `ce732a0` |
-| P-12 | No captain entry point to invite modal | blocks flow | **resolved** `ce732a0` |
+| P-12 | No captain entry point to invite modal | blocks flow | **fixed** `ce732a0` |
 | P-13 | `TeamEditPage` blank form to non-owners | confusing | **fixed** `ce732a0` |
 | P-14 | **Roster lock cannot be set via API at all** | feature dead | open |
 | P-15 | Invitation path bypasses the lock check | inconsistent | open |
@@ -464,7 +464,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-28 | `/tournaments` search/filters only see first 20 rows | user-facing | **fixed** `9f87495` |
 | P-29 | **`GET /users/me/matches` 500s for everyone** | **backend** | **fixed** `8ce0f0a` |
 | P-30 | Season edit Save disabled when max_teams is null | user-facing | **fixed** `9816346` |
-| P-31 | **API declares ~no enums — root of the status-drift class** | **architectural** | **class closed**; 25/41 fields, 17 enums |
+| P-31 | **API declares ~no enums — root of the status-drift class** | **architectural** | **fixed** — class closed; 25/41 fields, 17 enums |
 | P-32 | `AdHoc` serialises as `ad_hoc` vs `adhoc` everywhere else | wire format | **fixed** `62f6726` |
 | P-33 | Roster unreachable unless live season in 3 newest | user-facing | **fixed** `19241cf` |
 | P-34 | `LeagueSeasonParticipantStatus` serialises PascalCase | wire format | **fixed** `71830df` |
@@ -486,27 +486,27 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-50 | **Result auto-confirmed with opponent never notified** | **integrity/trust** | **fixed** `2f94b47` |
 | P-51 | Invitee cannot read own invite state (gate was soft) | design gap | **fixed** `c7d395e` |
 | P-52 | Duplicate `operationId` broke the generated client | build | **fixed** `098832a`; guarded `c5ea9e5` |
-| P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | 🟡 mitigated `7775a19` → P-56 |
+| P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | open — 🟡 mitigated `7775a19`, real fix tracked as P-56 |
 | P-54 | League members truncates at 20; client cannot paginate | user-facing | **fixed** `dc5136c`+`71bdd90` (web half was missing) |
 | P-55 | Review queue FIFO — newest escalation on the last page | admin friction | **fixed** `4559a36`+`37c24cb` |
 | P-56 | >100-participant tournaments still can't submit (P-53 ceiling) | blocks core flow | open |
 | P-57 | 15-min auto-confirm window too short for humans | trust | **fixed** `5590726` (24h) |
-| P-58 | Team matches credit participation to nobody | integrity | landed `3013f58`, verify post-§6 |
+| P-58 | Team matches credit participation to nobody | integrity | open — fix landed `3013f58`, awaiting post-§6 verification |
 | P-59 | **`schedule_match` direct-set: no authz → manufactured forfeits** | **security** | **fixed** `930f8c9` (red-proven) |
 | P-60 | Logout never revokes the session server-side | security gap | **fixed** `409969b` |
 | P-61 | UI disqualify doesn't cascade; strands matches | admin gap | open |
 | P-62 | Transfer team ownership has no UI | product gap | **fixed** `28afc7a` |
 | P-63 | Disband team has no UI | product gap | **fixed** `28afc7a` |
-| P-64 | Demo auto-link backfill unreachable from UI | admin gap | open |
+| P-64 | Demo auto-link backfill unreachable from UI | admin gap | **fixed** `0dd69e1+4ead184` |
 | P-65 | `/users/me/action-items` missing from OpenAPI doc | build (P-52 family) | **fixed** `ea55c83` |
 | P-66 | Match audit trail + stored suggestions invisible | minor | open |
 | P-67 | Dead-surface cleanup batch | hygiene | **fixed** `c985d26` |
-| P-68 | Scraped Premier rating has no correction path | data integrity | open |
+| P-68 | Scraped Premier rating has no correction path | data integrity | **fixed** `0dd69e1+4ead184+2751a44` |
 | P-69 | Platform Elo engine is dead code (never called) | **scope decided** | **fixed** `82e8b14` |
 | P-70 | **Platform role assignment has no UI** | admin gap | open |
 | P-71 | Returning team can't enter the next season | blocks flow | **fixed** `28afc7a` |
 | P-72 | No admin score correction outside a dispute | admin gap | open |
-| P-73 | Ingestion pipeline invisible to admins | ops blind spot | open |
+| P-73 | Ingestion pipeline invisible to admins | ops blind spot | **fixed** `0dd69e1+4ead184` |
 | P-74 | **"Retry Processing" calls no API — reports success anyway** | **trust** | **fixed** `c49380d+1d5c9e5` |
 | P-75 | Demo league/tournament association uncorrectable; shows raw UUIDs | admin gap | **fixed** `61d3e65`+`b9ccdaf` |
 | P-76 | Categorize snackbar prints the raw enum | minor | **fixed** `b992f2a` |
@@ -572,6 +572,12 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-83 | **Revert Progression is a no-op on elimination, claims success** | **integrity** | **fixed** `8e56adf` |
 | P-84 | Admin scheduling notes discarded; no status-log row | audit gap | **fixed** `1d5c9e5` |
 | P-85 | `MatchesTab` rows have no `data-testid` | test-facing | **fixed** `b137146` |
+| P-139 | **`admin.system.manage` was in the registry but in NO migration — `submit_player_rating` 403'd for every caller, super_admin included, for the endpoint's whole life** | **authorization** | **fixed** `0080` |
+| P-140 | Nothing asserted a declared permission is seeded and granted, so P-139 was invisible | gate gap | **fixed** `2751a44` |
+| P-141 | `admin.audit.view` declared, seeded nowhere, gated on by nothing, guards a subsystem that does not exist | dead code | **fixed** `2751a44` |
+| P-142 | **`PermissionChecker` short-circuits for the dev user in `test-utils` builds, so no integration test calling as `dev-token` ever consults the permissions table** | **gate gap** | open |
+| P-143 | Enrichment-failure rendering is API-covered but not UI-covered — the e2e stack mints no `X-API-Key`, so no test can drive a failure into the page | coverage gap | open |
+| P-144 | Demo-catalog counts are global, not game-scoped — a CS2 admin sees totals inflated by every other game | correctness | open |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service

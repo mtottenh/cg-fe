@@ -20,9 +20,10 @@
     "lint:fix": "eslint . --ext .ts,.vue --fix --max-warnings 0",
     "generate:api": "openapi-typescript http://localhost:3000/api-docs/openapi.json -o src/api/types.ts",
     "test:e2e:ephemeral": "./scripts/e2e-ephemeral.sh",
-    "test:quality": "node e2e/scripts/check-test-quality.mjs && node e2e/scripts/check-status-maps.mjs && node e2e/scripts/check-a11y.mjs",
+    "test:quality": "node e2e/scripts/check-test-quality.mjs && node e2e/scripts/check-status-maps.mjs && node e2e/scripts/check-a11y.mjs && node e2e/scripts/sync-register.mjs --check",
     "test:status-maps": "node e2e/scripts/check-status-maps.mjs",
-    "test:a11y": "node e2e/scripts/check-a11y.mjs"
+    "test:a11y": "node e2e/scripts/check-a11y.mjs",
+    "register:sync": "node e2e/scripts/sync-register.mjs"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",

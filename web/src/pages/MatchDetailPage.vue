@@ -517,6 +517,19 @@ watch(
     }
   },
 )
+
+// §7.3 / review M7: on a reload during server setup or a live match the
+// veto panel never mounts (it only renders for checking_in/pick_ban), so
+// nothing would open the lobby socket — connect it here whenever a
+// reservation is active.
+watch(
+  () => matchServerStore.reservation?.status,
+  (status, prev) => {
+    if (status !== prev && matchServerStore.isActive()) {
+      void matchLobby.initialize()
+    }
+  },
+)
 const matchLobby = useMatchLobby(matchIdRef, userRegistrationId)
 provideMatchLobby(matchLobby)
 

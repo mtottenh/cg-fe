@@ -77,6 +77,21 @@
             </div>
           </template>
 
+          <template #[`item.gamestate`]="{ item }">
+            <span class="text-caption">{{ item.last_gamestate ?? '—' }}</span>
+          </template>
+
+          <template #[`item.match`]="{ item }">
+            <router-link
+              v-if="item.current_match_id"
+              :to="{ name: 'admin-tournaments' }"
+              class="text-caption"
+            >
+              {{ item.current_match_id.slice(0, 8) }}…
+            </router-link>
+            <span v-else class="text-caption text-grey">—</span>
+          </template>
+
           <template #[`item.cert`]="{ item }">
             <span v-if="!item.agent_cert_expires_at" class="text-caption text-grey">
               not enrolled
@@ -111,6 +126,16 @@
               @click="openEnrollModal(item)"
             >
               <v-icon>mdi-key</v-icon>
+            </v-btn>
+            <v-btn
+              aria-label="Bookings"
+              title="Bookings"
+              icon
+              size="small"
+              variant="text"
+              @click="openBookingsModal(item)"
+            >
+              <v-icon>mdi-calendar-lock</v-icon>
             </v-btn>
             <v-btn
               aria-label="Revoke agent certificates"
@@ -149,6 +174,7 @@
 
     <GameServerEditModal v-model="editModalOpen" :server="selectedServer" @saved="onSaved" />
     <GameServerEnrollModal v-model="enrollModalOpen" :server="selectedServer" />
+    <GameServerBookingsModal v-model="bookingsModalOpen" :server="selectedServer" />
     <ConfirmDialogHost :dialog="confirmDialog" />
     <AppSnackbar v-model="snackbar.open" :text="snackbar.text" :color="snackbar.color" />
   </div>
@@ -163,6 +189,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import GameServerEditModal from '@/components/admin/GameServerEditModal.vue'
 import GameServerEnrollModal from '@/components/admin/GameServerEnrollModal.vue'
+import GameServerBookingsModal from '@/components/admin/GameServerBookingsModal.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useGameServersStore } from '@/stores/gameServers'
 import type { GameServer } from '@/stores/gameServers'
@@ -175,6 +202,7 @@ const confirmDialog = useConfirmDialog()
 const search = ref('')
 const editModalOpen = ref(false)
 const enrollModalOpen = ref(false)
+const bookingsModalOpen = ref(false)
 const selectedServer = ref<GameServer | null>(null)
 const snackbar = ref({ open: false, text: '', color: 'success' })
 
@@ -184,6 +212,8 @@ const headers = [
   { title: 'Region', key: 'region' },
   { title: 'Status', key: 'status' },
   { title: 'Agent', key: 'agent', sortable: false },
+  { title: 'Gamestate', key: 'gamestate', sortable: false },
+  { title: 'Match', key: 'match', sortable: false },
   { title: 'Certificate', key: 'cert', sortable: false },
   { title: 'Actions', key: 'actions', sortable: false, align: 'center' as const },
 ]
@@ -237,6 +267,11 @@ function openEditModal(server: GameServer) {
 function openEnrollModal(server: GameServer) {
   selectedServer.value = server
   enrollModalOpen.value = true
+}
+
+function openBookingsModal(server: GameServer) {
+  selectedServer.value = server
+  bookingsModalOpen.value = true
 }
 
 function onSaved(server: GameServer) {

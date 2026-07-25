@@ -640,6 +640,32 @@ Each phase lands behind `PORTAL_GAMESERVER_ENABLED` + per-tournament `settings.g
 
 ---
 
+### Post-review hardening (fresh-context review, 2026-07-25)
+
+An adversarial fresh-context review against this document found 4 critical,
+12 major and ~13 minor deviations; all criticals and majors were fixed, and
+all minors except the following accepted ones:
+
+- The substitution modal lists both sides' players as sub-out candidates;
+  the backend rejects requests for the opponent's side (single source of
+  authority).
+- The ready-with-no-show sweep flags admins via structured logs only; it
+  deliberately never auto-forfeits (§6.6).
+- Demo-token auth resolves by hash lookup (indexed) rather than a
+  constant-time compare; config/event/backup tokens use constant-time
+  comparison.
+
+Notable hardening landed: the agents-vhost trust marker for client-cert
+headers (public site strips them), reservation-aware busy detection, the
+effective-roster rule enforced in config generation, team size from the
+game config, spectator-stripped WS connect broadcasts, replay-tolerant
+series_start/going_live, unprocessed-event retry sweep, demo↔reservation
+binding, GOTV delay floor, prefix-based cvar deny-list, machine-endpoint
+rate limits + config fetch cap, certificate renewal (portal + agent),
+no-veto assignment from the map pool, queue positions, failed-server
+quarantine + automatic re-queue, and the PORTAL_GAMESERVER_ENABLED kill
+switch.
+
 ### Phase 4 implementation deviations
 
 - Substitution eligibility re-checks roster membership + Steam linkage but

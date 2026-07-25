@@ -193,7 +193,12 @@ async function getBan(adminToken: string, banId: string): Promise<BanRecord> {
  */
 async function openLeagueRow(page: Page, leagueName: string) {
   await page.goto('/admin/leagues')
-  await expect(page.getByRole('heading', { name: 'Leagues' })).toBeVisible()
+  // `exact: true` because Playwright's accessible-name matching is SUBSTRING
+  // based (§2): without it this also matched the "No Leagues Found" empty-state
+  // heading, and the page renders that for a moment while the list loads. The
+  // result was a strict-mode violation that only appeared under full-suite
+  // load — green in isolation, red in CI, which is the worst failure shape.
+  await expect(page.getByRole('heading', { name: 'Leagues', exact: true })).toBeVisible()
   await page.getByLabel('Search leagues...').fill(leagueName)
   const row = page.locator('tr').filter({ hasText: leagueName })
   await expect(row).toBeVisible({ timeout: 20_000 })
@@ -224,7 +229,7 @@ test.describe('Admin modal saves', () => {
 
     await loginAsAdmin(page)
     await page.goto('/admin/leagues')
-    await expect(page.getByRole('heading', { name: 'Leagues' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Leagues', exact: true })).toBeVisible()
 
     // Two "Create League" buttons exist in the template — the header (:5-11)
     // and the empty-state card (:56-58) — and only one renders at a time.

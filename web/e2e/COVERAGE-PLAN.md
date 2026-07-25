@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **122 product findings** from what
+*"what should happen here?"* — and that question surfaced **126 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **122 findings · 88 fixed** → the status-drift defect class closed at the source
+112 → 0) → **126 findings · 95 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -354,9 +354,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 122 found · 88 fixed · 34 open** (P-53 mitigated).
+**Status (derived): 126 found · 95 fixed · 31 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-72, P-73, P-75, P-80, P-109, P-110, P-111.
+Open: P-14, P-15, P-16, P-18, P-53, P-55, P-56, P-58, P-61, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-72, P-73, P-75, P-80, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -378,10 +378,10 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 |---|---|---|---|
 | P-1 | `MapResultsSummary` never renders (+admin results tab) | data hidden | **fixed** |
 | P-2 | Open registration never auto-approves | blocks flow | **fixed** `a3c1876` |
-| P-3 | `checkInRequired` alone can't open check-in | minor | open |
+| P-3 | `checkInRequired` alone can't open check-in | minor | **fixed** `d7d3483` |
 | P-4 | Tournament **header** shows raw status | user-facing | **fixed** |
 | P-5 | Display name: signup allows dupes, save rejects | user trap | **fixed** `a3c1876` |
-| P-6 | Result history stale after dispute | suspected | open |
+| P-6 | Result history stale after dispute | suspected | **fixed** `ae5b50a` |
 | P-7 | Veto side-select unreachable in UI | feature dead | **fixed** |
 | P-8 | Can propose a past time, then hard-fails | dead end | **fixed** `4b7edb4` |
 | P-9 | Proposer cannot withdraw own proposal | API gap | **fixed** `a3c1876`+`4b7edb4` |
@@ -416,7 +416,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-38 | League invitation never says which league | user-facing | **fixed** `dc5136c`+web |
 | P-39 | Admin cannot see answered league invitations | admin gap | **fixed** `dc5136c` |
 | P-40 | Decline confirmation guards the wrong action | minor | **fixed** (web) |
-| P-41 | Two create-team forms disagree on validation | inconsistent | open |
+| P-41 | Two create-team forms disagree on validation | inconsistent | **fixed** `4fc037f` |
 | P-42 | **Auto-linked demos raised false reviews, stalled brackets** | **pipeline** | **fixed** `f6778e7` |
 | P-43 | Review queue showed only the oldest 20, forever | user-facing | **fixed** `9f87495` |
 | P-44 | `resultReviewStatusMap` 3/5 wrong, leaked raw enum | user-facing | **fixed** `070d104` |
@@ -475,16 +475,20 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | **fixed** `4166015` |
 | P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | **fixed** `b137146` |
 | P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
+| P-123 | **Ban-lift confirm dialog identifies the user by a truncated UUID** | **safety** | open |
+| P-124 | P-116 recurs in 6 more sites reading a whole-store error alias | user-facing | open |
+| P-125 | `TeamDetailPage` renders roster/invitation roles raw | user-facing | open |
+| P-126 | A disbanded team can still be renamed — no terminal check on update | integrity | open |
 | P-118 | **Evidence upload URL hard-coded to the dev stack** | **cross-env** | **fixed** `a9e2988` |
 | P-119 | Stale specs asserted raw enums the status-map sweeps humanised | test rot | **fixed** `3bcfd12` |
 | P-120 | Rank tiers can never be cleared once set | product gap | open |
 | P-121 | `per_page` on `GET /v1/games` is decorative — no limit/offset applied | correctness | open |
 | P-122 | `gamesStore.error` is app-wide; one page's failure alerts another | user-facing | open |
 | P-117 | Stage formats rendered and offered raw; ratchet regex missed `.format` | user-facing | **fixed** `af05f75` |
-| P-113 | **Ownership transfer leaves the RBAC role behind — new owner 403s, old owner retains power** | **authorization** | open |
-| P-114 | Invitations table has no Message column, so P-94's message is invisible | user-facing | open |
-| P-115 | Invitations/applications identify people by a truncated UUID | user-facing | open |
-| P-116 | `TeamDetailPage` handlers read the wrong action state, so errors are generic | user-facing | open |
+| P-113 | **Ownership transfer leaves the RBAC role behind — new owner 403s, old owner retains power** | **authorization** | **fixed** `754ec46` |
+| P-114 | Invitations table has no Message column, so P-94's message is invisible | user-facing | **fixed** `eda3bc2` |
+| P-115 | Invitations/applications identify people by a truncated UUID | user-facing | **fixed** `eda3bc2+e820ebe` |
+| P-116 | `TeamDetailPage` handlers read the wrong action state, so errors are generic | user-facing | **fixed** `fdc4721` |
 | P-112 | **API stringifies enums it already declares — 10 maps unlockable** | **architectural** | open |
 | P-93 | **Date overrides saved one day early in every positive UTC offset** | **data corruption** | **fixed** `2b4d4ee` |
 | P-87 | **Every game-config WRITE 404s — handler passes UUID to a slug-keyed update** | **feature dead** | **fixed** `024513b` |

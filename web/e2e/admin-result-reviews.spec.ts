@@ -382,11 +382,15 @@ const QUEUE_PAGE_SIZE = 20
 /**
  * Page the queue to wherever `reviewId` actually is, and return that page.
  *
- * The queue is ordered `created_at ASC`
- * (api/crates/portal-db/src/adapters/result_review.rs:193), so a freshly raised
- * review is the LAST row and, once more than twenty reviews are pending, it is
- * on the LAST page. That is the residue of P-43: the fix makes a new review
- * reachable, not first. These tests seed their own review and so must follow it.
+ * Since P-55 the queue is ordered `created_at DESC`
+ * (`find_pending_admin_reviews`, api/crates/portal-db/src/adapters/result_review.rs),
+ * so a freshly raised review is the FIRST row and normally on page 1. It was
+ * `created_at ASC`, which put it last, and past twenty pending reviews on the
+ * last page — the page nobody opens.
+ *
+ * The lookup below is unchanged and deliberately does not assume either order:
+ * it asks the API where the review actually is. Sibling tests in this file seed
+ * their own reviews concurrently, so a rank is the only reliable answer.
  *
  * The rank is read from the API rather than guessed. `listPendingReviews` asks
  * for `per_page=100` (the server's cap), so a queue deeper than 100 makes the
@@ -535,30 +539,39 @@ test.describe('Admin result reviews', () => {
    * COVERAGE-PLAN.md §9b **P-43** — the pagination-blindness defect class.
    *
    * `useResultReviewsStore.fetchReviews` sent NO pagination parameters, so it
-   * got the API default of 20; the adapter orders `created_at ASC`
-   * (api/crates/portal-db/src/adapters/result_review.rs:193); and the page
-   * rendered no pager. Once twenty reviews were pending, every review raised
-   * after them was permanently unreachable — an admin could never act on a new
-   * one, and the queue could never drain below twenty from the UI.
+   * got the API default of 20; the adapter ordered `created_at ASC`
+   * (`find_pending_admin_reviews`); and the page rendered no pager. Once twenty
+   * reviews were pending, every review raised after them was permanently
+   * unreachable — an admin could never act on a new one, and the queue could
+   * never drain below twenty from the UI.
    *
    * The fix passes explicit `page`/`per_page` and renders a `v-pagination`. This
-   * test seeds the queue past one page and demands that the newest review be
-   * reachable through it.
+   * test seeds the queue past one page and demands that the review at the far
+   * end of it be reachable through the pager.
+   *
+   * SEEDING ORDER INVERTED FOR P-55 (a specification change, ground rule 9, not
+   * a relaxation): the queue now sorts NEWEST first, so the far end is the
+   * OLDEST review, not the newest. The review under test is therefore created
+   * BEFORE the backlog rather than after it. The claim under test — "a review
+   * off page 1 is reachable" — is unchanged, and `rank > 20` still gates it, so
+   * the test cannot pass vacuously if the ordering changes again.
    */
   test('a review beyond the first page is reachable through the pager', async ({ page }) => {
     test.setTimeout(600_000)
 
-    // Fill the queue to a comfortable margin over one page BEFORE creating the
-    // review under test, so its rank stays past row 20 even if the sibling
-    // tests in this file resolve a couple of reviews while this one runs.
-    const MIN_BACKLOG = 24
+    // Created FIRST so that, under newest-first ordering, everything seeded
+    // below sorts above it and it ends up past row 20.
+    const { scenario, review } = await createPendingAdminReview(adminToken)
+
+    // Then fill the queue to a comfortable margin over one page, so the review
+    // under test stays past row 20 even if the sibling tests in this file
+    // resolve a couple of reviews while this one runs.
+    const MIN_BACKLOG = 25
     let backlog = (await listPendingReviews(adminToken)).length
     while (backlog < MIN_BACKLOG) {
       await createPendingAdminReview(adminToken)
       backlog += 1
     }
-
-    const { scenario, review } = await createPendingAdminReview(adminToken)
 
     // Where the queue's own ordering puts it, read back from the API.
     const queue = await listPendingReviews(adminToken)
@@ -574,7 +587,7 @@ test.describe('Admin result reviews', () => {
     await page.goto('/admin/result-reviews')
     await expect(page.getByRole('heading', { name: 'Result Reviews' })).toBeVisible()
 
-    // Page 1 holds the twenty OLDEST reviews and does not hold this one — the
+    // Page 1 holds the twenty NEWEST reviews and does not hold this one — the
     // state the old page was permanently stuck in.
     await expect(page.locator('.v-data-table tbody tr').first()).toBeVisible()
     await expect(reviewRow(page, scenario.matchId)).toHaveCount(0)
@@ -594,6 +607,61 @@ test.describe('Admin result reviews', () => {
     await expect(dialog).toBeVisible()
     await expect(dialog.getByText(scenario.matchId, { exact: true })).toBeVisible()
     await expect(dialog.getByRole('button', { name: 'Approve Result' })).toBeVisible()
+  })
+
+  /**
+   * COVERAGE-PLAN **P-55** — the queue was FIFO (`created_at ASC`), so the
+   * review that had just escalated was the LAST row, and past twenty pending
+   * reviews it was on the last page. An admin working the queue from the top
+   * saw the oldest item first and the newest one never.
+   *
+   * The assertion is on ORDER: an ASC queue holds exactly the same two rows, so
+   * "both rows are present" would pass against the bug. Comparing the two rows'
+   * DOM positions is what cannot.
+   */
+  test('the queue renders newest first', async ({ page }) => {
+    test.setTimeout(300_000)
+
+    const older = await createPendingAdminReview(adminToken)
+    const newer = await createPendingAdminReview(adminToken)
+
+    await loginAsAdmin(page)
+    await page.goto('/admin/result-reviews')
+    await expect(page.getByRole('heading', { name: 'Result Reviews' })).toBeVisible()
+    await expect(page.locator('.v-data-table tbody tr').first()).toBeVisible({ timeout: 20_000 })
+
+    // The page states the ordering it is presenting; the rows below have to
+    // agree with that claim.
+    await expect(page.getByTestId('review-queue-count')).toContainText('newest first')
+
+    // UI side FIRST — this finding is about what the admin sees. Row order is
+    // read off the `data-review-id` the page stamps on every row, never the
+    // truncated UUID the Match column prints (those are v7 prefixes, i.e.
+    // timestamps, and collide).
+    const renderedIds = await page
+      .locator('.v-data-table tbody tr')
+      .evaluateAll((rows) => rows.map((r) => r.getAttribute('data-review-id')))
+
+    const domNewer = renderedIds.indexOf(newer.review.id)
+    const domOlder = renderedIds.indexOf(older.review.id)
+    expect(
+      domNewer,
+      'the newest escalation must be on page 1 — that is the whole of P-55',
+    ).toBeGreaterThanOrEqual(0)
+    expect(
+      domOlder,
+      'both seeded reviews must be on page 1 for a row-order comparison',
+    ).toBeGreaterThanOrEqual(0)
+    expect(domNewer, 'the newer review must render ABOVE the older one').toBeLessThan(domOlder)
+
+    // API cross-check (ground rule 4): the queue itself is newest-first,
+    // independent of how the table renders it.
+    const queue = await listPendingReviews(adminToken)
+    const apiNewer = queue.findIndex((r) => r.id === newer.review.id)
+    const apiOlder = queue.findIndex((r) => r.id === older.review.id)
+    expect(apiNewer, 'the newer review must be in the pending queue').toBeGreaterThanOrEqual(0)
+    expect(apiOlder, 'the older review must be in the pending queue').toBeGreaterThanOrEqual(0)
+    expect(apiNewer, 'the API must serve the newer review first').toBeLessThan(apiOlder)
   })
 
   test('the review queue is admin-only', async () => {

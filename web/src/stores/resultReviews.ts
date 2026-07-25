@@ -13,11 +13,15 @@ type ResultReviewSummaryResponse = components['schemas']['ResultReviewSummaryRes
 type ResultReviewResponse = components['schemas']['ResultReviewResponse']
 
 /**
- * The admin queue is paginated SERVER-side and ordered `created_at ASC`
- * (portal-db/src/adapters/result_review.rs:193). This store used to send no
- * pagination parameters at all, so it got the API default — the twenty OLDEST
- * pending reviews — and the page rendered no pager. Past twenty, a newly raised
- * review was permanently unreachable in the UI (P-43).
+ * The admin queue is paginated and ordered SERVER-side — **newest first** since
+ * P-55 (`portal-db/src/adapters/result_review.rs`, `find_pending_admin_reviews`).
+ * Nothing here re-sorts: page 1 is the head of the queue, and the order the API
+ * returned is the order the page renders.
+ *
+ * It used to be `created_at ASC`, and this store used to send no pagination
+ * parameters at all — so it got the API default, the twenty OLDEST pending
+ * reviews, with no pager. Past twenty, a newly raised review was permanently
+ * unreachable in the UI (P-43).
  *
  * `perPage` is explicit here rather than inherited from the API default so that
  * changing it is a visible edit, and so `totalPages` below is computed from the

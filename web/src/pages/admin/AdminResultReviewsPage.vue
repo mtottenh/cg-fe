@@ -7,7 +7,7 @@
           Reviews flagged by demo validation requiring admin attention
         </p>
         <p class="text-caption text-medium-emphasis" data-testid="review-queue-count">
-          {{ store.total }} pending · page {{ store.page }} of {{ store.totalPages }}
+          {{ store.total }} pending · newest first · page {{ store.page }} of {{ store.totalPages }}
         </p>
       </div>
       <v-btn
@@ -89,9 +89,11 @@
     </v-card>
 
     <!--
-      Server-side pager. The queue is ordered `created_at ASC`, so without this
-      the twenty OLDEST pending reviews were the only ones an admin could ever
-      see and every review raised after them was unreachable (P-43).
+      Server-side pager. Before it existed the page showed exactly one page of
+      an ordered queue and no way off it (P-43) — which, while the order was
+      `created_at ASC`, meant the twenty OLDEST reviews were the only ones an
+      admin could ever see. P-55 flipped the order to newest-first; the pager
+      is what makes the other end reachable rather than merely re-burying it.
     -->
     <div v-if="store.totalPages > 1" class="d-flex justify-center mt-6">
       <v-pagination
@@ -126,11 +128,21 @@ const snackbar = useSnackbar()
 const detailModalOpen = ref(false)
 const selectedReviewId = ref<string | null>(null)
 
+/**
+ * `sortable: false` on EVERY column, deliberately.
+ *
+ * The queue is ordered and paginated SERVER-side — newest first since P-55
+ * (`portal-db/src/adapters/result_review.rs`). `v-data-table`'s built-in sort
+ * only reorders the rows it currently holds, i.e. one page out of
+ * `store.totalPages`, so a click on "Created" would silently present a
+ * 20-row local sort as if it were the queue's order. Until a server-side sort
+ * parameter exists, the only honest presentation is the server's order.
+ */
 const headers = [
-  { title: 'Match', key: 'match_id', width: '120px' },
+  { title: 'Match', key: 'match_id', width: '120px', sortable: false },
   { title: 'Mismatches', key: 'mismatches', sortable: false },
-  { title: 'Status', key: 'status', width: '130px' },
-  { title: 'Created', key: 'created_at', width: '150px' },
+  { title: 'Status', key: 'status', width: '130px', sortable: false },
+  { title: 'Created (newest first)', key: 'created_at', width: '190px', sortable: false },
   { title: '', key: 'actions', width: '60px', sortable: false },
 ]
 

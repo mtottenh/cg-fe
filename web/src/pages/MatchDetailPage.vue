@@ -502,7 +502,10 @@ watch(
   matchIdRef,
   (id) => {
     matchServerStore.clear()
-    if (id) void matchServerStore.fetchMatchServer(id)
+    if (id) {
+      void matchServerStore.fetchMatchServer(id)
+      void matchServerStore.fetchSubstitutions(id)
+    }
   },
   { immediate: true },
 )

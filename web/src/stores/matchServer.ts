@@ -13,6 +13,7 @@ import {
 // Use generated types
 type MatchServer = components['schemas']['MatchServerResponse']
 type LiveScore = components['schemas']['LiveScoreResponse']
+type Substitution = components['schemas']['SubstitutionResponse']
 
 /**
  * Per-match server reservation state (MatchZy integration §7.2–§7.3).
@@ -21,12 +22,19 @@ type LiveScore = components['schemas']['LiveScoreResponse']
  */
 export const useMatchServerStore = defineStore('matchServer', () => {
   const reservation = ref<MatchServer | null>(null)
+  const substitutions = ref<Substitution[]>([])
 
   const fetchState = createActionState()
   const assignState = createActionState()
   const cancelState = createActionState()
+  const substitutionState = createActionState()
 
-  const { loading, error } = aggregateActionStates([fetchState, assignState, cancelState])
+  const { loading, error } = aggregateActionStates([
+    fetchState,
+    assignState,
+    cancelState,
+    substitutionState,
+  ])
 
   async function fetchMatchServer(matchId: string): Promise<MatchServer | null> {
     return withActionState(
@@ -111,6 +119,59 @@ export const useMatchServerStore = defineStore('matchServer', () => {
     }
   }
 
+  async function fetchSubstitutions(matchId: string): Promise<Substitution[]> {
+    return withActionState(
+      substitutionState,
+      async () => {
+        const result = await unwrapApi(
+          api.GET('/v1/matches/{match_id}/substitutions', {
+            params: { path: { match_id: matchId } },
+          }),
+        )
+        substitutions.value = result.data
+        return result.data
+      },
+      'Failed to load substitutions',
+    )
+  }
+
+  /** Captain/delegate: request a substitution (§6.8). */
+  async function createSubstitution(
+    matchId: string,
+    playerOutId: string,
+    playerInId: string | null,
+  ): Promise<Substitution> {
+    return withActionState(
+      substitutionState,
+      async () => {
+        const result = await unwrapApi(
+          api.POST('/v1/matches/{match_id}/substitutions', {
+            params: { path: { match_id: matchId } },
+            body: { player_out_id: playerOutId, player_in_id: playerInId },
+          }),
+        )
+        await fetchSubstitutions(matchId)
+        return result.data
+      },
+      'Failed to request the substitution',
+    )
+  }
+
+  async function cancelSubstitution(matchId: string, substitutionId: string): Promise<void> {
+    return withActionState(
+      substitutionState,
+      async () => {
+        await unwrapApi(
+          api.DELETE('/v1/matches/{match_id}/substitutions/{substitution_id}', {
+            params: { path: { match_id: matchId, substitution_id: substitutionId } },
+          }),
+        )
+        await fetchSubstitutions(matchId)
+      },
+      'Failed to cancel the substitution',
+    )
+  }
+
   /** Whether the reservation still expects activity (keeps the WS open). */
   function isActive(): boolean {
     const status = reservation.value?.status
@@ -119,10 +180,12 @@ export const useMatchServerStore = defineStore('matchServer', () => {
 
   function clear() {
     reservation.value = null
+    substitutions.value = []
   }
 
   return {
     reservation,
+    substitutions,
     loading,
     error,
     fetchState,
@@ -131,6 +194,10 @@ export const useMatchServerStore = defineStore('matchServer', () => {
     fetchMatchServer,
     assignServer,
     cancelServer,
+    fetchSubstitutions,
+    createSubstitution,
+    cancelSubstitution,
+    substitutionState,
     applyAssignmentUpdate,
     applyLiveScore,
     isActive,
@@ -138,4 +205,4 @@ export const useMatchServerStore = defineStore('matchServer', () => {
   }
 })
 
-export type { LiveScore, MatchServer }
+export type { LiveScore, MatchServer, Substitution }

@@ -17,6 +17,7 @@ import {
   type SpectatorCountMessage,
   type TimeoutWarningMessage,
   type ServerAssignmentUpdateMessage,
+  type LineupUpdateMessage,
   type LiveScoreUpdateMessage,
 } from './useMatchLobbySocket'
 
@@ -126,6 +127,12 @@ export function useMatchLobby(
 
     server_assignment_update(msg: ServerAssignmentUpdateMessage) {
       matchServerStore.applyAssignmentUpdate(msg)
+    },
+    lineup_update(_msg: LineupUpdateMessage) {
+      // A substitution was applied server-side — refresh the panel data.
+      if (matchId.value) {
+        void matchServerStore.fetchSubstitutions(matchId.value)
+      }
     },
     live_score_update(msg: LiveScoreUpdateMessage) {
       matchServerStore.applyLiveScore({

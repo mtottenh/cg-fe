@@ -122,6 +122,10 @@ export interface ServerAssignmentUpdateMessage {
   reason?: string | null
 }
 
+export interface LineupUpdateMessage {
+  type: 'lineup_update'
+}
+
 export interface LiveScoreUpdateMessage {
   type: 'live_score_update'
   map_number: number
@@ -154,6 +158,7 @@ export type ServerMessage =
   | SpectatorCountMessage
   | TimeoutWarningMessage
   | ServerAssignmentUpdateMessage
+  | LineupUpdateMessage
   | LiveScoreUpdateMessage
   | ErrorMessage
   | PongMessage
@@ -195,6 +200,7 @@ const SERVER_MESSAGE_TYPES = new Set<ServerMessage['type']>([
   'spectator_count',
   'timeout_warning',
   'server_assignment_update',
+  'lineup_update',
   'live_score_update',
   'error',
   'pong',

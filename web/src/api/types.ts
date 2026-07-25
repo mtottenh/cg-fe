@@ -548,6 +548,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/game-servers/{server_id}/command": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a console command on a server via its agent (admin passthrough).
+         * @description Every invocation is logged with the acting admin (audit trail).
+         */
+        post: operations["send_command"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/game-servers/{server_id}/enrollment-token": {
         parameters: {
             query?: never;
@@ -2612,6 +2632,109 @@ export interface paths {
         put?: never;
         /** Manually assign a server to a match (admin). */
         post: operations["assign_match_server"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/matches/{match_id}/server/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore a round backup onto the match's server (admin, Phase 4). */
+        post: operations["restore_match_server"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/matches/{match_id}/substitutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a match's substitutions. */
+        get: operations["list_substitutions"];
+        put?: never;
+        /** Request a substitution (captain / delegate; §6.8). */
+        post: operations["create_substitution"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/matches/{match_id}/substitutions/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Roster options for the substitution picker. */
+        get: operations["substitution_options"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/matches/{match_id}/substitutions/{substitution_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel a substitution before it applies (requester or admin). */
+        delete: operations["cancel_substitution"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/matches/{match_id}/substitutions/{substitution_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a pending substitution (admin; `admin_approval` policy). */
+        post: operations["approve_substitution"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/matches/{match_id}/substitutions/{substitution_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a pending substitution (admin). */
+        post: operations["reject_substitution"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5007,6 +5130,13 @@ export interface components {
             /** @description Tournament the hold is for; omit for a hard hold (maintenance). */
             tournament_id?: string | null;
         };
+        /** @description Request a mid-series substitution. */
+        CreateSubstitutionRequest: {
+            /** @description Player coming in; omit to play short-handed. */
+            player_in_id?: string | null;
+            /** @description Player leaving the match. */
+            player_out_id: string;
+        };
         /**
          * @description Request to invite a user or team to an invite-only tournament.
          *
@@ -6857,6 +6987,16 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_RestoreBackupResponse: {
+            /** @description Result of a restore. */
+            data: {
+                /** @description The backup file that was loaded. */
+                filename: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_ResultClaimResponse: {
             /** @description Response DTO for a result claim. */
             data: {
@@ -7199,6 +7339,16 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_SendCommandResponse: {
+            /** @description Console output from the server. */
+            data: {
+                /** @description Raw console output. */
+                output: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_ServerBookingResponse: {
             /** @description A server booking. */
             data: {
@@ -7230,6 +7380,29 @@ export interface components {
                 poll_errors: number;
                 /** Format: int64 */
                 steam_id_64: number;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_SubstitutionResponse: {
+            /** @description A substitution request and its lifecycle state. */
+            data: {
+                applied_at?: string | null;
+                created_at: string;
+                failure_reason?: string | null;
+                /**
+                 * Format: int32
+                 * @description First game the substitution applies from (1-indexed).
+                 */
+                from_game_number: number;
+                id: string;
+                match_id: string;
+                player_in_id?: string | null;
+                player_out_id: string;
+                registration_id: string;
+                requested_by: string;
+                status: components["schemas"]["SubstitutionStatus"];
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -8778,6 +8951,41 @@ export interface components {
                 label: string;
                 /** @description `count` (additive) or `ratio` (per-demo; never summed). */
                 value_type: string;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_SubstitutionOptionsSide: {
+            data: {
+                /** @description Players currently listed on the server. */
+                active: components["schemas"]["SubstitutionPlayerOption"][];
+                /** @description Rostered players not currently listed. */
+                bench: components["schemas"]["SubstitutionPlayerOption"][];
+                participant_name: string;
+                registration_id: string;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_SubstitutionResponse: {
+            data: {
+                applied_at?: string | null;
+                created_at: string;
+                failure_reason?: string | null;
+                /**
+                 * Format: int32
+                 * @description First game the substitution applies from (1-indexed).
+                 */
+                from_game_number: number;
+                id: string;
+                match_id: string;
+                player_in_id?: string | null;
+                player_out_id: string;
+                registration_id: string;
+                requested_by: string;
+                status: components["schemas"]["SubstitutionStatus"];
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -12316,6 +12524,19 @@ export interface components {
             /** @description Response message (optional). */
             message?: string | null;
         };
+        /** @description Request body for a backup restore. */
+        RestoreBackupRequest: {
+            /**
+             * Format: int32
+             * @description Restore the newest backup at or before this round; omit for latest.
+             */
+            before_round?: number | null;
+        };
+        /** @description Result of a restore. */
+        RestoreBackupResponse: {
+            /** @description The backup file that was loaded. */
+            filename: string;
+        };
         /** @description Response DTO for a result claim. */
         ResultClaimResponse: {
             /**
@@ -12700,6 +12921,16 @@ export interface components {
             /** @description Selected side (e.g., "ct", "t"). */
             side: string;
         };
+        /** @description Request body for the console passthrough. */
+        SendCommandRequest: {
+            /** @description Console command to execute (e.g. `css_pause`, `mp_pause_match`). */
+            command: string;
+        };
+        /** @description Console output from the server. */
+        SendCommandResponse: {
+            /** @description Raw console output. */
+            output: string;
+        };
         /** @description A server booking. */
         ServerBookingResponse: {
             created_at: string;
@@ -12954,6 +13185,45 @@ export interface components {
              */
             participant2_score: number;
         };
+        /** @description One side's roster options. */
+        SubstitutionOptionsSide: {
+            /** @description Players currently listed on the server. */
+            active: components["schemas"]["SubstitutionPlayerOption"][];
+            /** @description Rostered players not currently listed. */
+            bench: components["schemas"]["SubstitutionPlayerOption"][];
+            participant_name: string;
+            registration_id: string;
+        };
+        /** @description A player option for the substitution picker. */
+        SubstitutionPlayerOption: {
+            display_name: string;
+            /** @description Bench players without a linked Steam ID cannot come in. */
+            has_steam: boolean;
+            player_id: string;
+        };
+        /** @description A substitution request and its lifecycle state. */
+        SubstitutionResponse: {
+            applied_at?: string | null;
+            created_at: string;
+            failure_reason?: string | null;
+            /**
+             * Format: int32
+             * @description First game the substitution applies from (1-indexed).
+             */
+            from_game_number: number;
+            id: string;
+            match_id: string;
+            player_in_id?: string | null;
+            player_out_id: string;
+            registration_id: string;
+            requested_by: string;
+            status: components["schemas"]["SubstitutionStatus"];
+        };
+        /**
+         * @description Lifecycle of a mid-series substitution request (§6.8).
+         * @enum {string}
+         */
+        SubstitutionStatus: "pending" | "awaiting_approval" | "applying" | "applied" | "failed" | "rejected" | "cancelled";
         /** @description Response for a suggested time. */
         SuggestedTimeResponse: {
             /** Format: int32 */
@@ -15891,6 +16161,51 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    send_command: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendCommandRequest"];
+            };
+        };
+        responses: {
+            /** @description Command output */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_SendCommandResponse"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Agent not connected */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22939,6 +23254,258 @@ export interface operations {
                 };
             };
             /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    restore_match_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreBackupRequest"];
+            };
+        };
+        responses: {
+            /** @description Backup restored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_RestoreBackupResponse"];
+                };
+            };
+            /** @description No backups / no live reservation */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_substitutions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Substitutions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_SubstitutionResponse"];
+                };
+            };
+        };
+    };
+    create_substitution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSubstitutionRequest"];
+            };
+        };
+        responses: {
+            /** @description Substitution requested */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_SubstitutionResponse"];
+                };
+            };
+            /** @description Not substitutable */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not the captain/delegate */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Already in flight */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    substitution_options: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-side options */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_SubstitutionOptionsSide"];
+                };
+            };
+        };
+    };
+    cancel_substitution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+                /** @description Substitution ID */
+                substitution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Already applied */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not the requester */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    approve_substitution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+                /** @description Substitution ID */
+                substitution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved and applying */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_SubstitutionResponse"];
+                };
+            };
+            /** @description Missing admin permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    reject_substitution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+                /** @description Substitution ID */
+                substitution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rejected */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing admin permission */
             403: {
                 headers: {
                     [name: string]: unknown;

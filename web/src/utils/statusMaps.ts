@@ -211,6 +211,16 @@ export const reservationStatusMap: StatusMap<S['ReservationStatus']> = {
   cancelled: { color: 'grey', label: 'Cancelled', icon: 'mdi-close-circle' },
 }
 
+export const substitutionStatusMap: StatusMap<S['SubstitutionStatus']> = {
+  pending: { color: 'grey', label: 'Pending', icon: 'mdi-timer-sand' },
+  awaiting_approval: { color: 'warning', label: 'Awaiting approval', icon: 'mdi-gavel' },
+  applying: { color: 'info', label: 'Applying (after halftime)', icon: 'mdi-sync' },
+  applied: { color: 'success', label: 'Applied', icon: 'mdi-check-circle' },
+  failed: { color: 'error', label: 'Failed', icon: 'mdi-alert-octagon' },
+  rejected: { color: 'error', label: 'Rejected', icon: 'mdi-close-circle' },
+  cancelled: { color: 'grey', label: 'Cancelled', icon: 'mdi-close-circle-outline' },
+}
+
 export const serverStatusMap: StatusMap<S['GameServerStatus']> = {
   offline: { color: 'grey', label: 'Offline', icon: 'mdi-lan-disconnect' },
   available: { color: 'success', label: 'Available', icon: 'mdi-check-circle' },

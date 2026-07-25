@@ -128,6 +128,48 @@
           </span>
         </div>
 
+        <!-- Substitutions (§6.8) -->
+        <div class="d-flex align-center ga-2 mb-3">
+          <v-btn
+            v-if="reservation.is_participant"
+            size="small"
+            variant="tonal"
+            prepend-icon="mdi-account-switch"
+            @click="substitutionModalOpen = true"
+          >
+            Substitute Player
+          </v-btn>
+        </div>
+        <div
+          v-for="sub in store.substitutions"
+          :key="sub.id"
+          class="d-flex align-center ga-2 mb-1 text-caption"
+          data-testid="substitution-row"
+        >
+          <v-chip
+            :color="getStatusColor(substitutionStatusMap, sub.status)"
+            size="x-small"
+            variant="tonal"
+          >
+            {{ getStatusLabel(substitutionStatusMap, sub.status) }}
+          </v-chip>
+          <span>
+            Substitution from game {{ sub.from_game_number }}
+            {{ sub.failure_reason ? `— ${sub.failure_reason}` : '' }}
+          </span>
+          <v-btn
+            v-if="sub.status === 'pending' || sub.status === 'awaiting_approval' || sub.status === 'applying'"
+            aria-label="Cancel substitution"
+            title="Cancel substitution"
+            icon
+            size="x-small"
+            variant="text"
+            @click="store.cancelSubstitution(matchId, sub.id)"
+          >
+            <v-icon size="small">mdi-close</v-icon>
+          </v-btn>
+        </div>
+
         <!-- GOTV -->
         <div v-if="gotvString" class="d-flex align-center ga-2 text-caption">
           <v-icon icon="mdi-television-play" size="small" />
@@ -153,6 +195,11 @@
       </div>
     </v-card-text>
 
+    <SubstitutionModal
+      v-model="substitutionModalOpen"
+      :match-id="matchId"
+      @requested="store.fetchSubstitutions(matchId)"
+    />
     <ConfirmDialogHost :dialog="confirmDialog" />
   </v-card>
 </template>
@@ -161,9 +208,16 @@
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import SubstitutionModal from '@/components/match/SubstitutionModal.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useMatchServerStore } from '@/stores/matchServer'
-import { getStatusColor, getStatusIcon, getStatusLabel, reservationStatusMap } from '@/utils/statusMaps'
+import {
+  getStatusColor,
+  getStatusIcon,
+  getStatusLabel,
+  reservationStatusMap,
+  substitutionStatusMap,
+} from '@/utils/statusMaps'
 
 const props = defineProps<{
   matchId: string
@@ -174,6 +228,7 @@ const store = useMatchServerStore()
 const { reservation } = storeToRefs(store)
 const confirmDialog = useConfirmDialog()
 const copied = ref(false)
+const substitutionModalOpen = ref(false)
 
 const isTerminal = computed(() =>
   ['completed', 'failed', 'cancelled'].includes(reservation.value?.status ?? ''),

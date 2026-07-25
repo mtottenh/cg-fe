@@ -102,15 +102,46 @@ export const useEvidenceStore = defineStore('evidence', () => {
     }, 'Failed to link demo')
   }
 
+  /**
+   * P-135: detach a demo from the match, for real.
+   *
+   * This used to read the evidence id out of `evidenceIdMap` — an in-memory ref
+   * that only `linkDemoEvidence` writes, in the same session — and then:
+   *
+   *     if (evidenceId) { ...DELETE... }
+   *     linkedDemos.value = linkedDemos.value.filter(...)   // unconditional
+   *
+   * After any page reload the map is empty, so `evidenceId` was `undefined`,
+   * **no DELETE was sent**, and the row was still removed from `linkedDemos`
+   * and the action still resolved. The operator watched the demo disappear and
+   * was told it worked; the link was untouched on the server and came back on
+   * the next refresh. A destructive action reporting success without doing the
+   * work is worse than one that fails.
+   *
+   * Two changes, and both are needed: the id is now recovered from the server
+   * (`DemoMatchLinkWithDemoResponse.evidence_id`, added for this), and the local
+   * prune happens only *after* a DELETE that actually returned. When the id
+   * cannot be resolved this throws instead of pretending — there is no path
+   * left that removes the row without deleting it.
+   */
   async function unlinkDemoEvidence(matchId: string, demoLinkId: string) {
     return withActionState(unlinkDemoState, async () => {
-      const evidenceId = evidenceIdMap.value[demoLinkId]
-      if (evidenceId) {
-        await unwrapApi(api.DELETE('/v1/matches/{match_id}/evidence/{evidence_id}', {
-          params: { path: { match_id: matchId, evidence_id: evidenceId } },
-        }))
-        delete evidenceIdMap.value[demoLinkId]
+      const linked = linkedDemos.value.find(d => d.link.id === demoLinkId)
+      // Thrown as ApiError so `withActionState` surfaces the real reason rather
+      // than replacing it with the generic fallback message.
+      const evidenceId = evidenceIdMap.value[demoLinkId] ?? linked?.evidence_id
+      if (!evidenceId) {
+        throw new ApiError(
+          404,
+          'No evidence record backs this demo link, so it cannot be unlinked here',
+        )
       }
+
+      await unwrapApi(api.DELETE('/v1/matches/{match_id}/evidence/{evidence_id}', {
+        params: { path: { match_id: matchId, evidence_id: evidenceId } },
+      }))
+
+      delete evidenceIdMap.value[demoLinkId]
       linkedDemos.value = linkedDemos.value.filter(d => d.link.id !== demoLinkId)
     }, 'Failed to unlink demo')
   }

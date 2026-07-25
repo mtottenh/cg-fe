@@ -21,15 +21,21 @@
       class="mb-3"
     />
 
-    <!-- Error -->
+    <!--
+      Error. `unlinkDemoState` is in here because of P-135: unlinking could
+      fail (or, before the fix, silently do nothing) with no way for the
+      operator to find out. A destructive action must report its own failure on
+      the surface that offered it.
+    -->
     <v-alert
-      v-if="evidenceStore.discoverState.error || evidenceStore.linkDemoState.error"
+      v-if="browserError"
       type="error"
       variant="tonal"
       closable
       class="mb-3"
+      data-testid="demo-browser-error"
     >
-      {{ evidenceStore.discoverState.error || evidenceStore.linkDemoState.error }}
+      {{ browserError }}
     </v-alert>
 
     <!-- Suggested Demos -->
@@ -253,14 +259,21 @@
               <v-chip v-if="item.link.game_number" size="x-small" variant="tonal">
                 Game {{ item.link.game_number }}
               </v-chip>
+              <!--
+                P-138: three states. This chip used to render only when
+                `validated` was true, so a demo whose validation FAILED looked
+                exactly like one nobody had checked — and, before the backend
+                fix, actually rendered the green tick.
+              -->
               <v-chip
-                v-if="item.link.validated"
+                v-if="item.link.validated || item.link.validated_at"
                 size="x-small"
-                color="success"
+                :color="linkValidation(item).color"
                 variant="tonal"
+                :data-testid="`linked-demo-validation-${item.link.id}`"
               >
-                <v-icon start size="x-small">mdi-check</v-icon>
-                Validated
+                <v-icon start size="x-small">{{ linkValidation(item).icon }}</v-icon>
+                {{ linkValidation(item).label }}
               </v-chip>
             </div>
             <div v-if="item.demo.metadata" class="text-caption text-medium-emphasis">
@@ -289,7 +302,13 @@
 // P-112 sweep: render the mapped label, not the raw wire value.
 import { demoCategoryMap, getStatusLabel } from '@/utils/statusMaps'
 import { ref, computed, watch, onMounted, reactive } from 'vue'
-import { useEvidenceStore, type DiscoveredEvidenceResponse, type DemoResponse } from '@/stores/evidence'
+import {
+  useEvidenceStore,
+  type DiscoveredEvidenceResponse,
+  type DemoResponse,
+  type DemoMatchLinkWithDemoResponse,
+} from '@/stores/evidence'
+import { validationDisplay } from './validationState'
 
 interface DemoMetadata {
   map_name: string
@@ -323,6 +342,17 @@ const hasSearched = ref(false)
 const browseTotalPages = computed(() =>
   Math.ceil(evidenceStore.browseTotal / browsePageSize)
 )
+
+const browserError = computed(
+  () =>
+    evidenceStore.discoverState.error ||
+    evidenceStore.linkDemoState.error ||
+    evidenceStore.unlinkDemoState.error,
+)
+
+function linkValidation(item: DemoMatchLinkWithDemoResponse) {
+  return validationDisplay(item.link.validated, item.link.validated_at)
+}
 
 const isSeries = ref(props.matchFormat !== 'bo1')
 

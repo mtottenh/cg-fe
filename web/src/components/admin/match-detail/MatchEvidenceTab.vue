@@ -1,6 +1,17 @@
 <template>
   <div>
+    <!--
+      P-136: `:match-id` was missing here, and `matchId` was an OPTIONAL prop on
+      `EvidenceDisplay` that gated the entire Actions column and `getAccessUrl`.
+      So on the admin match-detail Evidence tab — the surface a dispute is
+      resolved from — an admin could not open or download a single piece of
+      evidence, and nothing reported a failure because nothing was rendered.
+      The prop is required now, so this can only be forgotten again by failing
+      to compile.
+    -->
     <EvidenceDisplay
+      v-if="matchId"
+      :match-id="matchId"
       :linked-demos="linkedDemos"
       :evidence="evidenceRecords"
       :loading="evidenceLoading"

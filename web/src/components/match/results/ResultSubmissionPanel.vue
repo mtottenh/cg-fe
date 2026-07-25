@@ -80,6 +80,23 @@
         </div>
       </div>
 
+      <!--
+        P-135: the Unlink button above offered no way to learn that it failed.
+        Unlinking used to no-op silently after a reload and report success; now
+        that it either deletes or refuses, the refusal has to be visible on the
+        surface that offered the action.
+      -->
+      <v-alert
+        v-if="evidenceStore.unlinkDemoState.error"
+        type="error"
+        variant="tonal"
+        density="compact"
+        class="mb-4"
+        data-testid="result-panel-unlink-error"
+      >
+        {{ evidenceStore.unlinkDemoState.error }}
+      </v-alert>
+
       <!-- Series winner display -->
       <v-alert v-if="seriesWinner" type="success" variant="tonal" class="mb-4">
         <div class="d-flex align-center justify-space-between">

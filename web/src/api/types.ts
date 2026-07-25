@@ -848,6 +848,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/result-override": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin: correct the score recorded against a match.
+         * @description # The hole this closes
+         *
+         *     Every other admin path that can write a score
+         *     (`/v1/admin/disputes/{id}/resolve/{overturn,adjusted,double-dq}`) is keyed
+         *     on a **dispute id** and refuses to run without one. So the case "both
+         *     parties confirmed a wrong score" — or "nobody looked and it auto-confirmed
+         *     after 24 hours" — with nobody raising a dispute produced a match whose
+         *     score no operator could correct by any means, while the bracket kept
+         *     progressing on it. `revert`/`reapply` progression exist and move the
+         *     bracket, but they replay whatever score is recorded; they cannot change it.
+         *
+         *     # Gate
+         *
+         *     `tournament.results.manage` ("Report or override match results"), scoped to
+         *     the tournament that owns the match — resolved from the match row, never
+         *     from the `tournament_id` path segment, so an admin of tournament A cannot
+         *     reach tournament B's match by crafting the URL. `require_tournament_permission`
+         *     falls back to the global `admin.tournaments.manage_any` override.
+         */
+        post: operations["admin_override_match_result"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/result-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin: list the score corrections recorded against a match.
+         * @description Read straight off the `entity_changes` rows that
+         *     `override_result_audited` writes in the same transaction as the score, so
+         *     this list is the authoritative answer to "has anyone edited this score, and
+         *     if so who, when, from what, to what, and why". An audit trail no operator
+         *     can read would have been barely better than none.
+         */
+        get: operations["admin_list_match_result_overrides"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/schedule": {
         parameters: {
             query?: never;
@@ -3465,6 +3526,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tournaments/{tournament_id}/matches/{match_id}/participants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve the two registrations facing each other in one match, and which of
+         *     them belongs to the caller.
+         * @description # Why this endpoint exists (P-53 / P-56)
+         *
+         *     `useMatchDetail` used to answer "which registration am I?" by fetching
+         *     `GET /v1/tournaments/{id}/registrations` and scanning the page for the
+         *     caller's `player_id` (or one of their team-seasons). That scan is bounded
+         *     by [`PaginationParams::limit`], which clamps `per_page` at **100** — so in
+         *     any tournament with more than 100 participants, every participant whose row
+         *     sorts past #100 resolved to `null`. `canSubmitResult`,
+         *     `showConfirmationPanel`, `showSchedulingPanel` and `showCheckInPanel` are
+         *     all gated on that value, so those players could not submit a result, could
+         *     not confirm one, and could not schedule — with no error anywhere: the
+         *     controls simply never rendered. 128-player CS2 events are routine.
+         *
+         *     Raising the page size only moves the ceiling. Answering the question from
+         *     the match row removes it: the match already names both registrations, so
+         *     this is two lookups by id regardless of how large the tournament is.
+         *
+         *     `my_registration_id` uses the same "belongs to" test as the dispute thread
+         *     (`is_dispute_participant`): the registered player themself, or an active
+         *     member of the registration's team-season. Staff and spectators get `null`,
+         *     which is exactly what the participant-only panels should key off.
+         */
+        get: operations["get_match_participants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tournaments/{tournament_id}/matches/{match_id}/schedule/accept": {
         parameters: {
             query?: never;
@@ -4280,6 +4382,34 @@ export interface components {
             override_reason: string;
             /** @description Target status to transition to. */
             to_status: string;
+        };
+        /**
+         * @description Request for an admin to correct a match's recorded score (P-72).
+         *
+         *     The only score-writing admin path used to be
+         *     `POST /v1/admin/disputes/{id}/resolve/adjusted`, which requires a dispute
+         *     row to exist. A result that both parties confirmed — or that auto-confirmed
+         *     after the 24h window — with nobody disputing it therefore had **no**
+         *     operator-reachable correction path at all, while the bracket kept
+         *     progressing on the wrong number.
+         */
+        AdminOverrideMatchResultRequest: {
+            /**
+             * Format: int32
+             * @description Corrected score for participant 1.
+             */
+            participant1_score: number;
+            /**
+             * Format: int32
+             * @description Corrected score for participant 2.
+             */
+            participant2_score: number;
+            /**
+             * @description Why the score is being corrected. Recorded in the audit trail; an
+             *     unexplained override is indistinguishable from tampering, so this is
+             *     required rather than optional.
+             */
+            reason: string;
         };
         /** @description Request for admin review decision. */
         AdminReviewDecisionRequest: {
@@ -6315,6 +6445,40 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_MatchParticipantsResponse: {
+            /**
+             * @description The two registrations that face each other in one match, plus which of
+             *     them (if either) belongs to the caller.
+             *
+             *     # Why this exists
+             *
+             *     Resolving "which registration am I in this match?" used to be done in the
+             *     browser by paging `GET /v1/tournaments/{id}/registrations` and scanning the
+             *     rows. That scan is bounded by `PaginationParams::limit()`, which clamps
+             *     `per_page` to 100 — so in a tournament with more than 100 participants
+             *     every participant whose row sorts past #100 resolved to `null`, and the
+             *     result-submission affordance simply never appeared for them. 128-player
+             *     events are routine, and the failure is silent.
+             *
+             *     This endpoint answers the question directly from the match row, in O(1),
+             *     so participant count cannot affect it.
+             */
+            data: {
+                /** @description The match these registrations belong to. */
+                match_id: string;
+                /**
+                 * @description The caller's own registration id, when the caller is one of the two —
+                 *     directly as the registered player, or as a member of the registered
+                 *     team-season. `null` for spectators and staff.
+                 */
+                my_registration_id?: string | null;
+                participant1?: null | components["schemas"]["TournamentRegistrationResponse"];
+                participant2?: null | components["schemas"]["TournamentRegistrationResponse"];
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_MatchStatusDetailsResponse: {
             /** @description Response DTO for match status details. */
             data: {
@@ -7783,6 +7947,23 @@ export interface components {
             data: {
                 /** @description The demo details. */
                 demo: components["schemas"]["DemoResponse"];
+                /**
+                 * Format: uuid
+                 * @description The `match_evidence` row this link was created alongside, if any.
+                 *
+                 *     P-135: attaching a demo writes *two* rows — a `demo_match_link` and a
+                 *     `match_evidence` record carrying `catalog_demo_id` — and detaching it
+                 *     goes through `DELETE /v1/matches/{id}/evidence/{evidence_id}`, which
+                 *     cleans up both. Nothing in this response named the evidence row, so the
+                 *     frontend could only remember the pairing in memory from the link call
+                 *     in the same session: after a reload it had no id, sent no DELETE, and
+                 *     still told the operator the demo was unlinked. Serving the pairing is
+                 *     what makes the destructive action performable at all.
+                 *
+                 *     `None` means no evidence row backs this link — an auto-matched or
+                 *     admin-created link, or one whose evidence has already been deleted.
+                 */
+                evidence_id?: string | null;
                 /** @description The link details. */
                 link: components["schemas"]["DemoMatchLinkResponse"];
                 /** @description Players in this demo (optional, depends on include_stats query). */
@@ -7887,7 +8068,30 @@ export interface components {
                 id: string;
                 name: string;
                 status: components["schemas"]["EvidenceStatus"];
+                /**
+                 * @description The **verdict**: `true` only when a validation ran *and* the evidence
+                 *     corroborated the claimed result.
+                 */
                 validated: boolean;
+                /**
+                 * Format: date-time
+                 * @description When a validation last ran, whatever it concluded.
+                 *
+                 *     P-138: `validated` alone cannot tell "never checked" from "checked and
+                 *     FAILED", and those must not look the same to an operator resolving a
+                 *     dispute. The pair is the state:
+                 *       - `validated = true`                        → validated
+                 *       - `validated = false`, `validated_at` set   → validation failed
+                 *       - `validated = false`, `validated_at` null  → not yet validated
+                 */
+                validated_at?: string | null;
+                /**
+                 * @description Why the last validation failed, when it did — lifted out of the stored
+                 *     `validation_result` so a client does not have to parse an untyped blob
+                 *     to tell the operator what the evidence actually contradicts. Empty
+                 *     whenever the verdict passed or no validation has run.
+                 */
+                validation_errors: string[];
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -8115,6 +8319,49 @@ export interface components {
                 short_handed: boolean;
                 /** @description Lifecycle status (draft/submitted/locked). */
                 status: components["schemas"]["LineupStatus"];
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_MatchResultOverrideResponse: {
+            data: {
+                /**
+                 * @description That admin's display name — never make an operator read a truncated
+                 *     UUID to find out who changed a score.
+                 */
+                changed_by_name?: string | null;
+                /** @description Player id of the admin who made the correction. */
+                changed_by_player_id: string;
+                /**
+                 * Format: date-time
+                 * @description When the correction was made.
+                 */
+                created_at: string;
+                /** @description Audit row id. */
+                id: string;
+                /** @description Match whose score was corrected. */
+                match_id: string;
+                /**
+                 * Format: int32
+                 * @description Score recorded by the correction.
+                 */
+                new_participant1_score: number;
+                /** Format: int32 */
+                new_participant2_score: number;
+                /** @description Winner recorded by the correction. */
+                new_winner_registration_id: string;
+                /**
+                 * Format: int32
+                 * @description Score recorded before the correction (absent if the match had none).
+                 */
+                previous_participant1_score?: number | null;
+                /** Format: int32 */
+                previous_participant2_score?: number | null;
+                /** @description Winner recorded before the correction. */
+                previous_winner_registration_id?: string | null;
+                /** @description Operator-supplied justification. */
+                reason: string;
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -9234,6 +9481,23 @@ export interface components {
         DemoMatchLinkWithDemoResponse: {
             /** @description The demo details. */
             demo: components["schemas"]["DemoResponse"];
+            /**
+             * Format: uuid
+             * @description The `match_evidence` row this link was created alongside, if any.
+             *
+             *     P-135: attaching a demo writes *two* rows — a `demo_match_link` and a
+             *     `match_evidence` record carrying `catalog_demo_id` — and detaching it
+             *     goes through `DELETE /v1/matches/{id}/evidence/{evidence_id}`, which
+             *     cleans up both. Nothing in this response named the evidence row, so the
+             *     frontend could only remember the pairing in memory from the link call
+             *     in the same session: after a reload it had no id, sent no DELETE, and
+             *     still told the operator the demo was unlinked. Serving the pairing is
+             *     what makes the destructive action performable at all.
+             *
+             *     `None` means no evidence row backs this link — an auto-matched or
+             *     admin-created link, or one whose evidence has already been deleted.
+             */
+            evidence_id?: string | null;
             /** @description The link details. */
             link: components["schemas"]["DemoMatchLinkResponse"];
             /** @description Players in this demo (optional, depends on include_stats query). */
@@ -9991,7 +10255,30 @@ export interface components {
             id: string;
             name: string;
             status: components["schemas"]["EvidenceStatus"];
+            /**
+             * @description The **verdict**: `true` only when a validation ran *and* the evidence
+             *     corroborated the claimed result.
+             */
             validated: boolean;
+            /**
+             * Format: date-time
+             * @description When a validation last ran, whatever it concluded.
+             *
+             *     P-138: `validated` alone cannot tell "never checked" from "checked and
+             *     FAILED", and those must not look the same to an operator resolving a
+             *     dispute. The pair is the state:
+             *       - `validated = true`                        → validated
+             *       - `validated = false`, `validated_at` set   → validation failed
+             *       - `validated = false`, `validated_at` null  → not yet validated
+             */
+            validated_at?: string | null;
+            /**
+             * @description Why the last validation failed, when it did — lifted out of the stored
+             *     `validation_result` so a client does not have to parse an untyped blob
+             *     to tell the operator what the evidence actually contradicts. Empty
+             *     whenever the verdict passed or no validation has run.
+             */
+            validation_errors: string[];
         };
         /** @description Extracted result from evidence. */
         ExtractedResultResponse: {
@@ -11042,6 +11329,80 @@ export interface components {
             short_handed: boolean;
             /** @description Lifecycle status (draft/submitted/locked). */
             status: components["schemas"]["LineupStatus"];
+        };
+        /**
+         * @description The two registrations that face each other in one match, plus which of
+         *     them (if either) belongs to the caller.
+         *
+         *     # Why this exists
+         *
+         *     Resolving "which registration am I in this match?" used to be done in the
+         *     browser by paging `GET /v1/tournaments/{id}/registrations` and scanning the
+         *     rows. That scan is bounded by `PaginationParams::limit()`, which clamps
+         *     `per_page` to 100 — so in a tournament with more than 100 participants
+         *     every participant whose row sorts past #100 resolved to `null`, and the
+         *     result-submission affordance simply never appeared for them. 128-player
+         *     events are routine, and the failure is silent.
+         *
+         *     This endpoint answers the question directly from the match row, in O(1),
+         *     so participant count cannot affect it.
+         */
+        MatchParticipantsResponse: {
+            /** @description The match these registrations belong to. */
+            match_id: string;
+            /**
+             * @description The caller's own registration id, when the caller is one of the two —
+             *     directly as the registered player, or as a member of the registered
+             *     team-season. `null` for spectators and staff.
+             */
+            my_registration_id?: string | null;
+            participant1?: null | components["schemas"]["TournamentRegistrationResponse"];
+            participant2?: null | components["schemas"]["TournamentRegistrationResponse"];
+        };
+        /**
+         * @description One recorded admin correction of a match's score.
+         *
+         *     Read back from the `entity_changes` audit trail, which is where
+         *     `override_result_audited` writes it in the same transaction as the score
+         *     itself — so a correction that is not on this list did not happen.
+         */
+        MatchResultOverrideResponse: {
+            /**
+             * @description That admin's display name — never make an operator read a truncated
+             *     UUID to find out who changed a score.
+             */
+            changed_by_name?: string | null;
+            /** @description Player id of the admin who made the correction. */
+            changed_by_player_id: string;
+            /**
+             * Format: date-time
+             * @description When the correction was made.
+             */
+            created_at: string;
+            /** @description Audit row id. */
+            id: string;
+            /** @description Match whose score was corrected. */
+            match_id: string;
+            /**
+             * Format: int32
+             * @description Score recorded by the correction.
+             */
+            new_participant1_score: number;
+            /** Format: int32 */
+            new_participant2_score: number;
+            /** @description Winner recorded by the correction. */
+            new_winner_registration_id: string;
+            /**
+             * Format: int32
+             * @description Score recorded before the correction (absent if the match had none).
+             */
+            previous_participant1_score?: number | null;
+            /** Format: int32 */
+            previous_participant2_score?: number | null;
+            /** @description Winner recorded before the correction. */
+            previous_winner_registration_id?: string | null;
+            /** @description Operator-supplied justification. */
+            reason: string;
         };
         /** @description Response DTO for match status details. */
         MatchStatusDetailsResponse: {
@@ -16725,6 +17086,123 @@ export interface operations {
                 };
             };
             /** @description Not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    admin_override_match_result: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminOverrideMatchResultRequest"];
+            };
+        };
+        responses: {
+            /** @description Score corrected */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentMatchResponse"];
+                };
+            };
+            /** @description Invalid scores, or the match has no recorded result */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing tournament.results.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    admin_list_match_result_overrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorded score corrections, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_MatchResultOverrideResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing tournament.results.manage */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -25609,6 +26087,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_Vec_MatchLineupResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_match_participants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Both participants plus the caller's own registration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_MatchParticipantsResponse"];
                 };
             };
             /** @description Unauthorized */

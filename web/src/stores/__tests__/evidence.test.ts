@@ -63,11 +63,18 @@ function makeDemo(overrides: Partial<DemoResponse> = {}): DemoResponse {
   } as DemoResponse
 }
 
-function makeLinkedDemo(linkId: string): DemoMatchLinkWithDemoResponse {
+function makeLinkedDemo(
+  linkId: string,
+  evidenceId: string | null = null,
+): DemoMatchLinkWithDemoResponse {
   return {
     link: { id: linkId, match_id: 'match-1', demo_id: 'demo-1', game_number: null },
     demo: makeDemo(),
     players: null,
+    // P-135: the server names the evidence row behind the link. `null` models
+    // a link with no evidence record behind it, which is the one case where
+    // unlinking here is genuinely impossible.
+    evidence_id: evidenceId,
   } as unknown as DemoMatchLinkWithDemoResponse
 }
 
@@ -160,15 +167,44 @@ describe('Evidence Store', () => {
   })
 
   describe('unlinkDemoEvidence', () => {
-    it('removes an unmapped link from linkedDemos without issuing a DELETE', async () => {
+    // P-135 spec change, and the old test certified the bug. It asserted that
+    // a link with no in-memory evidence id was "removed from linkedDemos
+    // without issuing a DELETE" — i.e. it pinned the silent no-op as intended
+    // behaviour. That state is reachable after any page reload, because
+    // `evidenceIdMap` only ever held ids from link calls in the same session.
+    // The id now comes off the server response, so a reload-fresh list unlinks
+    // for real; the local prune is gone from every path that did not delete.
+    it('resolves the evidence id from the server response and DELETEs it', async () => {
       const store = useEvidenceStore()
-      store.linkedDemos = [makeLinkedDemo('link-1'), makeLinkedDemo('link-2')]
+      // No `linkDemoEvidence` ran: `evidenceIdMap` is empty, exactly as it is
+      // on a freshly loaded page.
+      store.linkedDemos = [makeLinkedDemo('link-1', 'evid-1'), makeLinkedDemo('link-2', 'evid-2')]
+      mockDelete.mockResolvedValue({ data: { data: null } })
 
       await store.unlinkDemoEvidence('match-1', 'link-1')
 
-      expect(mockDelete).not.toHaveBeenCalled()
+      expect(mockDelete).toHaveBeenCalledWith('/v1/matches/{match_id}/evidence/{evidence_id}', {
+        params: { path: { match_id: 'match-1', evidence_id: 'evid-1' } },
+      })
       expect(store.linkedDemos.map((d) => d.link.id)).toEqual(['link-2'])
       expect(store.unlinkDemoState.error).toBeNull()
+    })
+
+    it('refuses, and keeps the row, when no evidence record backs the link', async () => {
+      const store = useEvidenceStore()
+      store.linkedDemos = [makeLinkedDemo('link-1'), makeLinkedDemo('link-2')]
+
+      await expect(store.unlinkDemoEvidence('match-1', 'link-1')).rejects.toThrow(
+        'No evidence record backs this demo link',
+      )
+
+      // The defect was reporting success here. Nothing was deleted, so nothing
+      // may disappear from the list either.
+      expect(mockDelete).not.toHaveBeenCalled()
+      expect(store.linkedDemos.map((d) => d.link.id)).toEqual(['link-1', 'link-2'])
+      expect(store.unlinkDemoState.error).toBe(
+        'No evidence record backs this demo link, so it cannot be unlinked here',
+      )
     })
 
     // P-110 spec change, not a relaxation: `linkManualDemo` used to fabricate a

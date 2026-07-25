@@ -25,11 +25,25 @@
               <td>{{ dl.demo.file_name }}</td>
               <td>{{ (dl.demo.metadata as Record<string, unknown>)?.map_name || '-' }}</td>
               <td>{{ dl.link.game_number ?? '-' }}</td>
+              <!--
+                P-138: three states, not two. `validated` is a boolean, so a
+                demo whose validation FAILED used to read "Not validated" —
+                identical to one nobody had checked. Those are opposite facts
+                to an admin resolving a dispute, and the failing one is the
+                whole point of the feature.
+              -->
               <td v-if="detailed" :data-testid="`demo-link-validated-${dl.link.id}`">
-                <v-icon :color="dl.link.validated ? 'success' : 'grey'" size="small">
-                  {{ dl.link.validated ? 'mdi-check-circle' : 'mdi-circle-outline' }}
+                <v-icon :color="linkValidation(dl).color" size="small">
+                  {{ linkValidation(dl).icon }}
                 </v-icon>
-                <span class="text-caption ml-1">{{ dl.link.validated ? 'Validated' : 'Not validated' }}</span>
+                <span class="text-caption ml-1">{{ linkValidation(dl).label }}</span>
+                <div
+                  v-for="err in linkValidationErrors(dl)"
+                  :key="err"
+                  class="text-caption text-error"
+                >
+                  {{ err }}
+                </div>
               </td>
               <td v-if="detailed">{{ formatDateTime(dl.link.linked_at) }}</td>
               <td v-if="editable">
@@ -120,11 +134,19 @@
               <th v-if="detailed">Status</th>
               <th>Validated</th>
               <th v-if="detailed">Created</th>
-              <th v-if="matchId">Actions</th>
+              <!--
+                P-136: this column used to be gated on `v-if="matchId"`, an
+                OPTIONAL prop the admin match-detail Evidence tab never passed —
+                so on the one surface an admin resolves disputes from, the whole
+                Actions column silently did not render and no piece of evidence
+                could be opened at all. `matchId` is required now, so a caller
+                that forgets it is a type error rather than a dead feature.
+              -->
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="ev in evidence" :key="ev.id">
+            <tr v-for="ev in evidence" :key="ev.id" :data-testid="`evidence-row-${ev.id}`">
               <td>{{ ev.name }}</td>
               <td>
                 <v-chip size="x-small" variant="tonal">{{ ev.evidence_type }}</v-chip>
@@ -134,18 +156,27 @@
                   {{ evidenceStatusLabel(ev.status) }}
                 </v-chip>
               </td>
-              <td>
-                <v-icon :color="ev.validated ? 'success' : 'grey'" size="small">
-                  {{ ev.validated ? 'mdi-check-circle' : 'mdi-circle-outline' }}
+              <td :data-testid="`evidence-validated-${ev.id}`">
+                <v-icon :color="evidenceValidation(ev).color" size="small">
+                  {{ evidenceValidation(ev).icon }}
                 </v-icon>
+                <span class="text-caption ml-1">{{ evidenceValidation(ev).label }}</span>
+                <div
+                  v-for="err in ev.validation_errors"
+                  :key="err"
+                  class="text-caption text-error"
+                >
+                  {{ err }}
+                </div>
               </td>
               <td v-if="detailed">{{ formatDateTime(ev.created_at) }}</td>
-              <td v-if="matchId">
+              <td>
                 <v-btn aria-label="View evidence"
                   icon
                   variant="text"
                   size="small"
                   :loading="accessLoading === ev.id"
+                  :data-testid="`view-evidence-${ev.id}`"
                   @click="viewEvidence(ev.id)"
                 >
                   <v-icon size="small">mdi-open-in-new</v-icon>
@@ -175,19 +206,30 @@ import { useMatchResultsStore } from '@/stores/matchResults'
 import type { components } from '@/api/types'
 import { formatDateTime } from '@/utils/formatters'
 import { evidenceStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import { validationDisplay, validationErrorsOf } from './validationState'
 
 const props = withDefaults(
   defineProps<{
     linkedDemos: DemoMatchLinkWithDemoResponse[]
     evidence: EvidenceSummaryResponse[]
-    matchId?: string
+    /**
+     * P-136: REQUIRED, and deliberately so.
+     *
+     * It was optional, and every piece of behaviour that reaches the server —
+     * the Actions column, `getAccessUrl` — was gated on it. `MatchEvidenceTab`
+     * (the admin match-detail Evidence tab) simply did not pass it, despite
+     * holding a `matchId` prop, so the entire evidence-access feature was dead
+     * on the surface where a dispute is resolved and nothing said so. A prop
+     * whose absence silently disables a feature is the mechanism; making it
+     * required moves the next occurrence to compile time.
+     */
+    matchId: string
     detailed?: boolean
     loading?: boolean
     showEmptyState?: boolean
     editable?: boolean
   }>(),
   {
-    matchId: undefined,
     detailed: false,
     loading: false,
     showEmptyState: false,
@@ -210,6 +252,29 @@ const validationResults = reactive<Record<string, ValidationResult | undefined>>
 const validationError = ref<string | null>(null)
 
 const titleClass = computed(() => props.detailed ? 'text-subtitle-1' : 'text-subtitle-2')
+
+// P-138: the three-state read, shared with `DemoBrowser` so the two surfaces
+// cannot disagree about what a failed validation looks like.
+function linkValidation(dl: DemoMatchLinkWithDemoResponse) {
+  return validationDisplay(dl.link.validated, dl.link.validated_at)
+}
+
+/**
+ * The stored reasons a link's validation failed.
+ *
+ * Suppressed while the *live* verdict alert for this link is on screen — the
+ * operator just pressed Validate and the alert says the same thing in more
+ * detail, so repeating it in the table is noise. On a fresh page load, where
+ * there is no alert, the table is the only place the reason can appear.
+ */
+function linkValidationErrors(dl: DemoMatchLinkWithDemoResponse): string[] {
+  if (dl.link.validated || validationResults[dl.link.id]) return []
+  return validationErrorsOf(dl.link.validation_result)
+}
+
+function evidenceValidation(ev: EvidenceSummaryResponse) {
+  return validationDisplay(ev.validated, ev.validated_at)
+}
 
 /**
  * The reported score for the game this demo covers, or `null` when none has
@@ -262,7 +327,6 @@ function evidenceStatusLabel(status: string): string {
 }
 
 async function viewEvidence(evidenceId: string) {
-  if (!props.matchId) return
   accessLoading.value = evidenceId
   try {
     const result = await evidenceStore.getAccessUrl(props.matchId, evidenceId)

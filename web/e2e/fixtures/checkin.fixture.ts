@@ -436,10 +436,44 @@ export async function tournamentCheckIn(
 }
 
 /**
+ * Statuses from which the schedule step is a legitimate no-op — the match is
+ * already at or past `scheduled`. Derived from `allowed_transitions`
+ * (api/crates/portal-core/src/types/tournament.rs:447). `pending`, `cancelled`
+ * and `forfeit` are deliberately absent: from any of those the fixture cannot
+ * deliver what it promises, and saying so is the point.
+ */
+const AT_OR_PAST_SCHEDULED: TournamentMatchStatus[] = [
+  'scheduled',
+  'checking_in',
+  'pick_ban',
+  'in_progress',
+  'awaiting_result',
+  'completed',
+  'disputed',
+]
+
+/** Same list minus `scheduled` — the transition step's no-op set. */
+const AT_OR_PAST_CHECKING_IN: TournamentMatchStatus[] = AT_OR_PAST_SCHEDULED.filter(
+  (s) => s !== 'scheduled',
+)
+
+/**
  * Drive a freshly-generated match (status `ready`) into `checking_in` using
  * the admin endpoints. The state machine has no direct ready → checking_in
  * edge: ready → scheduled (admin schedule) → checking_in (admin transition).
- * Tolerates matches already at/past the target state so it is rerun-safe.
+ *
+ * P-3: both steps used to treat **any** HTTP 400 as success, in the name of
+ * being rerun-safe. That conflates "already done" with "could not be done" —
+ * the two states a fixture most needs to tell apart. A failed precondition then
+ * surfaced much later as a confusing UI assertion failure in whichever spec
+ * consumed the scenario, and a fixture that hides a failed precondition
+ * produces a test that passes for the wrong reason.
+ *
+ * Rerun-safety is kept, but it is now EARNED rather than assumed: on a
+ * non-OK response the match's actual status is read back, and the step is
+ * treated as a no-op only when the match really is at or past the target.
+ * Anything else throws with the status code, the response body and the
+ * observed status.
  */
 export async function advanceMatchToCheckingIn(
   adminToken: string,
@@ -461,10 +495,15 @@ export async function advanceMatchToCheckingIn(
       }),
     },
   )
-  if (!scheduleResp.ok && scheduleResp.status !== 400) {
-    throw new Error(
-      `Admin schedule failed (${scheduleResp.status}): ${await scheduleResp.text()}`,
-    )
+  if (!scheduleResp.ok) {
+    const body = await scheduleResp.text()
+    const { status } = await getMatch(undefined, adminToken, tournamentId, matchId)
+    if (!AT_OR_PAST_SCHEDULED.includes(status)) {
+      throw new Error(
+        `Admin schedule failed (${scheduleResp.status}) and match ${matchId} is still ` +
+          `"${status}", so it was NOT already scheduled: ${body}`,
+      )
+    }
   }
 
   const transitionResp = await fetch(
@@ -481,10 +520,15 @@ export async function advanceMatchToCheckingIn(
       }),
     },
   )
-  if (!transitionResp.ok && transitionResp.status !== 400) {
-    throw new Error(
-      `Admin transition to checking_in failed (${transitionResp.status}): ${await transitionResp.text()}`,
-    )
+  if (!transitionResp.ok) {
+    const body = await transitionResp.text()
+    const { status } = await getMatch(undefined, adminToken, tournamentId, matchId)
+    if (!AT_OR_PAST_CHECKING_IN.includes(status)) {
+      throw new Error(
+        `Admin transition to checking_in failed (${transitionResp.status}) and match ` +
+          `${matchId} is "${status}", which is not at or past checking_in: ${body}`,
+      )
+    }
   }
 }
 

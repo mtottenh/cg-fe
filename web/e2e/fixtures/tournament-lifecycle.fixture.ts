@@ -36,7 +36,28 @@ export interface CreateTournamentOptions {
   participantType?: 'individual' | 'team'
   minParticipants?: number
   maxParticipants?: number
+  /**
+   * Turns on tournament check-in AND, unless `checkInStart`/`checkInEnd` say
+   * otherwise, opens a window around now so check-in is actually open.
+   *
+   * P-3: this flag alone used to produce a tournament whose check-in could
+   * never open. `Tournament::is_check_in_open()`
+   * (api/crates/portal-domain/src/entities/tournament.rs:140-152) returns false
+   * unless `check_in_required` is set AND both `check_in_start` and
+   * `check_in_end` are present AND now falls between them — and this builder
+   * exposed no way to set either timestamp, so every
+   * `{ checkInRequired: true }` fixture built a tournament that 400s on
+   * self-check-in. A flag that names a feature and then cannot enable it is a
+   * trap regardless of who trips over it.
+   */
   checkInRequired?: boolean
+  /**
+   * Explicit check-in window. Only meaningful with `checkInRequired: true`.
+   * Pass both to test a CLOSED window (e.g. both in the past, which is what
+   * no-show processing needs); omit both to get an open one.
+   */
+  checkInStart?: string
+  checkInEnd?: string
   /**
    * Defaults to `open`. Since P-2, an `open` tournament AUTO-APPROVES on
    * signup, so pass `'approval'` when a test needs a genuinely `pending`
@@ -95,7 +116,9 @@ export async function createDraftTournament(
   const suffix = uniqueId()
   const gameId = await firstGameId()
 
-  const body = {
+  const checkInRequired = opts.checkInRequired ?? false
+
+  const body: Record<string, unknown> = {
     name: opts.name ?? `E2E Lifecycle ${suffix}`,
     slug: opts.slug ?? `e2e-lifecycle-${suffix}`,
     game_id: gameId,
@@ -104,8 +127,19 @@ export async function createDraftTournament(
     participant_type: opts.participantType ?? 'individual',
     min_participants: opts.minParticipants ?? 2,
     max_participants: opts.maxParticipants ?? 4,
-    check_in_required: opts.checkInRequired ?? false,
+    check_in_required: checkInRequired,
     registration_type: opts.registrationType ?? 'open',
+  }
+
+  // P-3. `check_in_required` on its own is inert: `is_check_in_open()` also
+  // needs BOTH window bounds, so the flag used to produce a tournament whose
+  // check-in never opened. Default the window to ±1h around now — the same
+  // shape `checkin.fixture.createIndividualTournament` already had to work
+  // around locally — and let a caller override it to test a closed window.
+  if (checkInRequired || opts.checkInStart || opts.checkInEnd) {
+    const now = Date.now()
+    body.check_in_start = opts.checkInStart ?? new Date(now - 60 * 60 * 1000).toISOString()
+    body.check_in_end = opts.checkInEnd ?? new Date(now + 60 * 60 * 1000).toISOString()
   }
 
   const resp = await fetch(`${API_URL}/v1/tournaments`, {

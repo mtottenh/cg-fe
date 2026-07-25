@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **111 product findings** from what
+*"what should happen here?"* — and that question surfaced **112 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **111 findings · 60 fixed** → the status-drift defect class closed at the source
+112 → 0) → **112 findings · 64 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -205,9 +205,9 @@ two each and together retire most of the dead-control class.
 |---|---|---|---|
 | **T0** | **Security** | ~~P-108~~ · ~~P-60~~ — **tier complete** | Unauthenticated writes and un-revoked sessions. Cost is irrelevant |
 | **T1** | **Silent data corruption** | ~~P-93~~ · ~~P-77~~ · ~~P-78~~ · ~~P-83~~ — **tier complete** | Each writes or preserves *wrong data* while reporting success. Worst possible failure mode: no one finds out |
-| **T2** | **One-line dead-control fixes** | P-87 · P-99 · P-98 · P-82 · P-104 · P-105 · P-94 · P-84 | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
+| **T2** | **One-line dead-control fixes** | ~~P-87~~ · P-99 · P-98 · P-82 · P-104 · P-105 · P-94 · P-84 | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
 | **T3** | **a11y sweep** (one batch) | P-89 · P-100 · P-106 · P-85 | P-89 is a **P-45 recurrence**, so this must be a repo-wide sweep, not another point fix |
-| **T4** | **Raw-enum sweep** (one batch) | P-76 · P-91 · P-96 · P-79 | P-10/P-44 family, now on its fifth recurrence. Batch it and add a guard, or it returns |
+| **T4** | **Raw-enum sweep** (one batch) | ~~P-76~~ · ~~P-91~~ · ~~P-79~~ · P-96 → now ratcheted; see C1 | P-10/P-44 family, now on its fifth recurrence. Batch it and add a guard, or it returns |
 | **T5** | **Dead code & build hygiene** | P-69 · P-67 · P-65 · P-90 | Deletions and registrations. Cheap, and shrinks the surface the other tiers have to reason about |
 | **T6** | **Missing controls** (product build) | P-74 · P-88 · P-109 · P-110 · P-111 · P-70 · P-71 · P-62 · P-63 · P-64 · P-72 · P-75 · P-92 · P-95 · P-68 · P-73 · P-61 · P-66 | Endpoint live, control absent or non-functional. Real build work; sequence by user pain |
 | **T7** | **Roster-lock rework** (together) | P-14 · P-15 · P-16 · P-18 | Design §9 sequences these as one unit, after the lineup proved out. Do not pick off individually |
@@ -315,9 +315,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 111 found · 60 fixed · 51 open** (P-53 mitigated).
+**Status (derived): 112 found · 64 fixed · 48 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-79, P-80, P-82, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-109, P-110, P-111.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-80, P-82, P-84, P-85, P-88, P-89, P-90, P-92, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -412,10 +412,10 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-73 | Ingestion pipeline invisible to admins | ops blind spot | open |
 | P-74 | **"Retry Processing" calls no API — reports success anyway** | **trust** | open |
 | P-75 | Demo league/tournament association uncorrectable; shows raw UUIDs | admin gap | open |
-| P-76 | Categorize snackbar prints the raw enum | minor | open |
+| P-76 | Categorize snackbar prints the raw enum | minor | **fixed** `b992f2a` |
 | P-77 | **Uphold on a claim-path dispute completes the match with NO result** | **integrity** | **fixed** `2b8e428` |
 | P-78 | **Rematch / double-DQ leave the old winner + score on the match** | **integrity** | **fixed** `2b8e428` |
-| P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | open |
+| P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | **fixed** `b992f2a` |
 | P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
 | P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | **fixed** `e06ff8f` |
 | P-108 | **`link-discovered`/`link-demo` have NO participant authz** | **security** | **fixed** `ef4b947` |
@@ -436,12 +436,13 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | open |
 | P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | open |
 | P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
+| P-112 | **API stringifies enums it already declares — 10 maps unlockable** | **architectural** | open |
 | P-93 | **Date overrides saved one day early in every positive UTC offset** | **data corruption** | **fixed** `2b4d4ee` |
-| P-87 | **Every game-config WRITE 404s — handler passes UUID to a slug-keyed update** | **feature dead** | open |
+| P-87 | **Every game-config WRITE 404s — handler passes UUID to a slug-keyed update** | **feature dead** | **fixed** `024513b` |
 | P-88 | A disabled game vanishes from admin and can never be re-enabled | **traps admin** | open |
 | P-89 | `AdminGamesPage` aria-labels rotated by one — **P-45 recurrence** | **a11y/safety** | open |
 | P-90 | `GameEditModal` Sort Order shows a fake 0 and can never be set to 0 | user-facing | open |
-| P-91 | Disable writes `maintenance`; status chip prints the raw enum | user-facing | open |
+| P-91 | Disable writes `maintenance`; status chip prints the raw enum | user-facing | **fixed** `b992f2a` |
 | P-92 | Rank tiers + team size are read-only with no editing surface anywhere | product gap | open |
 | P-86 | e2e fixtures type statuses as bare `string` — P-31 stops at the test boundary | gate gap | **fixed** `ccd4850` |
 | P-82 | **"Revert to Awaiting Result" always 400s — dead control ×2** | feature dead | open |
@@ -882,6 +883,22 @@ appearing a third time in a different guise. Both interfaces are now optional wi
 serialisation documented in place. Lane 6 also added the positive control its predecessor
 lacked (`seedsBefore = [1,2,3,4]`), without which the post-clear assertion would have passed
 even if `seed` were never serialised at all.
+
+**P-112 — the API stringifies enums it has already declared, so the frontend cannot lock them.**
+`DisputeResponse.priority` is `String` (`dto/responses/dispute.rs:53`, via `d.priority.to_string()`)
+and `GameResponse.status` / `GameSummaryResponse.status` likewise — while
+`DisputePriority` (`entities/dispute.rs:209`) already derives `Serialize` **and**
+`utoipa::ToSchema`. The enum exists, is spec-ready, and the DTO throws it away.
+
+Consequence: no union reaches `types.ts`, so those status maps cannot be keyed and are the
+only ones that can still drift — which is exactly where P-79 and P-91 happened. **Ten of
+twenty-four maps remain unlockable for this reason**, capped by the new ratchet.
+
+This is the P-31 remnant, restated precisely: not "enums lacking `Serialize`" but *DTO fields
+typed `String` in front of enums that are otherwise ready*. Fix = type the DTO field, register
+the enum in `openapi.rs` `components(schemas)`, regenerate, then key the map — after which
+that map can never drift again. Cheap per field; the ratchet's `MAX_UNLOCKED` is the meter.
+→ **T4/C1 follow-on.**
 
 **P-93 — a date override is saved one day early for every player east of Greenwich.**
 `AvailabilityOverridesManager.vue:334-335` does

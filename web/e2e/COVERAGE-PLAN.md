@@ -416,9 +416,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 184 found · 149 fixed · 35 open** (P-53 mitigated).
+**Status (derived): 184 found · 150 fixed · 34 open** (P-53 mitigated).
 
-Open: P-58, P-61, P-66, P-80, P-120, P-128, P-129, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162, P-167, P-168, P-173, P-175, P-176, P-177, P-178, P-179, P-180, P-181, P-182, P-183.
+Open: P-61, P-66, P-80, P-120, P-128, P-129, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162, P-167, P-168, P-173, P-175, P-176, P-177, P-178, P-179, P-180, P-181, P-182, P-183.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without

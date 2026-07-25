@@ -10,6 +10,9 @@ type PlayerSearchResult = components['schemas']['PlayerSearchResponse']
 type SocialLinks = components['schemas']['SocialLinksResponse']
 type UpdateProfileRequest = components['schemas']['UpdatePlayerProfileRequest']
 type PaginationMeta = components['schemas']['PaginationMeta']
+type SubmitRatingRequest = components['schemas']['SubmitRatingRequest']
+type PlayerGameProfile = components['schemas']['PlayerGameProfileResponse']
+type PlayerRatingHistory = components['schemas']['PlayerRatingHistoryResponse']
 
 /**
  * @deprecated The old PlayerTeamMembershipResponse type has been replaced with league team memberships.
@@ -36,6 +39,8 @@ export const usePlayersStore = defineStore('players', () => {
   const fetchMyProfileState = createActionState()
   const updateMyProfileState = createActionState()
   const fetchMyMatchesState = createActionState()
+  const submitPlayerRatingState = createActionState()
+  const fetchRatingHistoryState = createActionState()
 
   const { loading, error } = aggregateActionStates([
     fetchPlayersState, fetchPlayerState, fetchMyProfileState,
@@ -122,6 +127,52 @@ export const usePlayersStore = defineStore('players', () => {
     }, 'Failed to fetch matches')
   }
 
+  /**
+   * P-68: operator override for a wrong scraped rating.
+   *
+   * Ratings normally arrive from the enricher's demo-derived path
+   * (`handlers/internal.rs process_demo_ratings`). That value drives seeding
+   * and league entry gates (`min_rating_per_player`), so a bad extraction
+   * silently misseeds brackets and can lock a player out of a league — and
+   * until now `POST /v1/players/{id}/games/{game}/rating` had no UI consumer
+   * at all, so there was no remedy short of SQL.
+   *
+   * `source` is the audit trail: it is stored verbatim on the history row
+   * (`player_rating_history.source`, VARCHAR(64)) and is the only free-text
+   * field the table has — there is no separate `reason` column, so the
+   * operator's reason goes here rather than being collected and discarded
+   * (P-84/P-94).
+   */
+  async function submitPlayerRating(
+    playerId: string,
+    gameId: string,
+    body: SubmitRatingRequest,
+  ): Promise<PlayerGameProfile> {
+    return withActionState(submitPlayerRatingState, async () => {
+      const result = await unwrapApi(api.POST('/v1/players/{player_id}/games/{game_id}/rating', {
+        params: { path: { player_id: playerId, game_id: gameId } },
+        body,
+      }))
+      return result.data
+    }, 'Failed to submit rating')
+  }
+
+  /** Rating history for a player+game, newest first. */
+  async function fetchRatingHistory(
+    playerId: string,
+    gameId: string,
+    limit = 10,
+  ): Promise<PlayerRatingHistory[]> {
+    return withActionState(fetchRatingHistoryState, async () => {
+      const result = await unwrapApi(
+        api.GET('/v1/players/{player_id}/games/{game_id}/rating-history', {
+          params: { path: { player_id: playerId, game_id: gameId }, query: { limit } },
+        }),
+      )
+      return result.data
+    }, 'Failed to fetch rating history')
+  }
+
   return {
     players,
     currentPlayer,
@@ -141,8 +192,21 @@ export const usePlayersStore = defineStore('players', () => {
     updateMyProfile,
     fetchMyMatches,
     fetchMyMatchesState,
+    submitPlayerRating,
+    submitPlayerRatingState,
+    fetchRatingHistory,
+    fetchRatingHistoryState,
   }
 })
 
 // Re-export types for convenience
-export type { Player, PlayerSearchResult, PlayerTeam, SocialLinks, UpdateProfileRequest }
+export type {
+  Player,
+  PlayerSearchResult,
+  PlayerTeam,
+  SocialLinks,
+  UpdateProfileRequest,
+  SubmitRatingRequest,
+  PlayerGameProfile,
+  PlayerRatingHistory,
+}

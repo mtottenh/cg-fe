@@ -557,6 +557,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/pipeline/discovered-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The discovered-match queue, newest first (admin).
+         * @description Filter by `status=failed` for the enrichment-failure list, which is the
+         *     only place the enricher's error strings are visible outside the logs.
+         */
+        get: operations["list_pipeline_discovered_matches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/pipeline/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * End-to-end ingestion pipeline health (admin).
+         * @description One read covering all three stages — Steam tracking tokens → the
+         *     discovered-match queue → the demo catalog — so a zero downstream with a
+         *     healthy upstream localises where ingestion stopped.
+         */
+        get: operations["get_pipeline_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/pipeline/tracking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Steam tracking-token health, worst first (admin).
+         * @description The tokens are the head of the pipeline: one that stops polling stops that
+         *     player's matches, ratings and demos with no other symptom.
+         */
+        get: operations["list_pipeline_tracking"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/result-reviews": {
         parameters: {
             query?: never;
@@ -1724,7 +1788,13 @@ export interface paths {
         /** Get team season members (roster). */
         get: operations["get_team_season_members"];
         put?: never;
-        /** Add a member to a team's seasonal roster (captain only). */
+        /**
+         * Add a member to a team's seasonal roster (captain only).
+         * @description Platform team admins may set `override_roster_lock` (with an
+         *     `override_reason`) to seat a member despite the season's roster lock — the
+         *     emergency substitution path. The bypass is recorded in the audit trail
+         *     before the member is seated; see `resolve_roster_lock_override`.
+         */
         post: operations["add_team_member"];
         delete?: never;
         options?: never;
@@ -1742,7 +1812,12 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove a member from a team's seasonal roster (captain only). */
+        /**
+         * Remove a member from a team's seasonal roster (captain only).
+         * @description Platform team admins may pass `override_roster_lock=true` with an
+         *     `override_reason` to remove a member despite the season's roster lock — the
+         *     other half of the emergency substitution path. The bypass is audited.
+         */
         delete: operations["remove_team_member"];
         options?: never;
         head?: never;
@@ -1758,7 +1833,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Demote a captain to player (captain only, must keep at least one captain). */
+        /**
+         * Demote a captain to player (captain only, must keep at least one captain).
+         * @description Lock-gated exactly as `promote_to_captain` is (P-16).
+         */
         post: operations["demote_from_captain"];
         delete?: never;
         options?: never;
@@ -1775,7 +1853,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Promote a member to captain (captain only, multiple captains allowed). */
+        /**
+         * Promote a member to captain (captain only, multiple captains allowed).
+         * @description Refused under a `hard_lock` (P-16) — captaincy is the authority that
+         *     performs roster changes, so it cannot move while the roster is frozen.
+         *     Permitted under `soft_lock`, and never gated on season status. Platform team
+         *     admins may override with an audited reason.
+         */
         post: operations["promote_to_captain"];
         delete?: never;
         options?: never;
@@ -2295,7 +2379,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get evidence details. */
+        /**
+         * Get evidence details.
+         * @description P-67 listed this as a redundant single-getter over the summary list, and it
+         *     is not: `find_by_match` excludes `pending` and `deleted`
+         *     (`portal-db/src/adapters/evidence.rs:53`), so the list cannot show an
+         *     in-flight upload at all. Between `initiate` and `complete` — the exact window
+         *     the three-step upload flow occupies — this is the only way to read an
+         *     evidence row's state. It has no frontend consumer today, which is why it was
+         *     proposed for deletion; deleting it would have removed the only read path for
+         *     a state the product genuinely has.
+         */
         get: operations["get_evidence"];
         put?: never;
         post?: never;
@@ -4081,6 +4175,19 @@ export interface components {
              * @description Optional jersey number.
              */
             jersey_number?: number | null;
+            /**
+             * @description Why the roster lock was overridden. Required when
+             *     `override_roster_lock` is set.
+             */
+            override_reason?: string | null;
+            /**
+             * @description Bypass the season's roster lock (platform team admins only).
+             *
+             *     The emergency path for e.g. substituting a player banned mid-playoffs.
+             *     Requires `override_reason`, and the bypass is written to the audit trail
+             *     before the member is seated.
+             */
+            override_roster_lock?: boolean;
             /** @description Player ID to add. */
             player_id: string;
             /** @description Optional position (e.g., "AWP", "Entry", "Support"). */
@@ -4428,6 +4535,14 @@ export interface components {
             ban_type: components["schemas"]["BanType"];
             /** @description When the ban record was created. */
             created_at: string;
+            /**
+             * @description The banned user's display name, when they have a player profile. This
+             *     is the name `UserSearchAutocomplete` shows the admin who issues the
+             *     ban, so it is what the ban row and the confirm dialog lead with;
+             *     `username` is the fallback and the always-present anchor.
+             * @example Cheater 99
+             */
+            display_name?: string | null;
             /** @description When the ban expires (null for permanent bans). */
             ends_at?: string | null;
             /**
@@ -4471,6 +4586,17 @@ export interface components {
              * @example 550e8400-e29b-41d4-a716-446655440001
              */
             user_id: string;
+            /**
+             * @description Username of the banned user. Always present.
+             *
+             *     P-123: the admin bans table had only `user_id` to show and truncated it
+             *     to 8 characters — and that same truncation was quoted back inside the
+             *     lift-ban CONFIRM DIALOG. UUID v7 prefixes are timestamps, so two bans
+             *     created minutes apart are indistinguishable: an operator was confirming
+             *     a destructive moderation action against an ambiguous target.
+             * @example cheater_99
+             */
+            username: string;
         };
         /**
          * @description Type of ban that determines what the user is restricted from.
@@ -5138,6 +5264,14 @@ export interface components {
                 ban_type: components["schemas"]["BanType"];
                 /** @description When the ban record was created. */
                 created_at: string;
+                /**
+                 * @description The banned user's display name, when they have a player profile. This
+                 *     is the name `UserSearchAutocomplete` shows the admin who issues the
+                 *     ban, so it is what the ban row and the confirm dialog lead with;
+                 *     `username` is the fallback and the always-present anchor.
+                 * @example Cheater 99
+                 */
+                display_name?: string | null;
                 /** @description When the ban expires (null for permanent bans). */
                 ends_at?: string | null;
                 /**
@@ -5181,6 +5315,17 @@ export interface components {
                  * @example 550e8400-e29b-41d4-a716-446655440001
                  */
                 user_id: string;
+                /**
+                 * @description Username of the banned user. Always present.
+                 *
+                 *     P-123: the admin bans table had only `user_id` to show and truncated it
+                 *     to 8 characters — and that same truncation was quoted back inside the
+                 *     lift-ban CONFIRM DIALOG. UUID v7 prefixes are timestamps, so two bans
+                 *     created minutes apart are indistinguishable: an operator was confirming
+                 *     a destructive moderation action against an ambiguous target.
+                 * @example cheater_99
+                 */
+                username: string;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -6253,6 +6398,31 @@ export interface components {
                  * @description Last update timestamp.
                  */
                 updated_at: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_PipelineOverviewResponse: {
+            /**
+             * @description The whole ingestion pipeline in one read: tokens → discovered matches →
+             *     demos. Each stage feeds the next, so a zero downstream with a healthy
+             *     upstream localises the stoppage.
+             */
+            data: {
+                /**
+                 * @description Whether the demo→match auto-linker is enabled. The backfill refuses to
+                 *     run while it is off, so the operator must see it next to the button.
+                 */
+                auto_link_enabled: boolean;
+                /** @description Stage 3 — the demo catalog (scanner → stats service). */
+                demos: components["schemas"]["DemoStatusCountsResponse"];
+                /** @description Stage 2 — the discovered-match queue (poller → enricher). */
+                discovered_matches: components["schemas"]["DiscoveredMatchQueueResponse"];
+                /** @description Game slug this overview is scoped to, or null for all games. */
+                game_slug?: string | null;
+                /** @description Stage 1 — Steam tracking tokens (the poller's work list). */
+                tracking: components["schemas"]["TrackingHealthSummaryResponse"];
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -7484,6 +7654,14 @@ export interface components {
                 ban_type: components["schemas"]["BanType"];
                 /** @description When the ban record was created. */
                 created_at: string;
+                /**
+                 * @description The banned user's display name, when they have a player profile. This
+                 *     is the name `UserSearchAutocomplete` shows the admin who issues the
+                 *     ban, so it is what the ban row and the confirm dialog lead with;
+                 *     `username` is the fallback and the always-present anchor.
+                 * @example Cheater 99
+                 */
+                display_name?: string | null;
                 /** @description When the ban expires (null for permanent bans). */
                 ends_at?: string | null;
                 /**
@@ -7527,6 +7705,17 @@ export interface components {
                  * @example 550e8400-e29b-41d4-a716-446655440001
                  */
                 user_id: string;
+                /**
+                 * @description Username of the banned user. Always present.
+                 *
+                 *     P-123: the admin bans table had only `user_id` to show and truncated it
+                 *     to 8 characters — and that same truncation was quoted back inside the
+                 *     lift-ban CONFIRM DIALOG. UUID v7 prefixes are timestamps, so two bans
+                 *     created minutes apart are indistinguishable: an operator was confirming
+                 *     a destructive moderation action against an ambiguous target.
+                 * @example cheater_99
+                 */
+                username: string;
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -7663,6 +7852,27 @@ export interface components {
                  * @description Relevance score (0.0 to 1.0)
                  */
                 relevance_score: number;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_DiscoveredMatchAdminResponse: {
+            data: {
+                discovered_at: string;
+                enriched_at?: string | null;
+                error?: string | null;
+                /** @description Whether enrichment produced a demo URL for the scanner to fetch. */
+                has_demo_url: boolean;
+                id: string;
+                /** Format: int32 */
+                max_retries: number;
+                /** Format: int32 */
+                retry_count: number;
+                /** @description True once the retry budget is spent — the enricher stops retrying. */
+                retry_exhausted: boolean;
+                share_code: string;
+                status: string;
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -8656,6 +8866,29 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_TrackingHealthEntryResponse: {
+            data: {
+                created_at: string;
+                game_id: string;
+                game_slug: string;
+                /** @description Whether a share-code cursor has been recorded yet. */
+                has_share_code: boolean;
+                id: string;
+                is_active: boolean;
+                last_error?: string | null;
+                last_poll_at?: string | null;
+                /** @description Named, not a truncated UUID (P-115). */
+                player_display_name: string;
+                player_id: string;
+                /** Format: int32 */
+                poll_errors: number;
+                /** @description The tracked SteamID64. Not a secret — it is public on the profile. */
+                steam_id_64: string;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_Vec_UserRoleAssignmentResponse: {
             data: {
                 /** @description When the role assignment expires (null for permanent). */
@@ -9376,6 +9609,56 @@ export interface components {
              * @description Relevance score (0.0 to 1.0)
              */
             relevance_score: number;
+        };
+        /**
+         * @description One discovered match, as the operator needs to see it.
+         *
+         *     `gc_data` and the raw `demo_url` are omitted: they are large, and the
+         *     operator question is "did this get through, and if not why".
+         */
+        DiscoveredMatchAdminResponse: {
+            discovered_at: string;
+            enriched_at?: string | null;
+            error?: string | null;
+            /** @description Whether enrichment produced a demo URL for the scanner to fetch. */
+            has_demo_url: boolean;
+            id: string;
+            /** Format: int32 */
+            max_retries: number;
+            /** Format: int32 */
+            retry_count: number;
+            /** @description True once the retry budget is spent — the enricher stops retrying. */
+            retry_exhausted: boolean;
+            share_code: string;
+            status: string;
+        };
+        /** @description Depth of the discovered-match queue, by status. */
+        DiscoveredMatchQueueResponse: {
+            /**
+             * Format: int64
+             * @description Enrichment succeeded.
+             */
+            enriched: number;
+            /**
+             * Format: int64
+             * @description Claimed by an enricher and in flight.
+             */
+            enriching: number;
+            /**
+             * Format: int64
+             * @description Enrichment failed at least once.
+             */
+            failed: number;
+            /**
+             * Format: int64
+             * @description Discovered, awaiting the enricher.
+             */
+            pending: number;
+            /**
+             * Format: int64
+             * @description Failed with the retry budget spent — the enricher will not retry these.
+             */
+            retry_exhausted: number;
         };
         /** @description A formatted statistic for display on the player profile. */
         DisplayStatResponse: {
@@ -11180,6 +11463,26 @@ export interface components {
              */
             name: string;
         };
+        /**
+         * @description The whole ingestion pipeline in one read: tokens → discovered matches →
+         *     demos. Each stage feeds the next, so a zero downstream with a healthy
+         *     upstream localises the stoppage.
+         */
+        PipelineOverviewResponse: {
+            /**
+             * @description Whether the demo→match auto-linker is enabled. The backfill refuses to
+             *     run while it is off, so the operator must see it next to the button.
+             */
+            auto_link_enabled: boolean;
+            /** @description Stage 3 — the demo catalog (scanner → stats service). */
+            demos: components["schemas"]["DemoStatusCountsResponse"];
+            /** @description Stage 2 — the discovered-match queue (poller → enricher). */
+            discovered_matches: components["schemas"]["DiscoveredMatchQueueResponse"];
+            /** @description Game slug this overview is scoped to, or null for all games. */
+            game_slug?: string | null;
+            /** @description Stage 1 — Steam tracking tokens (the poller's work list). */
+            tracking: components["schemas"]["TrackingHealthSummaryResponse"];
+        };
         /** @description Platform statistics for admin dashboard. */
         PlatformStatsResponse: {
             /**
@@ -12832,6 +13135,65 @@ export interface components {
             /** Format: date-time */
             starts_at?: string | null;
             status: components["schemas"]["TournamentStatus"];
+        };
+        /** @description One tracking token, with the player it belongs to. */
+        TrackingHealthEntryResponse: {
+            created_at: string;
+            game_id: string;
+            game_slug: string;
+            /** @description Whether a share-code cursor has been recorded yet. */
+            has_share_code: boolean;
+            id: string;
+            is_active: boolean;
+            last_error?: string | null;
+            last_poll_at?: string | null;
+            /** @description Named, not a truncated UUID (P-115). */
+            player_display_name: string;
+            player_id: string;
+            /** Format: int32 */
+            poll_errors: number;
+            /** @description The tracked SteamID64. Not a secret — it is public on the profile. */
+            steam_id_64: string;
+        };
+        /** @description Aggregate health of the Steam tracking tokens that feed the pipeline. */
+        TrackingHealthSummaryResponse: {
+            /**
+             * Format: int64
+             * @description Entries the poller is currently working.
+             */
+            active: number;
+            /**
+             * Format: int64
+             * @description Entries switched off (a deactivated token stops that player's feed).
+             */
+            inactive: number;
+            /** @description Most recent poll across all entries in scope (ISO 8601). */
+            last_poll_at?: string | null;
+            /**
+             * Format: int64
+             * @description Active entries the poller has never touched.
+             */
+            never_polled: number;
+            /**
+             * Format: int64
+             * @description Active entries not polled within [`TRACKING_STALE_AFTER_HOURS`].
+             */
+            stale: number;
+            /**
+             * Format: int64
+             * @description Hours of silence after which an entry counts as stale.
+             */
+            stale_after_hours: number;
+            /**
+             * Format: int64
+             * @description All tracking entries in scope, active or not.
+             */
+            total: number;
+            /**
+             * Format: int64
+             * @description Active entries whose last poll failed (`poll_errors > 0`).
+             */
+            with_errors: number;
         };
         /** @description Request to transfer team ownership to another player. */
         TransferOwnershipRequest: {
@@ -15364,6 +15726,168 @@ export interface operations {
             };
             /** @description Not an admin */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_pipeline_discovered_matches: {
+        parameters: {
+            query?: {
+                /** @description Restrict to one game, by slug (e.g. `cs2`) or UUID. Omit for all games. */
+                game?: string | null;
+                /** @description Filter discovered matches by status (pending, enriching, enriched, failed). */
+                status?: string | null;
+                /** @description Maximum rows to return (default 25, max 200). */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Discovered matches */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_DiscoveredMatchAdminResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Game not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_pipeline_overview: {
+        parameters: {
+            query?: {
+                /** @description Restrict to one game, by slug (e.g. `cs2`) or UUID. Omit for all games. */
+                game?: string | null;
+                /** @description Filter discovered matches by status (pending, enriching, enriched, failed). */
+                status?: string | null;
+                /** @description Maximum rows to return (default 25, max 200). */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pipeline health */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_PipelineOverviewResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Game not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_pipeline_tracking: {
+        parameters: {
+            query?: {
+                /** @description Restrict to one game, by slug (e.g. `cs2`) or UUID. Omit for all games. */
+                game?: string | null;
+                /** @description Filter discovered matches by status (pending, enriching, enriched, failed). */
+                status?: string | null;
+                /** @description Maximum rows to return (default 25, max 200). */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tracking token health */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_TrackingHealthEntryResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Game not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -18229,7 +18753,7 @@ export interface operations {
                     "application/json": components["schemas"]["DataResponse_LeagueSeasonResponse"];
                 };
             };
-            /** @description Validation error */
+            /** @description Validation error, or the season state does not allow the requested roster lock */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -19396,7 +19920,7 @@ export interface operations {
                     "application/json": components["schemas"]["DataResponse_LeagueTeamMemberResponse"];
                 };
             };
-            /** @description Validation error */
+            /** @description Validation error, or the roster is locked */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -19414,7 +19938,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Forbidden - captain only */
+            /** @description Forbidden - captain only, or roster-lock override requires a platform team admin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -19445,7 +19969,15 @@ export interface operations {
     };
     remove_team_member: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Bypass the season's roster lock (platform team admins only). */
+                override_roster_lock?: boolean;
+                /**
+                 * @description Why the lock was overridden. Required when `override_roster_lock` is
+                 *     set; at least 10 characters.
+                 */
+                override_reason?: string | null;
+            };
             header?: never;
             path: {
                 /** @description Team Season ID */
@@ -19464,6 +19996,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Roster is locked, or the override is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -19473,7 +20014,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Forbidden - captain only */
+            /** @description Forbidden - captain only, or roster-lock override requires a platform team admin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -19495,7 +20036,15 @@ export interface operations {
     };
     demote_from_captain: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Bypass the season's roster lock (platform team admins only). */
+                override_roster_lock?: boolean;
+                /**
+                 * @description Why the lock was overridden. Required when `override_roster_lock` is
+                 *     set; at least 10 characters.
+                 */
+                override_reason?: string | null;
+            };
             header?: never;
             path: {
                 /** @description Team Season ID */
@@ -19516,6 +20065,15 @@ export interface operations {
                     "application/json": components["schemas"]["DataResponse_LeagueTeamMemberResponse"];
                 };
             };
+            /** @description Roster is hard-locked, or the override is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -19525,7 +20083,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Forbidden - captain only */
+            /** @description Forbidden - captain only, or roster-lock override requires a platform team admin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -19556,7 +20114,15 @@ export interface operations {
     };
     promote_to_captain: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Bypass the season's roster lock (platform team admins only). */
+                override_roster_lock?: boolean;
+                /**
+                 * @description Why the lock was overridden. Required when `override_roster_lock` is
+                 *     set; at least 10 characters.
+                 */
+                override_reason?: string | null;
+            };
             header?: never;
             path: {
                 /** @description Team Season ID */
@@ -19577,6 +20143,15 @@ export interface operations {
                     "application/json": components["schemas"]["DataResponse_LeagueTeamMemberResponse"];
                 };
             };
+            /** @description Roster is hard-locked, or the override is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -19586,7 +20161,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Forbidden - captain only */
+            /** @description Forbidden - captain only, or roster-lock override requires a platform team admin */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -20,6 +20,10 @@ type SetDemoNotesRequest = components['schemas']['SetDemoNotesRequest']
 type AssociateDemoRequest = components['schemas']['AssociateDemoRequest']
 type MarkDemoFailedRequest = components['schemas']['MarkDemoFailedRequest']
 type AutoLinkSettingResponse = components['schemas']['AutoLinkSettingResponse']
+type ProcessUnlinkedDemosResponse = components['schemas']['ProcessUnlinkedDemosResponse']
+type PipelineOverviewResponse = components['schemas']['PipelineOverviewResponse']
+type TrackingHealthEntryResponse = components['schemas']['TrackingHealthEntryResponse']
+type DiscoveredMatchAdminResponse = components['schemas']['DiscoveredMatchAdminResponse']
 
 export interface DemoFilters {
   game_id?: string
@@ -45,6 +49,11 @@ export const useDemosStore = defineStore('demos', () => {
   const links = ref<DemoMatchLinkResponse[]>([])
   const statusCounts = ref<DemoStatusCountsResponse | null>(null)
   const autoLinkEnabled = ref<boolean | null>(null)
+  // P-73 — the ingestion pipeline, which had no admin read surface at all.
+  const pipelineOverview = ref<PipelineOverviewResponse | null>(null)
+  const trackingHealth = ref<TrackingHealthEntryResponse[]>([])
+  const discoveredMatches = ref<DiscoveredMatchAdminResponse[]>([])
+  const lastBackfillResult = ref<ProcessUnlinkedDemosResponse | null>(null)
 
   const loading = computed(() => fetchDemosState.loading)
   const error = computed({
@@ -73,6 +82,10 @@ export const useDemosStore = defineStore('demos', () => {
   const markFailedState = createActionState()
   const fetchAutoLinkSettingState = createActionState()
   const updateAutoLinkSettingState = createActionState()
+  const fetchPipelineOverviewState = createActionState()
+  const fetchTrackingHealthState = createActionState()
+  const fetchDiscoveredMatchesState = createActionState()
+  const processUnlinkedState = createActionState()
 
   async function fetchDemos(filters: DemoFilters = {}) {
     return withActionState(fetchDemosState, async () => {
@@ -315,6 +328,68 @@ export const useDemosStore = defineStore('demos', () => {
     }, 'Failed to update auto-link setting')
   }
 
+  /**
+   * P-73: end-to-end ingestion health — tracking tokens → discovered-match
+   * queue → demo catalog. Everything upstream of the catalog previously ran
+   * only over the `X-API-Key` internal routes, so a stalled poller or a
+   * stuck enricher was invisible from the portal.
+   */
+  async function fetchPipelineOverview(game?: string): Promise<PipelineOverviewResponse> {
+    return withActionState(fetchPipelineOverviewState, async () => {
+      const result = await unwrapApi(api.GET('/v1/admin/pipeline/overview', {
+        params: { query: { game } },
+      }))
+      pipelineOverview.value = result.data
+      // The overview carries the auto-link switch so the backfill button can
+      // say why it would refuse; keep the shared ref in step.
+      autoLinkEnabled.value = result.data.auto_link_enabled
+      return result.data
+    }, 'Failed to fetch pipeline overview')
+  }
+
+  /** P-73: per-token tracking health, worst first. */
+  async function fetchTrackingHealth(
+    params: { game?: string; limit?: number } = {},
+  ): Promise<TrackingHealthEntryResponse[]> {
+    return withActionState(fetchTrackingHealthState, async () => {
+      const result = await unwrapApi(api.GET('/v1/admin/pipeline/tracking', {
+        params: { query: { game: params.game, limit: params.limit } },
+      }))
+      trackingHealth.value = result.data
+      return result.data
+    }, 'Failed to fetch tracking health')
+  }
+
+  /** P-73: the discovered-match queue; `status: 'failed'` is the failure list. */
+  async function fetchDiscoveredMatches(
+    params: { game?: string; status?: string; limit?: number } = {},
+  ): Promise<DiscoveredMatchAdminResponse[]> {
+    return withActionState(fetchDiscoveredMatchesState, async () => {
+      const result = await unwrapApi(api.GET('/v1/admin/pipeline/discovered-matches', {
+        params: { query: { game: params.game, status: params.status, limit: params.limit } },
+      }))
+      discoveredMatches.value = result.data
+      return result.data
+    }, 'Failed to fetch discovered matches')
+  }
+
+  /**
+   * P-64: run the demo→match auto-link backfill.
+   *
+   * The endpoint has existed since the auto-linker landed; the admin page had
+   * the kill-switch toggle but no way to run the pass, so a demo whose match
+   * was scheduled after its stats arrived stayed unlinked forever.
+   */
+  async function processUnlinkedDemos(limit = 500): Promise<ProcessUnlinkedDemosResponse> {
+    return withActionState(processUnlinkedState, async () => {
+      const result = await unwrapApi(api.POST('/v1/admin/demos/process-unlinked', {
+        params: { query: { limit } },
+      }))
+      lastBackfillResult.value = result.data
+      return result.data
+    }, 'Failed to run the auto-link backfill')
+  }
+
   function clearCurrent() {
     currentDemo.value = null
     players.value = []
@@ -329,6 +404,10 @@ export const useDemosStore = defineStore('demos', () => {
     links,
     statusCounts,
     autoLinkEnabled,
+    pipelineOverview,
+    trackingHealth,
+    discoveredMatches,
+    lastBackfillResult,
     loading,
     error,
     // Per-action states
@@ -351,6 +430,10 @@ export const useDemosStore = defineStore('demos', () => {
     markFailedState,
     fetchAutoLinkSettingState,
     updateAutoLinkSettingState,
+    fetchPipelineOverviewState,
+    fetchTrackingHealthState,
+    fetchDiscoveredMatchesState,
+    processUnlinkedState,
     // Actions
     fetchDemos,
     fetchDemo,
@@ -373,6 +456,10 @@ export const useDemosStore = defineStore('demos', () => {
     markFailed,
     fetchAutoLinkSetting,
     updateAutoLinkSetting,
+    fetchPipelineOverview,
+    fetchTrackingHealth,
+    fetchDiscoveredMatches,
+    processUnlinkedDemos,
     clearCurrent,
   }
 })
@@ -393,4 +480,8 @@ export type {
   AssociateDemoRequest,
   MarkDemoFailedRequest,
   AutoLinkSettingResponse,
+  ProcessUnlinkedDemosResponse,
+  PipelineOverviewResponse,
+  TrackingHealthEntryResponse,
+  DiscoveredMatchAdminResponse,
 }

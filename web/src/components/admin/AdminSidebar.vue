@@ -40,6 +40,13 @@
         :active="route.name?.toString().startsWith('admin-demo')"
       />
 
+      <v-list-item
+        prepend-icon="mdi-pipe"
+        title="Pipeline"
+        :to="{ name: 'admin-pipeline' }"
+        :active="route.name === 'admin-pipeline'"
+      />
+
       <v-list-subheader v-if="!rail">Players & Moderation</v-list-subheader>
 
       <v-list-item

@@ -200,6 +200,14 @@ const router = createRouter({
           component: () => import('@/pages/admin/AdminDemoDetailPage.vue'),
         },
         {
+          // P-73: operator visibility into everything upstream of the demo
+          // catalog (tracking tokens, discovered-match queue, enrichment),
+          // plus the P-64 backfill and the P-68 rating override.
+          path: 'pipeline',
+          name: 'admin-pipeline',
+          component: () => import('@/pages/admin/AdminPipelinePage.vue'),
+        },
+        {
           path: 'disputes',
           name: 'admin-disputes',
           component: () => import('@/pages/admin/AdminDisputesPage.vue'),

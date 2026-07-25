@@ -1,6 +1,6 @@
 # MatchZy Game-Server Integration — Design
 
-**Status:** Phase 1 implemented (2026-07-25) on branches `matchzy-phase1` (this repo + `api/`) and `server-agent/` (new sibling repo); Phases 2-4 proposed
+**Status:** Phases 1–3 implemented (2026-07-25) on branches `matchzy-phase1` (this repo + `api/`) and `server-agent/` (new sibling repo); Phase 4 proposed
 **Scope:** portal API (`api/`), web frontend (`web/`), a new `server-agent/` component, deploy tooling (`deploy/`)
 **Supersedes:** `api/docs/gaming-portal-hld.md` §6.8 (get5/RCON-inbound adapter design) and refines `api/docs/gaming-portal-database-schema.md` §11 for MatchZy.
 
@@ -632,8 +632,8 @@ OpenAPI types regenerate via the usual `npm run generate:api` / `openapi-dump` f
 | Phase | Deliverable | Proves |
 |---|---|---|
 | **1 — Registry + agent** ✅ | Migration 0080, admin CRUD + UI page, CA/enrollment, agent binary with heartbeat + `exec`, Caddy `agents.` site | mTLS channel, health visibility — **done**: 9 integration tests + live agent↔portal↔RCON smoke test |
-| **2 — Manual match setup** | Config builder, `load_match`, config/events endpoints, event pipeline through `series_end`, server result claims, admin "assign server" button, match server panel (REST-only states) | End-to-end match on a real server, driven by an admin |
-| **3 — Automation + realtime** | Veto-completion trigger, lifecycle-pass allocation/retry/reconciliation, WS extensions, live scoreboard, participant connect gating | The §1 happy path with zero admin touches |
+| **2 — Manual match setup** ✅ | Config builder, `load_match`, config/events endpoints, event pipeline through `series_end`, server result claims, admin "assign server" button, match server panel (REST-only states) | **done**: full replayed-series integration test (webhook auth → transitions → server claim → release) |
+| **3 — Automation + realtime** ✅ | Veto-completion trigger, lifecycle-pass allocation/retry/reconciliation, WS extensions, live scoreboard, participant connect gating | **done**: allocation predicate + booking exclusion tests; §7.3 socket keep-open shipped |
 | **4 — Demos + ops depth** | Demo upload → S3 → auto-link (+ Caddy override), **mid-series substitutions (§6.8)**, round-backup uploads + `loadbackup_url` restore tooling, admin console passthrough UI, pause controls, per-tournament cvar overrides | Full evidence loop + roster flexibility + operational tooling |
 
 Each phase lands behind `PORTAL_GAMESERVER_ENABLED` + per-tournament `settings.game_server.enabled`, so nothing changes for existing tournaments until opted in.

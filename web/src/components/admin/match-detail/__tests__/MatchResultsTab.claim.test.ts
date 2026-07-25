@@ -23,6 +23,7 @@ import { api } from '@/api'
 import MatchResultsTab from '@/components/admin/match-detail/MatchResultsTab.vue'
 import { SnackbarKey, createSnackbar } from '@/composables/useSnackbar'
 import { useMatchResultsStore } from '@/stores/matchResults'
+import type { TournamentMatchResponse } from '@/stores/tournaments'
 
 const mockGet = api.GET as unknown as Mock
 const vuetify = createVuetify({ components, directives })
@@ -41,12 +42,32 @@ const P2_REG = '00000000-0000-0000-0000-0000000000a2'
 const EVIDENCE_A = '01912f4a-1111-7000-8000-000000000001'
 const EVIDENCE_B = '01912f4a-2222-7000-8000-000000000002'
 
-function match(p1Score: number | null, p2Score: number | null) {
+/**
+ * Typed as the real `TournamentMatchResponse` rather than a loose object
+ * literal. P-86 was exactly this: fixtures declared as `string`/`any` stop the
+ * compiler noticing when a DTO changes, so the test keeps passing against a
+ * shape the product no longer returns. Every required field is present, and the
+ * two that matter here are the parameters.
+ */
+function match(
+  p1Score: number,
+  p2Score: number,
+  overrides: Partial<TournamentMatchResponse> = {},
+): TournamentMatchResponse {
   return {
     id: 'match-1',
     tournament_id: 'tour-1',
+    stage_id: 'stage-1',
+    bracket_id: 'bracket-1',
+    bracket_position: 'R1M1',
+    round: 1,
     match_number: 1,
     status: 'completed',
+    match_format: 'bo1',
+    maps_required: 1,
+    check_in_required: false,
+    veto_required: false,
+    disputed: false,
     participant1_registration_id: P1_REG,
     participant2_registration_id: P2_REG,
     participant1_name: 'Alpha',
@@ -55,6 +76,9 @@ function match(p1Score: number | null, p2Score: number | null) {
     participant2_score: p2Score,
     winner_registration_id: P1_REG,
     scheduled_at: null,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+    ...overrides,
   }
 }
 
@@ -94,7 +118,7 @@ function claim(p1: number, p2: number, overrides: Record<string, unknown> = {}) 
  * The tab's own `watch` does fire `fetchMatchResultOverrides`, which is why the
  * GET mock still has to resolve.
  */
-async function mountTab(matchRow: ReturnType<typeof match>, claimRow: unknown) {
+async function mountTab(matchRow: TournamentMatchResponse, claimRow: unknown) {
   mockGet.mockResolvedValue({ data: { data: [] }, error: undefined })
 
   const pinia = createPinia()
@@ -153,10 +177,24 @@ describe('MatchResultsTab — a superseded claim says so (P-170)', () => {
     expect(w.text()).toContain('Current Result Claim')
   })
 
-  it('stays silent when the match has no recorded score yet', async () => {
-    // `null !== 0` — comparing before a result exists would mark every unplayed
-    // match's claim superseded.
-    const w = await mountTab(match(null, null), claim(0, 0))
+  it('stays silent for a PENDING claim that has not been applied yet', async () => {
+    // The case the first draft of this got wrong. `participant1_score` is
+    // NOT NULL DEFAULT 0 (migration 0030:340), so an unplayed match records 0-0
+    // rather than null — a pending 16-14 claim "disagrees" with the match on the
+    // entirely ordinary path where it simply has not been confirmed. Flagging it
+    // would put a warning on almost every live match.
+    const w = await mountTab(match(0, 0), claim(16, 14, { status: 'pending' }))
+
+    expect(w.find('[data-testid="claim-superseded-notice"]').exists()).toBe(false)
+  })
+
+  it('stays silent when no result has been recorded at all', async () => {
+    // Because the score columns default to 0, `winner_registration_id` is the
+    // only honest signal that a result exists.
+    const w = await mountTab(
+      match(0, 0, { winner_registration_id: undefined }),
+      claim(16, 14),
+    )
 
     expect(w.find('[data-testid="claim-superseded-notice"]').exists()).toBe(false)
   })

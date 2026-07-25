@@ -354,24 +354,32 @@ const recordedWinnerName = computed(() => {
 })
 
 /**
- * P-170 — the claim disagrees with the score the match actually records.
+ * P-170 — a CONFIRMED claim that disagrees with the score the match records.
  *
  * An admin override rewrites the match row and deliberately leaves the claim
- * row alone, so this is the normal state after any correction. It can also
- * arise from a dispute resolved with an adjusted score, which behaves the same
- * way — the notice is written to cover both rather than naming overrides,
- * because the operator's question ("which number is live?") is identical.
+ * row alone, so this is the normal state after any correction. A dispute
+ * resolved with an adjusted score produces the same state, which is why the
+ * notice describes the disagreement rather than naming overrides — the
+ * operator's question ("which number is live?") is identical either way.
  *
- * Requires BOTH scores to be present before comparing. A match with no recorded
- * result yet has nulls, and `null !== 0` would mark every unplayed match's claim
- * superseded — noise on the ordinary path, which is exactly what stops people
- * reading warnings.
+ * `status === 'confirmed'` is load-bearing, and the first draft of this got it
+ * wrong. `tournament_matches.participant1_score` is `NOT NULL DEFAULT 0`
+ * (migration 0030:340), so an unplayed match records 0-0 rather than null — a
+ * PENDING claim of 16-14 therefore "disagrees" with the match on the entirely
+ * ordinary path where it simply has not been confirmed yet. Flagging that as
+ * superseded would put a warning on almost every live match and teach everyone
+ * to ignore it. A claim can only be superseded if it was applied in the first
+ * place.
+ *
+ * `hasRecordedResult` guards the same way from the other side: because the score
+ * columns default to 0, `winner_registration_id` is the only honest signal that
+ * a result exists at all.
  */
 const claimIsSuperseded = computed(() => {
   const claim = currentResult.value
   const m = props.match
-  if (!claim || !m) return false
-  if (m.participant1_score == null || m.participant2_score == null) return false
+  if (!claim || !m || !hasRecordedResult.value) return false
+  if (claim.status !== 'confirmed') return false
   return (
     claim.claimed_participant1_score !== m.participant1_score ||
     claim.claimed_participant2_score !== m.participant2_score

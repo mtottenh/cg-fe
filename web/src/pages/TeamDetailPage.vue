@@ -639,7 +639,14 @@ async function handlePromoteToCaptain(playerId: string) {
     // Refresh members to update roles
     await teamsStore.fetchMembers(teamSeasonId.value)
   } catch {
-    error.value = teamsStore.error || 'Failed to promote member'
+    // P-116: `teamsStore.error` is a computed alias over `fetchMyTeamsState`
+    // (stores/leagueTeams.ts:55) — the state of an entirely different action.
+    // Reading it here meant the promote failure's real reason ("member is
+    // already a captain", "cannot promote inactive member to captain") was
+    // never in the variable being read, so every failure rendered the generic
+    // fallback. Each handler reads ITS OWN action state; the transfer/disband
+    // handlers added in 28afc7a already do.
+    error.value = teamsStore.promoteToCaptainState.error || 'Failed to promote member'
   }
 }
 
@@ -744,7 +751,8 @@ async function handlePlayerInvited() {
   try {
     await teamsStore.fetchTeamInvitations(teamSeasonId.value)
   } catch {
-    error.value = teamsStore.error || 'Failed to refresh invitations'
+    // P-116, same defect: the failing call is `fetchTeamInvitations`.
+    error.value = teamsStore.fetchTeamInvitationsState.error || 'Failed to refresh invitations'
   }
 }
 
@@ -755,7 +763,9 @@ async function handleCancelInvitation(invitationId: string) {
     successMessage.value = 'Invitation cancelled'
     showSuccess.value = true
   } catch {
-    error.value = teamsStore.error || 'Failed to cancel invitation'
+    // P-116: e.g. "Invitation is invalid or already used" — the reason a
+    // captain needs, instead of a fallback that says nothing.
+    error.value = teamsStore.cancelInvitationState.error || 'Failed to cancel invitation'
   } finally {
     cancellingInvitation.value = null
   }
@@ -772,7 +782,9 @@ async function handleAcceptRequest(invitationId: string) {
     showSuccess.value = true
     if (teamSeasonId.value) await teamsStore.fetchMembers(teamSeasonId.value)
   } catch {
-    error.value = teamsStore.error || 'Failed to accept join request'
+    // P-116: acceptApplication has its own state — a roster-full or
+    // one-team-per-season refusal is actionable, "Failed" is not.
+    error.value = teamsStore.acceptApplicationState.error || 'Failed to accept join request'
   } finally {
     respondingToRequest.value = null
   }
@@ -786,7 +798,8 @@ async function handleDeclineRequest(invitationId: string) {
     successMessage.value = 'Join request declined'
     showSuccess.value = true
   } catch {
-    error.value = teamsStore.error || 'Failed to decline join request'
+    // P-116.
+    error.value = teamsStore.declineApplicationState.error || 'Failed to decline join request'
   } finally {
     respondingToRequest.value = null
   }
@@ -802,7 +815,9 @@ async function handleApplyToTeam() {
     showApplyDialog.value = false
     applyMessage.value = ''
   } catch {
-    error.value = teamsStore.error || 'Failed to apply to team'
+    // P-116: "Player already has a pending invitation" tells the applicant
+    // their application is already in; the fallback implied it wasn't.
+    error.value = teamsStore.applyToTeamState.error || 'Failed to apply to team'
   } finally {
     applyingToTeam.value = false
   }

@@ -144,8 +144,26 @@
               class="elevation-0"
               data-testid="league-invitations-table"
             >
-              <template v-slot:item.user_id="{ item }">
-                <span class="text-caption">{{ item.user_id.substring(0, 8) }}...</span>
+              <template v-slot:item.username="{ item }">
+                <div data-testid="invitation-user">
+                  <div class="font-weight-medium">{{ item.display_name || item.username }}</div>
+                  <div v-if="item.display_name" class="text-caption text-medium-emphasis">
+                    {{ item.username }}
+                  </div>
+                </div>
+              </template>
+
+              <template v-slot:item.message="{ item }">
+                <span
+                  v-if="item.message"
+                  class="text-truncate"
+                  style="max-width: 200px; display: inline-block;"
+                  :title="item.message"
+                  data-testid="invitation-message"
+                >
+                  {{ item.message }}
+                </span>
+                <span v-else class="text-grey-lighten-1">-</span>
               </template>
 
               <template v-slot:item.status="{ item }">
@@ -199,12 +217,23 @@
               class="elevation-0"
               data-testid="league-applications-table"
             >
-              <template v-slot:item.user_id="{ item }">
-                <span class="text-caption">{{ item.user_id.substring(0, 8) }}...</span>
+              <template v-slot:item.username="{ item }">
+                <div data-testid="application-user">
+                  <div class="font-weight-medium">{{ item.display_name || item.username }}</div>
+                  <div v-if="item.display_name" class="text-caption text-medium-emphasis">
+                    {{ item.username }}
+                  </div>
+                </div>
               </template>
 
               <template v-slot:item.message="{ item }">
-                <span v-if="item.message" class="text-truncate" style="max-width: 200px; display: inline-block;">
+                <span
+                  v-if="item.message"
+                  class="text-truncate"
+                  style="max-width: 200px; display: inline-block;"
+                  :title="item.message"
+                  data-testid="application-message"
+                >
                   {{ item.message }}
                 </span>
                 <span v-else class="text-grey-lighten-1">-</span>
@@ -354,8 +383,23 @@ const memberHeaders = [
   { title: 'Actions', key: 'actions', width: '100px', sortable: false, align: 'center' as const },
 ]
 
+/**
+ * P-115: both tables keyed their first column on `user_id` and rendered
+ * `item.user_id.substring(0, 8)`. No surface in the product shows a user's
+ * UUID, so the row named nobody — and because ids are UUID v7, whose first
+ * characters encode the creation timestamp, two invitations sent seconds apart
+ * shared their prefix and were genuinely ambiguous rather than merely cryptic.
+ * `LeagueInvitationResponse` now carries `username`/`display_name` the way
+ * `LeagueMemberResponse` always has, so both tables key on the name.
+ *
+ * P-114: `invitationHeaders` had no Message column at all, while
+ * `applicationHeaders` beside it did — so once P-94 made the invite message
+ * reach the API, the one surface an organiser would look at still never showed
+ * it.
+ */
 const invitationHeaders = [
-  { title: 'User ID', key: 'user_id' },
+  { title: 'User', key: 'username' },
+  { title: 'Message', key: 'message' },
   { title: 'Status', key: 'status', width: '100px' },
   { title: 'Sent', key: 'created_at', width: '120px' },
   { title: 'Expires', key: 'expires_at', width: '120px' },
@@ -363,7 +407,7 @@ const invitationHeaders = [
 ]
 
 const applicationHeaders = [
-  { title: 'User ID', key: 'user_id' },
+  { title: 'User', key: 'username' },
   { title: 'Message', key: 'message' },
   { title: 'Status', key: 'status', width: '100px' },
   { title: 'Applied', key: 'created_at', width: '120px' },

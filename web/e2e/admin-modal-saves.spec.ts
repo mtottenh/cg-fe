@@ -527,14 +527,22 @@ test.describe('Admin modal saves', () => {
     await expect(inviteDialog).toBeHidden()
 
     await expect(membersDialog.getByText('No pending invitations')).toBeHidden({ timeout: 20_000 })
-    // The table shows only the first 8 characters of the user id
-    // (LeagueMembersModal.vue:147). UUID v7 prefixes are timestamps, so that is
-    // ambiguous in general — the count assertion is what pins it to one row in
-    // a league whose invitation list started empty.
+    // GROUND RULE 9 again — a SPECIFICATION change, and again one this spec
+    // had documented as a defect it could not fix. This locator used to read
+    // `invitee.userId.substring(0, 8)`, because the table rendered nothing but
+    // a truncated id (P-115), and the comment here said so: UUID v7 prefixes
+    // are timestamps, so the prefix was ambiguous and only the count assertion
+    // pinned the row. The row now carries the invitee's name, so it is located
+    // the way a human would — and the prefix is asserted GONE below, which is
+    // the half that would fail if P-115 regressed.
     const invitationRow = invitationsTable
       .locator('tbody tr')
-      .filter({ hasText: invitee.userId.substring(0, 8) })
+      .filter({ hasText: invitee.displayName })
     await expect(invitationRow).toHaveCount(1)
+    await expect(
+      invitationsTable.getByText(`${invitee.userId.substring(0, 8)}...`),
+      'the truncated user id must not be what identifies the row',
+    ).toHaveCount(0)
     // The status chip renders `{{ item.status }}` raw (:150-154) — asserted on
     // the Cancel action instead, which is what the row actually offers.
     await expect(invitationRow.getByRole('button', { name: 'Cancel invitation' })).toBeVisible()

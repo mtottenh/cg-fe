@@ -10194,6 +10194,12 @@ export interface components {
         LeagueInvitationResponse: {
             /** Format: date-time */
             created_at: string;
+            /**
+             * @description The user's display name, when they have a player profile. This is the
+             *     name the invite search shows the organiser, so it is what the resulting
+             *     row should lead with; `username` is the fallback.
+             */
+            display_name?: string | null;
             /** Format: date-time */
             expires_at?: string | null;
             id: string;
@@ -10213,6 +10219,16 @@ export interface components {
             responded_by?: string | null;
             status: string;
             user_id: string;
+            /**
+             * @description Username of the invited/applying user. Always present.
+             *
+             *     P-115: the admin invitations and applications tables had only `user_id`
+             *     to show and truncated it to 8 characters — and UUID v7 prefixes are
+             *     timestamps, so rows created seconds apart were indistinguishable rather
+             *     than merely cryptic. `LeagueMemberResponse` has carried `username`
+             *     since it existed; this closes the asymmetry.
+             */
+            username: string;
         };
         /** @description Simpler response DTO for member operations (join, role update, etc.). */
         LeagueMemberBasicResponse: {

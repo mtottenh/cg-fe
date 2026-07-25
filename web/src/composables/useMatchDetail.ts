@@ -328,6 +328,43 @@ export function useMatchDetail() {
     },
   )
 
+  /**
+   * P-127 — the same defect, on the SUBMIT path. The watcher above does not
+   * cover it, and that was verified rather than assumed: a first submission
+   * is the transition `undefined → 'pending'`, which both of its guards
+   * reject (`previous === undefined` returns early, and `pending` is neither
+   * `disputed` nor `confirmed`).
+   *
+   * `ResultSubmissionPanel` renders behind `canSubmitResult`, which is
+   * `!currentResult || currentResult.status !== 'pending'`. `submitResult`
+   * writes the new **pending** claim into the store before it resolves, so
+   * that gate is already false — and the panel already unmounted — by the
+   * time `handleSubmit` resumes to `emit('submitted')`. Vue's `emit()` opens
+   * with `if (instance.isUnmounted) return`, so the event is not merely
+   * late, it is discarded; `MatchDetailPage.handleResultSubmitted` never
+   * runs. The page therefore kept rendering the pre-submit match (`Live`
+   * rather than `Awaiting Result`) with the new claim missing from its
+   * history until the 15s poll tick — on the most-used flow in the product.
+   *
+   * Moving the emit ahead of the `await` is not the fix: it would fire
+   * before the write it is announcing has landed, trading a dropped event
+   * for a stale one. The durable signal is the STORE's own action state,
+   * which outlives the component that started the write — `loading` falling
+   * back to false with no error means "a submission from this page just
+   * succeeded", and it is untouched by fetches, so a poll or a page load
+   * discovering someone else's claim cannot trigger it.
+   */
+  watch(
+    () => resultsStore.submitResultState.loading,
+    (isLoading, wasLoading) => {
+      if (isLoading || !wasLoading) return
+      // `withActionState` writes `error` (in its catch) before `loading`
+      // (in its finally), so by this edge the outcome is already readable.
+      if (resultsStore.submitResultState.error) return
+      void pollMatch()
+    },
+  )
+
   async function fetchAll() {
     const tournamentSlug = route.params.tournamentSlug as string
     const matchId = route.params.matchId as string

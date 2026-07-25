@@ -298,7 +298,6 @@
           :maps="vetoPickedMaps"
           :selectable-maps="selectableMaps"
           class="mb-6"
-          @submitted="handleResultSubmitted"
         />
 
         <!-- Show waiting message when user submitted and waiting for opponent -->
@@ -464,8 +463,9 @@ const {
   showWaitingForOpponent, autoConfirmCountdown, checkInCountdown, vetoPickedMaps,
   selectableMaps,
   opponentPlayerId, suggestedTimes, userRegistrationId,
-  fetchAll, fetchResultData,
+  fetchAll,
   schedulingStore,
+  resultsStore,
   evidenceStore,
 } = useMatchDetail()
 
@@ -663,10 +663,32 @@ async function handleWithdraw() {
   )
 }
 
-async function handleResultSubmitted() {
-  snackbar.show('Result submitted! Waiting for opponent confirmation.', 'success')
-  await fetchResultData()
-}
+/**
+ * P-127 — the submitter's feedback, driven by state rather than by an event.
+ *
+ * This replaces `handleResultSubmitted`, which was bound to
+ * `ResultSubmissionPanel`'s `@submitted` and **could never run**: the panel
+ * renders behind `canSubmitResult`, `submitResult` writes the new pending
+ * claim that falsifies it, and Vue's `emit()` discards events from an
+ * unmounted instance. So the user got no confirmation that the most
+ * important action on the page had worked. See the watcher in
+ * `useMatchDetail` for the full mechanism and for the match refresh.
+ *
+ * Unlike `@disputed`/`@confirmed` below — which P-6 deliberately left wired
+ * as the correct response should the event ever land — the `@submitted`
+ * binding is GONE from the template rather than kept alongside this watcher,
+ * because the two would double-fire the snackbar the day the panel stops
+ * being unmounted by its own write. Nothing is lost: this watcher fires on
+ * exactly the same successful submission, mounted or not.
+ */
+watch(
+  () => resultsStore.submitResultState.loading,
+  (isLoading, wasLoading) => {
+    if (isLoading || !wasLoading) return
+    if (resultsStore.submitResultState.error) return
+    snackbar.show('Result submitted! Waiting for opponent confirmation.', 'success')
+  },
+)
 
 async function handleResultConfirmed() {
   snackbar.show('Result confirmed! Match completed.', 'success')

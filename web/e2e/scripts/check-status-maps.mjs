@@ -43,13 +43,11 @@ const SRC = join(WEB, 'src')
 // these and made the ratchet report pre-existing leaks as new. The key has to be
 // stable under unrelated edits or the guard cries wolf and gets disabled.
 const BASELINE = {
-  'src/components/admin/LeagueMembersModal.vue#status': 2,
-  'src/components/admin/LeagueSearchAutocomplete.vue#status': 1,
+  // 8 -> 2. Fix-wave A cleared the league surfaces (Lane E) and the team page
+  // (Lane D). The two left are blocked on P-112: `award.status` and
+  // `registration.status` have no declared enum to map against.
   'src/components/admin/RegistrationReasonModal.vue#status': 1,
   'src/components/admin/tournament-detail/AwardsTab.vue#status': 1,
-  'src/pages/LeagueDetailPage.vue#status': 1,
-  'src/pages/LeaguesPage.vue#status': 1,
-  'src/pages/TeamDetailPage.vue#status': 1,
 }
 
 /** Genuinely not an enum — nothing to map. */
@@ -75,6 +73,12 @@ for (const file of walk(SRC)) {
   const rel = relative(WEB, file).split('\\').join('/')
   if (EXEMPT.some((e) => rel === e)) continue
   for (const line of readFileSync(file, 'utf-8').split('\n')) {
+    // Skip comments. `check-test-quality.mjs` already does this and this one did
+    // not, so a comment DOCUMENTING the raw-render defect was counted AS the
+    // defect — it cost a lane a cycle. A guard that flags prose teaches people
+    // to distrust it.
+    const code = line.trimStart()
+    if (code.startsWith('//') || code.startsWith('*') || code.startsWith('<!--')) continue
     const m = RAW.exec(line)
     if (!m) continue
     const key = `${rel}#${m[1]}`

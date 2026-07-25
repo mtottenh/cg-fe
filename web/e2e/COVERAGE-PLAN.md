@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **112 product findings** from what
+*"what should happen here?"* — and that question surfaced **116 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **112 findings · 73 fixed** → the status-drift defect class closed at the source
+112 → 0) → **116 findings · 79 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -337,9 +337,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 112 found · 73 fixed · 39 open** (P-53 mitigated).
+**Status (derived): 116 found · 79 fixed · 37 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-75, P-80, P-82, P-88, P-90, P-92, P-95, P-96, P-97, P-98, P-99, P-109, P-110, P-111.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-72, P-73, P-75, P-80, P-82, P-88, P-90, P-92, P-98, P-99, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -420,8 +420,8 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-59 | **`schedule_match` direct-set: no authz → manufactured forfeits** | **security** | **fixed** `930f8c9` (red-proven) |
 | P-60 | Logout never revokes the session server-side | security gap | **fixed** `409969b` |
 | P-61 | UI disqualify doesn't cascade; strands matches | admin gap | open |
-| P-62 | Transfer team ownership has no UI | product gap | open |
-| P-63 | Disband team has no UI | product gap | open |
+| P-62 | Transfer team ownership has no UI | product gap | **fixed** `28afc7a` |
+| P-63 | Disband team has no UI | product gap | **fixed** `28afc7a` |
 | P-64 | Demo auto-link backfill unreachable from UI | admin gap | open |
 | P-65 | `/users/me/action-items` missing from OpenAPI doc | build (P-52 family) | open |
 | P-66 | Match audit trail + stored suggestions invisible | minor | open |
@@ -429,7 +429,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-68 | Scraped Premier rating has no correction path | data integrity | open |
 | P-69 | Platform Elo engine is dead code (never called) | **scope decided** | open → G |
 | P-70 | **Platform role assignment has no UI** | admin gap | open |
-| P-71 | Returning team can't enter the next season | blocks flow | open |
+| P-71 | Returning team can't enter the next season | blocks flow | **fixed** `28afc7a` |
 | P-72 | No admin score correction outside a dispute | admin gap | open |
 | P-73 | Ingestion pipeline invisible to admins | ops blind spot | open |
 | P-74 | **"Retry Processing" calls no API — reports success anyway** | **trust** | **fixed** `c49380d+1d5c9e5` |
@@ -451,13 +451,17 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-106 | `MapPoolPicker` cards are unlabelled clickable divs | a11y | **fixed** `b137146` |
 | P-107 | **The full suite is red as a whole though every spec is green alone** | **suite integrity** | **fixed** `cb4c4db` |
 | P-94 | `InviteUserModal` message collected, validated, then discarded | user-facing | **fixed** `c49380d` |
-| P-95 | **Invite-only league is un-invitable — needs a UUID no surface shows** | feature unusable | open |
-| P-96 | League invitations/applications tables print the raw enum | user-facing | open |
-| P-97 | Every league silently gets an unconfigured "Season 1" | product question | open |
+| P-95 | **Invite-only league is un-invitable — needs a UUID no surface shows** | feature unusable | **fixed** `4dd4f60` |
+| P-96 | League invitations/applications tables print the raw enum | user-facing | **fixed** `4dd4f60` |
+| P-97 | Every league silently gets an unconfigured "Season 1" | product question | **fixed** `4dd4f60` |
 | P-98 | Stage "Format (optional)" is mandatory — blank is a 400 | user trap | open |
 | P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | open |
 | P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | **fixed** `b137146` |
 | P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
+| P-113 | **Ownership transfer leaves the RBAC role behind — new owner 403s, old owner retains power** | **authorization** | open |
+| P-114 | Invitations table has no Message column, so P-94's message is invisible | user-facing | open |
+| P-115 | Invitations/applications identify people by a truncated UUID | user-facing | open |
+| P-116 | `TeamDetailPage` handlers read the wrong action state, so errors are generic | user-facing | open |
 | P-112 | **API stringifies enums it already declares — 10 maps unlockable** | **architectural** | open |
 | P-93 | **Date overrides saved one day early in every positive UTC offset** | **data corruption** | **fixed** `2b4d4ee` |
 | P-87 | **Every game-config WRITE 404s — handler passes UUID to a slug-keyed update** | **feature dead** | **fixed** `024513b` |
@@ -905,6 +909,40 @@ appearing a third time in a different guise. Both interfaces are now optional wi
 serialisation documented in place. Lane 6 also added the positive control its predecessor
 lacked (`seedsBefore = [1,2,3,4]`), without which the post-clear assertion would have passed
 even if `seed` were never serialised at all.
+
+**P-113 — transferring team ownership leaves the RBAC role behind.** Found by Lane D while
+building P-62's control, and it makes that control half-dead after the first use.
+`create_team_with_season_and_captain` grants a **team-scoped `team_captain` RBAC role** to the
+creator (`portal-db/.../league_team/team.rs:439-465`), but `transfer_ownership` (`:290-314`)
+updates `league_teams.owner_player_id` and **nothing else** — verified: the UPDATE touches one
+column and never goes near `user_roles`.
+
+Since `disband_team`, `register_team_for_season` and `update_team` all gate on
+`require_team_settings_manage`, after a transfer the **new owner gets 403 on all three** while
+the **old owner can still disband a team they no longer own**. It also inverts the frontend:
+`TeamEditPage` gates its form on `owner_player_id`, so the new owner sees a form whose save
+403s. Related: `promote_to_captain` never grants the role either, so the roster "captain" and
+the RBAC `team_captain` have fully diverged. Fix = move the scoped grant with the ownership,
+in the same transaction. → **T0-class: authorization.**
+
+**P-114 — the invitation message is stored and never shown.** P-94 made the message reach the
+API; `invitationHeaders` (`LeagueMembersModal.vue:357-363`) has **no Message column** — only
+`applicationHeaders` does. **This corrects P-94's own note in this register**, which claimed the
+modal "renders a Message column that could therefore never be populated for an invitation": the
+column does not exist for invitations at all, so the data now written is invisible. → T6.
+
+**P-115 — invitations and applications identify people by a truncated UUID.**
+`LeagueMembersModal.vue:147`/`:200` render `item.user_id.substring(0, 8)`. P-95 fixed the
+*input* side (search by name), but the resulting row still cannot be read by a human — and per
+the §2 trap, UUID v7 prefixes are timestamps, so two invitations created seconds apart are
+genuinely indistinguishable. Needs `username`/`display_name` on `LeagueInvitationResponse`. → T6.
+
+**P-116 — `TeamDetailPage` handlers report the wrong error.** `handlePromoteToCaptain`,
+`handleCancelInvitation`, `handleAcceptRequest`, `handleDeclineRequest` and `handleApplyToTeam`
+all read `teamsStore.error`, a computed alias over `fetchMyTeamsState` — so the real reason
+(e.g. "member is already a captain") never reaches the user and they always get the generic
+fallback. Lane D's new handlers use their own action state; the pre-existing ones were left
+alone to keep that diff scoped. → E.
 
 **P-112 — the API stringifies enums it has already declared, so the frontend cannot lock them.**
 `DisputeResponse.priority` is `String` (`dto/responses/dispute.rs:53`, via `d.priority.to_string()`)

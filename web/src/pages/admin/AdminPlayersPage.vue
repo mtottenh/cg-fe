@@ -307,8 +307,9 @@
                 <v-list-item-title>{{ team.team_name }} [{{ team.team_tag }}]</v-list-item-title>
                 <v-list-item-subtitle>
                   {{ team.league_name }} - {{ team.season_name }}
+                  <!-- P-132: coloured from the map, labelled from the wire. -->
                   <v-chip size="x-small" class="ml-2" :color="getRoleColor(team.role)">
-                    {{ team.role }}
+                    {{ getRoleLabel(team.role) }}
                   </v-chip>
                 </v-list-item-subtitle>
               </v-list-item>
@@ -341,7 +342,7 @@ import { watchDebounced } from '@vueuse/core'
 import { api, ApiError } from '@/api'
 import { useGamesStore } from '@/stores/games'
 import { formatDate } from '@/utils/formatters'
-import { teamRoleMap, getStatusColor } from '@/utils/statusMaps'
+import { teamRoleMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import type { components } from '@/api/types'
 
@@ -402,6 +403,7 @@ const headers = [
 
 // Helpers
 const getRoleColor = (role: string) => getStatusColor(teamRoleMap, role)
+const getRoleLabel = (role: string) => getStatusLabel(teamRoleMap, role)
 
 function clearAllFilters() {
   search.value = ''

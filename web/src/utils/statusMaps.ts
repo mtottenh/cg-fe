@@ -180,6 +180,29 @@ export const disputePriorityMap: StatusMap<S['DisputePriority']> = {
   urgent: { color: 'error', label: 'Urgent' },
 }
 
+/**
+ * P-131 — why a dispute's `reason` needs a map at all.
+ *
+ * It reads like free text and was rendered like free text (a `pre-wrap` block in
+ * the detail modal, a truncating span in the queue), but `DisputeResponse.reason`
+ * is the `DisputeReason` ENUM — the picker in `ResultDisputeModal` writes one of
+ * seven wire values. So both admin surfaces printed `player_misconduct` at the
+ * operator triaging the report. `description` beside it is the free-text field
+ * and stays unmapped.
+ *
+ * Keyed, so a reason the backend adds and this map forgets is a compile error
+ * rather than another snake_case leak.
+ */
+export const disputeReasonMap: StatusMap<S['DisputeReason']> = {
+  wrong_score: { color: 'warning', label: 'Wrong Score', icon: 'mdi-numeric' },
+  wrong_winner: { color: 'warning', label: 'Wrong Winner', icon: 'mdi-trophy-broken' },
+  cheating: { color: 'error', label: 'Cheating', icon: 'mdi-shield-alert' },
+  rule_violation: { color: 'error', label: 'Rule Violation', icon: 'mdi-gavel' },
+  technical_issue: { color: 'info', label: 'Technical Issue', icon: 'mdi-lan-disconnect' },
+  player_misconduct: { color: 'error', label: 'Player Misconduct', icon: 'mdi-account-alert' },
+  other: { color: 'grey', label: 'Other', icon: 'mdi-help-circle-outline' },
+}
+
 // P-91: the games table rendered `{{ item.status }}` raw because no map existed.
 // `disable` writes `maintenance`, not `disabled` (repositories/game.rs:182), so
 // a disabled game showed the literal string "maintenance" to the operator.
@@ -238,12 +261,26 @@ export const leagueRoleMap: StatusMap = {
 // `eliminated`, `disqualified`, `withdrawn`) had NO entry and rendered as the
 // raw wire value, while six values belonging to neither enum (`left`,
 // `suspended`, `removed`, `benched`, `trial`, plus a duplicate) sat unused.
-export const teamStatusMap: StatusMap<S['LeagueTeamStatus'] | S['LeagueTeamSeasonStatus']> = {
+//
+// ...except `left` and `removed` were NOT unused, and dropping them re-opened
+// the leak the keying was meant to close. There is a THIRD consumer:
+// `MyLeagueTeamsPage` renders `membership.status`, which is
+// `LeagueTeamMemberStatus` (active | inactive | left | removed) — a member row,
+// not a team row. `v_player_league_teams` (migrations/0026:454) has no status
+// filter and `list_memberships_for_player` adds none, so a player who leaves or
+// is removed keeps a card on "My Teams" and its chip printed the literal wire
+// value `left` / `removed`. Found by auditing the call sites while fixing P-133,
+// which is the same "the map does not cover the enum the call site feeds it"
+// mistake one property over. The union now names all three enums, so the next
+// consumer to point a fourth enum at this map fails to compile.
+export const teamStatusMap: StatusMap<
+  S['LeagueTeamStatus'] | S['LeagueTeamSeasonStatus'] | S['LeagueTeamMemberStatus']
+> = {
   // LeagueTeamStatus
   active: { color: 'success', label: 'Active' },
   inactive: { color: 'grey', label: 'Inactive' },
   disbanded: { color: 'error', label: 'Disbanded' },
-  // LeagueTeamSeasonStatus — `LeagueTeamsPanel`/`MyLeagueTeamsPage` render
+  // LeagueTeamSeasonStatus — `LeagueTeamsPanel`/`AdminTeamsPage` render
   // `team_status` from the season row through this same map.
   forming: { color: 'info', label: 'Forming' },
   pending: { color: 'warning', label: 'Pending' },
@@ -251,6 +288,9 @@ export const teamStatusMap: StatusMap<S['LeagueTeamStatus'] | S['LeagueTeamSeaso
   eliminated: { color: 'error', label: 'Eliminated' },
   disqualified: { color: 'error', label: 'Disqualified' },
   withdrawn: { color: 'grey', label: 'Withdrawn' },
+  // LeagueTeamMemberStatus — `MyLeagueTeamsPage` renders `membership.status`.
+  left: { color: 'grey', label: 'Left' },
+  removed: { color: 'error', label: 'Removed' },
 }
 
 export const teamInvitationStatusMap: StatusMap<S['LeagueTeamInvitationStatus']> = {

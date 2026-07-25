@@ -73,9 +73,16 @@
               </tbody>
             </v-table>
 
+            <!--
+              P-131: `reason` is the `DisputeReason` ENUM, not free text — the
+              `pre-wrap` block this replaced printed `player_misconduct` at the
+              operator. `description` below IS free text and keeps its block.
+            -->
             <div class="mt-3">
               <div class="text-subtitle-2 mb-1">Reason</div>
-              <div class="text-body-2" style="white-space: pre-wrap">{{ dispute.reason }}</div>
+              <v-chip size="small" :color="getDisputeReasonColor(dispute.reason)" variant="tonal">
+                {{ getDisputeReasonLabel(dispute.reason) }}
+              </v-chip>
             </div>
 
             <div v-if="dispute.description" class="mt-3">
@@ -379,7 +386,7 @@
 <script setup lang="ts">
 import { useDisplay } from 'vuetify'
 import { ref, watch, computed } from 'vue'
-import { useDisputesStore, getDisputeStatusColor, getDisputeStatusLabel, getDisputePriorityColor, getDisputePriorityLabel } from '@/stores/disputes'
+import { useDisputesStore, getDisputeStatusColor, getDisputeStatusLabel, getDisputePriorityColor, getDisputePriorityLabel, getDisputeReasonColor, getDisputeReasonLabel } from '@/stores/disputes'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatDateTime } from '@/utils/formatters'
 

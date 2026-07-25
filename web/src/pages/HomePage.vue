@@ -87,7 +87,8 @@
                       </v-avatar>
                     </template>
                     <v-list-item-title>{{ membership.team_name }}</v-list-item-title>
-                    <v-list-item-subtitle>{{ membership.role }}</v-list-item-subtitle>
+                    <!-- P-132: `role` is `LeagueTeamRole`, not a display string. -->
+                    <v-list-item-subtitle>{{ getRoleLabel(membership.role) }}</v-list-item-subtitle>
                   </v-list-item>
                 </v-list>
               </template>
@@ -320,7 +321,7 @@ import { unwrapApi } from '@/stores/helpers'
 import type { components } from '@/api/types'
 import CaptainActionsWidget from '@/components/CaptainActionsWidget.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
-import { matchStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import { matchStatusMap, teamRoleMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 type TournamentMatchResponse = components['schemas']['TournamentMatchResponse']
 type TournamentRegistrationResponse = components['schemas']['TournamentRegistrationResponse']
@@ -461,6 +462,12 @@ function matchStatusColor(status: string): string {
 
 function matchStatusLabel(status: string): string {
   return getStatusLabel(matchStatusMap, status)
+}
+
+// P-132: the "My Teams" card printed `membership.role` straight from the wire,
+// so the logged-in player's own dashboard said "substitute".
+function getRoleLabel(role: string): string {
+  return getStatusLabel(teamRoleMap, role)
 }
 
 function formatMatchTime(dateStr: string): string {

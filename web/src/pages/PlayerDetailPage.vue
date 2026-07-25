@@ -96,8 +96,13 @@
                   {{ membership.league_name }} &middot; {{ membership.season_name }}
                 </v-list-item-subtitle>
                 <template v-slot:append>
+                  <!--
+                    P-132: the COLOUR already came from `teamRoleMap`; only the
+                    label was still the raw wire value. Half-applying a map is
+                    how this leak survived the earlier sweeps.
+                  -->
                   <v-chip size="x-small" :color="getRoleColor(membership.role)">
-                    {{ membership.role }}
+                    {{ getRoleLabel(membership.role) }}
                   </v-chip>
                 </template>
               </v-list-item>
@@ -200,7 +205,7 @@ import { storeToRefs } from 'pinia'
 import { usePlayersStore } from '@/stores/players'
 import { useAuthStore } from '@/stores/auth'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
-import { teamRoleMap, getStatusColor } from '@/utils/statusMaps'
+import { teamRoleMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import PlayerGameStatsCard from '@/components/player/PlayerGameStatsCard.vue'
 import PublicMmStatsCard from '@/components/player/PublicMmStatsCard.vue'
 import TrophyCase from '@/components/player/TrophyCase.vue'
@@ -334,6 +339,7 @@ function formatDate(dateStr: string): string {
 }
 
 const getRoleColor = (role: string) => getStatusColor(teamRoleMap, role)
+const getRoleLabel = (role: string) => getStatusLabel(teamRoleMap, role)
 </script>
 
 <style scoped>

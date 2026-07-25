@@ -48,17 +48,13 @@ const BASELINE = {
   // `registration.status` have no declared enum to map against.
   'src/components/admin/RegistrationReasonModal.vue#status': 1,
   'src/components/admin/tournament-detail/AwardsTab.vue#status': 1,
-  // P-131 — `DisputeResponse.reason` IS a `DisputeReason` union since Lane H
-  // typed the DTO, so these are keyable now.
-  'src/components/admin/DisputeDetailModal.vue#reason': 1,
-  'src/pages/admin/AdminDisputesPage.vue#reason': 1,
-  // P-132 — `LeagueTeamRole` is a union now; these render it raw.
-  'src/components/tournament/TeamRegistrationModal.vue#role': 1,
-  'src/pages/HomePage.vue#role': 1,
-  'src/pages/LeagueDetailPage.vue#role': 1,
-  'src/pages/PlayerDetailPage.vue#role': 1,
-  'src/pages/TeamDetailPage.vue#role': 3,
-  'src/pages/admin/AdminPlayersPage.vue#role': 1,
+  // P-131 (`reason`, 2 sites) and P-132/P-125 (`role`, 8 sites) cleared the
+  // rest: `disputeReasonMap` is new and keyed to `DisputeReason`, and every
+  // `role` chip now goes through the already-keyed `teamRoleMap`. Both enums
+  // were declared, so neither needed an API change — the leak was ten call
+  // sites that had a map available and did not use it (six of them already
+  // used it for the CHIP COLOUR and took the label from the wire, which is
+  // why they read as deliberate).
 }
 
 /**

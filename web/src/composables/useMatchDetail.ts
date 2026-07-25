@@ -371,6 +371,41 @@ export function useMatchDetail() {
     },
   )
 
+  /**
+   * P-134 — fetch the result review for a match that COMPLETES under the page.
+   *
+   * `fetchAll` fetches the review only when the match is ALREADY `completed` at
+   * load time, and `pollMatch` never fetched it at all. So the review alert
+   * added by P-4C appeared for someone opening a finished match later, and
+   * never for the two captains sitting on the page while the opponent confirms
+   * — the audience the alert exists for. Completion is precisely the moment the
+   * backend can raise a review (roster/score/winner mismatch is computed from
+   * the confirmed result), so "completed while you were watching" is the
+   * COMMON case, not an edge one.
+   *
+   * Reacting to the match's own status rather than to an event, for the reason
+   * P-6 and P-127 both document: `emit()` opens with
+   * `if (instance.isUnmounted) return`, so an event fired from an async
+   * callback after its component has been torn down is DISCARDED, not delayed.
+   * A watcher on store/composable state has no component to lose — it fires
+   * from whichever path rewrote `match`, which is `pollMatch` on the poll tick,
+   * on tab-regain, and on the `confirmed` claim transition alike.
+   *
+   * `previous === undefined` is the initial load (or the first match this page
+   * ever saw), which `fetchAll` already covers and awaits; re-firing here would
+   * duplicate that request on every page open.
+   */
+  watch(
+    () => match.value?.status,
+    (status, previous) => {
+      if (status !== 'completed') return
+      if (previous === undefined || previous === 'completed') return
+      const matchId = match.value?.id
+      if (!matchId) return
+      void resultReviewsStore.fetchMatchResultReview(matchId).catch(() => null)
+    },
+  )
+
   async function fetchAll() {
     const tournamentSlug = route.params.tournamentSlug as string
     const matchId = route.params.matchId as string

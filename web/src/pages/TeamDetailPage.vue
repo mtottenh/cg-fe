@@ -163,8 +163,13 @@
                   {{ request.player_display_name || 'Unknown player' }}
                 </v-list-item-title>
                 <v-list-item-subtitle>
+                  <!--
+                    P-125/P-132: the join-request chip. All three role chips on
+                    this page (request / invitation / roster) took their colour
+                    from `teamRoleMap` and their LABEL from the wire.
+                  -->
                   <v-chip size="x-small" :color="getRoleColor(request.role)">
-                    {{ request.role }}
+                    {{ getRoleLabel(request.role) }}
                   </v-chip>
                   <span class="text-caption ml-2">
                     Requested {{ formatRelativeTime(request.created_at) }}
@@ -248,8 +253,9 @@
                   {{ invitation.player_display_name || 'Unknown player' }}
                 </v-list-item-title>
                 <v-list-item-subtitle>
+                  <!-- P-125/P-132: pending-invitation chip. -->
                   <v-chip size="x-small" :color="getRoleColor(invitation.role)">
-                    {{ invitation.role }}
+                    {{ getRoleLabel(invitation.role) }}
                   </v-chip>
                   <span class="text-caption ml-2">
                     Sent {{ formatRelativeTime(invitation.created_at) }}
@@ -282,6 +288,23 @@
               <v-icon start>mdi-account-multiple</v-icon>
               Roster
               <v-chip size="small" class="ml-2">{{ members.length }}</v-chip>
+              <!--
+                P-148: the season's roster lock is now the only thing that
+                decides whether this roster may change, so the roster is where
+                it has to be visible. Before the ruling a captain could infer
+                "no changes" from the season being under way; now an active
+                season may be wide open or frozen and nothing else says which.
+              -->
+              <v-chip
+                v-if="rosterLockChip"
+                size="small"
+                class="ml-2"
+                :color="rosterLockChipColor"
+                :title="rosterLockTitle ?? undefined"
+                data-testid="roster-lock-chip"
+              >
+                {{ rosterLockChip }}
+              </v-chip>
             </v-card-title>
             <v-divider />
 
@@ -302,8 +325,9 @@
                   {{ member.display_name }}
                 </v-list-item-title>
                 <v-list-item-subtitle>
+                  <!-- P-125/P-132: roster chip. -->
                   <v-chip size="x-small" :color="getRoleColor(member.role)">
-                    {{ member.role }}
+                    {{ getRoleLabel(member.role) }}
                   </v-chip>
                 </v-list-item-subtitle>
                 <template v-slot:append v-if="(isCaptain || isOwner) && !isCurrentUser(member.player_id)">
@@ -401,6 +425,7 @@
       v-if="isCaptain && teamSeasonId"
       v-model="showInviteModal"
       :team-season-id="teamSeasonId"
+      :roster-lock-status="seasonRosterLock"
       @invited="handlePlayerInvited"
     />
 
@@ -426,6 +451,7 @@ import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import LeagueTeamInviteModal from '@/components/team/LeagueTeamInviteModal.vue'
 import { teamRoleMap, teamStatusMap, getStatusColor as mapStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import { rosterLockColor, rosterLockHint, rosterLockLabel } from '@/utils/rosterLock'
 import type { components } from '@/api/types'
 
 type LeagueTeamResponse = components['schemas']['LeagueTeamResponse']
@@ -452,6 +478,26 @@ const { members, invitations } = storeToRefs(teamsStore)
 const joinRequests = computed(() => invitations.value.filter(i => i.invitation_type === 'request'))
 const pendingInvites = computed(() => invitations.value.filter(i => i.invitation_type === 'invite'))
 const respondingToRequest = ref<string | null>(null)
+
+/**
+ * The season's `roster_lock_status`, or `null` while unknown.
+ *
+ * P-148 made the lock the ONLY thing that decides whether a live roster may
+ * change — `LeagueSeason::allows_*_roster_changes()` used to AND it with the
+ * season phase, so `active`/`playoffs` froze everything and this page could
+ * safely ignore the field. It cannot any more: an `active` season may be wide
+ * open or hard-locked, and nothing else on this page distinguishes them. It is
+ * fetched (rather than read off the team) because `LeagueTeamResponse` is the
+ * persistent team identity and carries no season fields.
+ *
+ * `null` means "not known yet", which `utils/rosterLock.ts` maps to `open` —
+ * matching the backend default. The API still enforces the lock either way;
+ * this only decides what the UI offers.
+ */
+const seasonRosterLock = ref<string | null>(null)
+const rosterLockChip = computed(() => rosterLockLabel(seasonRosterLock.value))
+const rosterLockChipColor = computed(() => rosterLockColor(seasonRosterLock.value))
+const rosterLockTitle = computed(() => rosterLockHint(seasonRosterLock.value))
 
 // Route params
 const teamId = computed(() => route.params.id as string)
@@ -564,6 +610,24 @@ async function resolveSeasonFromLeague(leagueId: string): Promise<string | null>
   return null
 }
 
+/**
+ * Resolve the roster lock of the season this roster belongs to (P-148).
+ *
+ * The `season_id` comes from the viewer's own membership row when there is one,
+ * and otherwise from the season's team list — the same summary
+ * (`LeagueTeamSummaryResponse`) that `resolveSeasonFromLeague` already reads,
+ * which carries `roster_lock_status` directly. Failures are swallowed: an
+ * unknown lock renders no chip and offers the unrestricted role list, which is
+ * exactly the pre-P-148 behaviour, and the API is still the enforcer.
+ */
+async function loadSeasonRosterLock() {
+  seasonRosterLock.value = null
+  const membership = teamsStore.myTeams.find(t => t.team_season_id === teamSeasonId.value)
+  if (!membership) return
+  const season = await seasonsStore.fetchSeason(membership.season_id).catch(() => null)
+  seasonRosterLock.value = season?.roster_lock_status ?? null
+}
+
 onMounted(async () => {
   try {
     // Fetch team details
@@ -592,6 +656,8 @@ onMounted(async () => {
       loadingMembers.value = true
       await teamsStore.fetchMembers(teamSeasonId.value)
       loadingMembers.value = false
+
+      await loadSeasonRosterLock()
 
       // Fetch invitations if captain
       if (isCaptain.value) {
@@ -854,6 +920,10 @@ const getStatusColor = (status: string) => mapStatusColor(teamStatusMap, status)
 // comments, so prose describing the defect is counted as the defect.
 const formatStatus = (status: string) => getStatusLabel(teamStatusMap, status)
 const getRoleColor = (role: string) => mapStatusColor(teamRoleMap, role)
+// P-125/P-132: `getRoleColor` existed and was used by all three chips; the
+// matching label accessor simply did not, so each chip fell back to the wire
+// value beside a correctly coloured background.
+const getRoleLabel = (role: string) => getStatusLabel(teamRoleMap, role)
 </script>
 
 <style scoped>

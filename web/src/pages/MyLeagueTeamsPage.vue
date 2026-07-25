@@ -40,8 +40,13 @@
               </template>
               <v-card-title>{{ membership.league_name }}</v-card-title>
               <v-card-subtitle>
-                <v-chip size="x-small" :color="getRoleColor(membership.membership_type)" variant="flat" class="mr-1">
-                  {{ formatRole(membership.membership_type) }}
+                <!--
+                  P-133: this is a LEAGUE membership, so it must go through
+                  `leagueRoleMap` — `getRoleColor`/`teamRoleMap` above is for
+                  the team roster chip and shares no values with it.
+                -->
+                <v-chip size="x-small" :color="getMembershipColor(membership.membership_type)" variant="flat" class="mr-1">
+                  {{ getMembershipLabel(membership.membership_type) }}
                 </v-chip>
               </v-card-subtitle>
             </v-card-item>
@@ -101,7 +106,7 @@
                     variant="flat"
                     class="mr-2"
                   >
-                    {{ formatRole(membership.role) }}
+                    {{ getRoleLabel(membership.role) }}
                   </v-chip>
                   <v-chip
                     size="small"
@@ -205,7 +210,7 @@ import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import EmptyState from '@/components/EmptyState.vue'
-import { teamRoleMap, teamStatusMap, getStatusColor as mapStatusColor, getStatusLabel, formatRole } from '@/utils/statusMaps'
+import { teamRoleMap, teamStatusMap, leagueRoleMap, getStatusColor as mapStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 const leagueTeamsStore = useLeagueTeamsStore()
 const leaguesStore = useLeaguesStore()
@@ -252,7 +257,28 @@ function formatJoinDate(dateStr: string): string {
 }
 
 // Helpers
+//
+// P-133 — TWO different role enums are rendered on this page and both were fed
+// through `teamRoleMap`.
+//
+// `membership.role` on a TEAM card is `LeagueTeamRole`
+// (captain | player | substitute) and was right. `membership.membership_type`
+// on a LEAGUE card is `LeagueMembershipType` (admin | moderator | member) and
+// shares not one value with it, so every lookup missed and
+// `getStatusColor`'s `?? 'grey'` fallback fired for every league membership
+// that has ever rendered here — a league admin's chip was styled identically
+// to a plain member's. Nothing looked broken at the call site, which is
+// exactly why a map that silently returns undefined is worse than no map: the
+// wrong answer arrives already dressed as the right one.
+//
+// The label was papered over separately: `formatRole` is a bare
+// capitalise-first-letter, so it produced plausible text ("Admin") without ever
+// consulting a map — which is why the miss never surfaced as a raw wire value
+// and the ratchet's regex could not see it either.
 const getRoleColor = (role: string) => mapStatusColor(teamRoleMap, role)
+const getRoleLabel = (role: string) => getStatusLabel(teamRoleMap, role)
+const getMembershipColor = (type: string) => mapStatusColor(leagueRoleMap, type)
+const getMembershipLabel = (type: string) => getStatusLabel(leagueRoleMap, type)
 const formatStatus = (status: string) => getStatusLabel(teamStatusMap, status)
 const getStatusColor = (status: string) => mapStatusColor(teamStatusMap, status)
 

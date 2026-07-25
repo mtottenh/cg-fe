@@ -6,6 +6,7 @@ import { unwrapApi, unwrapApiOptional, createActionState, withActionState, aggre
 import {
   disputeStatusMap,
   disputePriorityMap,
+  disputeReasonMap,
   getStatusColor as getMapColor,
   getStatusLabel as getMapLabel,
 } from '@/utils/statusMaps'
@@ -303,4 +304,16 @@ export function getDisputePriorityColor(priority: string): string {
 
 export function getDisputePriorityLabel(priority: string): string {
   return getMapLabel(disputePriorityMap, priority)
+}
+
+// P-131: `reason` is an enum (`DisputeReason`), not the free text its `pre-wrap`
+// styling in the detail modal implied — `description` is the free-text field.
+// Same accessor shape as the two above so both admin surfaces reach it the same
+// way they reach status and priority.
+export function getDisputeReasonColor(reason: string): string {
+  return getMapColor(disputeReasonMap, reason)
+}
+
+export function getDisputeReasonLabel(reason: string): string {
+  return getMapLabel(disputeReasonMap, reason)
 }

@@ -90,10 +90,16 @@
             </v-chip>
           </template>
 
+          <!--
+            P-131: the queue truncated `reason` at 250px as though it were the
+            free-text field, but it is the `DisputeReason` enum — so the column
+            read `technical_issue`. The free text is `description`, which this
+            table does not show.
+          -->
           <template v-slot:item.reason="{ item }">
-            <span class="text-truncate d-inline-block" style="max-width: 250px">
-              {{ item.reason }}
-            </span>
+            <v-chip :color="getDisputeReasonColor(item.reason)" size="small" variant="tonal">
+              {{ getDisputeReasonLabel(item.reason) }}
+            </v-chip>
           </template>
 
           <template v-slot:item.disputed_by_user_id="{ item }">
@@ -147,7 +153,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useDisputesStore, getDisputeStatusColor, getDisputeStatusLabel, getDisputePriorityColor, getDisputePriorityLabel } from '@/stores/disputes'
+import { useDisputesStore, getDisputeStatusColor, getDisputeStatusLabel, getDisputePriorityColor, getDisputePriorityLabel, getDisputeReasonColor, getDisputeReasonLabel } from '@/stores/disputes'
 import type { DisputeResponse } from '@/stores/disputes'
 import DisputeDetailModal from '@/components/admin/DisputeDetailModal.vue'
 import { formatDateTime } from '@/utils/formatters'

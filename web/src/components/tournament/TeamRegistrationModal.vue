@@ -63,8 +63,9 @@
                     <span v-if="team.season_name"> &bull; {{ team.season_name }}</span>
                   </div>
                 </div>
-                <v-chip size="small" :color="team.role === 'captain' ? 'primary' : 'secondary'" variant="tonal">
-                  {{ team.role }}
+                <!-- P-132: `role` is `LeagueTeamRole`, not a display string. -->
+                <v-chip size="small" :color="getRoleColor(team.role)" variant="tonal">
+                  {{ getRoleLabel(team.role) }}
                 </v-chip>
               </v-card-text>
             </v-card>
@@ -107,6 +108,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useLeagueTeamsStore, type PlayerLeagueTeamMembershipResponse } from '@/stores/leagueTeams'
 import type { TournamentResponse, TournamentRegistrationResponse } from '@/stores/tournaments'
 import { useFormRules } from '@/composables/useFormRules'
+import { teamRoleMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 const props = defineProps<{  tournament: TournamentResponse
   registrations: TournamentRegistrationResponse[]
@@ -202,6 +204,13 @@ async function handleRegister() {
     loading.value = false
   }
 }
+
+// P-132: the chip used to print the wire value and pick its colour from an
+// inline `role === 'captain'` ternary, which lumped `player` and `substitute`
+// together. `teamRoleMap` is keyed to `LeagueTeamRole`, so a fourth role would
+// fail to compile here rather than render raw.
+const getRoleColor = (role: string) => getStatusColor(teamRoleMap, role)
+const getRoleLabel = (role: string) => getStatusLabel(teamRoleMap, role)
 
 async function loadTeams() {
   loadingTeams.value = true

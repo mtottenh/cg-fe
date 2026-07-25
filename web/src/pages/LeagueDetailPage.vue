@@ -434,8 +434,9 @@
               </template>
               <v-list-item-title>{{ member.display_name }}</v-list-item-title>
               <v-list-item-subtitle>
-                <v-chip size="x-small" :color="member.role === 'captain' ? 'warning' : 'default'" variant="tonal">
-                  {{ member.role }}
+                <!-- P-132: `role` is `LeagueTeamRole`, not a display string. -->
+                <v-chip size="x-small" :color="getRoleColor(member.role)" variant="tonal">
+                  {{ getRoleLabel(member.role) }}
                 </v-chip>
               </v-list-item-subtitle>
             </v-list-item>
@@ -479,7 +480,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
 import type { TournamentSummaryResponse } from '@/stores/tournaments'
 import type { LeagueSettings } from '@/api/overrides'
-import { seasonStatusMap, leagueAccessTypeMap, getStatusColor, getStatusLabel, getStatusIcon, type StatusMap } from '@/utils/statusMaps'
+import { seasonStatusMap, leagueAccessTypeMap, teamRoleMap, getStatusColor, getStatusLabel, getStatusIcon, type StatusMap } from '@/utils/statusMaps'
 
 /**
  * P-112 baseline entry: the header chip printed the raw `league.status`, so a
@@ -613,6 +614,13 @@ const getSeasonStatusColor = (status: string) => getStatusColor(seasonStatusMap,
 // visitors — `getStatusLabel` was imported for the access-type chip but never
 // applied here. See COVERAGE-PLAN.md §9c.
 const getSeasonStatusLabel = (status: string) => getStatusLabel(seasonStatusMap, status)
+
+// P-132: exactly the same omission one card over — the team-detail roster chip
+// printed `member.role` raw and coloured itself from an inline
+// `role === 'captain'` ternary, so `player` and `substitute` were
+// indistinguishable AND both read as the wire value.
+const getRoleColor = (role: string) => getStatusColor(teamRoleMap, role)
+const getRoleLabel = (role: string) => getStatusLabel(teamRoleMap, role)
 
 // Season is URL-addressable (?season=<id>) — a shared league link opens on
 // the same season the sender was viewing.

@@ -328,7 +328,15 @@ test.describe('Admin Dispute Resolution', () => {
     await expect(row).toBeVisible({ timeout: 10000 })
     // Claim-path disputes carry the structured reason `other` (the free text
     // is the description, shown only in the modal).
-    await expect(row).toContainText('other')
+    //
+    // P-131 changed the SPEC, not this test's intent: `reason` is the
+    // `DisputeReason` enum and the queue now renders it through
+    // `disputeReasonMap` instead of printing the wire value. The wire value is
+    // still `other` — the API cross-checks below and in the sibling tests are
+    // untouched — only the label is `Other`. `toContainText` is
+    // case-sensitive, so this assertion still fails if the column regresses to
+    // rendering the raw enum, which is the whole point of keeping it.
+    await expect(row).toContainText('Other')
 
     // --- UI: open detail modal, post admin reply, resolve in favour of P1 -
     await row.click()

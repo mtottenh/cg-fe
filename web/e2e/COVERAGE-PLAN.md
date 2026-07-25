@@ -250,6 +250,21 @@ two each and together retire most of the dead-control class.
 | **T7** | **Roster-lock rework** (together) | P-14 · P-15 · P-16 · P-18 | Design §9 sequences these as one unit, after the lineup proved out. Do not pick off individually |
 | **T8** | **Decide, then act** | P-3 · P-6 · P-41 · P-53/P-56 · P-55 · P-80 · P-97 | Each needs a product decision or a confirm-or-kill before it is actionable |
 
+### Fix wave D — IN FLIGHT (2026-07-25). Do not pick these up.
+
+| Lane | Findings | Owns | openapi.rs |
+|---|---|---|---|
+| Q | P-73 · P-64 · P-68 | admin demo/pipeline surfaces · `stores/demos.ts` · api demo+internal handlers | **yes, exclusively** |
+| R | P-70 · P-123 | `AdminPermissionsPage.vue` · `stores/rbac.ts` · `AdminBansPage.vue` · `BanDetailModal.vue` | no |
+| S | P-14 · P-15 · P-16 · P-18 | api `league_team` season/team services + adapters | no |
+
+Verified before launching, so the split holds: P-64's `process-unlinked` route and
+P-70's `/users/{id}/roles` endpoints **already exist** (UI-only work), and P-14's
+`roster_lock_status` is already on the request DTO with a working
+`update_roster_lock` service method — so it is wiring, not a new endpoint. Only
+P-73's operator read surfaces need registration, which is why Lane Q holds
+`openapi.rs`.
+
 ### 4b. Deployment gate — what blocks launch (owner-set, 2026-07-25)
 
 Not all open findings block deploy. These do. Everything else is polish, ops

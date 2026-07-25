@@ -131,7 +131,24 @@ not see).
   batch API (`dc5136c`) + web half, P-59 gate (`930f8c9`, red-proven). Combined gate at
   landing: **686 passed / 0 failed**, fmt/clippy clean, ratchet `{}`, 6/6 on the touched specs.
 
-### Fix wave A — IN FLIGHT (2026-07-25). Do not pick these up.
+### Fix wave B — IN FLIGHT (2026-07-25). Do not pick these up.
+
+**`openapi.rs` is assigned to Lane H alone.** That file is the reason wave B is
+split the way it is: several remaining findings need a NEW endpoint, and every
+one of those would edit `openapi.rs` and `routes/*.rs`. Two agents doing that in
+one shared checkout lose each other's work. So wave B is deliberately the lanes
+that change EXISTING behaviour, plus Lane H which owns the registration file;
+everything needing a new endpoint (the demo pipeline, admin score correction,
+cascading DQ, the pagination lookup, roster lock) is held for wave C.
+
+| Lane | Findings | Owns |
+|---|---|---|
+| F | P-113 · P-116 | `api league_team` adapter/service · `web TeamDetailPage.vue` |
+| H | P-112 · P-65 · P-69 · P-67 | `api openapi.rs` · DTO response types · `src/utils/statusMaps.ts` · `src/api/types.ts` |
+| J | P-55 · P-3 · P-41 · P-6 | `api result_review` adapter · `AdminResultReviewsPage.vue` · the two create-team forms |
+| L | P-114 · P-115 | `api dto/responses/league.rs` · `LeagueMembersModal.vue` |
+
+### Fix wave A — COMPLETE (2026-07-25). All four lanes merged.
 
 Four lanes chosen for **zero file overlap**, because every agent shares one
 checkout — `api/` is not isolated by `git worktree` (separate repos), so two

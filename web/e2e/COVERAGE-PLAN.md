@@ -459,7 +459,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | **fixed** `b137146` |
 | P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
 | P-118 | **Evidence upload URL hard-coded to the dev stack** | **cross-env** | **fixed** `a9e2988` |
-| P-119 | Stale specs asserted raw enums the status-map sweeps humanised | test rot | **fixed** `PENDING119` |
+| P-119 | Stale specs asserted raw enums the status-map sweeps humanised | test rot | **fixed** `3bcfd12` |
 | P-120 | Rank tiers can never be cleared once set | product gap | open |
 | P-121 | `per_page` on `GET /v1/games` is decorative — no limit/offset applied | correctness | open |
 | P-122 | `gamesStore.error` is app-wide; one page's failure alerts another | user-facing | open |

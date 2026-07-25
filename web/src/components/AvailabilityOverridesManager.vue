@@ -230,6 +230,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAvailabilityStore, formatTimeRange, type AvailabilityOverride } from '@/stores/availability'
 import { useFormRules } from '@/composables/useFormRules'
+import { toLocalDateString } from '@/utils/formatters'
 
 const store = useAvailabilityStore()
 
@@ -251,11 +252,10 @@ const form = ref({
   reason: '',
 })
 
-// Minimum date is today
-const minDate = computed(() => {
-  const today = new Date()
-  return today.toISOString().split('T')[0]
-})
+// Minimum date is today (P-93: local parts — a UTC-derived "today" is
+// yesterday for anyone east of Greenwich just after local midnight, which
+// silently allowed a past date through the picker's own guard).
+const minDate = computed(() => toLocalDateString())
 
 // Format the selected date for display
 const formattedDate = computed(() => {
@@ -287,7 +287,9 @@ const error = computed({
 const futureOverrides = computed(() => store.futureOverrides)
 
 const pastOverrides = computed(() => {
-  const today = new Date().toISOString().split('T')[0]!
+  // P-93: local parts, or an override for *today* is bucketed as past around
+  // local midnight.
+  const today = toLocalDateString()
   return store.overrides.filter((o) => o.override_date < today).sort((a, b) => b.override_date.localeCompare(a.override_date))
 })
 
@@ -330,9 +332,13 @@ async function saveOverride() {
 
   saving.value = true
   try {
-    // Convert Date to YYYY-MM-DD string
+    // P-93: `v-date-picker` emits a LOCAL-midnight Date. This used to do
+    // `.toISOString().split('T')[0]`, which re-reads that instant in UTC and
+    // rolls the calendar day back for every positive offset — picking Sat 15
+    // Aug in BST posted 2026-08-14. `override_date` is a calendar date, so it
+    // must be formatted from local parts.
     const date = new Date(form.value.override_date)
-    const dateStr = date.toISOString().split('T')[0]!
+    const dateStr = toLocalDateString(date)
 
     const payload = {
       override_date: dateStr,

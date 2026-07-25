@@ -12,7 +12,7 @@ began as a test-quality audit. The findings are the deliverable; the tests are t
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **111 findings · 56 fixed** → the status-drift defect class closed at the source
+112 → 0) → **111 findings · 57 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -204,7 +204,7 @@ two each and together retire most of the dead-control class.
 | Tier | Theme | Findings | Why here |
 |---|---|---|---|
 | **T0** | **Security** | ~~P-108~~ · ~~P-60~~ — **tier complete** | Unauthenticated writes and un-revoked sessions. Cost is irrelevant |
-| **T1** | **Silent data corruption** | P-93 · P-77 · P-78 · P-83 | Each writes or preserves *wrong data* while reporting success. Worst possible failure mode: no one finds out |
+| **T1** | **Silent data corruption** | ~~P-93~~ · P-77 · P-78 · P-83 | Each writes or preserves *wrong data* while reporting success. Worst possible failure mode: no one finds out |
 | **T2** | **One-line dead-control fixes** | P-87 · P-99 · P-98 · P-82 · P-104 · P-105 · P-94 · P-84 | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
 | **T3** | **a11y sweep** (one batch) | P-89 · P-100 · P-106 · P-85 | P-89 is a **P-45 recurrence**, so this must be a repo-wide sweep, not another point fix |
 | **T4** | **Raw-enum sweep** (one batch) | P-76 · P-91 · P-96 · P-79 | P-10/P-44 family, now on its fifth recurrence. Batch it and add a guard, or it returns |
@@ -229,9 +229,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 111 found · 56 fixed · 55 open** (P-53 mitigated).
+**Status (derived): 111 found · 57 fixed · 54 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-93, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-109, P-110, P-111.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-77, P-78, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -350,7 +350,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | open |
 | P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | open |
 | P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
-| P-93 | **Date overrides saved one day early in every positive UTC offset** | **data corruption** | open |
+| P-93 | **Date overrides saved one day early in every positive UTC offset** | **data corruption** | **fixed** `PENDING93` |
 | P-87 | **Every game-config WRITE 404s — handler passes UUID to a slug-keyed update** | **feature dead** | open |
 | P-88 | A disabled game vanishes from admin and can never be re-enabled | **traps admin** | open |
 | P-89 | `AdminGamesPage` aria-labels rotated by one — **P-45 recurrence** | **a11y/safety** | open |
@@ -815,8 +815,22 @@ verbatim in the spec header, ready to restore with the fix.
 
 The same `toISOString()` pattern drives three more places, so expect the same skew in the
 min-date guard and the past/future split: `AvailabilityOverridesManager.vue:255-258`, `:290`,
-and `stores/availability.ts:65`. Fix = format from local parts
-(`getFullYear`/`getMonth`/`getDate`), never `toISOString`, for a **calendar date**. → **T1**.
+and `stores/availability.ts:65`. **FIXED.** A shared `toLocalDateString` helper (`utils/formatters.ts`, sibling to the existing
+`formatDateTimeForInput`) now formats calendar dates from local parts, applied at all four
+sites. Lane 7's dropped create-test is **restored** — that was the point of preserving it.
+
+Red-proved twice over, and the second proof is the instructive one:
+- Unit (`utils/__tests__/localDate.test.ts`): under `TZ=Europe/London` the old implementation
+  fails 3 of 5 with `'2026-08-14'` vs `'2026-08-15'`; under `TZ=UTC` it fails only the
+  explicitly-TZ-pinned case. **CI runs UTC**, so a test that did not pin `TZ` would have gone
+  green against the bug on the machine that matters. That is why each case names its timezone
+  and why a negative offset is included — the naive implementation is accidentally correct west
+  of Greenwich, so only a two-sided test tells the fix from the bug.
+- E2E: with the old line restored, picking `2026-08-03` stores `2026-08-02`.
+
+The e2e locator is worth copying: it addresses the picker cell by `data-v-date`, the local ISO
+date Vuetify stamps on each cell — so the locator *states the invariant*: click the cell
+labelled X, and X must reach the server.
 
 **P-87 — every game-config write 404s: a UUID handed to a slug-keyed update.**
 `GameRepository::update` is declared `update(&self, slug: &str, ...)` and documented "Update a

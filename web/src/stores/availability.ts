@@ -4,6 +4,7 @@ import { api } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers/apiAction'
 import { replaceById, removeById } from '@/utils/collections'
+import { toLocalDateString } from '@/utils/formatters'
 
 // Use generated types
 type AvailabilityWindow = components['schemas']['AvailabilityWindowResponse']
@@ -62,7 +63,9 @@ export const useAvailabilityStore = defineStore('availability', () => {
   const regularWindows = computed(() => windows.value.filter((w) => !w.is_preferred))
 
   const futureOverrides = computed(() => {
-    const today = new Date().toISOString().split('T')[0]!
+    // P-93: local parts — see toLocalDateString. A UTC "today" mis-buckets
+    // future/past overrides around local midnight.
+    const today = toLocalDateString()
     return overrides.value.filter((o) => o.override_date >= today).sort((a, b) => a.override_date.localeCompare(b.override_date))
   })
 

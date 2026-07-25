@@ -226,9 +226,97 @@ test.describe('Player weekly availability windows', () => {
  * Restore it verbatim once the component formats the picked date from its local
  * parts; pinning the runner to UTC instead would make it pass while leaving
  * every European player's overrides on the wrong day.
+ *
+ * ---------------------------------------------------------------------------
+ * P-93 FIXED — the create test below is that dropped test, restored.
+ * `AvailabilityOverridesManager` now formats the picked date with
+ * `toLocalDateString` (`utils/formatters.ts`), which reads local parts. The
+ * runner was NOT pinned to UTC; this asserts the picked day on whatever
+ * timezone it runs in, so it stays honest at any offset.
  */
 
 test.describe('Player date overrides', () => {
+  test('player adds a date override and the day they picked is the day stored', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000)
+    const player = await createPlayer()
+    const reason = 'Wedding — unavailable all day'
+
+    await openAvailability(page, player, 'Date Overrides')
+    const card = overridesCard(page)
+
+    // Pick a day far enough out to be unambiguous, and compute the expected
+    // calendar date the same way a human reads the picker: local parts.
+    const target = new Date()
+    target.setDate(target.getDate() + 9)
+    const expectedDate = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`
+
+    await card.getByRole('button', { name: 'Add Override', exact: true }).first().click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+
+    // Open the date menu and click the cell stamped with the target LOCAL date.
+    // `v-date-picker` puts the local ISO date on each cell as `data-v-date`
+    // (VDatePickerMonth.js:227) — so this locator states P-93's invariant
+    // directly: click the cell labelled X, and X is what must reach the server.
+    // Addressing by `data-v-date` rather than by the day number also keeps it
+    // non-positional, per the §2 locator traps.
+    await dialog.getByPlaceholder('Select a date').click()
+
+    // Navigate deterministically from the DATES, never by probing the DOM — a
+    // conditional on visibility is the guard shape the ratchet bans, and it
+    // would also mask a picker that opened on the wrong month.
+    const now = new Date()
+    const monthsAhead =
+      (target.getFullYear() - now.getFullYear()) * 12 + (target.getMonth() - now.getMonth())
+    for (let i = 0; i < monthsAhead; i++) {
+      await page.getByRole('button', { name: 'Next month' }).click()
+    }
+
+    // Vuetify keeps both month grids mounted after navigating, so the date
+    // resolves to two cells. `.first()` is safe precisely because they carry the
+    // SAME `data-v-date` — whichever is clicked selects the same day, which is
+    // the only property this test cares about. The `toBeVisible` below still
+    // fails loudly if no cell carries the date at all.
+    const dayCell = page.locator(`[data-v-date="${expectedDate}"]:visible`).first()
+    await expect(dayCell).toBeVisible()
+
+    // Click the inner VBtn, not the wrapping div: the div carries `data-v-date`
+    // but the button is the control, and clicking the wrapper selects nothing
+    // (the picker simply stayed open — a real failure here, not a hypothesis).
+    await dayCell.getByRole('button').click()
+
+    // The picker closes itself on selection (`@update:model-value`). Wait for
+    // that, or its overlay swallows the next click.
+    await expect(dayCell).toBeHidden()
+
+    // `override_type` is left at its default of 'blocked' (component :248) — the
+    // toggle is deliberately not clicked. This test is about the DATE; the
+    // assertion on `override_type` below pins the default without adding an
+    // interaction that has nothing to do with P-93.
+    await dialog.getByLabel('Reason (Optional)').fill(reason)
+
+    const created = page.waitForResponse(
+      (res) =>
+        res.url().includes('/v1/players/me/availability/overrides') &&
+        res.request().method() === 'POST',
+    )
+    await dialog.getByRole('button', { name: 'Add Override', exact: true }).last().click()
+    expect((await created).status()).toBe(201)
+
+    // UI: the override renders under the day the player actually picked.
+    await expect(card.getByText(reason)).toBeVisible()
+
+    // Backend cross-check — the assertion P-93 made impossible. Before the fix
+    // this came back as the PREVIOUS day for any positive UTC offset.
+    const overrides = await listOverridesViaApi(player.token)
+    const mine = overrides.find((o) => o.reason === reason)
+    expect(mine, 'the created override should be listed').toBeDefined()
+    expect(mine!.override_date).toBe(expectedDate)
+    expect(mine!.override_type).toBe('blocked')
+  })
+
   test('player deletes a date override and the other is left untouched', async ({ page }) => {
     test.setTimeout(60_000)
     const player = await createPlayer()

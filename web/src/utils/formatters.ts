@@ -49,6 +49,24 @@ export function formatDateTimeLongWithWeekday(dateStr: string | null | undefined
   })
 }
 
+/**
+ * A **calendar date** as `YYYY-MM-DD`, read from local parts.
+ *
+ * P-93: the obvious spelling — `d.toISOString().split('T')[0]` — is wrong for
+ * this job and wrong *silently*. `toISOString` re-reads the instant in UTC, so
+ * a local-midnight `Date` (which is exactly what `v-date-picker` emits) rolls
+ * back a day for every positive offset. Picking Sat 15 Aug in BST produced
+ * `2026-08-14`: a player blocking out a match day was recorded as unavailable
+ * the day before, and available on the day they blocked.
+ *
+ * Use this for anything the API models as a DATE. For an instant, keep using
+ * `toISOString` — that is what it is for.
+ */
+export function toLocalDateString(date: Date = new Date()): string {
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
 export function formatDateTimeForInput(datetime: string | null | undefined): string {
   if (!datetime) return ''
   const d = new Date(datetime)

@@ -167,3 +167,41 @@ export async function deleteDemoViaApi(adminToken: string, demoId: string): Prom
     throw new Error(`Delete demo failed (${resp.status}): ${await resp.text()}`)
   }
 }
+
+/**
+ * A game that is NOT the one demos are normally catalogued against.
+ *
+ * P-144 needs two games with demos in them to tell a scoped count from a global
+ * one: with a single game every rollup looks correct. Matched on `slug`, which
+ * is immutable — `admin-games-config.spec.ts` renames this game's
+ * `display_name` (by suffix-append) and would otherwise move under us.
+ */
+export async function getOtherDemoGame(): Promise<DemoGame> {
+  const resp = await fetch(`${API_URL}/v1/games?per_page=100`)
+  const body = await jsonOrThrow<{
+    data: Array<{ id: string; slug?: string; display_name: string }>
+  }>(resp, 'List games')
+  const games = body.data ?? []
+  const other = games.find((g) => g.slug?.toLowerCase() === 'aoe4')
+  if (!other) {
+    throw new Error(
+      `No second game to scope demo counts against; games seen: ${games
+        .map((g) => g.slug ?? g.display_name)
+        .join(', ')}`,
+    )
+  }
+  return { id: other.id, displayName: other.display_name }
+}
+
+/** Status counts as the API reports them, optionally scoped to one game. */
+export async function demoStatusCountsViaApi(
+  adminToken: string,
+  gameId?: string,
+): Promise<Record<string, number>> {
+  const query = gameId ? `?game_id=${gameId}` : ''
+  const resp = await fetch(`${API_URL}/v1/admin/demos/stats${query}`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  })
+  const body = await jsonOrThrow<{ data: Record<string, number> }>(resp, 'Demo status counts')
+  return body.data
+}

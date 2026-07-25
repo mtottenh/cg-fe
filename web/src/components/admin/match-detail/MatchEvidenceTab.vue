@@ -138,14 +138,34 @@ async function handleLinkDemo() {
   }
 }
 
-async function handleUnlinkDemo(demoId: string) {
+/**
+ * P-158: one gesture, one meaning.
+ *
+ * This used to call `demosStore.unlinkFromMatch`, i.e.
+ * `DELETE /v1/admin/demos/{demo_id}/link/{match_id}`, which removes only the
+ * `demo_match_link`. The participant-facing Unlink on the same component
+ * (`DemoBrowser`, `ResultSubmissionPanel`) calls `unlinkDemoEvidence`, which
+ * removes the evidence row too. So the identical button, rendered by the
+ * identical component, did two different things depending on who was looking at
+ * it — and the admin's version left the demo listed in the Evidence Records
+ * table directly beneath it, with nothing on screen saying why. An admin
+ * resolving a dispute has to be able to predict what a button does.
+ *
+ * Both now go through `unlinkDemoEvidence`. The API keeps the two rows together
+ * from either direction (the admin link-delete route removes the paired
+ * evidence row as well), so the surfaces cannot drift apart again by accident.
+ */
+async function handleUnlinkDemo(demoLinkId: string) {
   if (!props.matchId) return
   try {
-    await demosStore.unlinkFromMatch(demoId, props.matchId)
+    await evidenceStore.unlinkDemoEvidence(props.matchId, demoLinkId)
     snackbar.show('Demo unlinked', 'success')
-    await evidenceStore.fetchLinkedDemos(props.matchId)
+    await Promise.all([
+      evidenceStore.fetchLinkedDemos(props.matchId),
+      evidenceStore.fetchEvidence(props.matchId),
+    ])
   } catch {
-    snackbar.show('Failed to unlink demo', 'error')
+    snackbar.show(evidenceStore.unlinkDemoState.error || 'Failed to unlink demo', 'error')
   }
 }
 </script>

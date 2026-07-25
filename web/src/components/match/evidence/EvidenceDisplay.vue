@@ -74,7 +74,20 @@
                 >
                   Validate
                 </v-btn>
-                <v-btn aria-label="Unlink demo" icon variant="text" size="small" color="error" @click="emit('unlink', dl.link.demo_id)">
+                <!--
+                  P-158: emits the LINK id, not the demo id.
+
+                  The demo id was what let a consumer reach for
+                  `DELETE /v1/admin/demos/{demo_id}/link/{match_id}`, which
+                  removes only the link and leaves the `match_evidence` row —
+                  so on this very component the demo vanished from the table
+                  above and stayed listed in Evidence Records below, and the
+                  operator could not tell which of the two things they had done.
+                  The link id is what `unlinkDemoEvidence` takes, and that is
+                  now the single meaning of Unlink on an evidence surface:
+                  detach this demo from this match, both rows.
+                -->
+                <v-btn aria-label="Unlink demo" icon variant="text" size="small" color="error" @click="emit('unlink', dl.link.id)">
                   <v-icon size="small">mdi-link-off</v-icon>
                 </v-btn>
               </td>
@@ -238,7 +251,8 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  unlink: [demoId: string]
+  /** `demo_match_link.id` — see the button (P-158). Not the demo id. */
+  unlink: [demoLinkId: string]
 }>()
 
 const evidenceStore = useEvidenceStore()

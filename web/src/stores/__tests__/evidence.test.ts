@@ -66,10 +66,16 @@ function makeDemo(overrides: Partial<DemoResponse> = {}): DemoResponse {
 function makeLinkedDemo(
   linkId: string,
   evidenceId: string | null = null,
+  overrides: { gameNumber?: number | null; demoId?: string; fileName?: string } = {},
 ): DemoMatchLinkWithDemoResponse {
   return {
-    link: { id: linkId, match_id: 'match-1', demo_id: 'demo-1', game_number: null },
-    demo: makeDemo(),
+    link: {
+      id: linkId,
+      match_id: 'match-1',
+      demo_id: overrides.demoId ?? 'demo-1',
+      game_number: overrides.gameNumber ?? null,
+    },
+    demo: makeDemo({ id: overrides.demoId ?? 'demo-1', file_name: overrides.fileName ?? 'match.dem' }),
     players: null,
     // P-135: the server names the evidence row behind the link. `null` models
     // a link with no evidence record behind it, which is the one case where
@@ -211,16 +217,20 @@ describe('Evidence Store', () => {
     // `linkedDemos` entry whose `link.id` was the *evidence* id, on the stated
     // (wrong) premise that `link-demo` writes no `demo_match_link`. It writes
     // one whenever `demo_id` is sent, which this action always sends, so the
-    // action now re-reads the real link and maps ITS id to the evidence id.
-    // These two tests pinned the fabricated shape; they now pin the real one,
-    // and the assertion they exist for — that unlink DELETEs the mapped
-    // evidence record — is unchanged and still able to fail.
-    it('maps the real demo_match_link to its evidence record, and DELETEs that record on unlink', async () => {
+    // action now re-reads the real link.
+    //
+    // P-159 spec change on top of that: the evidence id the unlink uses comes
+    // off the re-read link (`evidence_id`), NOT off the POST response mapped in
+    // by the caller. The two ids differ here deliberately — that is the only way
+    // this can distinguish "read the server's pairing" from "reuse what we just
+    // created", and reusing was the defect.
+    it('unlinks using the evidence id the SERVER pairs with the link, not the one the link call returned', async () => {
       const store = useEvidenceStore()
       store.browseDemos = [makeDemo({ id: 'demo-1', file_name: 'match.dem' })]
-      mockPost.mockResolvedValue({ data: { data: makeEvidence({ id: 'evid-9' }) } })
-      // The refetch `linkManualDemo` performs: the backend's real link row.
-      mockGet.mockResolvedValue({ data: { data: [makeLinkedDemo('link-77')] } })
+      mockPost.mockResolvedValue({ data: { data: makeEvidence({ id: 'evid-from-post' }) } })
+      // The refetch `linkManualDemo` performs: the backend's real link row,
+      // naming the evidence row the backend actually paired with it.
+      mockGet.mockResolvedValue({ data: { data: [makeLinkedDemo('link-77', 'evid-from-server')] } })
 
       await store.linkManualDemo('match-1', 'match.dem', 1, 'demo-1')
 
@@ -234,7 +244,7 @@ describe('Evidence Store', () => {
       await store.unlinkDemoEvidence('match-1', 'link-77')
 
       expect(mockDelete).toHaveBeenCalledWith('/v1/matches/{match_id}/evidence/{evidence_id}', {
-        params: { path: { match_id: 'match-1', evidence_id: 'evid-9' } },
+        params: { path: { match_id: 'match-1', evidence_id: 'evid-from-server' } },
       })
       expect(store.linkedDemos).toEqual([])
     })
@@ -243,7 +253,7 @@ describe('Evidence Store', () => {
       const store = useEvidenceStore()
       store.browseDemos = [makeDemo({ id: 'demo-1', file_name: 'match.dem' })]
       mockPost.mockResolvedValue({ data: { data: makeEvidence({ id: 'evid-9' }) } })
-      mockGet.mockResolvedValue({ data: { data: [makeLinkedDemo('link-77')] } })
+      mockGet.mockResolvedValue({ data: { data: [makeLinkedDemo('link-77', 'evid-9')] } })
       await store.linkManualDemo('match-1', 'match.dem', 1, 'demo-1')
 
       mockDelete.mockResolvedValue({ error: { status: 403, detail: 'Forbidden' } })
@@ -260,19 +270,62 @@ describe('Evidence Store', () => {
     })
   })
 
-  describe('validateDemoLink', () => {
-    it('resolves the evidence id from the evidence list, POSTs it, and re-reads both lists', async () => {
+  /**
+   * P-159. `linkDiscoveredDemo` recovered "the link I just created" with
+   *
+   *     linkedDemos.value.find(d => d.link.game_number === (gameNumber ?? null))
+   *
+   * and wrote the new evidence id against whatever came back first. In a series,
+   * or whenever `gameNumber` is undefined and several links carry `null`, that
+   * is an OLDER link — so the map pointed an existing row at the new evidence
+   * record, and the next Unlink on that row deleted the wrong thing. The map is
+   * gone; every id is read off the link it belongs to.
+   *
+   * Two `null`-game links plus a link call that names no game number is exactly
+   * the shape `find` mishandles, and the assertion is on the DELETE target
+   * because that is where the mis-mapping did its damage.
+   */
+  describe('link → evidence pairing (P-159)', () => {
+    it('does not point an existing link at the newly created evidence record', async () => {
       const store = useEvidenceStore()
-      store.linkedDemos = [makeLinkedDemo('link-77')]
+      store.discoveredDemos = [
+        { external_id: 'catalog:demo-new' },
+      ] as unknown as typeof store.discoveredDemos
 
-      // 1st GET: the evidence list the id is recovered from (joined on the
-      // demo's file name — both catalog link paths name the row after it).
-      // 2nd/3rd GET: the refetch of linked demos + evidence after the write.
-      mockGet
-        .mockResolvedValueOnce({
-          data: { data: [makeSummary({ id: 'ev-42', name: 'match.dem', evidence_type: 'demo' })] },
-        })
-        .mockResolvedValue({ data: { data: [] } })
+      mockPost.mockResolvedValue({ data: { data: makeEvidence({ id: 'evid-new' }) } })
+      // Both links carry `game_number: null`, and the older one is listed first
+      // — the ordering `find` returns.
+      mockGet.mockResolvedValue({
+        data: {
+          data: [
+            makeLinkedDemo('link-old', 'evid-old', { demoId: 'demo-old', fileName: 'old.dem' }),
+            makeLinkedDemo('link-new', 'evid-new', { demoId: 'demo-new', fileName: 'new.dem' }),
+          ],
+        },
+      })
+
+      await store.linkDiscoveredDemo('match-1', 'catalog:demo-new')
+
+      mockDelete.mockResolvedValue({ data: { data: null } })
+      await store.unlinkDemoEvidence('match-1', 'link-old')
+
+      expect(mockDelete).toHaveBeenCalledWith('/v1/matches/{match_id}/evidence/{evidence_id}', {
+        params: { path: { match_id: 'match-1', evidence_id: 'evid-old' } },
+      })
+      // The record the link call created is untouched, and its link survives.
+      expect(store.linkedDemos.map((d) => d.link.id)).toEqual(['link-new'])
+    })
+  })
+
+  describe('validateDemoLink', () => {
+    it('resolves the evidence id from the link row, POSTs it, and re-reads both lists', async () => {
+      const store = useEvidenceStore()
+      // P-159: the pairing is the server's, carried on the link itself. It used
+      // to be recovered by joining the evidence list on the demo's FILE NAME,
+      // which picks the first row of that name — a second guess.
+      store.linkedDemos = [makeLinkedDemo('link-77', 'ev-42')]
+
+      mockGet.mockResolvedValue({ data: { data: [] } })
       mockPost.mockResolvedValue({
         data: { data: { is_valid: true, confidence: 0.9, errors: [], warnings: [] } },
       })

@@ -7,7 +7,6 @@ import { unwrapApi, createActionState, withActionState, aggregateActionStates } 
 type DiscoveredEvidenceResponse = components['schemas']['DiscoveredEvidenceResponse']
 type DemoMatchLinkWithDemoResponse = components['schemas']['DemoMatchLinkWithDemoResponse']
 type EvidenceResponse = components['schemas']['EvidenceResponse']
-type DemoStatsResponse = components['schemas']['DemoStatsResponse']
 type DemoResponse = components['schemas']['DemoResponse']
 type EvidenceSummaryResponse = components['schemas']['EvidenceSummaryResponse']
 
@@ -27,13 +26,11 @@ export const useEvidenceStore = defineStore('evidence', () => {
   const evidence = ref<EvidenceSummaryResponse[]>([])
   const browseDemos = ref<DemoResponse[]>([])
   const browseTotal = ref(0)
-  const evidenceIdMap = ref<Record<string, string>>({}) // demoLinkId → evidenceId
 
   // Per-action states
   const discoverState = createActionState()
   const fetchLinkedState = createActionState()
   const linkDemoState = createActionState()
-  const fetchStatsState = createActionState()
   const browseDemosState = createActionState()
   const linkManualDemoState = createActionState()
   const unlinkDemoState = createActionState()
@@ -46,11 +43,37 @@ export const useEvidenceStore = defineStore('evidence', () => {
   const linkEvidenceState = createActionState()
 
   const { loading, error } = aggregateActionStates([
-    discoverState, fetchLinkedState, linkDemoState, fetchStatsState, browseDemosState,
+    discoverState, fetchLinkedState, linkDemoState, browseDemosState,
     linkManualDemoState, unlinkDemoState, fetchEvidenceState,
     initiateUploadState, completeUploadState, validateEvidenceState, validateDemoState,
     getAccessUrlState, linkEvidenceState,
   ])
+
+  /**
+   * The `match_evidence` row behind a `demo_match_link`, named by the server.
+   *
+   * P-159: this used to come out of an `evidenceIdMap` ref that
+   * `linkDiscoveredDemo` populated by *guessing* which of the freshly-fetched
+   * links was the one it had just created:
+   *
+   *     const newLink = linkedDemos.value.find(
+   *       d => d.link.game_number === (gameNumber ?? null))
+   *
+   * `find` returns the first match. In a bo3, or whenever `gameNumber` is
+   * undefined and several links carry `null`, that is an OLDER link — so the new
+   * evidence id was written against somebody else's link row, and the next
+   * "Unlink" on that row deleted the wrong evidence. A destructive action
+   * pointed at a guessed target.
+   *
+   * `DemoMatchLinkWithDemoResponse.evidence_id` (added for P-135) is the same
+   * pairing, computed server-side from `plugin_metadata.catalog_demo_id`. There
+   * is no reason left to guess, so the map is gone rather than merely
+   * deprioritised: while it existed it took precedence, and a stale wrong entry
+   * would still have won.
+   */
+  function evidenceIdForLink(demoLinkId: string): string | null {
+    return linkedDemos.value.find(d => d.link.id === demoLinkId)?.evidence_id ?? null
+  }
 
   async function discoverDemos(matchId: string): Promise<DiscoveredEvidenceResponse[]> {
     return withActionState(discoverState, async () => {
@@ -91,13 +114,10 @@ export const useEvidenceStore = defineStore('evidence', () => {
       const evidenceResponse = result.data
       // Remove from discovered list
       discoveredDemos.value = discoveredDemos.value.filter(d => d.external_id !== externalId)
-      // Re-fetch linked demos to get updated list
+      // Re-fetch linked demos to get the updated list. That refetch also carries
+      // the server's own link → evidence pairing, which is why P-159 could
+      // delete the local guess outright rather than replace it with a better one.
       await fetchLinkedDemos(matchId)
-      // Map the newly created link to the evidence ID
-      const newLink = linkedDemos.value.find(d => d.link.game_number === (gameNumber ?? null))
-      if (newLink) {
-        evidenceIdMap.value[newLink.link.id] = evidenceResponse.id
-      }
       return evidenceResponse
     }, 'Failed to link demo')
   }
@@ -126,10 +146,11 @@ export const useEvidenceStore = defineStore('evidence', () => {
    */
   async function unlinkDemoEvidence(matchId: string, demoLinkId: string) {
     return withActionState(unlinkDemoState, async () => {
-      const linked = linkedDemos.value.find(d => d.link.id === demoLinkId)
+      // P-159: the id is read off the link the operator actually clicked, never
+      // off a locally-maintained map that could have it pointing elsewhere.
+      const evidenceId = evidenceIdForLink(demoLinkId)
       // Thrown as ApiError so `withActionState` surfaces the real reason rather
       // than replacing it with the generic fallback message.
-      const evidenceId = evidenceIdMap.value[demoLinkId] ?? linked?.evidence_id
       if (!evidenceId) {
         throw new ApiError(
           404,
@@ -141,7 +162,6 @@ export const useEvidenceStore = defineStore('evidence', () => {
         params: { path: { match_id: matchId, evidence_id: evidenceId } },
       }))
 
-      delete evidenceIdMap.value[demoLinkId]
       linkedDemos.value = linkedDemos.value.filter(d => d.link.id !== demoLinkId)
     }, 'Failed to unlink demo')
   }
@@ -198,12 +218,11 @@ export const useEvidenceStore = defineStore('evidence', () => {
       // evidence id), a hardcoded `validated: false` that could never update,
       // and no `players`. Anything that refetched replaced it and the ids moved
       // under the caller. Re-read, exactly as `linkDiscoveredDemo` does.
+      //
+      // P-159: the refetch carries the server's link → evidence pairing, so
+      // there is nothing left to record locally.
       if (demoId) {
         await fetchLinkedDemos(matchId)
-        const newLink = linkedDemos.value.find(d => d.link.demo_id === demoId)
-        if (newLink) {
-          evidenceIdMap.value[newLink.link.id] = evidenceResponse.id
-        }
       }
 
       return evidenceResponse
@@ -218,15 +237,6 @@ export const useEvidenceStore = defineStore('evidence', () => {
       evidence.value = result.data
       return evidence.value
     }, 'Failed to fetch evidence')
-  }
-
-  async function fetchDemoStats(matchId: string, demoName: string): Promise<DemoStatsResponse> {
-    return withActionState(fetchStatsState, async () => {
-      const result = await unwrapApi(api.GET('/v1/matches/{match_id}/evidence/demo-stats/{demo_name}', {
-        params: { path: { match_id: matchId, demo_name: demoName } },
-      }))
-      return result.data
-    }, 'Failed to fetch demo stats')
   }
 
   // ==================== Evidence Upload & Validation ====================
@@ -256,6 +266,35 @@ export const useEvidenceStore = defineStore('evidence', () => {
     }, 'Failed to complete upload')
   }
 
+  /**
+   * P-161: `validateDemo` (`POST .../evidence/validate-demo`) and
+   * `fetchDemoStats` (`GET .../evidence/demo-stats/{name}`) used to sit here
+   * with zero callers anywhere in `src/`, and they are deliberately NOT wired
+   * up — they are removed instead, because leaving an uncalled store action is
+   * an invitation to wire the wrong one.
+   *
+   * The operator gesture they looked like they were for — "check this demo
+   * against the submitted result" — is `validateDemoLink` below, and that is the
+   * one that must be used:
+   *
+   *  - `validate-demo` records NOTHING. It returns a verdict and writes no
+   *    `validated` / `validated_at` / `validation_result`, so an admin's answer
+   *    vanishes on reload while the dispute outlives it — the exact failure mode
+   *    P-136/P-138 were about. `/evidence/validate` persists the verdict on both
+   *    the evidence row and the demo link.
+   *  - it maps demo teams to participants from `participant{1,2}_steam_ids`
+   *    passed as comma-separated *query strings*, which no UI can honestly ask
+   *    an operator for.
+   *  - both endpoints reach the external demo-stats service, so after P-137 they
+   *    hard-fail wherever `CS2_DEMO_SERVICE_URL` is unset, while
+   *    `/evidence/validate` works off the stats the portal already stores.
+   *  - `demo-stats` in particular re-fetches per-player numbers the portal
+   *    already holds and already returns on
+   *    `GET /v1/matches/{id}/demos?include_stats=true` as `players`.
+   *
+   * Two buttons answering the same question differently is precisely the P-158
+   * defect this lane is also fixing, so wiring these would have created one.
+   */
   async function validateEvidence(
     matchId: string,
     body: components['schemas']['ValidateEvidenceRequest'],
@@ -269,23 +308,10 @@ export const useEvidenceStore = defineStore('evidence', () => {
     }, 'Failed to validate evidence')
   }
 
-  async function validateDemo(
-    matchId: string,
-    body: components['schemas']['ValidateDemoRequest'],
-  ) {
-    return withActionState(validateDemoState, async () => {
-      const result = await unwrapApi(api.POST('/v1/matches/{match_id}/evidence/validate-demo', {
-        params: { path: { match_id: matchId } },
-        body,
-      }))
-      return result.data
-    }, 'Failed to validate demo')
-  }
-
   /**
    * P-111: validate a *linked demo* against the claimed score for its game.
    *
-   * `validateEvidence` below is keyed on evidence ids, but every surface that
+   * `validateEvidence` above is keyed on evidence ids, but every surface that
    * shows a demo — `DemoBrowser`'s Linked Demos cards, `EvidenceDisplay`'s
    * table, the admin demo page's Match Links list — is keyed on the
    * `demo_match_link`. This resolves one to the other and calls the endpoint,
@@ -298,11 +324,11 @@ export const useEvidenceStore = defineStore('evidence', () => {
    * claim's `game_results`. The backend refuses the call without them rather
    * than comparing two different units.
    *
-   * The evidence id comes from `evidenceIdMap` when the link was made in this
-   * session; otherwise it is recovered by joining the match's evidence list on
-   * the demo's file name, which both catalog link paths use verbatim as the
-   * evidence row's `name` (`handlers/evidence.rs` — `link_demo` and
-   * `link_discovered_evidence`'s catalog branch).
+   * P-159: the evidence id is the server's, off the link row. It used to come
+   * from `evidenceIdMap` — written by a guess — and otherwise from joining the
+   * match's evidence list on the demo's FILE NAME, which is a second guess: file
+   * names are not unique in the catalog, so a match carrying two demos of the
+   * same name would validate whichever the join found first.
    */
   async function validateDemoLink(
     matchId: string,
@@ -317,30 +343,26 @@ export const useEvidenceStore = defineStore('evidence', () => {
         throw new ApiError(404, 'That demo is no longer linked to this match')
       }
 
-      let evidenceId = evidenceIdMap.value[demoLinkId]
+      const evidenceId = linked.evidence_id
       if (!evidenceId) {
-        const records = await fetchEvidence(matchId)
-        const match = records.find(e => e.name === linked.demo.file_name)
-        if (!match) {
-          throw new ApiError(404, 'No evidence record found for this demo')
-        }
-        evidenceId = match.id
-        evidenceIdMap.value[demoLinkId] = evidenceId
+        throw new ApiError(404, 'No evidence record found for this demo')
       }
 
-      const result = await unwrapApi(api.POST('/v1/matches/{match_id}/evidence/validate', {
-        params: { path: { match_id: matchId } },
-        body: {
-          evidence_ids: [evidenceId],
-          expected_participant1_score: claimed.participant1Score,
-          expected_participant2_score: claimed.participant2Score,
-        },
-      }))
+      // Through `validateEvidence` rather than a second inline `api.POST` to
+      // the same path. It was the only caller-less request-issuing action left
+      // in this store after P-161, for the daft reason that the one code path
+      // that wanted it had copied its body instead — two literals for one
+      // endpoint, of which only the copy was ever exercised.
+      const result = await validateEvidence(matchId, {
+        evidence_ids: [evidenceId],
+        expected_participant1_score: claimed.participant1Score,
+        expected_participant2_score: claimed.participant2Score,
+      })
 
       // Both the link row and the evidence row were just written server-side;
       // re-read rather than guessing what the verdict did to them.
       await Promise.all([fetchLinkedDemos(matchId), fetchEvidence(matchId)])
-      return result.data
+      return result
     }, 'Failed to validate demo')
   }
 
@@ -376,7 +398,6 @@ export const useEvidenceStore = defineStore('evidence', () => {
     evidence.value = []
     browseDemos.value = []
     browseTotal.value = 0
-    evidenceIdMap.value = {}
     error.value = null
   }
 
@@ -399,7 +420,6 @@ export const useEvidenceStore = defineStore('evidence', () => {
     discoverState,
     fetchLinkedState,
     linkDemoState,
-    fetchStatsState,
     browseDemosState,
     linkManualDemoState,
     unlinkDemoState,
@@ -416,7 +436,6 @@ export const useEvidenceStore = defineStore('evidence', () => {
     fetchLinkedDemos,
     linkDiscoveredDemo,
     unlinkDemoEvidence,
-    fetchDemoStats,
     fetchBrowseDemos,
     linkManualDemo,
     fetchEvidence,
@@ -425,7 +444,6 @@ export const useEvidenceStore = defineStore('evidence', () => {
     initiateUpload,
     completeUpload,
     validateEvidence,
-    validateDemo,
     validateDemoLink,
     getAccessUrl,
     linkEvidence,
@@ -441,6 +459,5 @@ export type {
   DemoMatchLinkWithDemoResponse,
   EvidenceResponse,
   EvidenceSummaryResponse,
-  DemoStatsResponse,
   DemoResponse,
 }

@@ -37,18 +37,31 @@
 
     <ErrorAlert :error="error" retryable @clear="demosStore.error = null" @retry="loadDemos()" />
 
-    <!-- Pipeline Status Cards -->
-    <v-row v-if="statusCounts" class="mb-4">
-      <v-col v-for="s in pipelineStats" :key="s.label" cols="6" md>
-        <v-card variant="outlined">
-          <v-card-text class="text-center pa-3">
-            <v-icon :color="s.color" size="24" class="mb-1">{{ s.icon }}</v-icon>
-            <div class="text-h5 font-weight-bold">{{ s.count }}</div>
-            <div class="text-caption text-medium-emphasis">{{ s.label }}</div>
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
+    <!--
+      Pipeline Status Cards.
+
+      P-144: these counted every game in the catalog while the table below them
+      was filtered by the Game select, so a CS2 admin read CS2 rows under
+      cross-game totals. They follow the filter now, and say which scope they
+      are describing — a number whose scope you cannot see is the thing that let
+      this go unnoticed.
+    -->
+    <template v-if="statusCounts">
+      <div class="text-caption text-medium-emphasis mb-1" data-testid="demo-counts-scope">
+        {{ countsScopeLabel }}
+      </div>
+      <v-row class="mb-4">
+        <v-col v-for="s in pipelineStats" :key="s.label" cols="6" md>
+          <v-card variant="outlined">
+            <v-card-text class="text-center pa-3">
+              <v-icon :color="s.color" size="24" class="mb-1">{{ s.icon }}</v-icon>
+              <div class="text-h5 font-weight-bold" :data-testid="`demo-count-${s.key}`">{{ s.count }}</div>
+              <div class="text-caption text-medium-emphasis">{{ s.label }}</div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+    </template>
 
     <!-- Filters -->
     <v-card class="mb-4">
@@ -87,7 +100,7 @@
               variant="outlined"
               density="compact"
               clearable
-              @update:model-value="() => loadDemos()"
+              @update:model-value="() => reloadForGame()"
             />
           </v-col>
           <v-col cols="12" md="2">
@@ -135,7 +148,7 @@
           <v-chip v-if="filters.category" size="small" closable @click:close="filters.category = undefined; loadDemos()">
             Category: {{ getStatusLabel(demoCategoryMap, filters.category) }}
           </v-chip>
-          <v-chip v-if="filters.game_id" size="small" closable @click:close="filters.game_id = undefined; loadDemos()">
+          <v-chip v-if="filters.game_id" size="small" closable @click:close="filters.game_id = undefined; reloadForGame()">
             Game: {{ gameOptions.find(g => g.value === filters.game_id)?.title ?? filters.game_id }}
           </v-chip>
           <v-chip v-if="filters.map_name" size="small" closable @click:close="filters.map_name = undefined; mapSearch = ''; loadDemos()">
@@ -341,12 +354,18 @@ const pipelineStats = computed(() => {
   if (!statusCounts.value) return []
   const sc = statusCounts.value
   return [
-    { label: 'Pending', count: sc.pending, color: 'warning', icon: 'mdi-clock-outline' },
-    { label: 'Processing', count: sc.processing, color: 'info', icon: 'mdi-cog-sync' },
-    { label: 'Ready', count: sc.ready, color: 'success', icon: 'mdi-check-circle' },
-    { label: 'Failed', count: sc.failed, color: 'error', icon: 'mdi-alert-circle' },
-    { label: 'Archived', count: sc.archived, color: 'grey', icon: 'mdi-archive' },
+    { key: 'pending', label: 'Pending', count: sc.pending, color: 'warning', icon: 'mdi-clock-outline' },
+    { key: 'processing', label: 'Processing', count: sc.processing, color: 'info', icon: 'mdi-cog-sync' },
+    { key: 'ready', label: 'Ready', count: sc.ready, color: 'success', icon: 'mdi-check-circle' },
+    { key: 'failed', label: 'Failed', count: sc.failed, color: 'error', icon: 'mdi-alert-circle' },
+    { key: 'archived', label: 'Archived', count: sc.archived, color: 'grey', icon: 'mdi-archive' },
   ]
+})
+
+/** What the cards above are counting (P-144) — never left to inference. */
+const countsScopeLabel = computed(() => {
+  const selected = gamesStore.games.find(g => g.id === filters.value.game_id)
+  return selected ? `Demo catalog — ${selected.display_name}` : 'Demo catalog — all games'
 })
 
 const hasActiveFilters = computed(() => {
@@ -405,6 +424,19 @@ async function loadDemos() {
   })
 }
 
+/**
+ * The Game filter moves BOTH the table and the cards (P-144). Every other
+ * filter narrows only the table, which is why this one needs its own handler.
+ */
+async function reloadForGame() {
+  await Promise.all([loadDemos(), refreshStatusCounts()])
+}
+
+/** Always scoped to the current Game filter — there is no unscoped caller. */
+function refreshStatusCounts() {
+  return demosStore.fetchStatusCounts(filters.value.game_id)
+}
+
 async function goToPage(page: number) {
   currentPage.value = page
   selectedRows.value = []
@@ -419,7 +451,8 @@ function clearAllFilters() {
   filters.value = { include_hidden: true }
   mapSearch.value = ''
   teamSearch.value = ''
-  loadDemos()
+  // Clearing drops the Game filter too, so the cards widen back to all games.
+  reloadForGame()
 }
 
 function confirmDelete(demo: DemoResponse) {
@@ -452,7 +485,7 @@ function confirmBulkDelete() {
         await Promise.all(selectedRows.value.map(id => demosStore.deleteDemo(id)))
         snackbar.success(`${count} demo${count === 1 ? '' : 's'} deleted`)
         selectedRows.value = []
-        demosStore.fetchStatusCounts()
+        refreshStatusCounts()
       } catch {
         snackbar.error('Failed to delete some demos')
       } finally {
@@ -465,7 +498,7 @@ function confirmBulkDelete() {
 function onDemoCataloged() {
   snackbar.success('Demo cataloged successfully')
   loadDemos()
-  demosStore.fetchStatusCounts()
+  refreshStatusCounts()
 }
 
 function truncateFilename(name: string): string {
@@ -490,13 +523,13 @@ async function onToggleAutoLink(value: boolean | null) {
 onMounted(async () => {
   await Promise.all([
     loadDemos(),
-    demosStore.fetchStatusCounts(),
+    refreshStatusCounts(),
     demosStore.fetchAutoLinkSetting().catch(() => {
       // Non-admins (or transient errors) simply don't see the toggle.
     }),
     gamesStore.games.length === 0 ? gamesStore.fetchGames() : Promise.resolve(),
   ])
-  pollInterval = setInterval(() => demosStore.fetchStatusCounts(), 30_000)
+  pollInterval = setInterval(() => refreshStatusCounts(), 30_000)
 })
 
 onUnmounted(() => {

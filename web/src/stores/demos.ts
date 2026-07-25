@@ -18,7 +18,6 @@ type SetDemoVisibilityRequest = components['schemas']['SetDemoVisibilityRequest'
 type LinkDemoToMatchRequest = components['schemas']['LinkDemoToMatchRequest']
 type SetDemoNotesRequest = components['schemas']['SetDemoNotesRequest']
 type AssociateDemoRequest = components['schemas']['AssociateDemoRequest']
-type MarkDemoFailedRequest = components['schemas']['MarkDemoFailedRequest']
 type AutoLinkSettingResponse = components['schemas']['AutoLinkSettingResponse']
 type ProcessUnlinkedDemosResponse = components['schemas']['ProcessUnlinkedDemosResponse']
 type PipelineOverviewResponse = components['schemas']['PipelineOverviewResponse']
@@ -77,9 +76,7 @@ export const useDemosStore = defineStore('demos', () => {
   const fetchLinksState = createActionState()
   const downloadDemoState = createActionState()
   const fetchStatusCountsState = createActionState()
-  const submitStatsState = createActionState()
   const requeueState = createActionState()
-  const markFailedState = createActionState()
   const fetchAutoLinkSettingState = createActionState()
   const updateAutoLinkSettingState = createActionState()
   const fetchPipelineOverviewState = createActionState()
@@ -255,9 +252,23 @@ export const useDemosStore = defineStore('demos', () => {
     }, 'Failed to delete demo')
   }
 
-  async function fetchStatusCounts(): Promise<DemoStatusCountsResponse> {
+  /**
+   * P-144: the pipeline cards on `AdminDemosPage`, scoped to the page's Game
+   * filter.
+   *
+   * They used to be unconditionally global — the endpoint took no parameters and
+   * the count query had no `WHERE game_id` — so a CS2 admin who had filtered the
+   * table beneath them to CS2 still read totals summed over every game in the
+   * catalog. The cards and the table disagreed about what they were describing,
+   * and only the table said so.
+   *
+   * `undefined` still means every game, which is what the unfiltered view wants.
+   */
+  async function fetchStatusCounts(gameId?: string): Promise<DemoStatusCountsResponse> {
     return withActionState(fetchStatusCountsState, async () => {
-      const result = await unwrapApi(api.GET('/v1/admin/demos/stats'))
+      const result = await unwrapApi(api.GET('/v1/admin/demos/stats', {
+        params: { query: { game_id: gameId || undefined } },
+      }))
       statusCounts.value = result.data
       return result.data
     }, 'Failed to fetch status counts')
@@ -284,31 +295,23 @@ export const useDemosStore = defineStore('demos', () => {
     }, 'Failed to requeue demo')
   }
 
-  async function submitStats(id: string, request: components['schemas']['SubmitDemoStatsRequest']): Promise<DemoResponse> {
-    return withActionState(submitStatsState, async () => {
-      const result = await unwrapApi(api.POST('/v1/admin/demos/{id}/stats', {
-        params: { path: { id } },
-        body: request,
-      }))
-      const updated = result.data
-      replaceById(demos.value, updated)
-      if (currentDemo.value?.id === id) currentDemo.value = updated
-      return updated
-    }, 'Failed to submit stats')
-  }
-
-  async function markFailed(id: string, request: MarkDemoFailedRequest): Promise<DemoResponse> {
-    return withActionState(markFailedState, async () => {
-      const result = await unwrapApi(api.POST('/v1/admin/demos/{id}/stats-failed', {
-        params: { path: { id } },
-        body: request,
-      }))
-      const updated = result.data
-      replaceById(demos.value, updated)
-      if (currentDemo.value?.id === id) currentDemo.value = updated
-      return updated
-    }, 'Failed to mark demo as failed')
-  }
+  /*
+   * P-161, same class as `evidence.ts`'s `validateDemo` / `fetchDemoStats`:
+   * `submitStats` (`POST /v1/admin/demos/{id}/stats`) and `markFailed`
+   * (`POST /v1/admin/demos/{id}/stats-failed`) lived here with zero callers and
+   * are deleted rather than wired.
+   *
+   * They are the *scanner's* ingestion endpoints — one takes a whole parsed
+   * `.dem.stats.json` body, the other reports that parsing it failed — and the
+   * scanner reaches them with a service API key, not a browser session. There is
+   * no operator gesture that supplies a parsed stats blob by hand, and inventing
+   * a form for one would put a hand-typed scoreboard into the evidence chain a
+   * dispute is resolved from. The operator's control over a stuck demo is
+   * `requeue` above, which P-74 added for exactly this reason after finding the
+   * Retry button calling nothing.
+   *
+   * `check-dead-store-actions.mjs` fails if either comes back uncalled.
+   */
 
   async function fetchAutoLinkSetting(): Promise<AutoLinkSettingResponse> {
     return withActionState(fetchAutoLinkSettingState, async () => {
@@ -426,8 +429,6 @@ export const useDemosStore = defineStore('demos', () => {
     fetchLinksState,
     downloadDemoState,
     fetchStatusCountsState,
-    submitStatsState,
-    markFailedState,
     fetchAutoLinkSettingState,
     updateAutoLinkSettingState,
     fetchPipelineOverviewState,
@@ -450,10 +451,8 @@ export const useDemosStore = defineStore('demos', () => {
     unlinkFromMatch,
     deleteDemo,
     fetchStatusCounts,
-    submitStats,
     requeue,
     requeueState,
-    markFailed,
     fetchAutoLinkSetting,
     updateAutoLinkSetting,
     fetchPipelineOverview,
@@ -478,7 +477,6 @@ export type {
   LinkDemoToMatchRequest,
   SetDemoNotesRequest,
   AssociateDemoRequest,
-  MarkDemoFailedRequest,
   AutoLinkSettingResponse,
   ProcessUnlinkedDemosResponse,
   PipelineOverviewResponse,

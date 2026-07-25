@@ -43,6 +43,7 @@
                 label="Sort Order"
                 type="number"
                 hint="Lower numbers appear first"
+                :rules="[rules.required, wholeNumber]"
                 variant="outlined"
                 density="comfortable"
               />
@@ -136,6 +137,15 @@ const form = ref({
 
 const rules = useFormRules()
 
+/**
+ * `v-model.number` leaves a value it cannot parse as the raw string, so a
+ * cleared field arrives here as `''` and a half-typed one as `'-'`. Both would
+ * be sent verbatim and 400. `rules.required` rejects `''`; this rejects the rest.
+ */
+function wholeNumber(v: unknown) {
+  return (typeof v === 'number' && Number.isInteger(v)) || 'Must be a whole number'
+}
+
 // Watch for game changes to populate form
 watch(() => props.game, (newGame) => {
   if (newGame) {
@@ -145,7 +155,10 @@ watch(() => props.game, (newGame) => {
       description: newGame.description || '',
       icon_url: newGame.icon_url || '',
       is_featured: newGame.is_featured,
-      sort_order: 0,
+      // P-90: this used to be a hardcoded `0`, because `GameSummaryResponse`
+      // carried no `sort_order` — so the field showed every game a number that
+      // was not its own (cs2 is 1, aoe4 is 2). The DTO now returns it.
+      sort_order: newGame.sort_order,
     }
   }
 }, { immediate: true })
@@ -180,7 +193,11 @@ async function save() {
     if (form.value.is_featured !== props.game.is_featured) {
       body.is_featured = form.value.is_featured
     }
-    if (form.value.sort_order !== 0) {
+    // P-90: the old guard was `!== 0`, a workaround for the fabricated seed
+    // above — it kept the modal from writing a phantom 0 over the real order,
+    // at the cost of making 0 unsettable for every game. Now that the field is
+    // seeded from the actual value, "changed" is the honest test.
+    if (form.value.sort_order !== props.game.sort_order) {
       body.sort_order = form.value.sort_order
     }
 
@@ -207,6 +224,7 @@ async function save() {
       team_size_default: detail.team_size?.default || props.game!.team_size_default,
       status: detail.status,
       is_featured: detail.is_featured,
+      sort_order: detail.sort_order,
     }
 
     emit('saved', updatedGame)

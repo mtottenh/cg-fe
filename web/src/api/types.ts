@@ -1195,7 +1195,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all active games. */
+        /** List games — active only by default; the whole catalog for an admin that asks. */
         get: operations["list_games"];
         put?: never;
         post?: never;
@@ -5836,6 +5836,12 @@ export interface components {
                  */
                 slug: string;
                 /**
+                 * Format: int32
+                 * @description Display order (lower = shown first). See `GameSummaryResponse::sort_order`.
+                 * @example 1
+                 */
+                sort_order: number;
+                /**
                  * @description Game status.
                  * @example active
                  */
@@ -5894,6 +5900,21 @@ export interface components {
                  * @example cs2
                  */
                 slug: string;
+                /**
+                 * Format: int32
+                 * @description Display order (lower = shown first).
+                 *
+                 *     P-90: this column has always existed (`migrations/0003_create_games.sql:42`,
+                 *     seeded `cs2 = 1` / `aoe4 = 2`) and `PATCH /v1/games/{game_id}` has always
+                 *     accepted it, but no *response* carried it. The admin edit modal therefore
+                 *     had nothing to seed its "Sort Order" field from and hardcoded `0` — showing
+                 *     every game a value that was not the truth — and, to avoid writing that
+                 *     fabricated `0` over the real order, only sent the field when it was
+                 *     non-zero, which made `0` unsettable. Returning the stored value fixes both
+                 *     halves.
+                 * @example 1
+                 */
+                sort_order: number;
                 /**
                  * @description Game status (active, maintenance, deprecated).
                  * @example active
@@ -9894,6 +9915,12 @@ export interface components {
              */
             slug: string;
             /**
+             * Format: int32
+             * @description Display order (lower = shown first). See `GameSummaryResponse::sort_order`.
+             * @example 1
+             */
+            sort_order: number;
+            /**
              * @description Game status.
              * @example active
              */
@@ -10017,6 +10044,21 @@ export interface components {
              * @example cs2
              */
             slug: string;
+            /**
+             * Format: int32
+             * @description Display order (lower = shown first).
+             *
+             *     P-90: this column has always existed (`migrations/0003_create_games.sql:42`,
+             *     seeded `cs2 = 1` / `aoe4 = 2`) and `PATCH /v1/games/{game_id}` has always
+             *     accepted it, but no *response* carried it. The admin edit modal therefore
+             *     had nothing to seed its "Sort Order" field from and hardcoded `0` — showing
+             *     every game a value that was not the truth — and, to avoid writing that
+             *     fabricated `0` over the real order, only sent the field when it was
+             *     non-zero, which made `0` unsettable. Returning the stored value fixes both
+             *     halves.
+             * @example 1
+             */
+            sort_order: number;
             /**
              * @description Game status (active, maintenance, deprecated).
              * @example active
@@ -10911,6 +10953,21 @@ export interface components {
                  * @example cs2
                  */
                 slug: string;
+                /**
+                 * Format: int32
+                 * @description Display order (lower = shown first).
+                 *
+                 *     P-90: this column has always existed (`migrations/0003_create_games.sql:42`,
+                 *     seeded `cs2 = 1` / `aoe4 = 2`) and `PATCH /v1/games/{game_id}` has always
+                 *     accepted it, but no *response* carried it. The admin edit modal therefore
+                 *     had nothing to seed its "Sort Order" field from and hardcoded `0` — showing
+                 *     every game a value that was not the truth — and, to avoid writing that
+                 *     fabricated `0` over the real order, only sent the field when it was
+                 *     non-zero, which made `0` unsettable. Returning the stored value fixes both
+                 *     halves.
+                 * @example 1
+                 */
+                sort_order: number;
                 /**
                  * @description Game status (active, maintenance, deprecated).
                  * @example active
@@ -17314,6 +17371,22 @@ export interface operations {
                 page?: number;
                 /** @description Number of items per page. */
                 per_page?: number;
+                /**
+                 * @description Include games whose status is not `active` (i.e. `maintenance`,
+                 *     `deprecated`). Requires the `admin.games.manage` permission.
+                 *
+                 *     P-88: this list is the *only* game catalog the product has, and the admin
+                 *     games table reads it. Because it was unconditionally `list_active()`, a
+                 *     game that an admin disabled left the table on the very next fetch — and
+                 *     the Enable control exists only *inside* a row, so disabling a game deleted
+                 *     the button that re-enables it. The game became unreachable from the portal
+                 *     permanently, with no admin remedy short of SQL.
+                 *
+                 *     Non-admin callers that ask for it are **refused**, not silently downgraded
+                 *     to the active list: a client must never be able to believe it is holding
+                 *     the full catalog when it is holding a filtered one.
+                 */
+                include_inactive?: boolean;
             };
             header?: never;
             path?: never;
@@ -17321,13 +17394,22 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of active games */
+            /** @description List of games */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["PaginatedResponse_GameSummaryResponse"];
+                };
+            };
+            /** @description Forbidden - `include_inactive` requires admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };

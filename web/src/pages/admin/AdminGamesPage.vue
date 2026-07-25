@@ -132,6 +132,7 @@
     <GameConfigDialog
       v-model="configDialogOpen"
       :game="configGame"
+      @saved="fetchGames"
     />
   </div>
 </template>
@@ -174,18 +175,26 @@ const headers = [
 ]
 
 const filteredGames = computed(() => {
-  if (!search.value) return gamesStore.games
+  if (!search.value) return gamesStore.allGames
   const q = search.value.toLowerCase()
-  return gamesStore.games.filter(g =>
+  return gamesStore.allGames.filter(g =>
     g.id.toLowerCase().includes(q) ||
     g.display_name.toLowerCase().includes(q) ||
     (g.short_name?.toLowerCase().includes(q))
   )
 })
 
+/**
+ * P-88: this table reads the **unfiltered** catalog, not `GET /v1/games`'s
+ * active-only default. The Enable button lives inside a row, so listing only
+ * active games meant that disabling one deleted the control that undoes the
+ * disable: the game left the table on the next fetch and could never come back
+ * from the admin UI. An admin config surface has to be able to see the things
+ * it has turned off.
+ */
 async function fetchGames() {
   try {
-    await gamesStore.fetchGames()
+    await gamesStore.fetchAllGames()
   } catch {
     // Error captured in store
   }

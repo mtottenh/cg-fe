@@ -1,5 +1,5 @@
 <template>
-  <v-dialog v-model="open" max-width="700" persistent>
+  <v-dialog v-model="open" max-width="900" persistent>
     <v-card v-if="game">
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Configure: {{ game.display_name }}</span>
@@ -159,47 +159,194 @@
             </template>
           </v-tabs-window-item>
 
+          <!-- P-92: this tab was a read-only `v-list`. `games.setRankTiers` had
+               existed, and worked, with zero component consumers — so a game's
+               rank tiers (which gate league entry and drive seeding) could only
+               be changed with SQL. It is an editor now. -->
           <v-tabs-window-item value="ranks">
             <div v-if="loadingConfig" class="text-center pa-8">
               <v-progress-circular indeterminate />
             </div>
             <template v-else>
-              <v-list v-if="rankTiers.length > 0" density="compact">
-                <v-list-item v-for="tier in rankTiers" :key="tier.id">
-                  <template v-slot:prepend>
-                    <v-chip :color="tier.color || 'grey'" size="small" variant="flat" class="mr-2">
-                      {{ tier.order }}
-                    </v-chip>
-                  </template>
-                  <v-list-item-title>{{ tier.name }}</v-list-item-title>
-                  <v-list-item-subtitle>
-                    Rating: {{ tier.min_rating }} - {{ tier.max_rating }}
-                  </v-list-item-subtitle>
-                </v-list-item>
-              </v-list>
-              <p v-else class="text-center text-medium-emphasis pa-8">
-                No rank tiers configured.
+              <v-card
+                v-for="(tier, index) in tierDrafts"
+                :key="index"
+                variant="outlined"
+                class="mb-3"
+                :data-testid="`rank-tier-row-${index}`"
+              >
+                <v-card-text class="pb-1">
+                  <v-row dense>
+                    <v-col cols="12" sm="5">
+                      <v-text-field
+                        v-model="tier.id"
+                        label="Tier ID"
+                        hint="e.g. gold"
+                        variant="outlined"
+                        density="compact"
+                      />
+                    </v-col>
+                    <v-col cols="12" sm="6">
+                      <v-text-field
+                        v-model="tier.display_name"
+                        label="Tier Name"
+                        variant="outlined"
+                        density="compact"
+                      />
+                    </v-col>
+                    <v-col cols="12" sm="1" class="d-flex justify-end">
+                      <v-btn
+                        :aria-label="`Remove tier ${tier.display_name || tier.id || index + 1}`"
+                        icon
+                        size="small"
+                        variant="text"
+                        color="error"
+                        title="Remove tier"
+                        @click="removeTier(index)"
+                      >
+                        <v-icon size="small">mdi-delete</v-icon>
+                      </v-btn>
+                    </v-col>
+                    <v-col cols="6" sm="3">
+                      <v-text-field
+                        v-model.number="tier.min_rating"
+                        label="Min Rating"
+                        type="number"
+                        variant="outlined"
+                        density="compact"
+                      />
+                    </v-col>
+                    <v-col cols="6" sm="3">
+                      <v-text-field
+                        v-model="tier.max_rating"
+                        label="Max Rating"
+                        type="number"
+                        hint="Blank = no upper limit"
+                        persistent-hint
+                        variant="outlined"
+                        density="compact"
+                      />
+                    </v-col>
+                    <v-col cols="6" sm="3">
+                      <v-text-field
+                        v-model.number="tier.order"
+                        label="Order"
+                        type="number"
+                        variant="outlined"
+                        density="compact"
+                      />
+                    </v-col>
+                    <v-col cols="6" sm="3">
+                      <v-text-field
+                        v-model="tier.color"
+                        label="Colour"
+                        hint="Hex, e.g. #FFD700"
+                        variant="outlined"
+                        density="compact"
+                      />
+                    </v-col>
+                  </v-row>
+                </v-card-text>
+              </v-card>
+
+              <p v-if="tierDrafts.length === 0" class="text-center text-medium-emphasis pa-8">
+                No rank tiers configured. Click "Add Tier" to define one.
+              </p>
+
+              <div class="d-flex align-center ga-2">
+                <v-btn
+                  color="primary"
+                  variant="tonal"
+                  size="small"
+                  prepend-icon="mdi-plus"
+                  @click="addTier"
+                >
+                  Add Tier
+                </v-btn>
+                <v-spacer />
+                <v-btn variant="text" size="small" :disabled="!tiersDirty" @click="resetTiers">
+                  Discard
+                </v-btn>
+                <v-btn
+                  color="primary"
+                  variant="flat"
+                  size="small"
+                  prepend-icon="mdi-content-save"
+                  :loading="savingTiers"
+                  :disabled="!tiersDirty || !tiersValid"
+                  @click="saveTiers"
+                >
+                  Save Rank Tiers
+                </v-btn>
+              </div>
+              <p v-if="tiersDirty && !tiersValid" class="text-caption text-error mt-2">
+                Every tier needs an ID, a name and whole-number Min Rating and Order, and a
+                game needs at least one tier.
               </p>
             </template>
           </v-tabs-window-item>
 
+          <!-- P-92: this tab was a `readonly` field captioned "Team size is
+               managed via the game plugin configuration" — pointing at a
+               plugin-config surface that does not exist anywhere in the app,
+               while `PATCH /v1/games/{id}/team-size` sat live and unused. -->
           <v-tabs-window-item value="teamsize">
-            <div class="pa-4">
+            <div v-if="loadingConfig" class="text-center pa-8">
+              <v-progress-circular indeterminate />
+            </div>
+            <div v-else class="pa-4">
               <v-row>
                 <v-col cols="4">
                   <v-text-field
-                    :model-value="game.team_size_default"
+                    v-model.number="teamSize.min"
+                    label="Minimum"
+                    type="number"
+                    variant="outlined"
+                    density="compact"
+                  />
+                </v-col>
+                <v-col cols="4">
+                  <v-text-field
+                    v-model.number="teamSize.default"
                     label="Default"
                     type="number"
                     variant="outlined"
                     density="compact"
-                    readonly
+                  />
+                </v-col>
+                <v-col cols="4">
+                  <v-text-field
+                    v-model.number="teamSize.max"
+                    label="Maximum"
+                    type="number"
+                    variant="outlined"
+                    density="compact"
                   />
                 </v-col>
               </v-row>
               <p class="text-caption text-medium-emphasis">
-                Team size is managed via the game plugin configuration.
+                Minimum ≤ Default ≤ Maximum, each between 1 and 100. The default is the
+                roster size a new team for this game is created with.
               </p>
+              <p v-if="teamSizeDirty && !teamSizeValid" class="text-caption text-error">
+                {{ teamSizeError }}
+              </p>
+              <div class="d-flex justify-end ga-2 mt-2">
+                <v-btn variant="text" size="small" :disabled="!teamSizeDirty" @click="resetTeamSize">
+                  Discard
+                </v-btn>
+                <v-btn
+                  color="primary"
+                  variant="flat"
+                  size="small"
+                  prepend-icon="mdi-content-save"
+                  :loading="savingTeamSize"
+                  :disabled="!teamSizeDirty || !teamSizeValid"
+                  @click="saveTeamSize"
+                >
+                  Save Team Size
+                </v-btn>
+              </div>
             </div>
           </v-tabs-window-item>
         </v-tabs-window>
@@ -212,7 +359,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, toRaw, watch } from 'vue'
 import { useGamesStore, type GameSummary, type MapInfo } from '@/stores/games'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
@@ -224,6 +371,12 @@ const props = defineProps<{
   game: GameSummary | null
 }>()
 
+/**
+ * Emitted after a write that changes something the games table renders (team
+ * size), so the page can refetch instead of showing a stale row.
+ */
+const emit = defineEmits<{ saved: [] }>()
+
 const open = defineModel<boolean>({ required: true })
 
 const gamesStore = useGamesStore()
@@ -233,7 +386,79 @@ const confirmDialog = useConfirmDialog()
 const configTab = ref('maps')
 const loadingConfig = ref(false)
 const maps = ref<MapInfo[]>([])
-const rankTiers = ref<Array<{ id: string; name: string; min_rating: number; max_rating: number; color?: string; order: number }>>([])
+
+/**
+ * One editable rank-tier row.
+ *
+ * The numeric fields are `number | string` rather than `number` because that is
+ * what `v-model.number` actually produces: Vue leaves a value it cannot parse
+ * as the raw string, so a cleared field is `''`. Typing them as `number` would
+ * be a lie the compiler could not catch and would send `""` to an `i32`.
+ * `max_rating` is genuinely optional — blank means "no upper limit" (`null`).
+ */
+interface TierDraft {
+  id: string
+  display_name: string
+  min_rating: number | string
+  max_rating: number | string
+  color: string
+  icon_url: string
+  order: number | string
+}
+
+const tierDrafts = ref<TierDraft[]>([])
+const tierOriginals = ref<TierDraft[]>([])
+const savingTiers = ref(false)
+
+const tiersDirty = computed(
+  () => JSON.stringify(tierDrafts.value) !== JSON.stringify(tierOriginals.value),
+)
+
+function isWholeNumber(v: number | string): boolean {
+  return v !== '' && Number.isInteger(Number(v))
+}
+
+const tiersValid = computed(
+  () =>
+    // The API requires at least one tier (`SetRankTiersRequest`,
+    // `#[validate(length(min = 1, max = 20))]`).
+    tierDrafts.value.length > 0 &&
+    tierDrafts.value.length <= 20 &&
+    tierDrafts.value.every(
+      (t) =>
+        t.id.trim() !== '' &&
+        t.display_name.trim() !== '' &&
+        isWholeNumber(t.min_rating) &&
+        isWholeNumber(t.order) &&
+        (t.max_rating === '' || isWholeNumber(t.max_rating)),
+    ),
+)
+
+// Team size state
+const teamSize = ref({ min: 1 as number | string, default: 1 as number | string, max: 1 as number | string })
+const teamSizeOriginal = ref({ min: 1 as number | string, default: 1 as number | string, max: 1 as number | string })
+const savingTeamSize = ref(false)
+
+const teamSizeDirty = computed(
+  () => JSON.stringify(teamSize.value) !== JSON.stringify(teamSizeOriginal.value),
+)
+
+/**
+ * Mirrors the server's own checks (`update_team_size`, `UpdateTeamSizeRequest`)
+ * so the operator gets the reason before the round trip rather than a snackbar
+ * after it. The server stays the authority — a save that slips through still
+ * surfaces its 400.
+ */
+const teamSizeError = computed(() => {
+  const { min, default: def, max } = teamSize.value
+  if (![min, def, max].every(isWholeNumber)) return 'Every team size must be a whole number.'
+  const [n, d, x] = [Number(min), Number(def), Number(max)]
+  if ([n, d, x].some((v) => v < 1 || v > 100)) return 'Team sizes must be between 1 and 100.'
+  if (n > d) return `Minimum (${n}) must be at most the default (${d}).`
+  if (d > x) return `Default (${d}) must be at most the maximum (${x}).`
+  return ''
+})
+const teamSizeValid = computed(() => teamSizeError.value === '')
 
 // Map pool state
 const poolMapIds = ref<string[]>([])
@@ -273,22 +498,129 @@ async function loadConfig(game: GameSummary) {
       gamesStore.fetchGame(game.id).catch(() => null),
     ])
     maps.value = (mapsResult as MapInfo[]) || []
-    // Explicit mapping from the API shape (display_name) to the UI's local
-    // shape (name) — the generated type is authoritative, no casts.
-    rankTiers.value = (tiersResult ?? []).map((tier) => ({
+    // Explicit mapping from the API shape to the editable draft shape — the
+    // generated type is authoritative, no casts. `max_rating: null` ("no upper
+    // limit") becomes '' so the field renders blank rather than as a literal 0,
+    // which would be a different tier definition.
+    const drafts: TierDraft[] = (tiersResult ?? []).map((tier) => ({
       id: tier.id,
-      name: tier.display_name,
-      min_rating: tier.min_rating ?? 0,
-      max_rating: tier.max_rating ?? 0,
-      color: tier.color ?? undefined,
+      display_name: tier.display_name,
+      min_rating: tier.min_rating,
+      max_rating: tier.max_rating ?? '',
+      color: tier.color ?? '',
+      icon_url: tier.icon_url ?? '',
       order: tier.order,
     }))
+    tierDrafts.value = drafts
+    tierOriginals.value = structuredClone(drafts)
     // Initialize pool from game detail
     const pool = gameDetail?.map_pool ?? []
     poolMapIds.value = [...pool]
     poolOriginalIds.value = [...pool]
+    // Team size comes from the detail response; the summary row only has the
+    // default, and the min/max are what the editor needs to keep consistent.
+    const size = {
+      min: gameDetail?.team_size.min ?? game.team_size_default,
+      default: gameDetail?.team_size.default ?? game.team_size_default,
+      max: gameDetail?.team_size.max ?? game.team_size_default,
+    }
+    teamSize.value = { ...size }
+    teamSizeOriginal.value = { ...size }
   } finally {
     loadingConfig.value = false
+  }
+}
+
+// ==================== Rank tiers ====================
+
+function addTier() {
+  const highestMax = tierDrafts.value.reduce((acc, t) => {
+    const max = t.max_rating === '' ? Number(t.min_rating) : Number(t.max_rating)
+    return Number.isFinite(max) && max > acc ? max : acc
+  }, -1)
+  tierDrafts.value.push({
+    id: '',
+    display_name: '',
+    // Tiers must not overlap (`set_rank_tiers` rejects `min_rating <= previous
+    // max_rating`), so a new row starts just above the highest one so far.
+    min_rating: highestMax + 1,
+    max_rating: '',
+    color: '',
+    icon_url: '',
+    order: tierDrafts.value.length + 1,
+  })
+}
+
+function removeTier(index: number) {
+  tierDrafts.value.splice(index, 1)
+}
+
+function resetTiers() {
+  tierDrafts.value = structuredClone(toRaw(tierOriginals.value))
+}
+
+async function saveTiers() {
+  if (!props.game || !tiersValid.value) return
+  savingTiers.value = true
+  try {
+    const saved = await gamesStore.setRankTiers(
+      props.game.id,
+      tierDrafts.value.map((t) => ({
+        id: t.id.trim(),
+        display_name: t.display_name.trim(),
+        min_rating: Number(t.min_rating),
+        max_rating: t.max_rating === '' ? null : Number(t.max_rating),
+        color: t.color.trim() || null,
+        icon_url: t.icon_url.trim() || null,
+        order: Number(t.order),
+      })),
+    )
+    // Re-seed from the server's answer rather than from the draft: the response
+    // is what was actually stored.
+    const drafts: TierDraft[] = saved.map((tier) => ({
+      id: tier.id,
+      display_name: tier.display_name,
+      min_rating: tier.min_rating,
+      max_rating: tier.max_rating ?? '',
+      color: tier.color ?? '',
+      icon_url: tier.icon_url ?? '',
+      order: tier.order,
+    }))
+    tierDrafts.value = drafts
+    tierOriginals.value = structuredClone(drafts)
+    snackbar.show('Rank tiers saved', 'success')
+  } catch {
+    snackbar.show(gamesStore.setRankTiersState.error || 'Failed to save rank tiers', 'error')
+  } finally {
+    savingTiers.value = false
+  }
+}
+
+// ==================== Team size ====================
+
+function resetTeamSize() {
+  teamSize.value = { ...teamSizeOriginal.value }
+}
+
+async function saveTeamSize() {
+  if (!props.game || !teamSizeValid.value) return
+  savingTeamSize.value = true
+  try {
+    const saved = await gamesStore.updateTeamSize(props.game.id, {
+      min: Number(teamSize.value.min),
+      default: Number(teamSize.value.default),
+      max: Number(teamSize.value.max),
+    })
+    const size = { min: saved.min, default: saved.default, max: saved.max }
+    teamSize.value = { ...size }
+    teamSizeOriginal.value = { ...size }
+    snackbar.show('Team size saved', 'success')
+    // The games table renders `team_size_default`, so it is now stale.
+    emit('saved')
+  } catch {
+    snackbar.show(gamesStore.updateTeamSizeState.error || 'Failed to save team size', 'error')
+  } finally {
+    savingTeamSize.value = false
   }
 }
 

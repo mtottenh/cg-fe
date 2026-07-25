@@ -14,14 +14,26 @@ type UpdateMapRequest = components['schemas']['UpdateMapRequest']
 
 export const useGamesStore = defineStore('games', () => {
   const games = ref<GameSummary[]>([])
+  /**
+   * The **admin** catalog: every game, including the ones that are not `active`.
+   * Deliberately a separate list from `games` — `games` is the *active* catalog
+   * that the public game-filter selects on `/tournaments`, `/leagues` and
+   * `/players` render, and quietly widening it from an admin page would leak a
+   * disabled game into those selects. See `fetchAllGames`.
+   */
+  const allGames = ref<GameSummary[]>([])
   const currentGame = ref<GameDetail | null>(null)
-  const loading = computed(() => fetchGamesState.loading)
+  const loading = computed(() => fetchGamesState.loading || fetchAllGamesState.loading)
   const error = computed({
-    get: () => fetchGamesState.error,
-    set: (val: string | null) => { fetchGamesState.error = val },
+    get: () => fetchGamesState.error ?? fetchAllGamesState.error,
+    set: (val: string | null) => {
+      fetchGamesState.error = val
+      fetchAllGamesState.error = val
+    },
   })
 
   const fetchGamesState = createActionState()
+  const fetchAllGamesState = createActionState()
   const fetchGameState = createActionState()
   const enableGameState = createActionState()
   const disableGameState = createActionState()
@@ -56,6 +68,29 @@ export const useGamesStore = defineStore('games', () => {
     }, 'Failed to fetch games')
   }
 
+  /**
+   * The full catalog, disabled games included — `GET /v1/games?include_inactive=true`.
+   *
+   * P-88: the admin games table used to read `fetchGames`, i.e. `list_active()`.
+   * Its Enable button exists only *inside* a row, so disabling a game removed
+   * the row on the very next fetch and took the only control that could undo the
+   * disable with it — the game was gone from the portal for good. The admin
+   * surface therefore needs a list that is **not** filtered by status.
+   *
+   * The endpoint refuses this parameter without `admin.games.manage` rather than
+   * silently returning the active list, so a 403 here means "not an admin", not
+   * "no inactive games".
+   */
+  async function fetchAllGames(): Promise<GameSummary[]> {
+    return withActionState(fetchAllGamesState, async () => {
+      const result = await unwrapApi(api.GET('/v1/games', {
+        params: { query: { per_page: 100, include_inactive: true } },
+      }))
+      allGames.value = result.data
+      return allGames.value
+    }, 'Failed to fetch games')
+  }
+
   async function fetchGame(gameId: string): Promise<GameDetail> {
     return withActionState(fetchGameState, async () => {
       const result = await unwrapApi(api.GET('/v1/games/{game_id}', {
@@ -72,8 +107,11 @@ export const useGamesStore = defineStore('games', () => {
         params: { path: { game_id: gameId } },
       }))
       const item = result.data
-      // Update in list if present
+      // Update in whichever list holds it. `games` is active-only, so an
+      // enable usually finds nothing there until the next public refetch;
+      // `allGames` (the admin catalog) always holds the row.
       replaceById(games.value, item)
+      replaceById(allGames.value, item)
       return item
     }, 'Failed to enable game')
   }
@@ -84,8 +122,11 @@ export const useGamesStore = defineStore('games', () => {
         params: { path: { game_id: gameId } },
       }))
       const item = result.data
-      // Update in list if present
+      // `allGames` keeps the row (it is the unfiltered admin catalog, so this
+      // patch matches what a refetch would return). `games` is active-only and
+      // its copy is now stale, but the row is dropped on its next fetch.
       replaceById(games.value, item)
+      replaceById(allGames.value, item)
       return item
     }, 'Failed to disable game')
   }
@@ -178,14 +219,17 @@ export const useGamesStore = defineStore('games', () => {
 
   return {
     games,
+    allGames,
     currentGame,
     loading,
     error,
     fetchGamesState,
+    fetchAllGamesState,
     fetchGameState,
     enableGameState,
     disableGameState,
     fetchGames,
+    fetchAllGames,
     fetchGame,
     enableGame,
     disableGame,

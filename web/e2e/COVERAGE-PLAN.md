@@ -283,8 +283,8 @@ through the UI — not an API-level check.
 | # | Why it blocks |
 |---|---|
 | P-127 | ✅ `fixed` — result submission left a stale page; the panel was `v-else-if`'d off by the very store write preceding its own emit, so `emit('submitted')` landed in a torn-down tree. Same defect as P-6, on the most-used flow in the product |
-| P-53 / P-56 | Past registration #100 a player **cannot submit a result at all**. Silent hard ceiling; 128-player CS2 events are routine — **Lane T in flight** |
-| P-72 | A wrong result that auto-confirms (24h since P-57) with no dispute is **permanently uncorrectable** by any operator — **Lane T in flight** |
+| P-53 / P-56 | ✅ `1a6743b`+`7d02c59` — past registration #100 a player could not submit a result at all. A targeted participants lookup replaces the paging scan, which is DELETED rather than widened, and the e2e asserts the page issues no `/registrations` request at all so it cannot be reintroduced. **But see P-167**: the same scan defect survives on TournamentDetailPage at the default `per_page: 20`, a worse ceiling on a different surface |
+| P-72 | ✅ `1a6743b`+`7d02c59` — a wrong result that auto-confirmed with no dispute was permanently uncorrectable. The score write and its audit row share one transaction, and all three score-write paths are now literally one statement. **See P-169**: on elimination brackets Revert is still a no-op, so a correction that flips the winner cannot be rolled back downstream |
 | P-14 · P-15 · P-16 · P-18 | ✅ `297a19e` — roster lock was unreachable, so all enforcement was dead. **But see P-148: the stated rationale was wrong.** Teams cannot swap players mid-playoffs today because `allows_roster_changes()` is `Draft \| Registration` only — i.e. season *status* forbids it, and the lock is inert once a season is active. The lock is still required (it governs draft/registration, and P-15 showed substitutes could be seated on a hard-locked roster), but whether it should govern the competitive phase is an unresolved product ruling, not a landed guarantee |
 | P-70 | ✅ `f29a1e7` — admin/organizer could only be granted by SQL. **Was only half-closed**: granting worked, but `SYSTEM_ADMIN_ROLES` named a role no migration seeds, so the grantee was still bounced off every admin route (P-152, `e92aead`). Both halves now land |
 | P-123 | ✅ `be66b56`+`fa394b0` — ban-lift confirmed against a truncated UUID; v7 prefixes are timestamps, so two bans minutes apart were indistinguishable. `BanResponse` now carries username/display_name and the confirm dialog names the person |
@@ -416,9 +416,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 162 found · 131 fixed · 31 open** (P-53 mitigated).
+**Status (derived): 170 found · 138 fixed · 32 open** (P-53 mitigated).
 
-Open: P-53, P-56, P-58, P-61, P-66, P-72, P-80, P-120, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162.
+Open: P-58, P-61, P-66, P-80, P-120, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162, P-167, P-168, P-169, P-170.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -490,10 +490,10 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-50 | **Result auto-confirmed with opponent never notified** | **integrity/trust** | **fixed** `2f94b47` |
 | P-51 | Invitee cannot read own invite state (gate was soft) | design gap | **fixed** `c7d395e` |
 | P-52 | Duplicate `operationId` broke the generated client | build | **fixed** `098832a`; guarded `c5ea9e5` |
-| P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | open — 🟡 mitigated `7775a19`, real fix tracked as P-56 |
+| P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | **fixed** `1a6743b+7d02c59` |
 | P-54 | League members truncates at 20; client cannot paginate | user-facing | **fixed** `dc5136c`+`71bdd90` (web half was missing) |
 | P-55 | Review queue FIFO — newest escalation on the last page | admin friction | **fixed** `4559a36`+`37c24cb` |
-| P-56 | >100-participant tournaments still can't submit (P-53 ceiling) | blocks core flow | open |
+| P-56 | >100-participant tournaments still can't submit (P-53 ceiling) | blocks core flow | **fixed** `1a6743b+7d02c59` |
 | P-57 | 15-min auto-confirm window too short for humans | trust | **fixed** `5590726` (24h) |
 | P-58 | Team matches credit participation to nobody | integrity | open — fix landed `3013f58`, awaiting post-§6 verification |
 | P-59 | **`schedule_match` direct-set: no authz → manufactured forfeits** | **security** | **fixed** `930f8c9` (red-proven) |
@@ -509,7 +509,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-69 | Platform Elo engine is dead code (never called) | **scope decided** | **fixed** `82e8b14` |
 | P-70 | **Platform role assignment has no UI** | admin gap | **fixed** `f29a1e7+dfe80ee` (+`e92aead`, see P-152) |
 | P-71 | Returning team can't enter the next season | blocks flow | **fixed** `28afc7a` |
-| P-72 | No admin score correction outside a dispute | admin gap | open |
+| P-72 | No admin score correction outside a dispute | admin gap | **fixed** `1a6743b+7d02c59` |
 | P-73 | Ingestion pipeline invisible to admins | ops blind spot | **fixed** `0dd69e1+4ead184` |
 | P-74 | **"Retry Processing" calls no API — reports success anyway** | **trust** | **fixed** `c49380d+1d5c9e5` |
 | P-75 | Demo league/tournament association uncorrectable; shows raw UUIDs | admin gap | **fixed** `61d3e65`+`b9ccdaf` |
@@ -600,6 +600,14 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-160 | `docker-compose.yml:76` defaults `CS2_DEMO_SERVICE_URL` to the live third-party host — P-137's mechanism surviving in deployment config | **config safety** | open |
 | P-161 | `POST /evidence/validate-demo` and `GET /evidence/demo-stats/{name}` are dead API surface — the store actions exist, no component calls them, so P-137 has no UI to drive | feature dead | open |
 | P-162 | `derive_result_outcome` (`tournament/helpers.rs:143`) is dead code, flagged by the compiler | debt | open |
+| P-163 | **`league.create` was declared but never seeded — a second P-139. The first handler to gate on it would 403 everyone including super_admin** | **authorization** | **fixed** `0081` |
+| P-164 | **The P-140 guard covered `admin::ALL` only — 1 of 5 registries — so an unseeded `tournament.results.manage` would have slipped through it too** | **gate gap** | **fixed** `1a6743b` |
+| P-165 | **`resolve/adjusted` silently fabricated a winner on a TIE and wrote it into the bracket** (`p1 > p2 ? p1 : p2` awards equal scores to participant 2) | **integrity** | **fixed** `1a6743b` |
+| P-166 | `LineupDeclarePanel` carried the identical 100-row ceiling — past row 100 no lineup could be declared at all | blocks core flow | **fixed** `7d02c59` |
+| P-167 | **`TournamentDetailPage` scans registrations at the DEFAULT `per_page: 20`, so past row 20 everyone is told they are not registered — no Registered state, no withdraw, and eligibility counts computed from a 20-row sample. A worse ceiling than P-53, on a different surface** | **blocks core flow** | open |
+| P-168 | **`find_user_registration` matches `registered_by` only, so for a TEAM registration only the person who clicked register can submit or confirm — a co-captain gets 403 while the UI offers them the panel. Frontend and backend disagree about who speaks for a registration** | **blocks core flow** | open |
+| P-169 | `revert_progression` is a no-op on elimination brackets and now compounds with P-72: after a correction that flips the winner, Revert silently does nothing | integrity | open |
+| P-170 | After an override the `result_claims` row is untouched, so the claimed (wrong) score still shows beside the corrected one — intentional and labelled, but a divergence worth a ruling | product call | open |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service

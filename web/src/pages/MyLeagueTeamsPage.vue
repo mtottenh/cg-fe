@@ -117,6 +117,23 @@
               </v-card-text>
 
               <v-card-actions>
+                <!--
+                  P-71: "My Teams" had no link to the team itself — only to the
+                  league — so every owner-side team control (register for the
+                  next season, transfer ownership, disband) was unreachable from
+                  the one page that lists a player's teams. The season id is
+                  carried so TeamDetailPage opens on the right roster instead of
+                  guessing from the 3 newest seasons.
+                -->
+                <v-btn
+                  variant="text"
+                  size="small"
+                  color="primary"
+                  :data-testid="`view-team-${membership.team_id}`"
+                  :to="`/teams/${membership.team_id}?season=${membership.team_season_id}`"
+                >
+                  View Team
+                </v-btn>
                 <v-btn
                   variant="text"
                   size="small"

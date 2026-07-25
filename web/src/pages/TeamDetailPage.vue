@@ -53,6 +53,22 @@
                     <v-icon start>mdi-account-plus</v-icon>
                     Apply to Join
                   </v-btn>
+                  <!--
+                    P-63: disbanding was reachable only through the API. The
+                    endpoint is gated on `team.settings.manage`; the product
+                    meaning of that is "the owner", so the control is
+                    owner-gated and confirm-gated.
+                  -->
+                  <v-btn
+                    v-if="isOwner"
+                    color="error"
+                    variant="outlined"
+                    data-testid="disband-team-btn"
+                    @click="confirmDisbandTeam"
+                  >
+                    <v-icon start>mdi-delete-forever</v-icon>
+                    Disband Team
+                  </v-btn>
                 </div>
               </template>
             </v-card-item>
@@ -67,9 +83,53 @@
                   Created {{ formatDate(team.created_at) }}
                 </span>
                 <v-chip size="small" :color="getStatusColor(team.status)" variant="tonal">
-                  {{ team.status }}
+                  {{ formatStatus(team.status) }}
                 </v-chip>
               </div>
+            </v-card-text>
+          </v-card>
+
+          <!--
+            P-71: a `LeagueTeamSeason` is per-season by design, so when a season
+            rolls over the team itself survives but has no entry in the next
+            one. `registerTeamForSeason` existed in the store with ZERO
+            component consumers, leaving the captain's only route "create a
+            brand-new team" — which orphans roster history, trophies and match
+            history behind a new team id. This is that missing action.
+          -->
+          <v-card v-if="isOwner" class="mb-4" data-testid="season-registration-card">
+            <v-card-title class="d-flex align-center">
+              <v-icon start>mdi-calendar-plus</v-icon>
+              <span>Season Registration</span>
+            </v-card-title>
+            <v-divider />
+            <v-progress-linear v-if="loadingSeasons" indeterminate />
+            <v-list v-if="registerableSeasons.length > 0">
+              <v-list-item
+                v-for="season in registerableSeasons"
+                :key="season.id"
+                :data-testid="`registerable-season-${season.id}`"
+              >
+                <v-list-item-title>{{ season.name }}</v-list-item-title>
+                <v-list-item-subtitle>Registration is open</v-list-item-subtitle>
+                <template v-slot:append>
+                  <v-btn
+                    color="primary"
+                    variant="tonal"
+                    size="small"
+                    :loading="registeringSeasonId === season.id"
+                    :data-testid="`register-season-${season.id}`"
+                    @click="handleRegisterForSeason(season)"
+                  >
+                    <v-icon start>mdi-clipboard-check</v-icon>
+                    Register for {{ season.name }}
+                  </v-btn>
+                </template>
+              </v-list-item>
+            </v-list>
+            <v-card-text v-else-if="!loadingSeasons" class="text-medium-emphasis">
+              This team is entered in every season that is currently open for
+              registration. New seasons appear here as soon as the league opens them.
             </v-card-text>
           </v-card>
 
@@ -246,7 +306,7 @@
                     {{ member.role }}
                   </v-chip>
                 </v-list-item-subtitle>
-                <template v-slot:append v-if="isCaptain && !isCurrentUser(member.player_id)">
+                <template v-slot:append v-if="(isCaptain || isOwner) && !isCurrentUser(member.player_id)">
                   <v-menu>
                     <template v-slot:activator="{ props }">
                       <v-btn aria-label="Member actions" icon variant="text" size="small" v-bind="props">
@@ -256,7 +316,7 @@
                     <v-list density="compact">
                       <v-list-subheader>Actions</v-list-subheader>
                       <v-list-item
-                        v-if="member.role !== 'captain'"
+                        v-if="isCaptain && member.role !== 'captain'"
                         @click="handlePromoteToCaptain(member.player_id)"
                       >
                         <template v-slot:prepend>
@@ -264,8 +324,26 @@
                         </template>
                         <v-list-item-title>Promote to Captain</v-list-item-title>
                       </v-list-item>
-                      <v-divider class="my-2" />
+                      <!--
+                        P-62: the transfer endpoint has been live and e2e-proven
+                        since 2026-07-22 with no control anywhere in the app.
+                        Owner-gated (the backend checks `owner_player_id`, not a
+                        permission) and confirm-gated — it is irreversible for
+                        the person performing it.
+                      -->
                       <v-list-item
+                        v-if="isOwner"
+                        :data-testid="`transfer-ownership-${member.player_id}`"
+                        @click="confirmTransferOwnership(member)"
+                      >
+                        <template v-slot:prepend>
+                          <v-icon>mdi-account-switch</v-icon>
+                        </template>
+                        <v-list-item-title>Transfer Ownership</v-list-item-title>
+                      </v-list-item>
+                      <v-divider v-if="isCaptain" class="my-2" />
+                      <v-list-item
+                        v-if="isCaptain"
                         class="text-error"
                         @click="confirmRemoveMember(member)"
                       >
@@ -341,13 +419,13 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useLeagueTeamsStore, type LeagueTeamMemberWithPlayer } from '@/stores/leagueTeams'
-import { useLeagueSeasonsStore } from '@/stores/leagueSeasons'
+import { useLeagueSeasonsStore, type LeagueSeasonResponse } from '@/stores/leagueSeasons'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamContext } from '@/composables/useTeamContext'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import LeagueTeamInviteModal from '@/components/team/LeagueTeamInviteModal.vue'
-import { teamRoleMap, teamStatusMap, getStatusColor as mapStatusColor } from '@/utils/statusMaps'
+import { teamRoleMap, teamStatusMap, getStatusColor as mapStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import type { components } from '@/api/types'
 
 type LeagueTeamResponse = components['schemas']['LeagueTeamResponse']
@@ -355,6 +433,7 @@ type LeagueTeamResponse = components['schemas']['LeagueTeamResponse']
 const route = useRoute()
 const router = useRouter()
 const teamsStore = useLeagueTeamsStore()
+const seasonsStore = useLeagueSeasonsStore()
 const authStore = useAuthStore()
 
 const loading = ref(true)
@@ -405,12 +484,63 @@ const canApplyToTeam = computed(() => {
 })
 
 /**
+ * Owner-only surface gate for P-62 / P-63 / P-71.
+ *
+ * Deliberately NOT `isCaptain`: transfer-ownership and register-for-season are
+ * authorized by the backend against `league_teams.owner_player_id`
+ * (`LeagueTeamService::transfer_ownership` / `::register_for_season`), and a
+ * roster captain is not necessarily the owner. Gating on the captain role would
+ * render three controls that 403 for co-captains.
+ */
+const isOwner = computed(
+  () => !!team.value && !!authStore.playerId && team.value.owner_player_id === authStore.playerId,
+)
+
+// P-71 state: seasons of this team's league that are open for registration and
+// that the team is not already entered in.
+const registerableSeasons = ref<LeagueSeasonResponse[]>([])
+const loadingSeasons = ref(false)
+const registeringSeasonId = ref<string | null>(null)
+
+/**
+ * Build the registerable-season list.
+ *
+ * "Already registered" is derived from `myTeams` rather than by probing
+ * `GET /league-seasons/{id}/teams` per season: registering a team for a season
+ * always seats the registering owner as captain of the new `LeagueTeamSeason`
+ * (`create_with_captain`), so the owner has a membership row for every season
+ * their team is in. That makes this O(1) against data the page already loaded,
+ * and it is not subject to the 100-row pagination ceiling (P-53) a per-season
+ * team-list probe would hit.
+ */
+async function loadRegisterableSeasons() {
+  if (!team.value || !isOwner.value) {
+    registerableSeasons.value = []
+    return
+  }
+  loadingSeasons.value = true
+  try {
+    const seasons = await seasonsStore.fetchSeasons(team.value.league_id)
+    const enteredSeasonIds = new Set(
+      teamsStore.myTeams.filter(m => m.team_id === teamId.value).map(m => m.season_id),
+    )
+    // `registration` is the ONLY status `SeasonStatus::is_registration_open()`
+    // accepts (portal-core/src/types/league_team.rs:62); offering any other
+    // status would be a control that always 409s.
+    registerableSeasons.value = seasons.filter(
+      s => s.status === 'registration' && !enteredSeasonIds.has(s.id),
+    )
+  } finally {
+    loadingSeasons.value = false
+  }
+}
+
+/**
  * Resolve this team's team_season_id from its league when the URL carries no
  * ?season= and the viewer is not a member — makes bare /teams/{id} deep
  * links work. Checks the most recent seasons first (max 3 requests).
  */
 async function resolveSeasonFromLeague(leagueId: string): Promise<string | null> {
-  const seasonsStore = useLeagueSeasonsStore()
   const seasons = await seasonsStore.fetchSeasons(leagueId).catch(() => [])
   const ranked = [...seasons].sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -468,6 +598,12 @@ onMounted(async () => {
         await teamsStore.fetchTeamInvitations(teamSeasonId.value)
       }
     }
+
+    // P-71: last, because it needs both `team` (for the league) and `myTeams`
+    // (for the seasons already entered). Deliberately inside the try — a
+    // failure here surfaces on the page instead of leaving an empty card that
+    // silently claims there is nothing to register for.
+    await loadRegisterableSeasons()
   } catch (e) {
     error.value = teamsStore.error || 'Failed to load team'
     console.error('Failed to load team:', e)
@@ -520,6 +656,65 @@ function confirmRemoveMember(member: LeagueTeamMemberWithPlayer) {
       showSuccess.value = true
     },
   })
+}
+
+// P-62. Confirm-gated: irreversible for the person performing it — the backend
+// only lets the CURRENT owner transfer, so handing the team over cannot be
+// undone from this account.
+function confirmTransferOwnership(member: LeagueTeamMemberWithPlayer) {
+  confirmDialog.confirm({
+    title: 'Transfer Ownership',
+    message: `Transfer ownership of ${team.value?.name} to ${member.display_name}? `
+      + 'You will lose owner control of this team and cannot take it back yourself.',
+    action: 'Transfer Ownership',
+    color: 'warning',
+    handler: async () => {
+      team.value = await teamsStore.transferOwnership(teamId.value, member.player_id)
+      successMessage.value = `${member.display_name} is now the team owner`
+      showSuccess.value = true
+      // No longer the owner: the owner-only surfaces must stop offering actions
+      // this account can no longer perform.
+      registerableSeasons.value = []
+    },
+  })
+}
+
+// P-63. Confirm-gated and owner-only. Disband is a terminal status flip, not a
+// row delete, so history survives — but the backend refuses to un-disband
+// (`team.status.is_terminal()` → InvalidState), which is why the copy says so.
+function confirmDisbandTeam() {
+  confirmDialog.confirm({
+    title: 'Disband Team',
+    message: `Disband ${team.value?.name}? This cannot be undone — the team is `
+      + 'retired from the league and its roster can no longer be changed.',
+    action: 'Disband Team',
+    color: 'error',
+    handler: async () => {
+      await teamsStore.disbandTeam(teamId.value)
+      router.push('/my-teams')
+    },
+  })
+}
+
+// P-71. Not confirm-gated: registering is additive and reversible by leaving.
+async function handleRegisterForSeason(season: LeagueSeasonResponse) {
+  registeringSeasonId.value = season.id
+  try {
+    const teamSeason = await teamsStore.registerTeamForSeason(season.id, teamId.value)
+    successMessage.value = `Registered for ${season.name}`
+    showSuccess.value = true
+    registerableSeasons.value = registerableSeasons.value.filter(s => s.id !== season.id)
+    // Move the page onto the new season's roster so the captain lands where the
+    // work now is (invites, roster edits) rather than on the season that ended.
+    teamSeasonId.value = teamSeason.id
+    router.replace({ query: { ...route.query, season: teamSeason.id } })
+    await teamsStore.fetchMyTeams()
+    await teamsStore.fetchMembers(teamSeason.id)
+  } catch {
+    error.value = teamsStore.registerTeamForSeasonState.error || 'Failed to register for season'
+  } finally {
+    registeringSeasonId.value = null
+  }
 }
 
 function confirmLeaveTeam() {
@@ -633,6 +828,16 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 const getStatusColor = (status: string) => mapStatusColor(teamStatusMap, status)
+// C1/P-112 sweep: the team status chip interpolated `team.status` directly, so
+// it printed the raw wire value ("disbanded" rather than "Disbanded"). It was
+// one of check-status-maps.mjs's baselined leaks. `teamStatusMap` already
+// covers LeagueTeamStatus AND LeagueTeamSeasonStatus, so no map change is
+// needed — only the call.
+//
+// NB: keep the words `team` and `status` out of a `{{ }}` in this file's
+// comments — the status-map ratchet greps raw lines and does not skip
+// comments, so prose describing the defect is counted as the defect.
+const formatStatus = (status: string) => getStatusLabel(teamStatusMap, status)
 const getRoleColor = (role: string) => mapStatusColor(teamRoleMap, role)
 </script>
 

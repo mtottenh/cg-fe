@@ -130,6 +130,45 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     }, 'Failed to update team')
   }
 
+  // P-62: transfer team ownership. The endpoint has existed (and been
+  // e2e-proven) since before the frontend had any consumer for it —
+  // `team-roster.spec.ts` drove it over raw `fetch` precisely because no store
+  // action wrapped it. Authorization is the SERVICE-level owner check
+  // (`LeagueTeamService::transfer_ownership`), not an RBAC permission, so the
+  // UI gate is `team.owner_player_id === authStore.playerId`.
+  const transferOwnershipState = createActionState()
+  async function transferOwnership(teamId: string, newOwnerPlayerId: string): Promise<LeagueTeamResponse> {
+    return withActionState(transferOwnershipState, async () => {
+      const result = await unwrapApi(api.POST('/v1/league-teams/{team_id}/transfer-ownership', {
+        params: { path: { team_id: teamId } },
+        body: { new_owner_player_id: newOwnerPlayerId },
+      }))
+      currentTeam.value = result.data
+      return currentTeam.value
+    }, 'Failed to transfer team ownership')
+  }
+
+  // P-63: disband a team. `DELETE /v1/league-teams/{team_id}` returns 204 with
+  // no body and flips `league_teams.status` to `disbanded` — it is a soft
+  // terminal state, not a row deletion, so the team keeps its history. Local
+  // state is pruned everywhere the disbanded team could still be rendered.
+  const disbandTeamState = createActionState()
+  async function disbandTeam(teamId: string): Promise<void> {
+    return withActionState(disbandTeamState, async () => {
+      await unwrapApi(api.DELETE('/v1/league-teams/{team_id}', {
+        params: { path: { team_id: teamId } },
+      }))
+      if (currentTeam.value?.id === teamId) {
+        currentTeam.value = null
+        currentTeamSeason.value = null
+        members.value = []
+        invitations.value = []
+      }
+      teams.value = teams.value.filter(t => t.team_id !== teamId)
+      myTeams.value = myTeams.value.filter(t => t.team_id !== teamId)
+    }, 'Failed to disband team')
+  }
+
   // ==================== Team Season Registration ====================
 
   async function registerTeamForSeason(seasonId: string, teamId: string): Promise<LeagueTeamSeasonResponse> {
@@ -369,6 +408,8 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     fetchTeam,
     createTeam,
     updateTeam,
+    transferOwnership,
+    disbandTeam,
 
     // Season registration
     registerTeamForSeason,
@@ -412,6 +453,8 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     fetchTeamState,
     createTeamState,
     updateTeamState,
+    transferOwnershipState,
+    disbandTeamState,
     registerTeamForSeasonState,
     fetchMembersState,
     addMemberState,

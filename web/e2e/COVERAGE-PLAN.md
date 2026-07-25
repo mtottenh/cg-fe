@@ -12,7 +12,7 @@ began as a test-quality audit. The findings are the deliverable; the tests are t
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **112 findings · 64 fixed** → the status-drift defect class closed at the source
+112 → 0) → **112 findings · 68 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -206,7 +206,7 @@ two each and together retire most of the dead-control class.
 | **T0** | **Security** | ~~P-108~~ · ~~P-60~~ — **tier complete** | Unauthenticated writes and un-revoked sessions. Cost is irrelevant |
 | **T1** | **Silent data corruption** | ~~P-93~~ · ~~P-77~~ · ~~P-78~~ · ~~P-83~~ — **tier complete** | Each writes or preserves *wrong data* while reporting success. Worst possible failure mode: no one finds out |
 | **T2** | **One-line dead-control fixes** | ~~P-87~~ · P-99 · P-98 · P-82 · P-104 · P-105 · P-94 · P-84 | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
-| **T3** | **a11y sweep** (one batch) | P-89 · P-100 · P-106 · P-85 | P-89 is a **P-45 recurrence**, so this must be a repo-wide sweep, not another point fix |
+| **T3** | **a11y sweep** (one batch) | ~~P-89~~ · ~~P-100~~ · ~~P-106~~ · ~~P-85~~ — **tier complete**, ratcheted | P-89 is a **P-45 recurrence**, so this must be a repo-wide sweep, not another point fix |
 | **T4** | **Raw-enum sweep** (one batch) | ~~P-76~~ · ~~P-91~~ · ~~P-79~~ · P-96 → now ratcheted; see C1 | P-10/P-44 family, now on its fifth recurrence. Batch it and add a guard, or it returns |
 | **T5** | **Dead code & build hygiene** | P-69 · P-67 · P-65 · P-90 | Deletions and registrations. Cheap, and shrinks the surface the other tiers have to reason about |
 | **T6** | **Missing controls** (product build) | P-74 · P-88 · P-109 · P-110 · P-111 · P-70 · P-71 · P-62 · P-63 · P-64 · P-72 · P-75 · P-92 · P-95 · P-68 · P-73 · P-61 · P-66 | Endpoint live, control absent or non-functional. Real build work; sequence by user pain |
@@ -221,7 +221,9 @@ observed at several sites, and fixing them one at a time both costs more and lea
 mechanism intact to produce the next one. P-89 (a P-45 recurrence) and the raw-enum leak (now
 on its fifth appearance) are the proof that incremental fixing has already failed here.
 
-**C1 · Frontend re-declares backend enums, and nothing checks them.** ← *highest leverage*
+**C1 · Frontend re-declares backend enums, and nothing checks them. ✅ DONE `b992f2a`** —
+closed P-79/P-91/P-76, found 5 unfiled drifts (one a live leak) and 11 raw renders against the
+3 registered, and left P-112 as the blocker on the remaining 10 maps.
 > Findings: **P-79 · P-82 · P-91 · P-99**, plus the render half of **P-76 · P-96**.
 >
 > `StatusMap` is `Record<string, {...}>` (`utils/statusMaps.ts:1`) — **completely unkeyed**, so
@@ -244,7 +246,7 @@ on its fifth appearance) are the proof that incremental fixing has already faile
 > registered findings individually would have left those four in place. **That is the argument
 > for the sweep in one sentence.**
 
-**C2 · Accessible names are unchecked, and one is actively dangerous.**
+**C2 · Accessible names are unchecked, and one is actively dangerous. ✅ DONE `b137146`.**
 > Findings: **P-89 · P-100 · P-106 · P-85**.
 >
 > P-89 is P-45 returning in a different table — `aria-label` rotated one position off `title` and
@@ -256,7 +258,7 @@ on its fifth appearance) are the proof that incremental fixing has already faile
 > The sweep is an audit of every interactive element plus **a guard asserting `aria-label`
 > agrees with the visible label and the handler**. Without the guard this returns a third time.
 
-**C3 · One mechanical defect at six call sites.**
+**C3 · One mechanical defect at six call sites. ✅ DONE `024513b`.**
 > Finding: **P-87**. `game_repo.update` is keyed by slug; six handlers hand it a UUID. Six
 > one-line fixes (`resolve_game_slug` first, as `update_game` already does), one test each.
 > Unblocks **P-92** (rank tiers / team size are additionally blocked by it).
@@ -315,9 +317,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 112 found · 64 fixed · 48 open** (P-53 mitigated).
+**Status (derived): 112 found · 68 fixed · 44 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-80, P-82, P-84, P-85, P-88, P-89, P-90, P-92, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-109, P-110, P-111.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-80, P-82, P-84, P-88, P-90, P-92, P-94, P-95, P-96, P-97, P-98, P-99, P-104, P-105, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -426,7 +428,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-103 | P-57 landed without updating the test that depended on the old window | test rot | **fixed** `172b46f` |
 | P-104 | Edit modal's empty-pool gate is decorative; the pool edit is discarded | **feature dead** | open |
 | P-105 | A failed map-pool reset is swallowed and reported as success | trust | open |
-| P-106 | `MapPoolPicker` cards are unlabelled clickable divs | a11y | open |
+| P-106 | `MapPoolPicker` cards are unlabelled clickable divs | a11y | **fixed** `b137146` |
 | P-107 | **The full suite is red as a whole though every spec is green alone** | **suite integrity** | **fixed** `cb4c4db` |
 | P-94 | `InviteUserModal` message collected, validated, then discarded | user-facing | open |
 | P-95 | **Invite-only league is un-invitable — needs a UUID no surface shows** | feature unusable | open |
@@ -434,13 +436,13 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-97 | Every league silently gets an unconfigured "Season 1" | product question | open |
 | P-98 | Stage "Format (optional)" is mandatory — blank is a 400 | user trap | open |
 | P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | open |
-| P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | open |
+| P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | **fixed** `b137146` |
 | P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
 | P-112 | **API stringifies enums it already declares — 10 maps unlockable** | **architectural** | open |
 | P-93 | **Date overrides saved one day early in every positive UTC offset** | **data corruption** | **fixed** `2b4d4ee` |
 | P-87 | **Every game-config WRITE 404s — handler passes UUID to a slug-keyed update** | **feature dead** | **fixed** `024513b` |
 | P-88 | A disabled game vanishes from admin and can never be re-enabled | **traps admin** | open |
-| P-89 | `AdminGamesPage` aria-labels rotated by one — **P-45 recurrence** | **a11y/safety** | open |
+| P-89 | `AdminGamesPage` aria-labels rotated by one — **P-45 recurrence** | **a11y/safety** | **fixed** `b137146` |
 | P-90 | `GameEditModal` Sort Order shows a fake 0 and can never be set to 0 | user-facing | open |
 | P-91 | Disable writes `maintenance`; status chip prints the raw enum | user-facing | **fixed** `b992f2a` |
 | P-92 | Rank tiers + team size are read-only with no editing surface anywhere | product gap | open |
@@ -448,7 +450,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-82 | **"Revert to Awaiting Result" always 400s — dead control ×2** | feature dead | open |
 | P-83 | **Revert Progression is a no-op on elimination, claims success** | **integrity** | **fixed** `8e56adf` |
 | P-84 | Admin scheduling notes discarded; no status-log row | audit gap | open |
-| P-85 | `MatchesTab` rows have no `data-testid` | test-facing | open |
+| P-85 | `MatchesTab` rows have no `data-testid` | test-facing | **fixed** `b137146` |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service

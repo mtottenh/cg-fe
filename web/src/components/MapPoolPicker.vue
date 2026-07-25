@@ -31,12 +31,25 @@
     </div>
     <v-row dense>
       <v-col v-for="map in maps" :key="map.id" cols="6" sm="4" md="3">
+        <!-- P-106: this was a bare clickable div — no role, no accessible name,
+             no pressed state, with selection conveyed only by colour, opacity
+             and a glyph swap. A screen-reader user could neither tell what the
+             control was nor whether the map was in the pool, and a
+             keyboard-only user could not reach it at all. `aria-pressed` is the
+             correct primitive here: it is a toggle, not a link. -->
         <v-card
+          role="button"
+          tabindex="0"
+          :aria-label="`${map.display_name} — ${isSelected(map.id) ? 'in map pool' : 'not in map pool'}`"
+          :aria-pressed="isSelected(map.id)"
+          :data-testid="`map-pool-card-${map.id}`"
           :variant="isSelected(map.id) ? 'flat' : 'outlined'"
           :color="isSelected(map.id) ? 'primary' : undefined"
           class="pool-card"
           :class="{ 'pool-card--inactive': !isSelected(map.id) }"
           @click="toggle(map.id)"
+          @keydown.enter.prevent="toggle(map.id)"
+          @keydown.space.prevent="toggle(map.id)"
         >
           <v-card-text class="text-center py-3 px-1">
             <v-icon

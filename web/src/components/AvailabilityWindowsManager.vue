@@ -77,6 +77,7 @@
         <v-card-text>
           <v-form ref="formRef" v-model="formValid">
             <v-select
+          aria-label="Day of Week"
               v-model="form.day_of_week"
               :items="dayOptions"
               label="Day of Week"

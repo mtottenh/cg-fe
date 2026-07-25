@@ -259,6 +259,7 @@
               <div class="d-flex flex-column ga-2">
                 <!-- Categorize -->
                 <v-select
+          aria-label="Category"
                   v-model="selectedCategory"
                   :items="categoryOptions"
                   label="Category"

@@ -47,6 +47,7 @@
           <!-- Game Filter -->
           <v-col cols="12" md="3">
             <v-select
+          aria-label="Game"
               v-model="gameFilter"
               :items="games"
               item-title="display_name"
@@ -64,6 +65,7 @@
           <!-- Team Status Filter -->
           <v-col cols="12" md="3">
             <v-select
+          aria-label="Team Status"
               v-model="teamStatusFilter"
               :items="teamStatusOptions"
               label="Team Status"

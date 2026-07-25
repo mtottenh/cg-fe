@@ -48,6 +48,7 @@
         </v-card-title>
         <v-card-text>
           <v-select
+          aria-label="Forfeiting Participant"
             v-model="forfeitRegistrationId"
             :items="participantOptions"
             label="Forfeiting Participant"
@@ -56,6 +57,7 @@
             class="mb-2"
           />
           <v-select
+          aria-label="Forfeit Type"
             v-model="forfeitType"
             :items="forfeitTypeOptions"
             label="Forfeit Type"
@@ -125,6 +127,7 @@
                 (use when automatic progression didn't run).
               </p>
               <v-select
+          aria-label="Winner"
                 v-model="progressionWinnerId"
                 :items="participantOptions"
                 label="Winner"
@@ -148,6 +151,7 @@
                 after a result correction).
               </p>
               <v-select
+          aria-label="New Winner"
                 v-model="reapplyWinnerId"
                 :items="participantOptions"
                 label="New Winner"

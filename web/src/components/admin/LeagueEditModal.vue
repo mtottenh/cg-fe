@@ -70,6 +70,7 @@
 
             <v-col cols="12">
               <v-select
+          aria-label="Access Type"
                 v-model="form.access_type"
                 :items="accessTypes"
                 item-title="label"

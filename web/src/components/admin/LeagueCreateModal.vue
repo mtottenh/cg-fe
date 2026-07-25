@@ -16,6 +16,7 @@
           <v-row>
             <v-col cols="12">
               <v-select
+          aria-label="Game"
                 v-model="form.game_id"
                 :items="activeGames"
                 item-title="display_name"
@@ -86,6 +87,7 @@
 
             <v-col cols="12">
               <v-select
+          aria-label="Access Type"
                 v-model="form.access_type"
                 :items="accessTypes"
                 item-title="label"

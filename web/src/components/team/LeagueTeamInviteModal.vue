@@ -73,6 +73,7 @@
 
             <v-col cols="12">
               <v-select
+          aria-label="Role"
                 v-model="form.role"
                 :items="roleOptions"
                 item-title="label"

@@ -98,6 +98,7 @@
 
             <v-col cols="6">
               <v-select
+          aria-label="Status"
                 v-model="form.status"
                 :items="statusOptions"
                 item-title="label"
@@ -110,6 +111,7 @@
 
             <v-col cols="6">
               <v-select
+          aria-label="Roster Lock"
                 v-model="form.roster_lock_status"
                 :items="rosterLockOptions"
                 item-title="label"

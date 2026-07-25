@@ -22,6 +22,7 @@
         />
 
         <v-select
+          aria-label="Link Type"
           v-model="linkType"
           :items="linkTypeOptions"
           label="Link Type"

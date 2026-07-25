@@ -93,6 +93,7 @@
         <v-row dense>
           <v-col cols="12" sm="5">
             <v-select
+          aria-label="Aggregation"
               v-model="form.aggregation"
               :items="[...AGGREGATION_OPTIONS]"
               label="Aggregation"
@@ -102,6 +103,7 @@
           </v-col>
           <v-col cols="12" sm="4">
             <v-select
+          aria-label="Direction"
               v-model="form.direction"
               :items="[...DIRECTION_OPTIONS]"
               label="Direction"

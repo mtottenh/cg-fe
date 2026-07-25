@@ -56,6 +56,7 @@
         <v-row align="center">
           <v-col cols="12" md="2">
             <v-select
+          aria-label="Status"
               v-model="filters.status"
               :items="statusOptions"
               label="Status"
@@ -67,6 +68,7 @@
           </v-col>
           <v-col cols="12" md="2">
             <v-select
+          aria-label="Category"
               v-model="filters.category"
               :items="categoryOptions"
               label="Category"
@@ -78,6 +80,7 @@
           </v-col>
           <v-col cols="12" md="2">
             <v-select
+          aria-label="Game"
               v-model="filters.game_id"
               :items="gameOptions"
               label="Game"

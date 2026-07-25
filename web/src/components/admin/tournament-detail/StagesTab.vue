@@ -40,6 +40,7 @@
         <v-text-field v-model="newStage.name" label="Stage Name" class="mb-2" />
         <v-text-field v-model.number="newStage.stage_order" label="Stage Order" type="number" class="mb-2" />
         <v-select
+          aria-label="Format (optional)"
           v-model="newStage.format"
           :items="['single_elimination', 'double_elimination', 'round_robin', 'swiss', 'groups_and_playoffs']"
           label="Format (optional)"
@@ -47,6 +48,7 @@
           class="mb-2"
         />
         <v-select
+          aria-label="Match Format (optional)"
           v-model="newStage.match_format"
           :items="['bo1', 'bo3', 'bo5', 'bo7']"
           label="Match Format (optional)"

@@ -12,6 +12,7 @@
         <v-row>
           <v-col cols="12" md="4">
             <v-select
+          aria-label="Select League"
               v-model="selectedLeagueId"
               :items="myLeagues"
               item-title="league_name"
@@ -27,6 +28,7 @@
           </v-col>
           <v-col cols="12" md="4">
             <v-select
+          aria-label="Select Season"
               v-model="selectedSeasonId"
               :items="seasons"
               item-title="name"

@@ -20,6 +20,7 @@
         <!-- Single Mode -->
         <template v-if="mode === 'single'">
           <v-select
+          aria-label="Game *"
             v-model="form.game_id"
             :items="gameOptions"
             label="Game *"
@@ -65,6 +66,7 @@
         <!-- Batch Mode -->
         <template v-else>
           <v-select
+          aria-label="Game *"
             v-model="batchGameId"
             :items="gameOptions"
             label="Game *"

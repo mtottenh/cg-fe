@@ -17,8 +17,13 @@
       :items-per-page="-1"
       density="comfortable"
     >
+      <!-- P-85: rows carried no stable identity, so tests could only address
+           them by participant name — ambiguous the moment a winner advances into
+           a later round, which forced a two-name filter. The full match id is the
+           only safe anchor: UUID v7 prefixes are timestamps, so ids created
+           seconds apart share their first characters (§2). -->
       <template v-slot:item.match_number="{ item }">
-        <v-chip size="small" variant="tonal">
+        <v-chip size="small" variant="tonal" :data-testid="`match-row-${item.id}`">
           #{{ item.match_number }}
         </v-chip>
       </template>

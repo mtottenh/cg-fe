@@ -23,6 +23,7 @@
 
           <!-- Ban Type -->
           <v-select
+          aria-label="Ban Type *"
             v-model="form.ban_type"
             :items="banTypeOptions"
             label="Ban Type *"
@@ -99,6 +100,7 @@
               </v-col>
               <v-col cols="6">
                 <v-select
+          aria-label="Unit"
                   v-model="durationUnit"
                   :items="durationUnitOptions"
                   label="Unit"

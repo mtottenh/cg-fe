@@ -38,16 +38,19 @@ const SRC = join(WEB, 'src')
  * (P-112). Delete entries as they are fixed — the ratchet fails if the list
  * grows, and also fails if an entry here no longer leaks, so it cannot go stale.
  */
-const BASELINE = [
-  'src/components/admin/LeagueMembersModal.vue:152',
-  'src/components/admin/LeagueMembersModal.vue:213',
-  'src/components/admin/LeagueSearchAutocomplete.vue:31',
-  'src/components/admin/RegistrationReasonModal.vue:23',
-  'src/components/admin/tournament-detail/AwardsTab.vue:71',
-  'src/pages/LeagueDetailPage.vue:38',
-  'src/pages/LeaguesPage.vue:74',
-  'src/pages/TeamDetailPage.vue:70',
-]
+// Keyed by `file#property#count`, NOT by line number. A line-based baseline is
+// invalidated by any edit above an entry — adding aria-labels for P-100 shifted
+// these and made the ratchet report pre-existing leaks as new. The key has to be
+// stable under unrelated edits or the guard cries wolf and gets disabled.
+const BASELINE = {
+  'src/components/admin/LeagueMembersModal.vue#status': 2,
+  'src/components/admin/LeagueSearchAutocomplete.vue#status': 1,
+  'src/components/admin/RegistrationReasonModal.vue#status': 1,
+  'src/components/admin/tournament-detail/AwardsTab.vue#status': 1,
+  'src/pages/LeagueDetailPage.vue#status': 1,
+  'src/pages/LeaguesPage.vue#status': 1,
+  'src/pages/TeamDetailPage.vue#status': 1,
+}
 
 /** Genuinely not an enum — nothing to map. */
 const EXEMPT = [
@@ -67,19 +70,28 @@ function walk(dir, out = []) {
   return out
 }
 
-const found = []
+const found = {}
 for (const file of walk(SRC)) {
   const rel = relative(WEB, file).split('\\').join('/')
   if (EXEMPT.some((e) => rel === e)) continue
-  readFileSync(file, 'utf-8')
-    .split('\n')
-    .forEach((line, i) => {
-      if (RAW.test(line)) found.push(`${rel}:${i + 1}`)
-    })
+  for (const line of readFileSync(file, 'utf-8').split('\n')) {
+    const m = RAW.exec(line)
+    if (!m) continue
+    const key = `${rel}#${m[1]}`
+    found[key] = (found[key] ?? 0) + 1
+  }
 }
 
-const added = found.filter((f) => !BASELINE.includes(f))
-const fixed = BASELINE.filter((b) => !found.includes(b))
+const added = []
+const fixed = []
+for (const [key, count] of Object.entries(found)) {
+  const allowed = BASELINE[key] ?? 0
+  if (count > allowed) added.push(`${key} (${count}, baseline ${allowed})`)
+}
+for (const [key, allowed] of Object.entries(BASELINE)) {
+  const count = found[key] ?? 0
+  if (count < allowed) fixed.push(`${key} (now ${count}, baseline ${allowed})`)
+}
 
 let failed = false
 
@@ -115,5 +127,5 @@ if (failed) process.exit(1)
 
 console.log(
   `Status-map ratchet passed. ${keyed}/${total} maps compile-locked, ` +
-    `${BASELINE.length} known raw renders remaining.`,
+    `${Object.values(BASELINE).reduce((a, b) => a + b, 0)} known raw renders remaining.`,
 )

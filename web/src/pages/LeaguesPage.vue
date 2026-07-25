@@ -10,6 +10,7 @@
     <v-row class="mb-4">
       <v-col cols="12" sm="6" md="3">
         <v-select
+          aria-label="Filter by Game"
           v-model="selectedGameId"
           :items="gameOptions"
           item-title="display_name"

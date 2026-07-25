@@ -61,8 +61,14 @@
             <v-icon v-else color="grey-lighten-1">mdi-star-outline</v-icon>
           </template>
 
+          <!-- P-89: these four aria-labels were each rotated one position off the
+               handler they fire — the control announced as "Enable game" called
+               handleDisableGame, so a screen-reader user activating "Enable"
+               DISABLED the game. Identical defect to P-45 (RBAC role rows, fixed
+               fbe1500), which was point-fixed and never swept, so it came back
+               here. Each aria-label now names what its @click does. -->
           <template v-slot:item.actions="{ item }">
-            <v-btn aria-label="Edit game"
+            <v-btn aria-label="Configure game"
               icon
               size="small"
               variant="text"
@@ -71,7 +77,7 @@
             >
               <v-icon>mdi-cog</v-icon>
             </v-btn>
-            <v-btn aria-label="Disable game"
+            <v-btn aria-label="Edit game"
               icon
               size="small"
               variant="text"
@@ -80,7 +86,7 @@
             >
               <v-icon>mdi-pencil</v-icon>
             </v-btn>
-            <v-btn aria-label="Enable game"
+            <v-btn aria-label="Disable game"
               v-if="item.status === 'active'"
               icon
               size="small"
@@ -92,7 +98,7 @@
             >
               <v-icon>mdi-eye-off</v-icon>
             </v-btn>
-            <v-btn aria-label="Configure game"
+            <v-btn aria-label="Enable game"
               v-else
               icon
               size="small"

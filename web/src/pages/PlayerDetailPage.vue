@@ -125,6 +125,7 @@
           </v-alert>
 
           <v-select
+          aria-label="Select Team"
             v-model="selectedTeamSeasonId"
             :items="myTeamsAsCaptain"
             item-title="team_name"
@@ -143,6 +144,7 @@
           </v-select>
 
           <v-select
+          aria-label="Role"
             v-model="selectedRole"
             :items="roleOptions"
             item-title="label"

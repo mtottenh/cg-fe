@@ -63,6 +63,7 @@
           <div class="d-flex align-center ga-1">
             <!-- Game number selector for series -->
             <v-select
+          aria-label="Game"
               v-if="isSeries"
               v-model="gameNumberSelections[demo.external_id]"
               :items="gameNumberOptions"
@@ -186,6 +187,7 @@
           </div>
           <div class="d-flex align-center ga-1">
             <v-select
+          aria-label="Game"
               v-if="isSeries"
               v-model="browseGameNumberSelections[demo.id]"
               :items="gameNumberOptions"

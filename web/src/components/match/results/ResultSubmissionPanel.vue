@@ -15,6 +15,7 @@
       <div class="scores-section mb-4">
         <div v-for="(game, index) in gamesView" :key="game.gameNumber">
           <v-select
+          aria-label="`Map for game ${game.gameNumber}`"
             v-if="!maps?.length && selectableMaps?.length"
             :model-value="game.mapId"
             :items="selectableMaps"

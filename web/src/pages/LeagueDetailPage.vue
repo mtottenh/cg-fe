@@ -139,6 +139,7 @@
       <v-row class="mb-4">
         <v-col cols="12" sm="6" md="4">
           <v-select
+          aria-label="Select Season"
             v-model="selectedSeasonId"
             :items="seasons"
             item-title="name"

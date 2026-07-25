@@ -10,6 +10,7 @@
         <v-row align="center">
           <v-col cols="12" md="3">
             <v-select
+          aria-label="Status"
               v-model="filters.status"
               :items="statusOptions"
               label="Status"
@@ -22,6 +23,7 @@
 
           <v-col cols="12" md="3">
             <v-select
+          aria-label="Priority"
               v-model="filters.priority"
               :items="priorityOptions"
               label="Priority"

@@ -30,6 +30,7 @@
           <!-- Ban Type Filter -->
           <v-col cols="12" md="2">
             <v-select
+          aria-label="Ban Type"
               v-model="filters.ban_type"
               :items="banTypeOptions"
               label="Ban Type"
@@ -43,6 +44,7 @@
           <!-- Status Filter -->
           <v-col cols="12" md="2">
             <v-select
+          aria-label="Status"
               v-model="statusFilter"
               :items="statusOptions"
               label="Status"

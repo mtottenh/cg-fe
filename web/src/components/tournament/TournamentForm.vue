@@ -6,6 +6,7 @@
       <!-- Game (create-only) -->
       <v-col v-if="isCreate" cols="12" md="6">
         <v-select
+          aria-label="Game"
           v-model="form.game_id"
           :items="activeGames"
           item-title="display_name"
@@ -43,6 +44,7 @@
       <!-- League / Season (create-only) -->
       <v-col v-if="isCreate && availableLeagues.length > 0" cols="12" md="6">
         <v-select
+          aria-label="Link to League (Optional)"
           v-model="form.league_id"
           :items="availableLeagues"
           item-title="name"
@@ -59,6 +61,7 @@
 
       <v-col v-if="isCreate && form.league_id && availableSeasons.length > 0" cols="12" md="6">
         <v-select
+          aria-label="Link to Season (Optional)"
           v-model="form.season_id"
           :items="availableSeasons"
           item-title="name"
@@ -89,6 +92,7 @@
       <!-- Format (create-only; locked after creation) -->
       <v-col v-if="isCreate" cols="12" md="6">
         <v-select
+          aria-label="Tournament Format"
           v-model="form.format"
           :items="formatOptions"
           item-title="label"
@@ -123,6 +127,7 @@
       <!-- Participant type + team size (create-only; structural) -->
       <v-col v-if="isCreate" cols="12" md="6">
         <v-select
+          aria-label="Participant Type"
           v-model="form.participant_type"
           :items="participantTypeOptions"
           item-title="label"
@@ -174,6 +179,7 @@
       <!-- Registration type (create-only) -->
       <v-col v-if="isCreate" cols="12" md="6">
         <v-select
+          aria-label="Registration Type"
           v-model="form.registration_type"
           :items="registrationTypeOptions"
           item-title="label"
@@ -193,6 +199,7 @@
 
       <v-col cols="12" md="6">
         <v-select
+          aria-label="Withdrawal Policy"
           v-model="form.withdrawal_policy"
           :items="withdrawalPolicyOptions"
           item-title="label"
@@ -217,6 +224,7 @@
     <v-row>
       <v-col cols="12" md="6">
         <v-select
+          aria-label="Default Match Format"
           v-model="form.default_match_format"
           :items="matchFormatOptions"
           item-title="label"
@@ -230,6 +238,7 @@
       <!-- Scheduling mode (create-only) -->
       <v-col v-if="isCreate" cols="12" md="6">
         <v-select
+          aria-label="Scheduling Mode"
           v-model="form.scheduling_mode"
           :items="schedulingModeOptions"
           item-title="label"
@@ -248,6 +257,7 @@
 
       <v-col cols="12" md="6">
         <v-select
+          aria-label="Map Veto Format"
           v-model="form.default_map_veto_format"
           :items="vetoFormatOptions"
           item-title="title"
@@ -272,6 +282,7 @@
 
       <v-col cols="12" md="6">
         <v-select
+          aria-label="Side Selection Mode"
           v-model="form.side_selection_mode"
           :items="sideSelectionModeOptions"
           item-title="title"

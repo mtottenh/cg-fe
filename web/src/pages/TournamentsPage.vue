@@ -26,6 +26,7 @@
           </v-col>
           <v-col cols="12" md="3">
             <v-select
+          aria-label="Game"
               v-model="filters.game_id"
               :items="games"
               item-title="display_name"
@@ -50,6 +51,7 @@
           </v-col>
           <v-col cols="12" md="3">
             <v-select
+          aria-label="Status"
               v-model="filters.status"
               :items="statusOptions"
               item-title="label"

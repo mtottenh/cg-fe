@@ -38,6 +38,7 @@
             <!-- Category (only for create) -->
             <v-col v-if="!isEditMode" cols="12" md="6">
               <v-select
+          aria-label="Category"
                 v-model="form.category"
                 label="Category"
                 :items="categoryOptions"

@@ -42,6 +42,7 @@
                    tournaments invite a user. The API rejects the wrong
                    target with a 400, so only offer the right one. -->
               <v-select
+          aria-label="Team to invite"
                 v-if="isTeamTournament && tournament.season_id"
                 v-model="selectedTeamSeasonId"
                 :items="teamOptions"

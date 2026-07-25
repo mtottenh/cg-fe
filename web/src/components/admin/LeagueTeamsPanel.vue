@@ -4,6 +4,7 @@
       <div class="d-flex align-center">
         <h3 class="text-h6 mr-4">Teams</h3>
         <v-select
+          aria-label="Season"
           :model-value="selectedSeasonId"
           @update:model-value="$emit('update:selected-season-id', $event)"
           :items="seasons"

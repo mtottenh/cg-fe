@@ -49,6 +49,7 @@
               class="mb-2"
             />
             <v-select
+          aria-label="Type"
               v-model="linkForm.evidenceType"
               :items="[{ title: 'Video', value: 'video' }, { title: 'Link', value: 'link' }]"
               label="Type"

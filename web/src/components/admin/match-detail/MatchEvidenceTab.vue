@@ -30,6 +30,7 @@
           </v-col>
           <v-col cols="6" md="3">
             <v-select
+          aria-label="Link Type"
               v-model="linkLinkType"
               :items="linkTypeOptions"
               label="Link Type"

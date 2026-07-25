@@ -286,8 +286,8 @@ through the UI — not an API-level check.
 | P-53 / P-56 | Past registration #100 a player **cannot submit a result at all**. Silent hard ceiling; 128-player CS2 events are routine — **Lane T in flight** |
 | P-72 | A wrong result that auto-confirms (24h since P-57) with no dispute is **permanently uncorrectable** by any operator — **Lane T in flight** |
 | P-14 · P-15 · P-16 · P-18 | ✅ `297a19e` — roster lock was unreachable, so all enforcement was dead. **But see P-148: the stated rationale was wrong.** Teams cannot swap players mid-playoffs today because `allows_roster_changes()` is `Draft \| Registration` only — i.e. season *status* forbids it, and the lock is inert once a season is active. The lock is still required (it governs draft/registration, and P-15 showed substitutes could be seated on a hard-locked roster), but whether it should govern the competitive phase is an unresolved product ruling, not a landed guarantee |
-| P-70 | Admin/organizer can only be granted by SQL — no moderator can be onboarded on day one — **Lane R in flight** |
-| P-123 | Ban-lift confirms against a truncated UUID; v7 prefixes are timestamps, so two bans minutes apart are indistinguishable. Destructive action, ambiguous target — **Lane R in flight** |
+| P-70 | ✅ `f29a1e7` — admin/organizer could only be granted by SQL. **Was only half-closed**: granting worked, but `SYSTEM_ADMIN_ROLES` named a role no migration seeds, so the grantee was still bounced off every admin route (P-152, `e92aead`). Both halves now land |
+| P-123 | ✅ `be66b56`+`fa394b0` — ban-lift confirmed against a truncated UUID; v7 prefixes are timestamps, so two bans minutes apart were indistinguishable. `BanResponse` now carries username/display_name and the confirm dialog names the person |
 
 **BLOCKERS — the demo/evidence pipeline (owner: integral, must be e2e-covered)**
 | # | Why it blocks |
@@ -416,9 +416,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 151 found · 120 fixed · 31 open** (P-53 mitigated).
+**Status (derived): 156 found · 125 fixed · 31 open** (P-53 mitigated).
 
-Open: P-53, P-56, P-58, P-61, P-66, P-70, P-72, P-80, P-120, P-121, P-122, P-123, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-135, P-136, P-137, P-138, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-151.
+Open: P-53, P-56, P-58, P-61, P-66, P-72, P-80, P-120, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-135, P-136, P-137, P-138, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-151, P-153, P-154, P-155, P-156.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -507,7 +507,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-67 | Dead-surface cleanup batch | hygiene | **fixed** `c985d26` |
 | P-68 | Scraped Premier rating has no correction path | data integrity | **fixed** `0dd69e1+4ead184+2751a44` |
 | P-69 | Platform Elo engine is dead code (never called) | **scope decided** | **fixed** `82e8b14` |
-| P-70 | **Platform role assignment has no UI** | admin gap | open |
+| P-70 | **Platform role assignment has no UI** | admin gap | **fixed** `f29a1e7+dfe80ee` (+`e92aead`, see P-152) |
 | P-71 | Returning team can't enter the next season | blocks flow | **fixed** `28afc7a` |
 | P-72 | No admin score correction outside a dispute | admin gap | open |
 | P-73 | Ingestion pipeline invisible to admins | ops blind spot | **fixed** `0dd69e1+4ead184` |
@@ -549,15 +549,15 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-136 | `MatchEvidenceTab` never passes `match-id`, so evidence actions never render | feature dead | open |
 | P-137 | `Cs2DemoClient::default()` points at a real external host | **config safety** | open |
 | P-138 | `match_evidence.validated` still set unconditionally | integrity | open |
-| P-123 | **Ban-lift confirm dialog identifies the user by a truncated UUID** | **safety** | open |
+| P-123 | **Ban-lift confirm dialog identifies the user by a truncated UUID** | **safety** | **fixed** `be66b56+fa394b0` |
 | P-124 | P-116 recurs in 6 more sites reading a whole-store error alias | user-facing | **fixed** `c99ae81` |
 | P-125 | `TeamDetailPage` renders roster/invitation roles raw | user-facing | open |
 | P-126 | A disbanded team can still be renamed — no terminal check on update | integrity | **fixed** `f3c6550` |
 | P-118 | **Evidence upload URL hard-coded to the dev stack** | **cross-env** | **fixed** `a9e2988` |
 | P-119 | Stale specs asserted raw enums the status-map sweeps humanised | test rot | **fixed** `3bcfd12` |
 | P-120 | Rank tiers can never be cleared once set | product gap | open |
-| P-121 | `per_page` on `GET /v1/games` is decorative — no limit/offset applied | correctness | open |
-| P-122 | `gamesStore.error` is app-wide; one page's failure alerts another | user-facing | open |
+| P-121 | `per_page` on `GET /v1/games` is decorative — no limit/offset applied | correctness | **fixed** `339fc13` |
+| P-122 | `gamesStore.error` is app-wide; one page's failure alerts another | user-facing | **fixed** `98c5b72` |
 | P-117 | Stage formats rendered and offered raw; ratchet regex missed `.format` | user-facing | **fixed** `af05f75` |
 | P-113 | **Ownership transfer leaves the RBAC role behind — new owner 403s, old owner retains power** | **authorization** | **fixed** `754ec46` |
 | P-114 | Invitations table has no Message column, so P-94's message is invisible | user-facing | **fixed** `eda3bc2` |
@@ -589,6 +589,11 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-149 | Override audit rows are written but have no HTTP read surface — only `portal-cli` can read them | ops gap | open |
 | P-150 | `entity_changes.changed_by` is `NOT NULL REFERENCES players(id) ON DELETE SET NULL` — a self-contradictory pair | schema | open |
 | P-151 | **Permission strings used as bare literals (`"admin.games.manage"`, 6 sites) are absent from the registry, so the P-140 guard cannot see them** | **gate gap** | open |
+| P-152 | **The admin route guard named `'admin'`, a role NO migration seeds — a granted `platform_admin` was bounced off every admin route. Silently halved P-70** | **blocker half-open** | **fixed** `e92aead` |
+| P-153 | **`revoke_role_from_user` has no priority ceiling (its `assign` counterpart does) — a platform_admin can strip a super_admin's role. The UI hides the buttons; that is cosmetic** | **authorization** | open |
+| P-154 | After selecting from any `SearchAutocomplete`, the next click anywhere is swallowed — measured app-wide, pre-existing | user-facing | open |
+| P-155 | `BanCreateModal` posts a *player* id as `user_id`; works only via the deliberate 1:1 `make_shared_account_ids` invariant, whose own doc reserves the right to migrate away | latent | open |
+| P-156 | The admin games handler hardcodes an in-memory catalog slice; past 100 games it needs a real `LIMIT/OFFSET` query (the store now warns rather than truncating silently) | scale | open |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service

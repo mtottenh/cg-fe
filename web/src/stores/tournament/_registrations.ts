@@ -116,6 +116,39 @@ export function createRegistrationsSlice() {
     }, 'Failed to fetch registration counts')
   }
 
+  /**
+   * P-179 — keep the server-sourced counts honest after a mutation.
+   *
+   * P-167 replaced `registrations.filter(r => r.status === 'pending').length`
+   * with a real server count, which fixed a badge computed from a 20-row page.
+   * But the old computation had a property the new one lost: it was derived
+   * from the same reactive array the mutations write to, so approving a
+   * registration updated it for free. `registrationCounts` is a separate ref
+   * written ONLY by `fetchRegistrationCounts`, and approve/reject/disqualify/
+   * withdraw all `replaceById` into `registrations` without touching it — so
+   * the badge was correct on load and stale after every action taken on it.
+   *
+   * Refetch rather than adjust locally: a local decrement has to mirror server
+   * semantics exactly to stay right, and it cannot see another organiser
+   * working the same queue. This is an admin surface, not a hot path.
+   *
+   * On failure the counts are CLEARED, not left. The mutation itself succeeded,
+   * so failing it now would be a lie in the other direction — but leaving the
+   * previous number is precisely the defect being fixed. "Unknown" is honest;
+   * a confidently wrong count is not.
+   *
+   * No-ops when nothing has loaded counts, so pages that never display them pay
+   * nothing.
+   */
+  async function refreshRegistrationCounts(tournamentId: string): Promise<void> {
+    if (registrationCounts.value === null) return
+    try {
+      await fetchRegistrationCounts(tournamentId)
+    } catch {
+      registrationCounts.value = null
+    }
+  }
+
   async function registerTeam(
     tournamentId: string,
     request: RegisterTeamRequest
@@ -129,6 +162,7 @@ export function createRegistrationsSlice() {
       // The row is the caller's by construction — keep the identity list
       // coherent without a refetch.
       upsertById(myRegistrations.value, result.data)
+      await refreshRegistrationCounts(tournamentId)
       return result.data
     }, 'Failed to register team for tournament')
   }
@@ -144,6 +178,7 @@ export function createRegistrationsSlice() {
       }))
       registrations.value.push(result.data)
       upsertById(myRegistrations.value, result.data)
+      await refreshRegistrationCounts(tournamentId)
       return result.data
     }, 'Failed to register for tournament')
   }
@@ -162,6 +197,7 @@ export function createRegistrationsSlice() {
           reg.withdrawn_at = new Date().toISOString()
         }
       }
+      await refreshRegistrationCounts(tournamentId)
     }, 'Failed to withdraw from tournament')
   }
 
@@ -182,6 +218,7 @@ export function createRegistrationsSlice() {
         params: { path: { tournament_id: tournamentId, registration_id: registrationId } },
       }))
       replaceById(registrations.value, result.data)
+      await refreshRegistrationCounts(tournamentId)
       return result.data
     }, 'Failed to approve registration')
   }
@@ -197,6 +234,7 @@ export function createRegistrationsSlice() {
         body: { reason: reason ?? null },
       }))
       replaceById(registrations.value, result.data)
+      await refreshRegistrationCounts(tournamentId)
       return result.data
     }, 'Failed to reject registration')
   }
@@ -212,6 +250,7 @@ export function createRegistrationsSlice() {
         body: { reason },
       }))
       replaceById(registrations.value, result.data)
+      await refreshRegistrationCounts(tournamentId)
       return result.data
     }, 'Failed to disqualify registration')
   }

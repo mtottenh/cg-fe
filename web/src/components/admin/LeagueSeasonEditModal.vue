@@ -119,6 +119,8 @@
                 label="Roster Lock"
                 variant="outlined"
                 density="comfortable"
+                :hint="rosterLockMeaning"
+                persistent-hint
               />
             </v-col>
           </v-row>
@@ -229,6 +231,24 @@ const rosterLockOptions = ROSTER_LOCK_STATUSES.map((value) => ({
   value,
   label: rosterLockLabel(value) ?? 'Open',
 }))
+
+// P-148: this control is no longer decoration. It used to be ANDed with the
+// season's phase (`SeasonStatus::allows_roster_changes()` — draft/registration
+// only), so once a season went live NOTHING could change a roster and the lock
+// had no say. The owner ruled that the lock is an optional, per-season
+// decision — "this is a casual league, so adding team members half way through
+// may be okay" — so the phase no longer votes and this select is the whole
+// rule. Which means an operator has to be able to read what each value does
+// without going to the source, hence the persistent hint.
+const ROSTER_LOCK_MEANING: Record<string, string> = {
+  open: 'Rosters can change freely, including mid-season, until the season is completed or cancelled.',
+  soft_lock: 'Substitutes only — captains and players are frozen.',
+  hard_lock: 'Frozen — no roster changes at all, including captaincy.',
+}
+
+const rosterLockMeaning = computed(
+  () => ROSTER_LOCK_MEANING[form.value.roster_lock_status] ?? '',
+)
 
 const rules = {
   ...useFormRules(),

@@ -6,6 +6,7 @@ import {
   advanceSeason,
   createLeagueSeasonScenario,
   createSeason,
+  setRosterLock,
   type CreatedSeason,
   type LeagueSeasonScenario,
 } from './fixtures/league-season-extra.fixture'
@@ -1150,38 +1151,14 @@ test.describe('Team Invitation Lifecycle', () => {
   })
 
   /**
-   * COVERAGE-PLAN §9b P-11 asked for "a hard-locked season blocks the invite
-   * path". That exact test CANNOT be written honestly today: nothing can put a
-   * season into `hard_lock`. `PATCH /v1/league-seasons/{id}` accepts and
-   * validates `roster_lock_status`, but `LeagueSeasonService::update_season`
-   * (portal-domain/src/services/league_team/season.rs:145-166) never forwards
-   * it to `UpdateLeagueSeason` (repositories/league_team.rs:119-133), which has
-   * no such field — and `update_roster_lock`, which would do the job, has no
-   * HTTP route. So the lock column is permanently `open`.
-   *
-   * What IS reachable is the other half of the same backend predicate:
-   * `allows_primary_roster_changes() = status.allows_roster_changes() && lock.allows_primary_changes()`
-   * (portal-domain/src/entities/league_team.rs:105-108), and
-   * `SeasonStatus::allows_roster_changes()` is true only for draft/registration
-   * (portal-core/src/types/league_team.rs:72-74). Advancing the season to
-   * `active` therefore trips the *same* guard in `create_invitation`
-   * (portal-domain/src/services/league_team/invitation.rs:85-89) and proves the
-   * invite path is genuinely blocked and that the UI surfaces the rejection.
+   * Drive the captain's invite modal on an `active` season and return the page
+   * so the caller can assert on what happened. Shared by the two tests below so
+   * the ONLY difference between them is the season's roster lock.
    */
-  test('invite is rejected in the UI once the season no longer allows roster changes', async ({
-    page,
-  }) => {
-    const adminToken = await getAdminToken()
-    const fixture = await buildInviteFixture()
-
-    // The team is registered while the season is still in `registration`;
-    // advance it afterwards so only the roster rule (not registration) differs.
-    await advanceSeason(
-      adminToken,
-      { seasonId: fixture.seasonId, status: 'registration' },
-      'active',
-    )
-
+  async function inviteFromCaptainPage(
+    page: Page,
+    fixture: Awaited<ReturnType<typeof buildInviteFixture>>,
+  ) {
     await loginAsUser(page, {
       email: fixture.team.owner.email,
       password: fixture.team.owner.password,
@@ -1200,12 +1177,100 @@ test.describe('Team Invitation Lifecycle', () => {
     await option.click()
 
     await page.getByRole('button', { name: 'Send Invitation' }).click()
+  }
+
+  /**
+   * **Spec change (P-148 — the owner's ruling: "I think the roster lock should
+   * really be an 'optional' thing/thing that is a per tournament decision,
+   * (again, this is a casual league, so adding team members half way through
+   * may be okay)").**
+   *
+   * This test used to be `invite is rejected in the UI once the season no
+   * longer allows roster changes` and asserted the opposite: it advanced the
+   * season to `active` and expected the invite to be REFUSED, because
+   * `allows_primary_roster_changes()` ANDed the lock with
+   * `SeasonStatus::allows_roster_changes()` (`draft | registration`). Season
+   * phase was the outer gate and the lock only had a say before the
+   * competition started.
+   *
+   * Under the ruling the phase no longer votes: `active` and `playoffs` defer
+   * to `roster_lock_status`, whose default is `open`. So the same steps must
+   * now SUCCEED, and the refusal case moves to the test below, which sets the
+   * lock — the control that is now doing the work.
+   *
+   * (The old assertion was additionally pinned to a refusal string,
+   * "roster is locked for primary member invitations", that stopped existing
+   * when the enforcement point was unified — see api 297a19e.)
+   */
+  test('a casual league invites a player mid-season while the roster lock is open', async ({
+    page,
+  }) => {
+    const adminToken = await getAdminToken()
+    const fixture = await buildInviteFixture()
+
+    // The team registers while the season is still in `registration`; advance
+    // it afterwards so the only thing under test is the mid-season rule.
+    await advanceSeason(
+      adminToken,
+      { seasonId: fixture.seasonId, status: 'registration' },
+      'active',
+    )
+
+    await inviteFromCaptainPage(page, fixture)
+
+    // UI assertion: the page's success snackbar, and the invitation renders in
+    // the captain's Pending Invitations list.
+    await expect(page.locator('.v-snackbar').getByText('Invitation sent')).toBeVisible({
+      timeout: 10_000,
+    })
+    const invitationsCard = page
+      .locator('.v-card')
+      .filter({ has: page.locator('.v-card-title', { hasText: 'Pending Invitations' }) })
+      .first()
+    await expect(invitationsCard.getByText(fixture.invitee.displayName)).toBeVisible({
+      timeout: 10_000,
+    })
+
+    // Backend assertion: the invitation really exists.
+    const pending = await listPendingInvitations(
+      fixture.team.owner.token,
+      fixture.team.teamSeasonId,
+    )
+    expect(
+      pending.find((i) => i.player_id === fixture.invitee.playerId),
+      'an open lock must let a live season take an invitation',
+    ).toBeDefined()
+  })
+
+  /**
+   * COVERAGE-PLAN §9b P-11 asked for "a hard-locked season blocks the invite
+   * path". That test could not be written when the plan was drafted (nothing
+   * could set the lock — P-14) and, once it could, the lock still did nothing
+   * on a live season (P-148). Both are fixed, so this is the test P-11 asked
+   * for, driven through the UI: same season phase and same steps as the test
+   * above, one field different.
+   */
+  test('a hard lock blocks the invite in the UI on the same live season', async ({ page }) => {
+    const adminToken = await getAdminToken()
+    const fixture = await buildInviteFixture()
+
+    await advanceSeason(
+      adminToken,
+      { seasonId: fixture.seasonId, status: 'registration' },
+      'active',
+    )
+    // The league opts into strictness — mid-season, which is when a league
+    // actually decides its rosters are final.
+    await setRosterLock(adminToken, fixture.seasonId, 'hard_lock')
+
+    await inviteFromCaptainPage(page, fixture)
 
     // UI assertion: the modal shows the API's reason instead of closing.
     // `DomainError::InvalidState` -> 400 "Invalid state: {msg}"
-    // (portal-api/src/error.rs:277); the modal renders `ApiError.detail`
-    // (LeagueTeamInviteModal.vue error alert).
-    await expect(page.getByText(/roster is locked for primary member invitations/i)).toBeVisible({
+    // (portal-api/src/error.rs:287); the modal renders `ApiError.detail`
+    // (LeagueTeamInviteModal.vue error alert). The message names the LOCK,
+    // because the lock is what refused.
+    await expect(page.getByText(/roster is locked for primary member changes/i)).toBeVisible({
       timeout: 10_000,
     })
     await expect(page.getByText('Invite Player to Team')).toBeVisible()

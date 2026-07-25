@@ -10,14 +10,18 @@ import type { components as ApiComponents } from '@/api/types'
  * COVERAGE-PLAN §9b P-22 — the Roster column always read "Open".
  *
  * WHY THIS IS A COMPONENT TEST AND NOT AN E2E TEST:
- * nothing in the product can put a season into `soft_lock` or `hard_lock`.
- * `roster_lock_status` is accepted and validated by the update DTO but
- * `LeagueSeasonService::update_season` never forwards it to the repository, and
- * `update_roster_lock` has no HTTP route (COVERAGE-PLAN §9b P-14). An e2e test
- * can therefore only ever observe `open`, which the BROKEN code also rendered as
- * "Open" — it could not tell a fixed build from a broken one. Driving the
- * component with the states the schema permits is the honest way to prove the
- * column reads them correctly.
+ * this was written while nothing in the product could put a season into
+ * `soft_lock` or `hard_lock` — `update_season` dropped `roster_lock_status`
+ * and `update_roster_lock` had no HTTP route (P-14) — so an e2e test could
+ * only ever observe `open`, which the BROKEN code also rendered as "Open" and
+ * therefore could not tell a fixed build from a broken one.
+ *
+ * P-14 is fixed (api 297a19e): `PATCH /v1/league-seasons/{id}` now applies the
+ * lock, and e2e coverage of a real lock lives in
+ * `e2e/team-management.spec.ts`. This stays a component test because it is a
+ * *rendering* table — one row per schema value, including a value the schema
+ * forbids, to prove the fail-closed mapping. Driving three seasons through the
+ * API to assert three chip labels would be slower and prove less.
  */
 
 type LeagueSeason = ApiComponents['schemas']['LeagueSeasonResponse']

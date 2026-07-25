@@ -171,6 +171,39 @@ export async function advanceSeason(
 }
 
 /**
+ * Set a season's roster lock (P-14 made this settable; P-148 made it the thing
+ * that actually decides whether a live roster may change).
+ *
+ * `PATCH /v1/league-seasons/{id}` with `roster_lock_status`; the backend routes
+ * it through `LeagueSeasonService::update_roster_lock`, which stamps the
+ * `roster_locked_by` / `roster_locked_at` audit columns. Any non-terminal
+ * season accepts any value.
+ */
+export async function setRosterLock(
+  adminToken: string,
+  seasonId: string,
+  lock: 'open' | 'soft_lock' | 'hard_lock',
+): Promise<void> {
+  const resp = await fetch(`${API_URL}/v1/league-seasons/${seasonId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
+    body: JSON.stringify({ roster_lock_status: lock }),
+  })
+  const body = await jsonOrThrow<ApiResult<{ roster_lock_status: string }>>(
+    resp,
+    `Set roster lock to ${lock}`,
+  )
+  if (body.data.roster_lock_status !== lock) {
+    throw new Error(
+      `PATCH reported a roster lock it did not apply: ${body.data.roster_lock_status}`,
+    )
+  }
+}
+
+/**
  * Composite builder: fresh league + one season advanced to `seasonStatus`
  * (default `registration`, so teams can register immediately).
  */

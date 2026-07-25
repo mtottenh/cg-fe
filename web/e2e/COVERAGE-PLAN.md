@@ -397,9 +397,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 134 found · 104 fixed · 30 open** (P-53 mitigated).
+**Status (derived): 138 found · 108 fixed · 30 open** (P-53 mitigated).
 
-Open: P-14, P-15, P-16, P-18, P-53, P-56, P-58, P-61, P-64, P-66, P-68, P-70, P-72, P-73, P-75, P-80, P-109, P-110, P-111, P-120, P-121, P-122, P-123, P-125, P-128, P-129, P-131, P-132, P-133, P-134.
+Open: P-14, P-15, P-16, P-18, P-53, P-56, P-58, P-61, P-64, P-66, P-68, P-70, P-72, P-73, P-80, P-120, P-121, P-122, P-123, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-135, P-136, P-137, P-138.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -493,7 +493,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-72 | No admin score correction outside a dispute | admin gap | open |
 | P-73 | Ingestion pipeline invisible to admins | ops blind spot | open |
 | P-74 | **"Retry Processing" calls no API — reports success anyway** | **trust** | **fixed** `c49380d+1d5c9e5` |
-| P-75 | Demo league/tournament association uncorrectable; shows raw UUIDs | admin gap | open |
+| P-75 | Demo league/tournament association uncorrectable; shows raw UUIDs | admin gap | **fixed** `61d3e65`+`b9ccdaf` |
 | P-76 | Categorize snackbar prints the raw enum | minor | **fixed** `b992f2a` |
 | P-77 | **Uphold on a claim-path dispute completes the match with NO result** | **integrity** | **fixed** `2b8e428` |
 | P-78 | **Rematch / double-DQ leave the old winner + score on the match** | **integrity** | **fixed** `2b8e428` |
@@ -501,9 +501,9 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
 | P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | **fixed** `e06ff8f` |
 | P-108 | **`link-discovered`/`link-demo` have NO participant authz** | **security** | **fixed** `ef4b947` |
-| P-109 | Linked demo evidence is invisible on every evidence surface | **feature dead** | open |
-| P-110 | Browse-catalog "Link demo" offers demos it will refuse to link | feature dead | open |
-| P-111 | Nothing ever validates a demo against a result; "Validated" is dead template | integrity | open |
+| P-109 | Linked demo evidence is invisible on every evidence surface | **feature dead** | **fixed** `61d3e65`+`b9ccdaf` |
+| P-110 | Browse-catalog "Link demo" offers demos it will refuse to link | feature dead | **fixed** `61d3e65`+`b9ccdaf` |
+| P-111 | Nothing ever validates a demo against a result; "Validated" is dead template | integrity | **fixed** `61d3e65`+`b9ccdaf` |
 | P-102 | **`lineup.spec.ts` read an env var nothing sets — wrote to the DEV database** | **test integrity** | **fixed** `172b46f` |
 | P-103 | P-57 landed without updating the test that depended on the old window | test rot | **fixed** `172b46f` |
 | P-104 | Edit modal's empty-pool gate is decorative; the pool edit is discarded | **feature dead** | **fixed** `c49380d` |
@@ -526,6 +526,10 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-132 | Eight `.role` raw renders across six files | user-facing | open |
 | P-133 | `MyLeagueTeamsPage` feeds `membership_type` through `teamRoleMap` — never matches | user-facing | open |
 | P-134 | A match completed in-page never fetches its result review | user-facing | open |
+| P-135 | `unlinkDemoEvidence` silently no-ops after a reload — no DELETE sent | **trust** | open |
+| P-136 | `MatchEvidenceTab` never passes `match-id`, so evidence actions never render | feature dead | open |
+| P-137 | `Cs2DemoClient::default()` points at a real external host | **config safety** | open |
+| P-138 | `match_evidence.validated` still set unconditionally | integrity | open |
 | P-123 | **Ban-lift confirm dialog identifies the user by a truncated UUID** | **safety** | open |
 | P-124 | P-116 recurs in 6 more sites reading a whole-store error alias | user-facing | **fixed** `c99ae81` |
 | P-125 | `TeamDetailPage` renders roster/invitation roles raw | user-facing | open |

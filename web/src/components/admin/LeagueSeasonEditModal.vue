@@ -216,11 +216,13 @@ const statusOptions = SEASON_STATUSES.map((value) => ({
   label: getStatusLabel(seasonStatusMap, value),
 }))
 
-// NOTE (P-14): the API accepts and validates `roster_lock_status` but
-// `LeagueSeasonService::update_season` never forwards it to the repository, so
-// changing this select is a silent no-op today. The option list is still fixed
-// here so it stops offering a value that 400s, and so it is correct the moment
-// the backend is plumbed through.
+// P-14 is FIXED: `LeagueSeasonService::update_season` now forwards
+// `roster_lock_status` (by delegating to `update_roster_lock`, which also
+// stamps the `roster_locked_by` / `roster_locked_at` audit columns), so this
+// select is live. It used to be a silent no-op — the API accepted and validated
+// the field and then dropped it, which left every roster-lock check downstream
+// unreachable. The option list stays pinned to the three values the backend
+// enum actually declares (P-17).
 const ROSTER_LOCK_STATUSES = ['open', 'soft_lock', 'hard_lock'] as const
 
 const rosterLockOptions = ROSTER_LOCK_STATUSES.map((value) => ({

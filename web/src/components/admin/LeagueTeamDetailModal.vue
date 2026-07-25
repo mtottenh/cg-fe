@@ -398,11 +398,15 @@ const inviteModalOpen = ref(false)
 //              exactly what `remove_member_authorized`
 //              (portal-domain/src/services/league_team/team.rs:488-499) rejects.
 //
-// Promote/demote are intentionally NOT gated on soft_lock: the backend does not
-// lock-check role changes at all (`promote_to_captain` / `demote_from_captain`,
-// team.rs:526-600), so disabling them under a soft lock would block something
-// the API permits. They ARE unavailable under hard_lock because the activator
-// itself is disabled — see the report note on that backend gap.
+// Promote/demote are intentionally NOT gated on soft_lock, and the backend now
+// agrees (P-16). A promotion moves a member between two *primary* roles, so it
+// never changes who is eligible to play — `refusal_reason` in
+// portal-domain/src/services/league_team/roster_lock.rs permits it under
+// soft_lock and refuses it under hard_lock, which is exactly what this modal
+// presents: the activator is disabled under a hard lock, enabled under a soft
+// one. Before P-16 the backend did not lock-check role changes at all, so this
+// UI was stricter than the API; the divergence is closed in the API's favour
+// for soft_lock and the UI's favour for hard_lock.
 // ---------------------------------------------------------------------------
 const rosterLock = computed(() => props.team?.roster_lock_status)
 const canChangeRosterAtAll = computed(() => allowsAnyRosterChanges(rosterLock.value))

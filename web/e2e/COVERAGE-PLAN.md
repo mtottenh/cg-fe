@@ -521,7 +521,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-127 | **The result-panel event system is dead by construction, not just for dispute** | **feature dead** | open |
 | P-128 | Team colour fields have no client validation against a backend bound | user trap | open |
 | P-129 | Review queue still has no server-side sort control (P-55 follow-up) | admin friction | open |
-| P-130 | Fixtures picked a game positionally; a sort_order test reordered them | test-infra | **fixed** `PENDING130` |
+| P-130 | Fixtures picked a game positionally; a sort_order test reordered them | test-infra | **fixed** `3a0df22` |
 | P-131 | `dispute.reason` rendered raw on two admin surfaces | user-facing | open |
 | P-132 | Eight `.role` raw renders across six files | user-facing | open |
 | P-133 | `MyLeagueTeamsPage` feeds `membership_type` through `teamRoleMap` — never matches | user-facing | open |

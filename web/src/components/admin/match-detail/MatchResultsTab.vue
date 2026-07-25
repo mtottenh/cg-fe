@@ -121,11 +121,52 @@
       </v-card>
     </div>
 
-    <!-- Current Result Claim -->
+    <!-- The result CLAIM — what a participant asserted, which is not necessarily
+         what the match records.
+
+         P-170: after an admin correction these were two sibling cards of equal
+         weight, headed "Recorded Match Result" and "Current Result Claim", with
+         nothing stating the relationship between them. So the operator saw two
+         different scores and no answer to "which one is live?" — on the surface
+         they had just used to correct one of them.
+
+         The claim row is deliberately NOT rewritten by an override (the service
+         leaves it alone, matching resolve_adjusted). That is right: the claim is
+         EVIDENCE that a participant asserted 16-14, and it is the only record of
+         it. Overwriting it would erase the history a dispute is judged on, and
+         the trail that shows a participant repeatedly claiming wrong scores.
+         Keeping bad evidence is the point of evidence.
+
+         So the data is correct and the presentation was not. The claim is now
+         marked superseded whenever it disagrees with the recorded score, which
+         also fixes the heading: "Current" was actively false once a correction
+         had landed. When the two agree — the ordinary path — nothing extra
+         renders, because a warning that fires every time is one people learn to
+         scroll past. -->
     <div v-if="currentResult" class="mb-4">
-      <div class="text-subtitle-1 mb-2">Current Result Claim</div>
+      <div class="text-subtitle-1 mb-2">
+        {{ claimIsSuperseded ? 'Result Claim (superseded)' : 'Current Result Claim' }}
+      </div>
       <v-card variant="outlined">
         <v-card-text>
+          <v-alert
+            v-if="claimIsSuperseded"
+            type="warning"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+            data-testid="claim-superseded-notice"
+          >
+            This claim no longer matches the recorded result. A participant
+            claimed
+            <strong>{{ currentResult.claimed_participant1_score }} -
+              {{ currentResult.claimed_participant2_score }}</strong>;
+            the match records
+            <strong>{{ match?.participant1_score }} -
+              {{ match?.participant2_score }}</strong>, which is the score the
+            bracket and standings use. The claim is kept as a record of what was
+            submitted.
+          </v-alert>
           <v-table density="compact">
             <tbody>
               <tr>
@@ -138,11 +179,28 @@
               </tr>
               <tr>
                 <td class="text-medium-emphasis">Claimed Score</td>
-                <td>{{ currentResult.claimed_participant1_score }} - {{ currentResult.claimed_participant2_score }}</td>
+                <td
+                  :class="claimIsSuperseded ? 'text-medium-emphasis text-decoration-line-through' : ''"
+                  data-testid="claimed-score"
+                >
+                  {{ currentResult.claimed_participant1_score }} - {{ currentResult.claimed_participant2_score }}
+                </td>
               </tr>
               <tr>
                 <td class="text-medium-emphasis">Submitted By</td>
-                <td><code>{{ currentResult.submitted_by_user_id }}</code></td>
+                <!-- P-171: this rendered `submitted_by_user_id` as a raw UUID in
+                     a <code> block. Same defect class as P-95, P-115 and P-123 —
+                     identifying a person to an operator by an id they cannot
+                     read — here on the surface an admin uses to judge whether a
+                     claim was made in good faith. The submitter's name comes
+                     from the same participant data the rest of this tab already
+                     has; the id stays as a title so it is still copyable for
+                     support. -->
+                <td>
+                  <span data-testid="claim-submitter" :title="currentResult.submitted_by_user_id">
+                    {{ submitterName }}
+                  </span>
+                </td>
               </tr>
               <tr v-if="currentResult.submitter_notes">
                 <td class="text-medium-emphasis">Notes</td>
@@ -182,15 +240,38 @@
             </v-table>
           </div>
 
-          <!-- Evidence & Demo IDs -->
+          <!-- P-172: these chips read `id.slice(0, 8)`. UUID v7 prefixes are
+               TIMESTAMPS, so two records created seconds apart — which is what
+               attaching several files to one claim produces — share their first
+               characters and render as visually identical chips. That is the
+               P-115/P-123 defect class again: an identifier truncated to the
+               part that varies least.
+
+               Counting is what the operator can actually act on here ("this
+               claim has 3 files"), and the full id stays available as a title
+               for support. The chips are not links, so nothing is lost by not
+               pretending the prefix identifies anything. -->
           <div v-if="currentResult.evidence_ids.length > 0 || currentResult.demo_link_ids.length > 0" class="mt-3">
             <div class="text-subtitle-2 mb-1">Attached Evidence</div>
             <div class="d-flex flex-wrap ga-1">
-              <v-chip v-for="eid in currentResult.evidence_ids" :key="eid" size="small" prepend-icon="mdi-file">
-                {{ eid.slice(0, 8) }}...
+              <v-chip
+                v-for="(eid, i) in currentResult.evidence_ids"
+                :key="eid"
+                size="small"
+                prepend-icon="mdi-file"
+                :title="eid"
+              >
+                File {{ i + 1 }}
               </v-chip>
-              <v-chip v-for="did in currentResult.demo_link_ids" :key="did" size="small" prepend-icon="mdi-file-video" color="info">
-                {{ did.slice(0, 8) }}...
+              <v-chip
+                v-for="(did, i) in currentResult.demo_link_ids"
+                :key="did"
+                size="small"
+                prepend-icon="mdi-file-video"
+                color="info"
+                :title="did"
+              >
+                Demo {{ i + 1 }}
               </v-chip>
             </div>
           </div>
@@ -271,6 +352,43 @@ const recordedWinnerName = computed(() => {
     ? m.participant1_name || 'Participant 1'
     : m.participant2_name || 'Participant 2'
 })
+
+/**
+ * P-170 — the claim disagrees with the score the match actually records.
+ *
+ * An admin override rewrites the match row and deliberately leaves the claim
+ * row alone, so this is the normal state after any correction. It can also
+ * arise from a dispute resolved with an adjusted score, which behaves the same
+ * way — the notice is written to cover both rather than naming overrides,
+ * because the operator's question ("which number is live?") is identical.
+ *
+ * Requires BOTH scores to be present before comparing. A match with no recorded
+ * result yet has nulls, and `null !== 0` would mark every unplayed match's claim
+ * superseded — noise on the ordinary path, which is exactly what stops people
+ * reading warnings.
+ */
+const claimIsSuperseded = computed(() => {
+  const claim = currentResult.value
+  const m = props.match
+  if (!claim || !m) return false
+  if (m.participant1_score == null || m.participant2_score == null) return false
+  return (
+    claim.claimed_participant1_score !== m.participant1_score ||
+    claim.claimed_participant2_score !== m.participant2_score
+  )
+})
+
+/**
+ * P-171 — the tab rendered `submitted_by_user_id` as a raw UUID.
+ *
+ * `submitted_by_display_name` was already on `ResultClaimResponse` and simply
+ * unused, so this needed no API change — the name was sitting beside the id the
+ * whole time. Falls back to the id only when the join genuinely produced
+ * nothing, which is strictly better than always showing the id.
+ */
+const submitterName = computed(
+  () => currentResult.value?.submitted_by_display_name || currentResult.value?.submitted_by_user_id || 'Unknown',
+)
 
 const isTie = computed(() => overrideP1.value === overrideP2.value)
 

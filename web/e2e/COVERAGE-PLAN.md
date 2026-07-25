@@ -416,9 +416,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 184 found · 150 fixed · 34 open** (P-53 mitigated).
+**Status (derived): 202 found · 158 fixed · 44 open** (P-53 mitigated).
 
-Open: P-61, P-66, P-80, P-120, P-128, P-129, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162, P-167, P-168, P-173, P-175, P-176, P-177, P-178, P-179, P-180, P-181, P-182, P-183.
+Open: P-61, P-66, P-80, P-120, P-128, P-129, P-142, P-143, P-144, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162, P-173, P-175, P-176, P-177, P-178, P-179, P-180, P-181, P-182, P-183, P-186, P-187, P-188, P-189, P-190, P-191, P-192, P-193, P-194, P-195, P-196, P-198, P-199, P-200.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -584,8 +584,10 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-144 | Demo-catalog counts are global, not game-scoped — a CS2 admin sees totals inflated by every other game | correctness | open |
 | P-145 | **Every `entity_changes` insert failed — `ip_address` bound as text into an INET column. The audit trail was CLI-read-only and had never been written to** | **audit dead** | **fixed** `297a19e` |
 | P-146 | `seed reset` ran `UPDATE entity_changes SET changed_by = NULL` against a `NOT NULL` column — impossible by construction, harmless only while nothing wrote to the table | latent | **fixed** `261e302` |
-| P-147 | `create_team` / `register_for_season` seat a captain WITHOUT the roster-lock enforcement point — same shape as P-15 | enforcement | open |
-| P-148 | **`allows_roster_changes()` admits only Draft and Registration, so the roster lock is inert once a season is active — the mid-playoffs guarantee comes from season status, not the lock** | **blocker rationale wrong** | open |
+| P-147 | `create_team` / `register_for_season` seated a captain WITHOUT the roster-lock enforcement point — same shape as P-15. Decided: founding is governed by REGISTRATION, not the lock (a second veto would let two mechanisms disagree), and the exemption is now a named `RosterChange::Founding` arm inside `refusal_reason` rather than an omission at two call sites | enforcement | **fixed** `0d2981b` |
+| P-148 | **The roster lock was inert once a season went active — season STATUS was the gate, so the lock only ever spoke when it did not need to.** Owner ruled the lock should be the control and optional (casual league). `SeasonStatus::allows_roster_changes()` deleted; non-terminal phases defer entirely to `roster_lock_status`, terminal seasons refuse regardless. **Granularity is per-SEASON; per-tournament would be new work** | **blocker rationale wrong** | **fixed** `0d2981b+085e7c5` |
+| P-201 | **An operator could not TIGHTEN the lock on a season that had started** — `ensure_lock_change_allowed` gated setting the lock on the same `draft|registration` predicate, i.e. it refused at exactly the moment a league decides rosters are final | product gap | **fixed** `0d2981b` |
+| P-202 | **`create_join_request` was the only roster path still frozen by phase** — it opened with `is_registration_open()`, so a player could be *invited* onto a mid-season open roster but not *ask* to join it. P-15's shape via a different predicate | enforcement | **fixed** `0d2981b` |
 | P-149 | Override audit rows are written but have no HTTP read surface — only `portal-cli` can read them | ops gap | open |
 | P-150 | `entity_changes.changed_by` is `NOT NULL REFERENCES players(id) ON DELETE SET NULL` — a self-contradictory pair | schema | open |
 | P-151 | **Permission strings used as bare literals (10 sites) are absent from the registry, so the P-140 guard cannot see them** | **gate gap** | **fixed** `61fa1f1` |
@@ -604,14 +606,30 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-164 | **The P-140 guard covered `admin::ALL` only — 1 of 5 registries — so an unseeded `tournament.results.manage` would have slipped through it too** | **gate gap** | **fixed** `1a6743b` |
 | P-165 | **`resolve/adjusted` silently fabricated a winner on a TIE and wrote it into the bracket** (`p1 > p2 ? p1 : p2` awards equal scores to participant 2) | **integrity** | **fixed** `1a6743b` |
 | P-166 | `LineupDeclarePanel` carried the identical 100-row ceiling — past row 100 no lineup could be declared at all | blocks core flow | **fixed** `7d02c59` |
-| P-167 | **`TournamentDetailPage` scans registrations at the DEFAULT `per_page: 20`, so past row 20 everyone is told they are not registered — no Registered state, no withdraw, and eligibility counts computed from a 20-row sample. A worse ceiling than P-53, on a different surface** | **blocks core flow** | open |
-| P-168 | **`find_user_registration` matches `registered_by` only, so for a TEAM registration only the person who clicked register can submit or confirm — a co-captain gets 403 while the UI offers them the panel. Frontend and backend disagree about who speaks for a registration** | **blocks core flow** | open |
+| P-167 | **`TournamentDetailPage` scanned registrations at the DEFAULT `per_page: 20`, so past row 20 everyone was told they were not registered.** Replaced by `/registrations/me` + `/registrations/counts`; the scan is deleted, not widened | **blocks core flow** | **fixed** `8a7ae7e+df69c36` |
+| P-168 | **Only the person who clicked register could submit or confirm for a TEAM.** Wider than filed: evidence and scheduling carried hand-copies of the same rule and refused the same people. One rule now — `speaks_for_registration` | **blocks core flow** | **fixed** `8a7ae7e+df69c36` |
 | P-169 | **Revert searched for the participant the match advanced BY IDENTITY, and a P-72 correction rewrites exactly that column — so after a winner-flipping correction it found nobody, returned 200, and left the OLD winner in the next round.** The literal no-op was already fixed (P-83 `8e56adf`); this was the same defect one layer in, which P-72 made reachable | **integrity** | **fixed** `7a19c34+b5144a8` |
 | P-180 | **`MatchCompletionSaga::compensate()` marks compensation COMPLETE having undone nothing** — logs "requires manual compensation review", fetches the progression logs, comments "actual deletion would depend on business requirements", then completes. A failed saga leaves the winner advanced. On the AUTOMATIC path, not an admin tool | **integrity** | open |
 | P-181 | `seed_by_season_rank` silently falls back to rating seeding with an `info!` log — an operator who picks season-rank seeding gets rating seeding and is never told | user-facing | open |
 | P-182 | `get_team_name_for_registration` returns the literal `"Current Team"` for every registration, so veto-timeout broadcasts name a team that does not exist | user-facing | open |
 | P-183 | Default `validate_evidence` returns `is_valid: true` for any game with no implementation (mitigated: `confidence: 0.0` + a warning string) | integrity | open |
 | P-184 | **Reapply's mirror image: the winner attribution write lived inside the RR/Swiss standings branch, so on elimination brackets reapply moved the bracket to the new winner while `winner_registration_id` still named the old one** — the match disagreeing with the pairing it produced | integrity | **fixed** `7a19c34` |
+| P-185 | **An organiser could not approve pending registration #21 at all** — neither participant table had a server pager | **blocks core flow** | **fixed** `8a7ae7e+df69c36` |
+| P-186 | **Swiss next-round pairing builds its registration map from a 1000-row page and `filter_map`s standings through it — a participant past row 1000 is silently DROPPED FROM THE PAIRING.** Data loss, not display | **integrity** | open |
+| P-187 | `seed_by_*` seeds only the first 1000 registrations | integrity | open |
+| P-188 | `process_no_shows` iterates only the first 1000 approved rows; anyone past that is never marked no-show | integrity | open |
+| P-189 | Result-override audit read hard-coded to `100, 0` with no pagination surface | admin gap | open |
+| P-190 | **`HomePage` upcoming-matches scans `per_page: 100` per tournament AND matches only `player_id`, so a team-only participant never sees ANY upcoming match** | user-facing | open |
+| P-191 | Eight more page/component/composable pagination scans (`TeamDetailPage` 20, `LeagueSearchAutocomplete` 200→clamped to 100, `useLeagueDetail`/`LeagueDetailPage` 20 with counts from `.length`, `HomePage:487`, `LeagueMembersModal`, `leagues.ts:295`, `TournamentInvitationsModal`) | user-facing | open |
+| P-192 | **The pagination guard only globs `src/stores/**`, so every page, component and composable instance above is INVISIBLE to it** — the guard worked where it looked and did not look widely enough | **gate gap** | open |
+| P-193 | Check-in disagrees exactly as P-168 did: `useMatchDetail:92` shows the panel to any roster member, the backend accepts only captain/owner/delegate/staff → silent 403. Needs a product ruling | user-facing | open |
+| P-194 | **`v_player_league_teams` has no `left_at IS NULL` filter while `is_member` does, so `GET /v1/players/me/league-teams` returns teams the player has LEFT** — feeds `myTeams`, `hasEligibleTeams` and the team picker | correctness | open |
+| P-195 | Capacity count excludes `'withdrawn','rejected'`; `'rejected'` is not in the status enum (dead literal), and `disqualified` rows still occupy a slot | correctness | open |
+| P-196 | `progression.rs:122 fills_from` is dead code, warns on every build | debt | open |
+| P-197 | **`team-management.spec.ts:1208` was RED, not merely obsolete** — its refusal regex stopped matching any backend string when `297a19e` unified the enforcement point. The message changed and the e2e was missed | test rot | **fixed** `085e7c5` |
+| P-198 | `update_season` writes the generic field update and THEN calls `update_roster_lock` — two non-transactional writes, so a DB error between them half-applies the PATCH | integrity | open |
+| P-199 | **`update_status` enforces a transition chain (Draft→Registration→Active→…) but `update_season` writes `status` as a plain field with NO validation, so `PATCH {status}` bypasses the chain entirely** — two mechanisms disagreeing about the same rule | enforcement | open |
+| P-200 | `LeagueTeamSeasonResponse` carries no `roster_lock_status`, so `TeamDetailPage` makes a second round-trip to learn its own roster's lock (field on an already-registered DTO; no `openapi.rs` change needed) | user-facing | open |
 | P-170 | After an override the claimed (wrong) score showed beside the corrected one with nothing saying which governs. **Owner ruling: show the corrected score.** Claim row kept (it is evidence); the UI now marks it superseded | user-facing | **fixed** `97f4ae7+64f83a4` |
 | P-171 | `MatchResultsTab` printed `submitted_by_user_id` as a raw UUID while `submitted_by_display_name` sat unused on the same DTO — P-95/P-115/P-123 class | user-facing | **fixed** `97f4ae7` |
 | P-172 | Evidence/demo chips read `id.slice(0, 8)`; v7 prefixes are timestamps, so files attached seconds apart rendered as identical chips | user-facing | **fixed** `97f4ae7` |

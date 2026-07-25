@@ -2,10 +2,25 @@ import { describe, expect, it } from 'vitest'
 import generatedApiTypes from '../../api/types.ts?raw'
 
 /**
- * Store sources as text. `import.meta.glob` rather than `node:fs` because
+ * Application sources as text. `import.meta.glob` rather than `node:fs` because
  * `tsconfig.app.json` deliberately excludes the node types from `src/`.
+ *
+ * P-192: this globbed `../**‌/*.ts` — relative to `src/stores/__tests__`, i.e.
+ * `src/stores/**` and nothing else. The guard was real and worked, but it only
+ * ever looked at stores, and pages/components/composables call `api.GET`
+ * directly too. Thirteen live pagination scans sat outside its field of view
+ * the entire time it was passing, including one that silently drops a
+ * participant from Swiss pairing and one that hides every upcoming match from
+ * team-only players.
+ *
+ * "The guard worked where it looked, and did not look widely enough" is its own
+ * defect class, distinct from the bug it was written to catch. A guard's SCOPE
+ * is as load-bearing as its rule, and scope is invisible in a passing run —
+ * nothing about a green tick tells you what was never examined. Hence the
+ * coverage assertion below, which fails if the glob stops reaching the
+ * directories it claims to cover.
  */
-const storeSources = import.meta.glob('../**/*.ts', {
+const appSources = import.meta.glob('../../{stores,pages,components,composables,utils,api}/**/*.{ts,vue}', {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -114,9 +129,11 @@ function collectGetCallSites(): CallSite[] {
   const paginatedOperations = readPaginatedOperations(generatedApiTypes)
 
   const sites: CallSite[] = []
-  for (const [globKey, source] of Object.entries(storeSources)) {
+  for (const [globKey, source] of Object.entries(appSources)) {
     if (globKey.includes('__tests__')) continue
-    const file = `stores/${globKey.replace(/^\.\.\//, '')}`
+    // Keys arrive as `../../pages/HomePage.vue`; the recorded path is the
+    // src-relative one so entries stay readable and stable under moves.
+    const file = globKey.replace(/^(\.\.\/)+/, '')
     const lines = source.split('\n')
     lines.forEach((line, index) => {
       const call = /api\.GET\('(\/v1\/[^']+)'/.exec(line)
@@ -148,6 +165,52 @@ describe('store collection fetches are pagination-aware', () => {
     // Without this, a broken scanner would report "no offenders" forever.
     expect(sites.length).toBeGreaterThan(50)
     expect(sites.map((s) => s.path)).toContain('/v1/tournaments')
+  })
+
+  /**
+   * P-192 — the guard's SCOPE is as load-bearing as its rule, and a passing run
+   * says nothing about what was never examined.
+   *
+   * This globbed `../**‌/*.ts` for most of its life: relative to
+   * `src/stores/__tests__`, that is `src/stores/**` and nothing else. It was
+   * green the whole time while thirteen pagination scans sat in pages,
+   * components and composables — outside its field of view, not exempted from
+   * it. Nobody could have noticed, because a guard reports what it found, never
+   * where it looked.
+   *
+   * So the directories are asserted, not merely globbed. Narrowing the glob now
+   * fails here instead of quietly shrinking coverage to zero while still
+   * printing a tick.
+   */
+  it('actually scans every directory that can call the API', () => {
+    // Matched on the key SUFFIX rather than a leading directory segment. Vite
+    // normalises glob keys to the shortest relative path, so from
+    // `src/stores/__tests__` a store arrives as `../auth.ts` while a page
+    // arrives as `../../pages/HomePage.vue` — there is no common leading
+    // segment to split on, and my first attempt at this assertion failed on
+    // its own bookkeeping rather than on real coverage.
+    const keys = Object.keys(appSources)
+    const reaches = (marker: string) => keys.some((k) => k.includes(marker))
+
+    // `src/stores/**` is the ONE directory with no usable marker: this test
+    // lives in `src/stores/__tests__`, so Vite emits its siblings as `../auth.ts`
+    // with the `stores/` segment normalised away entirely. Anchored on a known
+    // store file instead of a path fragment that will never appear.
+    expect(
+      keys.some((k) => /(^|\/)auth\.ts$/.test(k)),
+      'the glob no longer reaches src/stores/ — src/stores/auth.ts is not being scanned',
+    ).toBe(true)
+    expect(reaches('pages/'), 'the glob no longer reaches src/pages/').toBe(true)
+    expect(reaches('components/'), 'the glob no longer reaches src/components/').toBe(true)
+    expect(reaches('composables/'), 'the glob no longer reaches src/composables/').toBe(true)
+
+    // .vue files are where pages and components live; a glob that silently
+    // dropped the extension would still "reach" those directories via their
+    // handful of .ts files while leaving every actual component invisible.
+    expect(
+      keys.some((k) => k.endsWith('.vue')),
+      'the glob is not reading .vue files, so every page and component is invisible',
+    ).toBe(true)
   })
 
   it('recognises pagination in the generated types', () => {

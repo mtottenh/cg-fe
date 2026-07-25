@@ -284,7 +284,7 @@ through the UI — not an API-level check.
 |---|---|
 | P-127 | ✅ `fixed` — result submission left a stale page; the panel was `v-else-if`'d off by the very store write preceding its own emit, so `emit('submitted')` landed in a torn-down tree. Same defect as P-6, on the most-used flow in the product |
 | P-53 / P-56 | ✅ `1a6743b`+`7d02c59` — past registration #100 a player could not submit a result at all. A targeted participants lookup replaces the paging scan, which is DELETED rather than widened, and the e2e asserts the page issues no `/registrations` request at all so it cannot be reintroduced. **But see P-167**: the same scan defect survives on TournamentDetailPage at the default `per_page: 20`, a worse ceiling on a different surface |
-| P-72 | ✅ `1a6743b`+`7d02c59` — a wrong result that auto-confirmed with no dispute was permanently uncorrectable. The score write and its audit row share one transaction, and all three score-write paths are now literally one statement. **See P-169**: on elimination brackets Revert is still a no-op, so a correction that flips the winner cannot be rolled back downstream |
+| P-72 | ✅ `1a6743b`+`7d02c59` — a wrong result that auto-confirmed with no dispute was permanently uncorrectable. The score write and its audit row share one transaction, and all three score-write paths are now literally one statement. **P-169 (`7a19c34`) closed the follow-on**: revert now resolves the downstream slot structurally rather than by the winner's identity, which a correction rewrites |
 | P-14 · P-15 · P-16 · P-18 | ✅ `297a19e` — roster lock was unreachable, so all enforcement was dead. **But see P-148: the stated rationale was wrong.** Teams cannot swap players mid-playoffs today because `allows_roster_changes()` is `Draft \| Registration` only — i.e. season *status* forbids it, and the lock is inert once a season is active. The lock is still required (it governs draft/registration, and P-15 showed substitutes could be seated on a hard-locked roster), but whether it should govern the competitive phase is an unresolved product ruling, not a landed guarantee |
 | P-70 | ✅ `f29a1e7` — admin/organizer could only be granted by SQL. **Was only half-closed**: granting worked, but `SYSTEM_ADMIN_ROLES` named a role no migration seeds, so the grantee was still bounced off every admin route (P-152, `e92aead`). Both halves now land |
 | P-123 | ✅ `be66b56`+`fa394b0` — ban-lift confirmed against a truncated UUID; v7 prefixes are timestamps, so two bans minutes apart were indistinguishable. `BanResponse` now carries username/display_name and the confirm dialog names the person |
@@ -416,9 +416,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 179 found · 147 fixed · 32 open** (P-53 mitigated).
+**Status (derived): 184 found · 149 fixed · 35 open** (P-53 mitigated).
 
-Open: P-58, P-61, P-66, P-80, P-120, P-128, P-129, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162, P-167, P-168, P-169, P-173, P-175, P-176, P-177, P-178, P-179.
+Open: P-58, P-61, P-66, P-80, P-120, P-128, P-129, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162, P-167, P-168, P-173, P-175, P-176, P-177, P-178, P-179, P-180, P-181, P-182, P-183.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -495,7 +495,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-55 | Review queue FIFO — newest escalation on the last page | admin friction | **fixed** `4559a36`+`37c24cb` |
 | P-56 | >100-participant tournaments still can't submit (P-53 ceiling) | blocks core flow | **fixed** `1a6743b+7d02c59` |
 | P-57 | 15-min auto-confirm window too short for humans | trust | **fixed** `5590726` (24h) |
-| P-58 | Team matches credit participation to nobody | integrity | open — fix landed `3013f58`, awaiting post-§6 verification |
+| P-58 | **Team matches credit participation to nobody.** Verified: the demo half worked; a team playing WITHOUT a parsed demo still credited nobody, since a team registration's `player_id` is `None`. Now takes the most authoritative lineup source present | integrity | **fixed** `3013f58+cb05c99` |
 | P-59 | **`schedule_match` direct-set: no authz → manufactured forfeits** | **security** | **fixed** `930f8c9` (red-proven) |
 | P-60 | Logout never revokes the session server-side | security gap | **fixed** `409969b` |
 | P-61 | UI disqualify doesn't cascade; strands matches | admin gap | open |
@@ -606,7 +606,12 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-166 | `LineupDeclarePanel` carried the identical 100-row ceiling — past row 100 no lineup could be declared at all | blocks core flow | **fixed** `7d02c59` |
 | P-167 | **`TournamentDetailPage` scans registrations at the DEFAULT `per_page: 20`, so past row 20 everyone is told they are not registered — no Registered state, no withdraw, and eligibility counts computed from a 20-row sample. A worse ceiling than P-53, on a different surface** | **blocks core flow** | open |
 | P-168 | **`find_user_registration` matches `registered_by` only, so for a TEAM registration only the person who clicked register can submit or confirm — a co-captain gets 403 while the UI offers them the panel. Frontend and backend disagree about who speaks for a registration** | **blocks core flow** | open |
-| P-169 | `revert_progression` is a no-op on elimination brackets and now compounds with P-72: after a correction that flips the winner, Revert silently does nothing | integrity | open |
+| P-169 | **Revert searched for the participant the match advanced BY IDENTITY, and a P-72 correction rewrites exactly that column — so after a winner-flipping correction it found nobody, returned 200, and left the OLD winner in the next round.** The literal no-op was already fixed (P-83 `8e56adf`); this was the same defect one layer in, which P-72 made reachable | **integrity** | **fixed** `7a19c34+b5144a8` |
+| P-180 | **`MatchCompletionSaga::compensate()` marks compensation COMPLETE having undone nothing** — logs "requires manual compensation review", fetches the progression logs, comments "actual deletion would depend on business requirements", then completes. A failed saga leaves the winner advanced. On the AUTOMATIC path, not an admin tool | **integrity** | open |
+| P-181 | `seed_by_season_rank` silently falls back to rating seeding with an `info!` log — an operator who picks season-rank seeding gets rating seeding and is never told | user-facing | open |
+| P-182 | `get_team_name_for_registration` returns the literal `"Current Team"` for every registration, so veto-timeout broadcasts name a team that does not exist | user-facing | open |
+| P-183 | Default `validate_evidence` returns `is_valid: true` for any game with no implementation (mitigated: `confidence: 0.0` + a warning string) | integrity | open |
+| P-184 | **Reapply's mirror image: the winner attribution write lived inside the RR/Swiss standings branch, so on elimination brackets reapply moved the bracket to the new winner while `winner_registration_id` still named the old one** — the match disagreeing with the pairing it produced | integrity | **fixed** `7a19c34` |
 | P-170 | After an override the claimed (wrong) score showed beside the corrected one with nothing saying which governs. **Owner ruling: show the corrected score.** Claim row kept (it is evidence); the UI now marks it superseded | user-facing | **fixed** `97f4ae7+64f83a4` |
 | P-171 | `MatchResultsTab` printed `submitted_by_user_id` as a raw UUID while `submitted_by_display_name` sat unused on the same DTO — P-95/P-115/P-123 class | user-facing | **fixed** `97f4ae7` |
 | P-172 | Evidence/demo chips read `id.slice(0, 8)`; v7 prefixes are timestamps, so files attached seconds apart rendered as identical chips | user-facing | **fixed** `97f4ae7` |

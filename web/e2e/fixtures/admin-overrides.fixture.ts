@@ -128,8 +128,9 @@ async function post(
 }
 
 export interface StartedTournamentOptions {
-  /** Bracket format. `round_robin` is the only format whose progression
-   *  revert has an observable effect — see the spec header. */
+  /** Bracket format. Revert is observable in both: round robin rolls back the
+   *  recorded result and its standings, elimination rolls back the downstream
+   *  pairing — see the spec header. */
   format?: 'single_elimination' | 'round_robin'
   /** How many throwaway players to register + approve. */
   playerCount?: number

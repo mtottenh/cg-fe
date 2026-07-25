@@ -20,29 +20,33 @@ import {
  * §4-F, "Admin — match & dispute"):
  *
  *   MatchOverviewTab.handleTransition          (:104)
- *   MatchAdminActionsTab.handleSchedule        (:269)  — user-priority item
- *   MatchAdminActionsTab.handleForfeit         (:280)
- *   MatchAdminActionsTab.handleDoubleForfeit   (:300)
- *   MatchAdminActionsTab.handleProcessProgression  (:318)
- *   MatchAdminActionsTab.handleReapplyProgression  (:340)
- *   MatchAdminActionsTab.handleRevertProgression   (:358)
+ *   MatchAdminActionsTab.handleSchedule        (:275)  — user-priority item
+ *   MatchAdminActionsTab.handleForfeit         (:286)
+ *   MatchAdminActionsTab.handleDoubleForfeit   (:306)
+ *   MatchAdminActionsTab.handleProcessProgression  (:324)
+ *   MatchAdminActionsTab.handleReapplyProgression  (:346)
+ *   MatchAdminActionsTab.handleRevertProgression   (:364)
  *
  * Every test seeds its own tournament via the API, performs the override
  * through the real UI (including the confirm dialog), and asserts on BOTH the
  * rendered result and the backend (§1.4).
  *
  * ---------------------------------------------------------------------------
- * Why revert is exercised on a ROUND ROBIN bracket
+ * What revert means, per bracket family (P-83, P-169)
  *
- * `ProgressionService::revert_progression`
- * (`api/crates/portal-domain/src/services/tournament/progression.rs:846`)
- * only rolls anything back for `RoundRobin | Swiss` brackets — it clears the
- * recorded result and recomputes standings. For elimination brackets it logs
- * "Would revert winner progression - needs implementation" (`:870-880`) and
- * returns Ok, so the advanced participant stays in the downstream slot. The
- * revert test therefore asserts the both-ways round trip on the bracket state
- * that revert actually owns; the elimination no-op is reported as a finding
- * rather than papered over with a weaker assertion (§1.8).
+ * `ProgressionService::revert_progression` used to roll back `RoundRobin |
+ * Swiss` only; for elimination brackets it logged "Would revert winner
+ * progression - needs implementation" and returned 200 with the advanced
+ * participant still seated. Both halves are implemented now, and they undo
+ * different things, so both are exercised here:
+ *
+ *   round robin  — the recorded result is cleared and standings recompute
+ *                  (there are no progression links in that format)
+ *   elimination  — whoever this match seated in the next round is taken back
+ *                  out, and that match drops back to `pending`
+ *
+ * The elimination revert refuses (409) rather than cascading when the next
+ * round has already been played; the operator reverts the deeper match first.
  * ---------------------------------------------------------------------------
  */
 
@@ -561,6 +565,139 @@ test.describe('Admin match overrides', () => {
     expect(overrides[0]!.new_winner_registration_id).toBe(p2Reg)
     expect(overrides[0]!.reason).toBe('Demo review: participant 2 won 2-0.')
     expect(overrides[0]!.changed_by_name, 'the audit row must name the operator').toBeTruthy()
+  })
+
+  /**
+   * P-169 — the correction and the bracket, on the same match.
+   *
+   * P-72 gave admins a way to correct a confirmed-but-wrong score, and a
+   * correction can flip which participant won. The correction deliberately does
+   * NOT re-run progression, so at that moment the bracket has the *loser* of
+   * the corrected match standing in the next round, and Revert is the control
+   * that takes them out.
+   *
+   * It did not. `revert_progression` withdrew `match_.winner_registration_id` —
+   * the *currently recorded* winner, which the correction had just flipped to
+   * someone who was never advanced. It found them nowhere, left the wrong
+   * player in the final, and returned 200 with a "Progression reverted"
+   * snackbar. That is the whole finding: a success that does nothing, on the
+   * only control that could undo the damage.
+   *
+   * The result is created through the REAL claim flow so the completion saga
+   * does the advancing, exactly as a live event would.
+   */
+  test('admin corrects a score that flips the winner, then reverts the advancement it made', async ({
+    page,
+  }) => {
+    test.setTimeout(150_000)
+    const adminToken = await getAdminToken()
+
+    const scenario = await createStartedTournament(adminToken, {
+      format: 'single_elimination',
+      playerCount: 4,
+    })
+    const semi = matchAt(scenario.matches, 'R1M1')
+    const final = matchAt(scenario.matches, 'R2M1')
+    const p1Name = semi.participant1_name as string
+    const p2Name = semi.participant2_name as string
+    const p1Reg = semi.participant1_registration_id as string
+    const p2Reg = semi.participant2_registration_id as string
+    const p1 = scenario.players.find((p) => p.registrationId === p1Reg)!
+    const p2 = scenario.players.find((p) => p.registrationId === p2Reg)!
+
+    // Both parties confirm 1-0 to p1; `MatchCompletionSaga` advances p1 into
+    // the final.
+    await recordConfirmedResult(adminToken, scenario, semi.id, p1, p2)
+    await expect
+      .poll(async () =>
+        (await getOverrideMatch(adminToken, scenario.tournamentId, final.id))
+          .participant1_registration_id,
+      )
+      .toBe(p1Reg)
+
+    await loginAsAdmin(page)
+    await openMatchesTab(page, scenario.tournamentId)
+    await expect(
+      matchRow(page, p1Name, 'TBD'),
+      'precondition: the final renders the advanced player against a TBD slot',
+    ).toHaveCount(1)
+
+    const dialog = await openMatchDetail(page, matchRow(page, p1Name, p2Name))
+
+    // --- Correct the score so the OTHER player won -------------------------
+    await dialog.getByRole('tab', { name: 'Results' }).click()
+    const results = activePanel(dialog)
+    const scoreInputs = results.locator('input[type="number"]')
+    await scoreInputs.first().fill('0')
+    await scoreInputs.nth(1).fill('2')
+    await results.getByLabel('Reason *').fill('Demo review: participant 2 won 2-0.')
+    await results.getByRole('button', { name: 'Correct Score' }).click()
+    await confirmOverlay(page, `Overwrite the official result with 0-2, making ${p2Name} the winner?`)
+      .getByRole('button', { name: 'Correct Score' })
+      .click()
+    await expect(page.locator('.v-snackbar').getByText('Score corrected')).toBeVisible()
+    await expect(results.getByTestId('recorded-winner')).toHaveText(p2Name)
+
+    // The bracket is untouched by the correction — the player who is now
+    // recorded as having LOST is still standing in the final. This is the state
+    // the finding is about.
+    expect(
+      (await getOverrideMatch(adminToken, scenario.tournamentId, final.id))
+        .participant1_registration_id,
+      'a score correction must not silently reshape downstream pairings',
+    ).toBe(p1Reg)
+
+    // --- Revert: the wrongly-advanced player must come back out ------------
+    await dialog.getByRole('tab', { name: 'Admin Actions' }).click()
+    await activePanel(dialog)
+      .locator('.v-card')
+      .filter({ hasText: 'Bracket Progression' })
+      .getByRole('button', { name: 'Revert', exact: true })
+      .click()
+    await confirmOverlay(page, 'Undo bracket advancement for this match?')
+      .getByRole('button', { name: 'Revert', exact: true })
+      .click()
+    await expect(page.locator('.v-snackbar').getByText('Progression reverted')).toBeVisible()
+
+    await expect
+      .poll(async () =>
+        (await getOverrideMatch(adminToken, scenario.tournamentId, final.id))
+          .participant1_registration_id ?? null,
+      )
+      .toBeNull()
+
+    // UI: the final is a clean TBD vs TBD again, and the corrected winner was
+    // NOT quietly seated in the loser's place — revert undoes, it does not
+    // re-progress.
+    await dialog.getByRole('button', { name: 'Close' }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(
+      matchRow(page, p1Name, 'TBD'),
+      'the player the correction demoted must no longer be in the final',
+    ).toHaveCount(0)
+    await expect(matchRow(page, p2Name, 'TBD')).toHaveCount(0)
+
+    // --- Reapply finishes the repair: the corrected winner advances --------
+    const reopened = await openMatchDetail(page, matchRow(page, p1Name, p2Name))
+    const actions = await openAdminActions(reopened)
+    const progression = actions.locator('.v-card').filter({ hasText: 'Bracket Progression' })
+    await chooseOption(page, progression.locator('.v-select').nth(1), p2Name)
+    await progression.getByRole('button', { name: 'Reapply', exact: true }).click()
+    await confirmOverlay(page, 'Downstream bracket slots are rewritten.')
+      .getByRole('button', { name: 'Reapply', exact: true })
+      .click()
+    await expect(page.locator('.v-snackbar').getByText('Progression reapplied')).toBeVisible()
+
+    await expect
+      .poll(async () =>
+        (await getOverrideMatch(adminToken, scenario.tournamentId, final.id))
+          .participant1_registration_id,
+      )
+      .toBe(p2Reg)
+
+    await reopened.getByRole('button', { name: 'Close' }).click()
+    await expect(reopened).toHaveCount(0)
+    await expect(matchRow(page, p2Name, 'TBD')).toHaveCount(1)
   })
 
 })

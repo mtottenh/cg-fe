@@ -147,8 +147,8 @@
             <v-col cols="12" md="4">
               <div class="text-subtitle-2 mb-2">Reapply Progression</div>
               <p class="text-body-2 text-medium-emphasis mb-2">
-                Replace an already-advanced winner with a different one (use
-                after a result correction).
+                Replace an already-advanced winner with a different one — the
+                one-step repair after correcting a score on the Results tab.
               </p>
               <v-select
           aria-label="New Winner"
@@ -171,8 +171,10 @@
             <v-col cols="12" md="4">
               <div class="text-subtitle-2 mb-2">Revert Progression</div>
               <p class="text-body-2 text-medium-emphasis mb-2">
-                Undo bracket advancement for this match entirely — downstream
-                pairings created from it are rolled back.
+                Undo bracket advancement for this match entirely — whoever it
+                put into the next round is taken back out and that slot returns
+                to TBD. Refused if the next round has already been played:
+                revert that match first.
               </p>
               <v-btn
                 color="error"
@@ -364,7 +366,7 @@ function handleRevertProgression() {
   const matchId = props.match.id
   confirmDialog.confirm({
     title: 'Revert Progression',
-    message: 'Undo bracket advancement for this match? Downstream pairings created from it are rolled back.',
+    message: 'Undo bracket advancement for this match? Downstream pairings created from it are rolled back, and the next-round slot returns to TBD.',
     action: 'Revert',
     color: 'error',
     handler: async () => {

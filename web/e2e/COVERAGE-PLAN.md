@@ -299,10 +299,10 @@ through the UI — not an API-level check.
 | P-73 | ✅ `0dd69e1`+`4ead184` — no operator visibility into tracking health, the discovered-match queue, or enrichment failures. Silent ingestion stoppage was undetectable |
 | P-64 | ✅ `0dd69e1`+`4ead184` — the auto-link backfill had no control |
 | P-68 | ✅ `0dd69e1`+`4ead184`+`2751a44` — a bad scraped Premier rating could not be corrected, and it drives seeding and league entry gates. The endpoint existed but **403'd for everyone including super_admin** (P-139) |
-| P-138 | **A FAILED validation still stamps the green "Validated" chip** — `mark_validated` hardcodes `validated = true` regardless of outcome. Worse than no validation: it asserts a false guarantee on the dispute-resolution surface — **Lane U in flight** |
-| P-136 | Admins cannot access ANY evidence file from admin match detail — `MatchEvidenceTab` omits `:match-id`, which gates the whole Actions column — **Lane U in flight** |
-| P-135 | Unlinking a demo silently no-ops after a reload **and reports success** — `evidenceIdMap` is session-local, so the DELETE is skipped while the row is pruned locally anyway — **Lane U in flight** |
-| P-137 | `Cs2DemoClient::default()` points at a real external host, so a misconfiguration silently talks to a live third party instead of failing — **Lane U in flight** |
+| P-138 | ✅ `b6ccf8b`+`806048e` — a FAILED validation still stamped the green "Validated" chip. P-111 had already fixed this exact bug on the demo-*link* repo; the evidence row was missed, so after a validation the two rows actively DISAGREED — link said "contradicts", evidence said "corroborates". Three states are now distinguishable |
+| P-136 | ✅ `b6ccf8b`+`806048e` — admins could not access ANY evidence file from admin match detail; `MatchEvidenceTab` omitted `:match-id`, which gates the whole Actions column. `matchId` is now REQUIRED on `EvidenceDisplay`, so the mechanism is closed and not just this instance |
+| P-135 | ✅ `b6ccf8b`+`806048e` — unlinking silently no-op'd after a reload and reported success. `evidence_id` now comes from the server and the local list is pruned only after a DELETE that returned |
+| P-137 | ✅ `b6ccf8b` — `Cs2DemoClient::default()` pointed at a real external host. **Two more instances of the same default were found** (portal-scanner, portal-cli); misconfiguration now refuses by name. See P-160: the docker-compose default survives |
 
 **Strongly recommended, cheap:** P-61 (DQ strands matches mid-bracket) · P-126
 (disbanded teams renameable) · P-124 (six sites showing a generic error instead
@@ -416,9 +416,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 156 found · 125 fixed · 31 open** (P-53 mitigated).
+**Status (derived): 162 found · 131 fixed · 31 open** (P-53 mitigated).
 
-Open: P-53, P-56, P-58, P-61, P-66, P-72, P-80, P-120, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-135, P-136, P-137, P-138, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-151, P-153, P-154, P-155, P-156.
+Open: P-53, P-56, P-58, P-61, P-66, P-72, P-80, P-120, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -545,10 +545,10 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-132 | Eight `.role` raw renders across six files | user-facing | open |
 | P-133 | `MyLeagueTeamsPage` feeds `membership_type` through `teamRoleMap` — never matches | user-facing | open |
 | P-134 | A match completed in-page never fetches its result review | user-facing | open |
-| P-135 | `unlinkDemoEvidence` silently no-ops after a reload — no DELETE sent | **trust** | open |
-| P-136 | `MatchEvidenceTab` never passes `match-id`, so evidence actions never render | feature dead | open |
-| P-137 | `Cs2DemoClient::default()` points at a real external host | **config safety** | open |
-| P-138 | `match_evidence.validated` still set unconditionally | integrity | open |
+| P-135 | `unlinkDemoEvidence` silently no-ops after a reload — no DELETE sent | **trust** | **fixed** `b6ccf8b+806048e` |
+| P-136 | `MatchEvidenceTab` never passes `match-id`, so evidence actions never render | feature dead | **fixed** `b6ccf8b+806048e` (prop made required) |
+| P-137 | `Cs2DemoClient::default()` points at a real external host — **2 more instances found** (portal-scanner, portal-cli) | **config safety** | **fixed** `b6ccf8b` |
+| P-138 | **A FAILED validation still stamped the green chip** — `mark_validated` hardcoded `validated = true`, so link and evidence rows actively disagreed | **integrity** | **fixed** `b6ccf8b+806048e` |
 | P-123 | **Ban-lift confirm dialog identifies the user by a truncated UUID** | **safety** | **fixed** `be66b56+fa394b0` |
 | P-124 | P-116 recurs in 6 more sites reading a whole-store error alias | user-facing | **fixed** `c99ae81` |
 | P-125 | `TeamDetailPage` renders roster/invitation roles raw | user-facing | open |
@@ -588,12 +588,18 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-148 | **`allows_roster_changes()` is `Draft \| Registration` only, so the roster lock is inert once a season is active — the mid-playoffs guarantee comes from season status, not the lock** | **blocker rationale wrong** | open |
 | P-149 | Override audit rows are written but have no HTTP read surface — only `portal-cli` can read them | ops gap | open |
 | P-150 | `entity_changes.changed_by` is `NOT NULL REFERENCES players(id) ON DELETE SET NULL` — a self-contradictory pair | schema | open |
-| P-151 | **Permission strings used as bare literals (`"admin.games.manage"`, 6 sites) are absent from the registry, so the P-140 guard cannot see them** | **gate gap** | open |
+| P-151 | **Permission strings used as bare literals (10 sites) are absent from the registry, so the P-140 guard cannot see them** | **gate gap** | **fixed** `61fa1f1` |
 | P-152 | **The admin route guard named `'admin'`, a role NO migration seeds — a granted `platform_admin` was bounced off every admin route. Silently halved P-70** | **blocker half-open** | **fixed** `e92aead` |
-| P-153 | **`revoke_role_from_user` has no priority ceiling (its `assign` counterpart does) — a platform_admin can strip a super_admin's role. The UI hides the buttons; that is cosmetic** | **authorization** | open |
+| P-153 | **`revoke_role_from_user` has no priority ceiling (its `assign` counterpart does) — a platform_admin can strip a super_admin's role. The UI hides the buttons; that is cosmetic** | **authorization** | **fixed** `df76b70` |
 | P-154 | After selecting from any `SearchAutocomplete`, the next click anywhere is swallowed — measured app-wide, pre-existing | user-facing | open |
 | P-155 | `BanCreateModal` posts a *player* id as `user_id`; works only via the deliberate 1:1 `make_shared_account_ids` invariant, whose own doc reserves the right to migrate away | latent | open |
 | P-156 | The admin games handler hardcodes an in-memory catalog slice; past 100 games it needs a real `LIMIT/OFFSET` query (the store now warns rather than truncating silently) | scale | open |
+| P-157 | **Deleting evidence unlinks the demo best-effort (`let _ = ...`) and still returns 204** — P-135's mechanism one layer down: a failure leaves a link pointing at deleted evidence while the caller is told it worked | **trust** | open |
+| P-158 | The identical "Unlink" gesture means different things on the participant panel and the admin tab — the admin path removes only the link, leaving the `match_evidence` row listed | correctness | open |
+| P-159 | `linkDiscoveredDemo` recovers the new link by matching `game_number`, so on bo3+ it can map the evidence id onto the WRONG link | correctness | open |
+| P-160 | `docker-compose.yml:76` defaults `CS2_DEMO_SERVICE_URL` to the live third-party host — P-137's mechanism surviving in deployment config | **config safety** | open |
+| P-161 | `POST /evidence/validate-demo` and `GET /evidence/demo-stats/{name}` are dead API surface — the store actions exist, no component calls them, so P-137 has no UI to drive | feature dead | open |
+| P-162 | `derive_result_outcome` (`tournament/helpers.rs:143`) is dead code, flagged by the compiler | debt | open |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service

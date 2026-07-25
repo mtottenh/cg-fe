@@ -7,12 +7,12 @@ every superseded analysis, correction, and fixed-finding write-up — is preserv
 lineup design in `api/docs/lineup-design.md`.
 
 **Why this exists, in one line:** a test that genuinely drives the UI forces the question
-*"what should happen here?"* — and that question surfaced **126 product findings** from what
+*"what should happen here?"* — and that question surfaced **129 product findings** from what
 began as a test-quality audit. The findings are the deliverable; the tests are the instrument.
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **126 findings · 95 fixed** → the status-drift defect class closed at the source
+112 → 0) → **129 findings · 96 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -354,9 +354,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 126 found · 95 fixed · 31 open** (P-53 mitigated).
+**Status (derived): 129 found · 96 fixed · 33 open** (P-53 mitigated).
 
-Open: P-14, P-15, P-16, P-18, P-53, P-55, P-56, P-58, P-61, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-72, P-73, P-75, P-80, P-109, P-110, P-111.
+Open: P-14, P-15, P-16, P-18, P-53, P-56, P-58, P-61, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-72, P-73, P-75, P-80, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -430,7 +430,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-52 | Duplicate `operationId` broke the generated client | build | **fixed** `098832a`; guarded `c5ea9e5` |
 | P-53 | **Player past registration #20 cannot submit a result** | **blocks core flow** | 🟡 mitigated `7775a19` → P-56 |
 | P-54 | League members truncates at 20; client cannot paginate | user-facing | **fixed** `dc5136c`+`71bdd90` (web half was missing) |
-| P-55 | Review queue FIFO — newest escalation on the last page | admin friction | open |
+| P-55 | Review queue FIFO — newest escalation on the last page | admin friction | **fixed** `4559a36`+`37c24cb` |
 | P-56 | >100-participant tournaments still can't submit (P-53 ceiling) | blocks core flow | open |
 | P-57 | 15-min auto-confirm window too short for humans | trust | **fixed** `5590726` (24h) |
 | P-58 | Team matches credit participation to nobody | integrity | landed `3013f58`, verify post-§6 |
@@ -475,6 +475,9 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-99 | **`groups_and_playoffs` is a dead option; valid `group_stage` missing** | feature dead | **fixed** `4166015` |
 | P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | **fixed** `b137146` |
 | P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
+| P-127 | **The result-panel event system is dead by construction, not just for dispute** | **feature dead** | open |
+| P-128 | Team colour fields have no client validation against a backend bound | user trap | open |
+| P-129 | Review queue still has no server-side sort control (P-55 follow-up) | admin friction | open |
 | P-123 | **Ban-lift confirm dialog identifies the user by a truncated UUID** | **safety** | open |
 | P-124 | P-116 recurs in 6 more sites reading a whole-store error alias | user-facing | open |
 | P-125 | `TeamDetailPage` renders roster/invitation roles raw | user-facing | open |

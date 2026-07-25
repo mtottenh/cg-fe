@@ -566,7 +566,9 @@ export interface paths {
         };
         /**
          * List pending result reviews for admin queue.
-         * @description Returns all reviews pending admin action, ordered by creation date.
+         * @description Returns all reviews pending admin action, **newest first** — the queue is
+         *     paginated, so a fresh escalation ordered onto the last page is one nobody
+         *     ever sees (P-55).
          */
         get: operations["list_pending_reviews"];
         put?: never;

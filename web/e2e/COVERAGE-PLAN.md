@@ -416,9 +416,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 170 found · 138 fixed · 32 open** (P-53 mitigated).
+**Status (derived): 173 found · 141 fixed · 32 open** (P-53 mitigated).
 
-Open: P-58, P-61, P-66, P-80, P-120, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162, P-167, P-168, P-169, P-170.
+Open: P-58, P-61, P-66, P-80, P-120, P-125, P-128, P-129, P-131, P-132, P-133, P-134, P-142, P-143, P-144, P-147, P-148, P-149, P-150, P-154, P-155, P-156, P-157, P-158, P-159, P-160, P-161, P-162, P-167, P-168, P-169, P-173.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -607,7 +607,10 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-167 | **`TournamentDetailPage` scans registrations at the DEFAULT `per_page: 20`, so past row 20 everyone is told they are not registered — no Registered state, no withdraw, and eligibility counts computed from a 20-row sample. A worse ceiling than P-53, on a different surface** | **blocks core flow** | open |
 | P-168 | **`find_user_registration` matches `registered_by` only, so for a TEAM registration only the person who clicked register can submit or confirm — a co-captain gets 403 while the UI offers them the panel. Frontend and backend disagree about who speaks for a registration** | **blocks core flow** | open |
 | P-169 | `revert_progression` is a no-op on elimination brackets and now compounds with P-72: after a correction that flips the winner, Revert silently does nothing | integrity | open |
-| P-170 | After an override the `result_claims` row is untouched, so the claimed (wrong) score still shows beside the corrected one — intentional and labelled, but a divergence worth a ruling | product call | open |
+| P-170 | After an override the claimed (wrong) score showed beside the corrected one with nothing saying which governs. **Owner ruling: show the corrected score.** Claim row kept (it is evidence); the UI now marks it superseded | user-facing | **fixed** `97f4ae7+64f83a4` |
+| P-171 | `MatchResultsTab` printed `submitted_by_user_id` as a raw UUID while `submitted_by_display_name` sat unused on the same DTO — P-95/P-115/P-123 class | user-facing | **fixed** `97f4ae7` |
+| P-172 | Evidence/demo chips read `id.slice(0, 8)`; v7 prefixes are timestamps, so files attached seconds apart rendered as identical chips | user-facing | **fixed** `97f4ae7` |
+| P-173 | `tournament_matches.participant1_score` is `NOT NULL DEFAULT 0`, so "no result yet" is indistinguishable from "0-0" at the column level — `winner_registration_id` is the only honest has-result signal, and `?? '-'` fallbacks on those fields are dead code | latent | open |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
 consumers — **249 consumed · 19 not** (9 product gaps → P-59..P-64/P-66 · 2 service

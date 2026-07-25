@@ -12,7 +12,7 @@ began as a test-quality audit. The findings are the deliverable; the tests are t
 
 **Campaign outcome so far:** 244 test executions audited (2026-07-22 baseline: 161 genuine,
 88 vacuous-guard sites) → vacuous anti-pattern **eradicated** (ratchet baseline `{}`,
-112 → 0) → **111 findings · 59 fixed** → the status-drift defect class closed at the source
+112 → 0) → **111 findings · 60 fixed** → the status-drift defect class closed at the source
 (P-31: 1 → 17 spec enums; drift is now a compile error) → the lineup system built and being
 corrected (§6) → the inverse audit run (268 API operations vs. frontend consumers) → the
 store-action reachability pass (P-68/P-70/P-71 — gaps the inverse audit structurally could
@@ -204,7 +204,7 @@ two each and together retire most of the dead-control class.
 | Tier | Theme | Findings | Why here |
 |---|---|---|---|
 | **T0** | **Security** | ~~P-108~~ · ~~P-60~~ — **tier complete** | Unauthenticated writes and un-revoked sessions. Cost is irrelevant |
-| **T1** | **Silent data corruption** | ~~P-93~~ · ~~P-77~~ · ~~P-78~~ · P-83 | Each writes or preserves *wrong data* while reporting success. Worst possible failure mode: no one finds out |
+| **T1** | **Silent data corruption** | ~~P-93~~ · ~~P-77~~ · ~~P-78~~ · ~~P-83~~ — **tier complete** | Each writes or preserves *wrong data* while reporting success. Worst possible failure mode: no one finds out |
 | **T2** | **One-line dead-control fixes** | P-87 · P-99 · P-98 · P-82 · P-104 · P-105 · P-94 · P-84 | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
 | **T3** | **a11y sweep** (one batch) | P-89 · P-100 · P-106 · P-85 | P-89 is a **P-45 recurrence**, so this must be a repo-wide sweep, not another point fix |
 | **T4** | **Raw-enum sweep** (one batch) | P-76 · P-91 · P-96 · P-79 | P-10/P-44 family, now on its fifth recurrence. Batch it and add a guard, or it returns |
@@ -212,6 +212,92 @@ two each and together retire most of the dead-control class.
 | **T6** | **Missing controls** (product build) | P-74 · P-88 · P-109 · P-110 · P-111 · P-70 · P-71 · P-62 · P-63 · P-64 · P-72 · P-75 · P-92 · P-95 · P-68 · P-73 · P-61 · P-66 | Endpoint live, control absent or non-functional. Real build work; sequence by user pain |
 | **T7** | **Roster-lock rework** (together) | P-14 · P-15 · P-16 · P-18 | Design §9 sequences these as one unit, after the lineup proved out. Do not pick off individually |
 | **T8** | **Decide, then act** | P-3 · P-6 · P-41 · P-53/P-56 · P-55 · P-80 · P-97 | Each needs a product decision or a confirm-or-kill before it is actionable |
+
+### 4a. Root-cause clusters — what to fix ONCE instead of 51 times
+
+**Added 2026-07-25 after re-reading the whole register.** The tiers above order by *urgency*;
+this orders by *leverage*. Several findings are not independent bugs — they are one defect
+observed at several sites, and fixing them one at a time both costs more and leaves the
+mechanism intact to produce the next one. P-89 (a P-45 recurrence) and the raw-enum leak (now
+on its fifth appearance) are the proof that incremental fixing has already failed here.
+
+**C1 · Frontend re-declares backend enums, and nothing checks them.** ← *highest leverage*
+> Findings: **P-79 · P-82 · P-91 · P-99**, plus the render half of **P-76 · P-96**.
+>
+> `StatusMap` is `Record<string, {...}>` (`utils/statusMaps.ts:1`) — **completely unkeyed**, so
+> all 21 maps accept any key and omit any value silently. That is exactly how P-79 shipped
+> (`disputePriorityMap` defines `critical`; the backend enum is `urgent`) and P-91
+> (`AdminGamesPage` renders the raw value). The same shape recurs as hardcoded literal arrays:
+> `StagesTab.vue:44` offers `groups_and_playoffs`, which the backend never accepted, and omits
+> `group_stage`, which it does (P-99); `utils/matchStatus.ts` maps `completed → awaiting_result`,
+> a transition the backend forbids (P-82).
+>
+> **The generated unions already exist** — P-31 produced 20 of them, and P-86 already proved the
+> pattern by keying the *e2e fixtures* to them. This is the same fix applied to `src/`: type each
+> map as `Record<TournamentStatus, …>` etc., derive option lists from the unions, and drift
+> becomes a compile error instead of a user-visible enum leak.
+>
+> **A survey while confirming this found sites the register did not know about** —
+> `DemoBrowser.vue:175` (`{{ demo.category }}`), `TournamentInvitationsModal.vue:140`,
+> `AdminPermissionsPage.vue:86` and `:91` all render raw values, and
+> `GameConfigDialog.vue:59` / `StagesTab.vue:51` hardcode further lists. Fixing the four
+> registered findings individually would have left those four in place. **That is the argument
+> for the sweep in one sentence.**
+
+**C2 · Accessible names are unchecked, and one is actively dangerous.**
+> Findings: **P-89 · P-100 · P-106 · P-85**.
+>
+> P-89 is P-45 returning in a different table — `aria-label` rotated one position off `title` and
+> `@click`, so the control announced as "Enable game" disables it. P-45 was point-fixed
+> (`fbe1500`) and the class was never swept, which is why it came back. P-100 is app-wide
+> (`v-select` exposes no accessible name at all) and P-106 is a custom control built from
+> unlabelled divs.
+>
+> The sweep is an audit of every interactive element plus **a guard asserting `aria-label`
+> agrees with the visible label and the handler**. Without the guard this returns a third time.
+
+**C3 · One mechanical defect at six call sites.**
+> Finding: **P-87**. `game_repo.update` is keyed by slug; six handlers hand it a UUID. Six
+> one-line fixes (`resolve_game_slug` first, as `update_game` already does), one test each.
+> Unblocks **P-92** (rank tiers / team size are additionally blocked by it).
+
+**C4 · "Collected, validated, discarded."**
+> Findings: **P-94 · P-84** (and P-104's second half). A field the UI collects that never reaches
+> storage. *Not* one fix — P-94 drops in the web store, P-84 in the Rust handler — but one
+> **audit**: for every request DTO field, is it consumed by the service? Worth a guard later;
+> the two known cases are cheap now.
+
+**C5 · "Reports success, does nothing."**
+> Findings: **P-74 · P-105** (+ P-104). Different mechanisms — a handler that calls no API, a
+> `.catch(() => {})` on a mutation — but one detectable shape: a success snackbar not guarded by
+> a confirmed write. A lint for `.catch(() => {})` on store mutations catches the P-105 form.
+
+**C6 · Endpoint live, control absent.** ← *the parallelisable bulk*
+> Findings: **P-61 · P-62 · P-63 · P-64 · P-68 · P-70 · P-71 · P-72 · P-73 · P-75 · P-92 · P-95**.
+> Twelve independent UI builds sharing only a diagnosis (the store-action reachability gap).
+> No common fix — but no shared files either, so this is where agent parallelism pays.
+
+**C7 · One coherent domain: the demo/evidence pipeline.**
+> Findings: **P-64 · P-68 · P-73 · P-74 · P-75 · P-109 · P-110 · P-111**. These interact —
+> P-73's pipeline page is where P-64's backfill button and P-68's rating override belong, and
+> P-109/P-110/P-111 are the same evidence path. **One agent should own the whole domain**, or
+> three agents will build three half-pages.
+
+**C8 · Sequenced as a unit (do not split).** **P-14 · P-15 · P-16 · P-18** — design §9 welds
+the roster-lock work together; P-15 exists *because* it was picked at piecemeal.
+
+**C9 · Cheap and independent.** **P-65 · P-67 · P-69 · P-85 · P-90** — registrations, deletions,
+a DTO field. Parallel-safe, small.
+
+**C10 · Needs a product decision first.** **P-3 · P-6 · P-41 · P-55 · P-80 · P-97** — not
+actionable until someone rules. P-6 is confirm-or-kill.
+
+**C11 · One ceiling, one fix.** **P-53 → P-56** — `PaginationParams` caps at 100; the real fix
+is the targeted lookup endpoint, which closes both.
+
+**Recommended order:** C3 (mechanical, unblocks C6) → **C1** (largest leverage; closes 4, hardens
+2, prevents the 5th recurrence) → C2 (safety + prevents a third recurrence) → C5/C4 → C7 as one
+agent → C6 fanned out → C9 → C8 → C11 → C10 last.
 
 **Standing rules while working the queue**
 - Fix in the register's order within a tier; tiers themselves are strictly ordered.
@@ -229,9 +315,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 111 found · 59 fixed · 52 open** (P-53 mitigated).
+**Status (derived): 111 found · 60 fixed · 51 open** (P-53 mitigated).
 
-Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-79, P-80, P-82, P-83, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-109, P-110, P-111.
+Open: P-3, P-6, P-14, P-15, P-16, P-18, P-41, P-53, P-55, P-56, P-58, P-61, P-62, P-63, P-64, P-65, P-66, P-67, P-68, P-69, P-70, P-71, P-72, P-73, P-74, P-75, P-76, P-79, P-80, P-82, P-84, P-85, P-87, P-88, P-89, P-90, P-91, P-92, P-94, P-95, P-96, P-97, P-98, P-99, P-100, P-104, P-105, P-106, P-109, P-110, P-111.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -359,7 +445,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-92 | Rank tiers + team size are read-only with no editing surface anywhere | product gap | open |
 | P-86 | e2e fixtures type statuses as bare `string` — P-31 stops at the test boundary | gate gap | **fixed** `ccd4850` |
 | P-82 | **"Revert to Awaiting Result" always 400s — dead control ×2** | feature dead | open |
-| P-83 | **Revert Progression is a no-op on elimination, claims success** | **integrity** | open |
+| P-83 | **Revert Progression is a no-op on elimination, claims success** | **integrity** | **fixed** `8e56adf` |
 | P-84 | Admin scheduling notes discarded; no status-log row | audit gap | open |
 | P-85 | `MatchesTab` rows have no `data-testid` | test-facing | open |
 

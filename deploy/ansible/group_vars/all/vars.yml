@@ -57,6 +57,17 @@ portal_demo_stats_deb_path: ""
 
 demo_stats_port: 3100
 
+# Game-server integration (MatchZy) — docs/matchzy-integration.md.
+# Off by default. Enabling adds the agents.<domain> Caddy site (client
+# certificates verified against the portal CA) and PORTAL_AGENT_CA_DIR in
+# api.env. One-time bootstrap on the portal host:
+#   portal-cli gameserver ca-init --dir /etc/portal/agent-ca
+# NOTE: the CA dir is NOT covered by the pg_dump backups — copy it into your
+# backup routine; losing the key means re-enrolling every agent. Requires a
+# DNS A record for agents.{{ portal_domain }}.
+gameserver_integration_enabled: false
+portal_agent_ca_dir: /etc/portal/agent-ca
+
 # Public https front for the demo parser. The API's SSRF guard requires an
 # https, non-private URL, so Caddy proxies demos.<domain> → 127.0.0.1:3100.
 # Requires a DNS A record for demos.{{ portal_domain }}.

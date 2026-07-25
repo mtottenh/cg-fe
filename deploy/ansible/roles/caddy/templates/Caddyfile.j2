@@ -84,6 +84,40 @@
     }
 }
 
+{% if gameserver_integration_enabled | default(false) %}
+# Game-server agent channel (docs/matchzy-integration.md §5.4). Agents on
+# CS2 hosts connect OUTBOUND here with client certificates signed by the
+# portal CA (`portal-cli gameserver ca-init`). Caddy verifies the chain and
+# validity window; the API resolves the forwarded serial against its
+# revocation registry. Needs a DNS A record for agents.{{ portal_domain }}.
+agents.{{ portal_domain }} {
+    tls {
+        client_auth {
+            mode require_and_verify
+            trusted_ca_cert_file {{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}/ca.pem
+        }
+    }
+
+    reverse_proxy 127.0.0.1:3000 {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        # Identity for the API: hex serial of the verified client cert.
+        header_up X-Client-Cert-Serial {tls_client_serial}
+        header_up X-Client-Cert-Fingerprint {tls_client_fingerprint}
+        # Long-lived agent WebSocket.
+        transport http {
+            read_timeout 300s
+            write_timeout 300s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+}
+{% endif %}
+
 # Demo-stats service (CS2 demo parser). The portal API's SSRF guard requires
 # CS2_DEMO_SERVICE_URL to be https + non-private, so the loopback service is
 # fronted here. Needs a DNS A record for demos.{{ portal_domain }} pointing

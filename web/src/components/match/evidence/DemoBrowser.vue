@@ -172,7 +172,7 @@
                 {{ demo.metadata?.map_name || demo.file_name }}
               </span>
               <v-chip v-if="demo.category" size="x-small" variant="tonal">
-                {{ demo.category }}
+                {{ getStatusLabel(demoCategoryMap, demo.category) }}
               </v-chip>
             </div>
             <div v-if="demo.metadata" class="text-caption text-medium-emphasis">
@@ -283,6 +283,8 @@
 </template>
 
 <script setup lang="ts">
+// P-112 sweep: render the mapped label, not the raw wire value.
+import { demoCategoryMap, getStatusLabel } from '@/utils/statusMaps'
 import { ref, computed, watch, onMounted, reactive } from 'vue'
 import { useEvidenceStore, type DiscoveredEvidenceResponse, type DemoResponse } from '@/stores/evidence'
 

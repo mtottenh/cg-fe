@@ -52,7 +52,7 @@
               size="small"
               variant="flat"
             >
-              {{ item.status }}
+              {{ getStatusLabel(gameStatusMap, item.status) }}
             </v-chip>
           </template>
 
@@ -138,6 +138,7 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import GameEditModal from '@/components/admin/GameEditModal.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import GameConfigDialog from '@/components/admin/GameConfigDialog.vue'
+import { gameStatusMap, getStatusLabel } from '@/utils/statusMaps'
 
 const gamesStore = useGamesStore()
 const snackbar = useSnackbar()

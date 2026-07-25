@@ -36,7 +36,7 @@
               variant="tonal"
               class="ml-2"
             >
-              {{ side.lineup.status }}
+              {{ getStatusLabel(lineupStatusMap, side.lineup.status) }}
             </v-chip>
           </div>
 
@@ -93,6 +93,7 @@
 </template>
 
 <script setup lang="ts">
+import { lineupStatusMap, getStatusLabel } from '@/utils/statusMaps'
 import { computed, onMounted, watch } from 'vue'
 import { useLineupsStore, type LineupStatus } from '@/stores/lineups'
 

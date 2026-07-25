@@ -175,7 +175,9 @@ const priorityOptions = [
   { title: 'Low', value: 'low' },
   { title: 'Normal', value: 'normal' },
   { title: 'High', value: 'high' },
-  { title: 'Critical', value: 'critical' },
+  // P-79: the backend enum's top priority is `urgent`; this offered
+  // `critical`, which could never match a row.
+  { title: 'Urgent', value: 'urgent' },
 ]
 
 const headers = [

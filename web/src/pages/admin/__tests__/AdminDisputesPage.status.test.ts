@@ -84,6 +84,14 @@ describe('AdminDisputesPage status filter', () => {
     ])
   })
 
+  // GROUND RULE 9 — assertion changed because the test was RELYING ON A BUG, not
+  // because the behaviour is inconvenient. Its name claims it pins "exactly the
+  // backend DisputePriority enum values", and it asserted `critical` — a value
+  // that enum has never had (`low | normal | high | urgent`,
+  // portal-domain/src/entities/dispute.rs:209). So the test was certifying P-79:
+  // the filter offered an option no dispute could match, while every `urgent`
+  // dispute — the priority auto-assigned to cheating reports — rendered as a raw
+  // grey "urgent priority" chip. Now it asserts what the name always promised.
   it('offers exactly the backend DisputePriority enum values in the priority filter', async () => {
     const w = await mountPage()
 
@@ -93,6 +101,6 @@ describe('AdminDisputesPage status filter', () => {
     expect(prioritySelect, 'Priority v-select rendered').toBeTruthy()
 
     const items = prioritySelect!.props('items') as Array<{ title: string; value: string }>
-    expect(items.map((i) => i.value)).toEqual(['low', 'normal', 'high', 'critical'])
+    expect(items.map((i) => i.value)).toEqual(['low', 'normal', 'high', 'urgent'])
   })
 })

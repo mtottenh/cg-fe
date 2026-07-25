@@ -83,7 +83,7 @@
                   size="small"
                   variant="tonal"
                 >
-                  {{ item.category }}
+                  {{ getStatusLabel(permissionCategoryMap, item.category) }}
                 </v-chip>
               </template>
 
@@ -252,7 +252,7 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
-import { permissionCategoryMap, getStatusColor } from '@/utils/statusMaps'
+import { permissionCategoryMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 const rbacStore = useRbacStore()
 const { roles, permissions, loading, error } = storeToRefs(rbacStore)

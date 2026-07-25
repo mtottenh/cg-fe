@@ -137,7 +137,7 @@
 
             <template v-slot:item.status="{ item }">
               <v-chip size="small" variant="tonal" :color="statusColor(item.status)">
-                {{ item.status }}
+                {{ getStatusLabel(tournamentInvitationStatusMap, item.status) }}
               </v-chip>
             </template>
 
@@ -184,6 +184,7 @@
 </template>
 
 <script setup lang="ts">
+import { tournamentInvitationStatusMap, getStatusLabel } from '@/utils/statusMaps'
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useDisplay } from 'vuetify'

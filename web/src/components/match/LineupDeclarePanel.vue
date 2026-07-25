@@ -10,7 +10,7 @@
         variant="tonal"
         class="ml-2"
       >
-        {{ myLineup.status }}
+        {{ getStatusLabel(lineupStatusMap, myLineup.status) }}
       </v-chip>
     </v-card-title>
     <v-divider />
@@ -86,6 +86,7 @@
 </template>
 
 <script setup lang="ts">
+import { lineupStatusMap, getStatusLabel } from '@/utils/statusMaps'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useLineupsStore } from '@/stores/lineups'
 import { useTournamentsStore } from '@/stores/tournaments'

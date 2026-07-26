@@ -332,3 +332,12 @@ deliberate:
 - **Alerting**: Grafana-managed provisioned rules (files under
   `roles/monitoring`), delivery via the optional vault_alert_webhook_url
   contact point; rules are read-only in the UI by design.
+- **Ingress modes** (added post-implementation): `monitoring_ingress:
+  public | tailnet`. `tailnet` drops the grafana.<domain> vhost, DNS
+  record, and CT-logged ACME cert entirely — Tailscale Serve terminates
+  HTTPS on the machine's ts.net name and proxies to loopback Grafana,
+  which never leaves 127.0.0.1. Chosen over plain WireGuard because the
+  operator already runs the Tailscale client, Serve preserves the
+  loopback-only bind invariant (plain WG would need Grafana bound to the
+  wg interface), and ts.net HTTPS keeps secure cookies + a stable name.
+  SSH stays the break-glass path.

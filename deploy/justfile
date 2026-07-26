@@ -11,6 +11,18 @@ HOST := `yq -r '.all.hosts[].ansible_host' ansible/inventory/prod.yml 2>/dev/nul
 DOMAIN := `yq -r '.all.vars.portal_domain' ansible/inventory/prod.yml 2>/dev/null || echo portal.example.com`
 USER := "ops"
 
+# Vault password: prompt interactively, OR read from the gitignored
+# ansible/.vault_pass when it exists (chmod 600 it) — the latter makes every
+# recipe non-interactive, so a deploy can be driven unattended.
+VAULT_ARGS := `[ -f ansible/.vault_pass ] && echo "--vault-password-file ansible/.vault_pass" || echo "{{VAULT_ARGS}}"`
+
+# On WSL (/mnt/c is world-writable) ansible REFUSES to load ansible.cfg, so
+# the settings that matter for driving deploys land here as env instead.
+# accept-new: no interactive host-key prompt on first contact, still pinned
+# and verified on every connection after.
+export ANSIBLE_SSH_ARGS := "-o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=accept-new"
+export ANSIBLE_PIPELINING := "True"
+
 default:
     @just --list
 
@@ -54,11 +66,11 @@ provision:
 # First converge against a freshly provisioned box: only root has an SSH key
 # until roles/base creates the ops user, so override ansible_user once.
 bootstrap-fresh:
-    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml --ask-vault-pass -e ansible_user=root
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml {{VAULT_ARGS}} -e ansible_user=root
 
 # Idempotent full site play. Run after editing Ansible, or monthly.
 bootstrap:
-    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml --ask-vault-pass
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml {{VAULT_ARGS}}
 
 # --- deploys -----------------------------------------------------------------
 
@@ -82,7 +94,7 @@ deploy VERSION:
     [ ${#api[@]} -eq 1 ] && [ -f "${api[0]}" ]   || { echo "expected exactly one portal-api deb: ${api[*]}"; exit 1; }
     [ ${#scan[@]} -eq 1 ] && [ -f "${scan[0]}" ] || { echo "expected exactly one portal-scanner deb: ${scan[*]}"; exit 1; }
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
-        --ask-vault-pass \
+        {{VAULT_ARGS}} \
         --tags portal_api,portal_scanner \
         -e portal_api_deb_path="${api[0]}" \
         -e portal_scanner_deb_path="${scan[0]}"
@@ -101,7 +113,7 @@ deploy-demo-stats-release VERSION:
     deb=("$tmp"/portal-demo-stats_*.deb)
     [ ${#deb[@]} -eq 1 ] && [ -f "${deb[0]}" ] || { echo "expected exactly one deb: ${deb[*]}"; exit 1; }
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
-        --ask-vault-pass --tags portal_demo_stats \
+        {{VAULT_ARGS}} --tags portal_demo_stats \
         -e portal_demo_stats_deb_path="${deb[0]}"
 
 # Deploy a tagged steam-bot release (enables the role for this run, like
@@ -119,7 +131,7 @@ deploy-steam-bot-release VERSION:
     deb=("$tmp"/portal-steam-bot_*.deb)
     [ ${#deb[@]} -eq 1 ] && [ -f "${deb[0]}" ] || { echo "expected exactly one deb: ${deb[*]}"; exit 1; }
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
-        --ask-vault-pass --tags portal_steam_bot \
+        {{VAULT_ARGS}} --tags portal_steam_bot \
         -e portal_steam_bot_enabled=true \
         -e portal_steam_bot_deb_path="${deb[0]}"
 
@@ -139,7 +151,7 @@ deploy-web-release VERSION:
     deb=("$tmp"/portal-web_*_all.deb)
     [ ${#deb[@]} -eq 1 ] && [ -f "${deb[0]}" ] || { echo "expected exactly one deb: ${deb[*]}"; exit 1; }
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
-        --ask-vault-pass --tags portal_web \
+        {{VAULT_ARGS}} --tags portal_web \
         -e portal_web_deb_path="${deb[0]}"
 
 # Deploy every service pinned in versions.yml (empty pin = skipped).
@@ -164,7 +176,7 @@ deploy-all:
 # `deploy-web-release` for reproducible prod deploys.
 deploy-web:
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
-        --ask-vault-pass --tags portal_web
+        {{VAULT_ARGS}} --tags portal_web
 
 # Install/refresh the demo-stats service from a locally built deb
 # (built in the sibling demo-stats-service repo). Dev iteration only.
@@ -172,7 +184,7 @@ deploy-web:
 # Usage: just deploy-demo-stats ../demo-stats-service/target/debian/portal-demo-stats_0.1.0-1_amd64.deb
 deploy-demo-stats DEB:
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
-        --ask-vault-pass --tags portal_demo_stats \
+        {{VAULT_ARGS}} --tags portal_demo_stats \
         -e portal_demo_stats_deb_path={{DEB}}
 
 # Install/refresh the Steam bots (cs2-poller + cs2-enricher) from a locally
@@ -184,7 +196,7 @@ deploy-demo-stats DEB:
 # Usage: just deploy-steam-bot ../steam_bot/target/debian/portal-steam-bot_0.1.0-1_amd64.deb
 deploy-steam-bot DEB:
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
-        --ask-vault-pass --tags portal_steam_bot \
+        {{VAULT_ARGS}} --tags portal_steam_bot \
         -e portal_steam_bot_enabled=true \
         -e portal_steam_bot_deb_path={{DEB}}
 
@@ -211,11 +223,13 @@ status:
 tail-errors:
     ssh {{USER}}@{{HOST}} "journalctl -u 'portal-*' -u 'cs2-*' -u pg-backup -u config-backup -u pg-restore-verify -u 'backup-failure@*' -u prometheus -u grafana-server -u loki -u alloy -p warning -n 200 --no-pager"
 
-# Quick reachability check of the monitoring stack (loopback services over
-# SSH, Grafana through Caddy).
+# Quick reachability check of the monitoring stack: loopback services over
+# SSH, then whichever Grafana ingress is configured (public Caddy vhost or
+# Tailscale Serve).
 monitoring-status:
     ssh {{USER}}@{{HOST}} 'curl -fsS localhost:9090/-/ready && echo " prometheus OK"; curl -fsS localhost:3110/ready >/dev/null && echo "loki OK"; curl -fsS localhost:3001/api/health >/dev/null && echo "grafana OK"'
-    curl -fsS "https://grafana.{{DOMAIN}}/api/health" >/dev/null && echo "grafana via caddy OK"
+    ssh {{USER}}@{{HOST}} 'command -v tailscale >/dev/null && { echo "── tailscale serve ──"; tailscale serve status; } || true'
+    curl -fsS -m 10 "https://grafana.{{DOMAIN}}/api/health" >/dev/null 2>&1 && echo "grafana via caddy OK" || echo 'grafana not public (tailnet ingress?) — use the ts.net URL from the serve status above'
 
 # Convenience: follow the live API log.
 logs:

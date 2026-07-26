@@ -5,8 +5,16 @@
 protocol = http
 http_addr = 127.0.0.1
 http_port = {{ monitoring_grafana_port }}
+{% if monitoring_ingress | default('public') == 'tailnet' %}
+# Reached over the operator tailnet only: Tailscale Serve terminates HTTPS
+# on the machine's ts.net name and proxies to this loopback port. There is
+# no public vhost and no DNS record.
+domain = {{ monitoring_tailnet_dnsname }}
+root_url = https://{{ monitoring_tailnet_dnsname }}/
+{% else %}
 domain = grafana.{{ portal_domain }}
 root_url = https://grafana.{{ portal_domain }}/
+{% endif %}
 
 [security]
 # Applied on FIRST start only (seeds the admin user in grafana.db). To

@@ -154,11 +154,13 @@ agents.{{ portal_domain }} {
 }
 {% endif %}
 
-{% if monitoring_enabled | default(false) %}
+{% if monitoring_enabled | default(false) and monitoring_ingress | default('public') == 'public' %}
 # Grafana (docs/observability-design.md §2). The ONLY public ingress into the
 # monitoring stack — Prometheus/Loki/exporters are loopback-only. Grafana
 # handles its own auth (vault_grafana_admin_password). Needs a DNS A record
 # for grafana.{{ portal_domain }} pointing at this box.
+# (monitoring_ingress=tailnet drops this vhost entirely: Grafana is then
+# reached over the operator tailnet via Tailscale Serve.)
 grafana.{{ portal_domain }} {
     encode zstd gzip
 

@@ -105,8 +105,11 @@ requires it to be a real https host.) A third record —
 `agents.portal.yourdomain.com` — is only needed when you enable the
 game-server integration (see "Game-server agents" below), and a fourth —
 `grafana.portal.yourdomain.com` — only when you enable the monitoring
-stack (`monitoring_enabled=true`; see deploy/README.md "Monitoring"). Wait
-for propagation before step 6 so Caddy can get certificates.
+stack with its default public ingress (`monitoring_enabled=true` +
+`monitoring_ingress=public`; with `monitoring_ingress=tailnet` Grafana is
+reached over your Tailscale network instead and needs no DNS record — see
+deploy/README.md "Monitoring"). Wait for propagation before step 6 so
+Caddy can get certificates.
 
 ## 5. Get the artifacts
 

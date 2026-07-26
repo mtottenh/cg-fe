@@ -16,11 +16,15 @@ TMP="$OUT.tmp"
 DOMAINS=(
     "{{ portal_domain }}"
     "demos.{{ portal_domain }}"
+{% if monitoring_ingress | default('public') == 'public' %}
     "grafana.{{ portal_domain }}"
+{% endif %}
 {% if gameserver_integration_enabled | default(false) %}
     "agents.{{ portal_domain }}"
 {% endif %}
 )
+# (tailnet ingress: no grafana vhost to probe — Tailscale renews its own
+# ts.net certificate.)
 
 : > "$TMP"
 status=0

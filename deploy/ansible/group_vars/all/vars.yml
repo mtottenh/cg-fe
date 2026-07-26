@@ -152,6 +152,18 @@ backup_restore_verify_schedule: "OnCalendar=*-*-01 04:30:00"
 # the service roles (a full `just bootstrap` covers everything).
 monitoring_enabled: false
 
+# How the operator reaches Grafana (everything else is always loopback):
+#   public  — grafana.<domain> Caddy vhost + DNS A record + ACME cert
+#             (the cert lands in Certificate Transparency logs, publicly
+#             advertising that a Grafana exists here)
+#   tailnet — Tailscale Serve proxies HTTPS on the machine's ts.net name
+#             to loopback Grafana. No public vhost, no DNS record, no CT
+#             entry; Grafana never leaves 127.0.0.1. Needs MagicDNS +
+#             HTTPS Certificates enabled on the tailnet (admin console)
+#             and vault_tailscale_auth_key for the first converge.
+#             Break-glass if the tailnet is down: ssh -L 3001:127.0.0.1:3001.
+monitoring_ingress: public
+
 # Loopback listen ports for the stack. 3110 for Loki because
 # portal-demo-stats owns the Loki default 3100.
 monitoring_prometheus_port: 9090

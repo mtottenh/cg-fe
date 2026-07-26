@@ -231,6 +231,105 @@
     enabled: true
     state: started
 
+# --- Tailnet ingress (monitoring_ingress: tailnet) ---------------------------
+
+# Tailscale Serve terminates HTTPS on the machine's ts.net name and proxies
+# to loopback Grafana — no public vhost, no DNS record, no ACME cert in CT
+# logs, and Grafana never leaves 127.0.0.1. Serve is tailnet-only by
+# design; Funnel (public exposure) is never enabled here. Break-glass when
+# the tailnet is down: ssh -L 3001:127.0.0.1:3001.
+- name: Tailnet ingress (Tailscale Serve → loopback Grafana)
+  when: monitoring_ingress | default('public') == 'tailnet'
+  block:
+    - name: Tailscale signing key
+      ansible.builtin.get_url:
+        url: "https://pkgs.tailscale.com/stable/ubuntu/{{ ansible_distribution_release }}.noarmor.gpg"
+        dest: /etc/apt/keyrings/tailscale.asc
+        mode: "0644"
+
+    - name: Tailscale apt source
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/tailscale.list
+        mode: "0644"
+        content: |
+          deb [signed-by=/etc/apt/keyrings/tailscale.asc] https://pkgs.tailscale.com/stable/ubuntu {{ ansible_distribution_release }} main
+
+    - name: Tailscale package
+      ansible.builtin.apt:
+        name: tailscale
+        state: present
+        update_cache: true
+
+    - name: tailscaled enabled and started
+      ansible.builtin.systemd:
+        name: tailscaled
+        enabled: true
+        state: started
+
+    - name: Read tailscale backend state
+      ansible.builtin.command: tailscale status --json  # noqa: command-instead-of-module
+      register: monitoring_ts_status
+      changed_when: false
+      failed_when: false
+
+    - name: First join needs a pre-authorized auth key
+      ansible.builtin.assert:
+        that:
+          - vault_tailscale_auth_key is defined
+          - "'CHANGE_ME' not in vault_tailscale_auth_key"
+        fail_msg: >-
+          monitoring_ingress=tailnet and this box has not joined the tailnet
+          yet — set vault_tailscale_auth_key (a pre-authorized key from the
+          Tailscale admin console) with `just edit-vault`. Single-use is
+          fine; once joined, later converges skip `tailscale up` entirely.
+      when: (monitoring_ts_status.stdout | from_json).BackendState | default('') != 'Running'
+
+    - name: Join the tailnet (first converge only)
+      ansible.builtin.command: tailscale up --auth-key={{ vault_tailscale_auth_key }}  # noqa: command-instead-of-module
+      no_log: true
+      changed_when: true
+      when: (monitoring_ts_status.stdout | from_json).BackendState | default('') != 'Running'
+
+    - name: Read tailnet identity
+      ansible.builtin.command: tailscale status --json  # noqa: command-instead-of-module
+      register: monitoring_ts_identity
+      changed_when: false
+
+    - name: Tailnet is up
+      ansible.builtin.assert:
+        that: (monitoring_ts_identity.stdout | from_json).BackendState == 'Running'
+        fail_msg: >-
+          tailscale is installed but the backend is not Running — check
+          `tailscale status` on the box (expired auth key? MagicDNS off?).
+
+    # Grafana's domain/root_url below need the machine's MagicDNS name
+    # (Self.DNSName carries a trailing dot).
+    - name: Record the machine's ts.net name
+      ansible.builtin.set_fact:
+        monitoring_tailnet_dnsname: >-
+          {{ (monitoring_ts_identity.stdout | from_json).Self.DNSName | regex_replace('[.]$', '') }}
+
+    - name: Read tailscale serve config
+      ansible.builtin.command: tailscale serve status --json  # noqa: command-instead-of-module
+      register: monitoring_ts_serve_status
+      changed_when: false
+      failed_when: false
+
+    - name: Serve Grafana on the tailnet (HTTPS ts.net → loopback)
+      ansible.builtin.command: >-
+        tailscale serve --bg --https=443
+        http://127.0.0.1:{{ monitoring_grafana_port }}
+      changed_when: true
+      when: "('127.0.0.1:' ~ monitoring_grafana_port) not in (monitoring_ts_serve_status.stdout | default(''))"
+
+    # tailscaled inserts its own netfilter accept rules for tailscale0, but
+    # be explicit so the posture survives netfilter-mode changes.
+    - name: Allow inbound traffic on the tailscale interface
+      community.general.ufw:
+        rule: allow
+        direction: in
+        interface: tailscale0
+
 # --- Grafana -----------------------------------------------------------------
 
 - name: Grafana configuration

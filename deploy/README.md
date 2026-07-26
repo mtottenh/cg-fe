@@ -138,7 +138,8 @@ site.yml:
 | `vault_scanner_s3_*`, `vault_demo_stats_s3_*` (optional) | Per-service S3 overrides; default to the `vault_linode_*` pair |
 | `vault_steam_bot_api_key` (only if bots enabled) | Portal API key (`cgp_…`) the poller + enricher authenticate with |
 | `vault_steam_bot_username` / `_password` / `_shared_secret` (only if bots enabled) | Dedicated Steam bot account for the enricher's Game Coordinator login (Prime + CS2), and its Guard TOTP secret |
-| `vault_grafana_admin_password` (only if monitoring enabled) | Grafana admin login at `grafana.<domain>` (≥12 chars; applied on Grafana's first start) |
+| `vault_grafana_admin_password` (only if monitoring enabled) | Grafana admin login (≥12 chars; applied on Grafana's first start) |
+| `vault_tailscale_auth_key` (only if `monitoring_ingress: tailnet`) | Pre-authorized Tailscale key for the box's first `tailscale up`; unused after joining |
 | `vault_alert_webhook_url` (optional) | Webhook Grafana alerts POST to (healthchecks.io / ntfy); `""` keeps alerts UI-only |
 
 **Non-secret config (`ansible/group_vars/all/vars.yml`)**:
@@ -151,7 +152,8 @@ site.yml:
 | `backup_remote_retention_days` | Bucket lifecycle expiry the backups role applies (default 180) |
 | `linode_object_storage_region` etc. | Defaults match the London bucket; adjust if you move |
 | `ops_ssh_pubkey_file` | Your public key, installed for the `ops` user |
-| `monitoring_enabled` | Opt-in monitoring stack (needs a `grafana.<domain>` A record + the vault key above); see "Monitoring" below |
+| `monitoring_enabled` | Opt-in monitoring stack; see "Monitoring" below |
+| `monitoring_ingress` | `public` (grafana.<domain> vhost + A record) or `tailnet` (Tailscale Serve, no public exposure) |
 
 `vault.yml` is **gitignored** — it never enters the repo, encrypted or not.
 Keep it on the control machine only, encrypt it with `ansible-vault` for
@@ -353,12 +355,24 @@ full design). One role (`roles/monitoring`) installs, all loopback-bound:
   generated from `monitoring_metrics_ports` in `group_vars/all/vars.yml`;
   that dict is the §3 port registry (portal-api 9464, scanner 9465,
   demo-stats 9466, poller 9467, enricher 9468).
-- **Grafana** :3001 — the only public ingress, via the `grafana.<domain>`
-  Caddy vhost (fourth DNS A record). Login `admin` /
-  `vault_grafana_admin_password` (seeded on first start; rotate later with
-  `grafana-cli admin reset-admin-password`). Dashboards (home / API /
-  pipeline / bots / agents / logs) and the alert rules are provisioned
-  from the role — edits in the UI don't survive a converge.
+- **Grafana** :3001 — reached via one of two ingress modes
+  (`monitoring_ingress`):
+  - `public` (default): `grafana.<domain>` Caddy vhost + fourth DNS A
+    record. Note the ACME cert lands in Certificate Transparency logs,
+    which publicly advertises the Grafana.
+  - `tailnet`: Tailscale Serve terminates HTTPS on the machine's ts.net
+    name and proxies to loopback — no public vhost, no DNS record, no CT
+    entry. Needs MagicDNS + HTTPS Certificates enabled on the tailnet and
+    `vault_tailscale_auth_key` for the first converge (single-use is fine;
+    once joined, later converges skip `tailscale up`). Break-glass when
+    the tailnet is down: `ssh -L 3001:127.0.0.1:3001`. Funnel (public
+    exposure via Tailscale) is never enabled.
+
+  Login `admin` / `vault_grafana_admin_password` in both modes (seeded on
+  first start; rotate later with `grafana-cli admin reset-admin-password`).
+  Dashboards (home / API / pipeline / bots / agents / logs) and the alert
+  rules are provisioned from the role — edits in the UI don't survive a
+  converge.
 - **Loki** :3110 (3100 belongs to portal-demo-stats) + **Alloy** tailing
   journald with labels `{unit, level, hostname}`, 14d retention. journald
   stays the archive; Loki is the query index.

@@ -48,6 +48,11 @@ vault_grafana_admin_password: "CHANGE_ME"
 # URL that accepts a POST — same provider family as backup_healthcheck_url).
 # Leave "" to keep alerts visible in the Grafana UI only.
 vault_alert_webhook_url: ""
+# Only required when monitoring_ingress=tailnet AND the box has not joined
+# the tailnet yet: a pre-authorized key from the Tailscale admin console
+# (Settings → Keys → "Auth keys"; single-use is fine — re-converges skip
+# `tailscale up` once the node is joined, even after the key expires).
+vault_tailscale_auth_key: "tskey-auth-CHANGE_ME"
 
 # --- Optional per-service S3 credential overrides ---------------------------
 # The scanner and the demo-stats service default to the vault_linode_* pair

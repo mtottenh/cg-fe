@@ -27,6 +27,19 @@
         <v-chip v-if="detail.pug.region" variant="tonal" size="small">
           {{ detail.pug.region }}
         </v-chip>
+        <v-tooltip v-if="!isTerminal" location="bottom">
+          <template #activator="{ props: liveProps }">
+            <v-icon
+              v-bind="liveProps"
+              size="x-small"
+              :icon="pugSocket.connected.value ? 'mdi-circle' : 'mdi-circle-half-full'"
+              :color="pugSocket.connected.value ? 'success' : 'warning'"
+              :aria-label="pugSocket.connected.value ? 'Live updates connected' : 'Reconnecting — updates may lag'"
+              data-testid="pug-live-indicator"
+            />
+          </template>
+          {{ pugSocket.connected.value ? 'Live updates' : 'Reconnecting — updates may lag' }}
+        </v-tooltip>
         <v-spacer />
         <v-btn
           v-if="isCreator && !isTerminal"
@@ -322,6 +335,7 @@ import PugTeamBoard from '@/components/pug/PugTeamBoard.vue'
 import WheelPanel from '@/components/pug/WheelPanel.vue'
 import type { WheelResult, WheelSpinPlayback } from '@/components/pug/WheelPanel.vue'
 import { provideMatchLobby, useMatchLobby } from '@/composables/useMatchLobby'
+import { usePugLobbySocket } from '@/composables/usePugLobbySocket'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useAuthStore } from '@/stores/auth'
 import { useGamesStore } from '@/stores/games'
@@ -333,7 +347,7 @@ import { formatMatchFormat } from '@/utils/matchStatus'
 import { getStatusColor, getStatusLabel, pugStatusMap } from '@/utils/statusMaps'
 import { buildSegments } from '@/utils/wheel'
 
-const POLL_MS = 4_000
+
 
 const route = useRoute()
 const router = useRouter()
@@ -532,8 +546,12 @@ function teamName(team: number): string {
   return anchor ? `team_${anchor.display_name}` : `Team ${team}`
 }
 
-// ── Fetch + poll ──
-let pollTimer: ReturnType<typeof setInterval> | null = null
+// ── Fetch: socket-driven, no polling ──
+//
+// The pug websocket rings a doorbell on every server-side change (joins,
+// team moves, nominations, lock, status transitions) and we refetch the
+// viewer-specific detail. The composable falls back to slow polling by
+// itself if the socket can't stay up.
 let disposed = false
 
 async function refresh(): Promise<void> {
@@ -545,6 +563,17 @@ async function refresh(): Promise<void> {
   }
 }
 
+const pugSocket = usePugLobbySocket(() => pugIdRef.value || null, {
+  code: shareCode.value,
+  onChanged: () => {
+    void refresh()
+  },
+  onRematch: (newPugId) => {
+    // The creator copied this roster into a fresh lobby — follow it.
+    void router.push({ name: 'pug-lobby', params: { id: newPugId } })
+  },
+})
+
 async function afterMaterialized(): Promise<void> {
   if (!matchId.value) return
   await lobby.initialize()
@@ -555,25 +584,6 @@ watch(matchId, async (id, old) => {
   if (id && !old) await afterMaterialized()
 })
 
-function startPolling(): void {
-  stopPolling()
-  pollTimer = setInterval(async () => {
-    if (document.visibilityState === 'hidden') return
-    if (isTerminal.value) {
-      stopPolling()
-      return
-    }
-    await refresh()
-  }, POLL_MS)
-}
-
-function stopPolling(): void {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-}
-
 async function init(): Promise<void> {
   vetoStore.clear()
   playback.value = null
@@ -582,7 +592,7 @@ async function init(): Promise<void> {
     await gamesStore.fetchMaps(detail.value.pug.game_id).catch(() => {})
   }
   if (matchId.value) await afterMaterialized()
-  if (!isTerminal.value) startPolling()
+  if (!isTerminal.value) pugSocket.connect()
 }
 
 onMounted(init)
@@ -591,7 +601,7 @@ onMounted(init)
 // (e.g. rematch navigates straight to the new lobby) — re-init.
 watch(pugIdRef, async (next, prev) => {
   if (next && next !== prev) {
-    stopPolling()
+    pugSocket.disconnect()
     lobby.disconnect()
     await init()
   }
@@ -599,7 +609,7 @@ watch(pugIdRef, async (next, prev) => {
 
 onUnmounted(() => {
   disposed = true
-  stopPolling()
+  pugSocket.disconnect()
   lobby.disconnect()
   pugsStore.clear()
 })

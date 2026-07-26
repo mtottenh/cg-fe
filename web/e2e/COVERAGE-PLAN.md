@@ -121,17 +121,22 @@ not see).
 
 ## 3. Current state
 
-- **Suite: FULL e2e run GREEN — 316 passed / 0 failed** (2026-07-25, `e2e-ephemeral.sh -i 5`,
-  47 specs). Verified by spot-check: regressing `matchStatusMap.ready` to the raw enum turned
-  it **red**, restoring turned it green. Ratchet `{}` · web typecheck clean (both passes) · api suite green (last full sequential run:
-  681 passed / 0 failed / 1 ignored — the ignored test needs the demo service on `:3100`;
-  count grows as agents add tests).
-- **Both in-flight agent streams LANDED 2026-07-24** (agents were stopped; work verified and
-  committed by the orchestrator): lineup attribution correction + P-26 (`29be78e`), league
-  batch API (`dc5136c`) + web half, P-59 gate (`930f8c9`, red-proven). Combined gate at
-  landing: **686 passed / 0 failed**, fmt/clippy clean, ratchet `{}`, 6/6 on the touched specs.
+- **Wave E close-out verified (2026-07-26).** Full e2e run on `e2e-ephemeral.sh -i 7`:
+  **369 passed / 2 failed / 1 did not run (8.8m)** — both failures were e2e assertions
+  pinning behaviour this wave deliberately changed (P-194's left-row leak, P-199's
+  status-PATCH bypass); updated under ground rule 9 and their two spec files re-run
+  entirely green on `-i 8` (**32/32**, including the previously-skipped test). Full api
+  suite `--no-fail-fast`: **785 passed / 1 failed / 1 ignored (28.8m)** — the one failure
+  was `set_season_status` jumping the P-199 chain; the fixture now walks legal
+  transitions and its module is **43/43**. Web: typecheck clean (both passes) ·
+  **436/436 unit tests** · all five quality gates (ratchet `{}` · status-maps 26/31
+  compile-locked · a11y · dead-store-actions · register sync) · `cargo fmt --check` and
+  `clippy -D warnings` clean.
+- Prior state for reference: full e2e 316/0 (2026-07-25, `-i 5`), red-proven by the
+  matchStatusMap spot-check; both 2026-07-24 agent streams landed (`29be78e`,
+  `dc5136c`, `930f8c9`).
 
-### Fix wave B — IN FLIGHT (2026-07-25). Do not pick these up.
+### Fix wave B — COMPLETE (2026-07-25).
 
 **`openapi.rs` is assigned to Lane H alone.** That file is the reason wave B is
 split the way it is: several remaining findings need a NEW endpoint, and every
@@ -245,12 +250,61 @@ two each and together retire most of the dead-control class.
 | **T2** | **One-line dead-control fixes** | all eight fixed — **tier complete** | Highest value/effort ratio in the register. Each is a control that renders and does nothing; each fix is a line or two |
 | **T3** | **a11y sweep** (one batch) | ~~P-89~~ · ~~P-100~~ · ~~P-106~~ · ~~P-85~~ — **tier complete**, ratcheted | P-89 is a **P-45 recurrence**, so this must be a repo-wide sweep, not another point fix |
 | **T4** | **Raw-enum sweep** (one batch) | ~~P-76~~ · ~~P-91~~ · ~~P-79~~ · P-96 → now ratcheted; see C1 | P-10/P-44 family, now on its fifth recurrence. Batch it and add a guard, or it returns |
-| **T5** | **Dead code & build hygiene** | P-69 · P-67 · P-65 · P-90 | Deletions and registrations. Cheap, and shrinks the surface the other tiers have to reason about |
-| **T6** | **Missing controls** (product build) | P-74 · P-88 · P-109 · P-110 · P-111 · P-70 · P-71 · P-62 · P-63 · P-64 · P-72 · P-75 · P-92 · P-95 · P-68 · P-73 · P-61 · P-66 | Endpoint live, control absent or non-functional. Real build work; sequence by user pain |
-| **T7** | **Roster-lock rework** (together) | P-14 · P-15 · P-16 · P-18 | Design §9 sequences these as one unit, after the lineup proved out. Do not pick off individually |
-| **T8** | **Decide, then act** | P-3 · P-6 · P-41 · P-53/P-56 · P-55 · P-80 · P-97 | Each needs a product decision or a confirm-or-kill before it is actionable |
+| **T5** | **Dead code & build hygiene** | ~~P-69~~ · ~~P-67~~ · ~~P-65~~ · ~~P-90~~ — **tier complete** | Deletions and registrations |
+| **T6** | **Missing controls** (product build) | all fixed except P-66 (open, ship-without) — **tier effectively complete** | Endpoint live, control absent or non-functional |
+| **T7** | **Roster-lock rework** (together) | ~~P-14~~ · ~~P-15~~ · ~~P-16~~ · ~~P-18~~ — **tier complete** (`297a19e`, corrected by P-148 `0d2981b`) | One unit, as designed |
+| **T8** | **Decide, then act** | all decided and closed (P-80 was the last, wave E) — **tier complete** | Each needed a product decision |
 
-### Fix wave D — IN FLIGHT (2026-07-25). Do not pick these up.
+### Fix wave E — COMPLETE (2026-07-26). Single-session close-out of the register.
+
+One focused session (no lanes — the coordination overhead was no longer worth it
+at this queue size, per the owner's call) worked the remaining actionable
+register in four commit-stages per repo:
+
+| Stage | Findings | api / web commits |
+|---|---|---|
+| A · integrity | P-180 · P-186/187/188 · P-181 | `59201d0` |
+| B · correctness | P-194 · P-195 · P-198/199 · P-200 · P-203 · P-206 · P-150 | `9960a9a` / `853f169` |
+| C · web + enum typing | P-61 · P-190 · P-191 · P-177 · P-175 · P-176 · P-178 · P-193 | `a22e166` / `6478752` |
+| D · gates + contracts | P-142 · P-205 · P-182 · P-80 | `613f6e5` / `ee0ef8b` |
+
+Decisions taken in-session, so the next reader does not re-derive them:
+- **P-180**: compensation-as-undo was wrong for this saga (the result is real
+  user data; steps are idempotent and re-drivable), so the lying `compensate()`
+  is DELETED, not implemented. The operator surface is a `progression_stalled`
+  result review raised when the re-drive pass permanently gives up.
+- **P-193**: the check-in gate stays NARROW (captain/owner/delegate/player —
+  the in-code rationale is that check-in can auto-advance the match) and the
+  authorized answer ships on `MatchParticipantsResponse
+  .my_registration_can_check_in`, so the client holds no copy of the rule.
+- **P-203**: writing its test surfaced `demo_match_links_unique (demo_id,
+  match_id)` — the filed multi-game collapse is structurally impossible; the
+  keying landed as defense-in-depth.
+- **P-204**: ruled working-as-designed (reads-on-view / mutations-on-manage,
+  documented at three sites) → the register's first `wontfix`.
+- **P-181**: refuse loudly rather than implement season-rank seeding — no UI
+  offers the value, so the refusal creates no dead control.
+- **P-142**: the dev bypass STAYS (test usability); the canary pins both sides
+  of its boundary so the enforcement path is provably exercised.
+- The 12 still open (P-66, P-120, P-128, P-129, P-143, P-149, P-154, P-155,
+  P-156, P-173, P-183, P-189) are all previously-triaged ship-without debt,
+  needs-product-decision, or test-infra items — none silently deferred.
+
+Two e2e assertions changed under ground rule 9 (the SPECIFICATION changed;
+each comment names the ruling): `team-roster` no longer expects a removed
+member's card on /my-teams (P-194 — the left-row leak was the defect, and the
+card rode on it), and `admin-management`'s season-status edit now picks a
+chain-legal transition and additionally pins that an illegal PATCH is refused
+(P-199). The full-suite run is what caught both — per-spec green is not green.
+The modal still offering illegal statuses is filed as P-207.
+
+Also fixed in passing: the MatchZy merge's unregistered service routes
+(`agent`/`matchzy` added to the P-65 guard's EXEMPT with the `internal`
+rationale), its two unused test imports, an unhandled-rejection flake in
+`pollMatch` (the P-107 shape), and a types.ts regen that had silently lagged
+the spec by several waves (the P-52 class, caught late).
+
+### Fix wave D — COMPLETE (2026-07-25).
 
 | Lane | Findings | Owns | openapi.rs |
 |---|---|---|---|
@@ -304,13 +358,13 @@ through the UI — not an API-level check.
 | P-135 | ✅ `b6ccf8b`+`806048e` — unlinking silently no-op'd after a reload and reported success. `evidence_id` now comes from the server and the local list is pruned only after a DELETE that returned |
 | P-137 | ✅ `b6ccf8b` — `Cs2DemoClient::default()` pointed at a real external host. **Two more instances of the same default were found** (portal-scanner, portal-cli); misconfiguration now refuses by name. See P-160: the docker-compose default survives |
 
-**Strongly recommended, cheap:** P-61 (DQ strands matches mid-bracket) · P-126
-(disbanded teams renameable) · P-124 (six sites showing a generic error instead
-of the real one) · **verify P-58** (implemented at `stats_updater.rs:178`, never
-verified — verify, do not rebuild).
+**Strongly recommended, cheap — ALL DONE:** ~~P-61~~ (`6478752`) · ~~P-126~~
+(`f3c6550`) · ~~P-124~~ (`c99ae81`) · ~~P-58~~ (verified, `3013f58+cb05c99`).
 
-**Ship without:** P-66 · P-80 · P-120 · P-121 · P-122 · P-125 · P-128 · P-129 ·
-P-65 · P-67 · P-69 · P-112 (debt; its ratchet stops it worsening).
+**Ship without (the remaining 12 open, as of wave E):** P-66 · P-120 · P-128 ·
+P-129 · P-143 · P-149 · P-154 · P-155 · P-156 · P-173 · P-183 · P-189 —
+previously-triaged debt, ops convenience, or test-infra; none blocks a core
+action, and the ratchets hold the classes they belong to.
 
 ### 4a. Root-cause clusters — what to fix ONCE instead of 51 times
 
@@ -416,9 +470,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 206 found · 168 fixed · 38 open** (P-53 mitigated).
+**Status (derived): 207 found · 193 fixed · 13 open** · 1 wontfix (P-53 mitigated).
 
-Open: P-61, P-66, P-80, P-120, P-128, P-129, P-142, P-143, P-149, P-150, P-154, P-155, P-156, P-173, P-175, P-176, P-177, P-178, P-180, P-181, P-182, P-183, P-186, P-187, P-188, P-189, P-190, P-191, P-193, P-194, P-195, P-198, P-199, P-200, P-203, P-204, P-205, P-206.
+Open: P-66, P-120, P-128, P-129, P-143, P-149, P-154, P-155, P-156, P-173, P-183, P-189, P-207.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -498,7 +552,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-58 | **Team matches credit participation to nobody.** Verified: the demo half worked; a team playing WITHOUT a parsed demo still credited nobody, since a team registration's `player_id` is `None`. Now takes the most authoritative lineup source present | integrity | **fixed** `3013f58+cb05c99` |
 | P-59 | **`schedule_match` direct-set: no authz → manufactured forfeits** | **security** | **fixed** `930f8c9` (red-proven) |
 | P-60 | Logout never revokes the session server-side | security gap | **fixed** `409969b` |
-| P-61 | UI disqualify doesn't cascade; strands matches | admin gap | open |
+| P-61 | UI disqualify doesn't cascade; strands matches | admin gap | **fixed** `6478752` (web) |
 | P-62 | Transfer team ownership has no UI | product gap | **fixed** `28afc7a` |
 | P-63 | Disband team has no UI | product gap | **fixed** `28afc7a` |
 | P-64 | Demo auto-link backfill unreachable from UI | admin gap | **fixed** `0dd69e1+4ead184` |
@@ -517,7 +571,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-77 | **Uphold on a claim-path dispute completes the match with NO result** | **integrity** | **fixed** `2b8e428` |
 | P-78 | **Rematch / double-DQ leave the old winner + score on the match** | **integrity** | **fixed** `2b8e428` |
 | P-79 | Dispute priority: UI has `critical`, backend has `urgent` | user-facing | **fixed** `b992f2a` |
-| P-80 | "Assign to Me" records no assignee — no column exists | design gap | open |
+| P-80 | "Assign to Me" records no assignee — no column exists | design gap | **fixed** `613f6e5+ee0ef8b` |
 | P-81 | **`e2e/` is in no tsconfig — specs are never typechecked** | **gate gap** | **fixed** `e06ff8f` |
 | P-108 | **`link-discovered`/`link-demo` have NO participant authz** | **security** | **fixed** `ef4b947` |
 | P-109 | Linked demo evidence is invisible on every evidence surface | **feature dead** | **fixed** `61d3e65`+`b9ccdaf` |
@@ -579,7 +633,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-139 | **`admin.system.manage` was in the registry but in NO migration — `submit_player_rating` 403'd for every caller, super_admin included, for the endpoint's whole life** | **authorization** | **fixed** `0080` |
 | P-140 | Nothing asserted a declared permission is seeded and granted, so P-139 was invisible | gate gap | **fixed** `2751a44` |
 | P-141 | `admin.audit.view` declared, seeded nowhere, gated on by nothing, guards a subsystem that does not exist | dead code | **fixed** `2751a44` |
-| P-142 | **`PermissionChecker` short-circuits for the dev user in `test-utils` builds, so no integration test calling as `dev-token` ever consults the permissions table** | **gate gap** | open |
+| P-142 | **`PermissionChecker` short-circuits for the dev user in `test-utils` builds, so no integration test calling as `dev-token` ever consults the permissions table** | **gate gap** | **fixed** `613f6e5` (canary) |
 | P-143 | Enrichment-failure rendering is API-covered but not UI-covered — the e2e stack mints no `X-API-Key`, so no test can drive a failure into the page | coverage gap | open |
 | P-144 | Demo-catalog counts were global, not game-scoped — a CS2 admin saw totals inflated by every other game | correctness | **fixed** `731f638+c4c8b6b` |
 | P-145 | **Every `entity_changes` insert failed — `ip_address` bound as text into an INET column. The audit trail was CLI-read-only and had never been written to** | **audit dead** | **fixed** `297a19e` |
@@ -588,12 +642,12 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-148 | **The roster lock was inert once a season went active — season STATUS was the gate, so the lock only ever spoke when it did not need to.** Owner ruled the lock should be the control and optional (casual league). `SeasonStatus::allows_roster_changes()` deleted; non-terminal phases defer entirely to `roster_lock_status`, terminal seasons refuse regardless. **Granularity is per-SEASON; per-tournament would be new work** | **blocker rationale wrong** | **fixed** `0d2981b+085e7c5` |
 | P-201 | **An operator could not TIGHTEN the lock on a season that had started** — `ensure_lock_change_allowed` gated setting the lock on the same `draft|registration` predicate, i.e. it refused at exactly the moment a league decides rosters are final | product gap | **fixed** `0d2981b` |
 | P-202 | **`create_join_request` was the only roster path still frozen by phase** — it opened with `is_registration_open()`, so a player could be *invited* onto a mid-season open roster but not *ask* to join it. P-15's shape via a different predicate | enforcement | **fixed** `0d2981b` |
-| P-203 | `evidence_ids_by_demo` builds `HashMap<DemoId, Uuid>`, so a demo linked to two games of one match collapses to a single entry and both links point at the same evidence row — P-159's defect class living server-side | correctness | open |
-| P-204 | `get_demo_status_counts` gates on `is_admin` (`users.view_all`) while every demo MUTATION in the same file uses `require_demos_manage` — the two gates disagree about who an admin is | inconsistent | open |
-| P-205 | `AdminDemoDetailPage:718` is the only remaining caller of `unlinkFromMatch`; correct today because the API maintains the pair, but it would silently regress to P-158 with no test on it | coverage gap | open |
-| P-206 | An `#[ignore]`d test still issues live outbound requests when `CS2_DEMO_SERVICE_URL` is set — the ignore attribute is the only thing between `cargo test` and a third-party host | **config safety** | open |
+| P-203 | `evidence_ids_by_demo` built `HashMap<DemoId, Uuid>` — filed as a multi-game collapse, but writing the P-205 test showed `demo_match_links_unique (demo_id, match_id)` makes one demo on two games of a match IMPOSSIBLE; the (demo, game_number) keying landed as defense-in-depth, and the whole-demo admin unlink now collects every game's pairing | correctness | **fixed** `9960a9a+613f6e5` |
+| P-204 | `get_demo_status_counts` gates on `is_admin` (`users.view_all`) while demo MUTATIONS use `require_demos_manage`. RULED BY DESIGN: reads-on-view (moderator+), mutations-on-manage is the documented split — `PermissionService::is_admin`'s doc and `require_pipeline_view`'s comment both state it, and `is_admin` genuinely checks `users.view_all` | inconsistent | wontfix — by design |
+| P-205 | `AdminDemoDetailPage:718` is the only remaining caller of `unlinkFromMatch`; correct today because the API maintains the pair, but it would silently regress to P-158 with no test on it | coverage gap | **fixed** `613f6e5` |
+| P-206 | An `#[ignore]`d test still issues live outbound requests when `CS2_DEMO_SERVICE_URL` is set — the ignore attribute is the only thing between `cargo test` and a third-party host | **config safety** | **fixed** `9960a9a` |
 | P-149 | Override audit rows are written but have no HTTP read surface — only `portal-cli` can read them | ops gap | open |
-| P-150 | `entity_changes.changed_by` is `NOT NULL REFERENCES players(id) ON DELETE SET NULL` — a self-contradictory pair | schema | open |
+| P-150 | `entity_changes.changed_by` is `NOT NULL REFERENCES players(id) ON DELETE SET NULL` — a self-contradictory pair | schema | **fixed** `9960a9a` (0088) |
 | P-151 | **Permission strings used as bare literals (10 sites) are absent from the registry, so the P-140 guard cannot see them** | **gate gap** | **fixed** `61fa1f1` |
 | P-152 | **The admin route guard named `'admin'`, a role NO migration seeds — a granted `platform_admin` was bounced off every admin route. Silently halved P-70** | **blocker half-open** | **fixed** `e92aead` |
 | P-153 | **`revoke_role_from_user` has no priority ceiling (its `assign` counterpart does) — a platform_admin can strip a super_admin's role. The UI hides the buttons; that is cosmetic** | **authorization** | **fixed** `df76b70` |
@@ -613,36 +667,37 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-167 | **`TournamentDetailPage` scanned registrations at the DEFAULT `per_page: 20`, so past row 20 everyone was told they were not registered.** Replaced by `/registrations/me` + `/registrations/counts`; the scan is deleted, not widened | **blocks core flow** | **fixed** `8a7ae7e+df69c36` |
 | P-168 | **Only the person who clicked register could submit or confirm for a TEAM.** Wider than filed: evidence and scheduling carried hand-copies of the same rule and refused the same people. One rule now — `speaks_for_registration` | **blocks core flow** | **fixed** `8a7ae7e+df69c36` |
 | P-169 | **Revert searched for the participant the match advanced BY IDENTITY, and a P-72 correction rewrites exactly that column — so after a winner-flipping correction it found nobody, returned 200, and left the OLD winner in the next round.** The literal no-op was already fixed (P-83 `8e56adf`); this was the same defect one layer in, which P-72 made reachable | **integrity** | **fixed** `7a19c34+b5144a8` |
-| P-180 | **`MatchCompletionSaga::compensate()` marks compensation COMPLETE having undone nothing** — logs "requires manual compensation review", fetches the progression logs, comments "actual deletion would depend on business requirements", then completes. A failed saga leaves the winner advanced. On the AUTOMATIC path, not an admin tool | **integrity** | open |
-| P-181 | `seed_by_season_rank` silently falls back to rating seeding with an `info!` log — an operator who picks season-rank seeding gets rating seeding and is never told | user-facing | open |
-| P-182 | `get_team_name_for_registration` returns the literal `"Current Team"`, so every veto-timeout broadcast ships `current_team: "Current Team"`. **Investigated, deliberately not fixed yet**: the field is fabricated AND unread — `useMatchLobby.ts:123` copies only `seconds_remaining` and the registration id, and the function's own doc says clients resolve the name themselves. So it is redundant by design and false in practice. Every fix touches the wire contract (remove the field, or make it `Option`), and resolving it server-side needs a registration repo threaded into the timeout task; `VetoSessionState` carries no names. A test helper (`common/ws.rs:78`) also deserializes it. Needs a contract decision, not a patch | user-facing | open |
+| P-180 | **`MatchCompletionSaga::compensate()` marks compensation COMPLETE having undone nothing** — logs "requires manual compensation review", fetches the progression logs, comments "actual deletion would depend on business requirements", then completes. A failed saga leaves the winner advanced. On the AUTOMATIC path, not an admin tool | **integrity** | **fixed** `59201d0` |
+| P-181 | `seed_by_season_rank` silently falls back to rating seeding with an `info!` log — an operator who picks season-rank seeding gets rating seeding and is never told | user-facing | **fixed** `59201d0` |
+| P-182 | `get_team_name_for_registration` returns the literal `"Current Team"`, so every veto-timeout broadcast ships `current_team: "Current Team"`. **Investigated, deliberately not fixed yet**: the field is fabricated AND unread — `useMatchLobby.ts:123` copies only `seconds_remaining` and the registration id, and the function's own doc says clients resolve the name themselves. So it is redundant by design and false in practice. Every fix touches the wire contract (remove the field, or make it `Option`), and resolving it server-side needs a registration repo threaded into the timeout task; `VetoSessionState` carries no names. A test helper (`common/ws.rs:78`) also deserializes it. Needs a contract decision, not a patch | user-facing | **fixed** `613f6e5+ee0ef8b` |
 | P-183 | Default `validate_evidence` returns `is_valid: true` for any game with no implementation (mitigated: `confidence: 0.0` + a warning string) | integrity | open |
 | P-184 | **Reapply's mirror image: the winner attribution write lived inside the RR/Swiss standings branch, so on elimination brackets reapply moved the bracket to the new winner while `winner_registration_id` still named the old one** — the match disagreeing with the pairing it produced | integrity | **fixed** `7a19c34` |
 | P-185 | **An organiser could not approve pending registration #21 at all** — neither participant table had a server pager | **blocks core flow** | **fixed** `8a7ae7e+df69c36` |
-| P-186 | **Swiss next-round pairing builds its registration map from a 1000-row page and `filter_map`s standings through it — a participant past row 1000 is silently DROPPED FROM THE PAIRING.** Data loss, not display | **integrity** | open |
-| P-187 | `seed_by_*` seeds only the first 1000 registrations | integrity | open |
-| P-188 | `process_no_shows` iterates only the first 1000 approved rows; anyone past that is never marked no-show | integrity | open |
+| P-186 | **Swiss next-round pairing builds its registration map from a 1000-row page and `filter_map`s standings through it — a participant past row 1000 is silently DROPPED FROM THE PAIRING.** Data loss, not display | **integrity** | **fixed** `59201d0` |
+| P-187 | `seed_by_*` seeds only the first 1000 registrations | integrity | **fixed** `59201d0` |
+| P-188 | `process_no_shows` iterates only the first 1000 approved rows; anyone past that is never marked no-show | integrity | **fixed** `59201d0` |
 | P-189 | Result-override audit read hard-coded to `100, 0` with no pagination surface | admin gap | open |
-| P-190 | **`HomePage` upcoming-matches scans `per_page: 100` per tournament AND matches only `player_id`, so a team-only participant never sees ANY upcoming match** | user-facing | open |
-| P-191 | Eight more page/component/composable pagination scans (`TeamDetailPage` 20, `LeagueSearchAutocomplete` 200→clamped to 100, `useLeagueDetail`/`LeagueDetailPage` 20 with counts from `.length`, `HomePage:487`, `LeagueMembersModal`, `leagues.ts:295`, `TournamentInvitationsModal`) | user-facing | open |
+| P-190 | **`HomePage` upcoming-matches scans `per_page: 100` per tournament AND matches only `player_id`, so a team-only participant never sees ANY upcoming match** | user-facing | **fixed** `6478752` |
+| P-191 | Eight more page/component/composable pagination scans (`TeamDetailPage` 20, `LeagueSearchAutocomplete` 200→clamped to 100, `useLeagueDetail`/`LeagueDetailPage` 20 with counts from `.length`, `HomePage:487`, `LeagueMembersModal`, `leagues.ts:295`, `TournamentInvitationsModal`) | user-facing | **fixed** `6478752` |
 | P-192 | **The pagination guard globbed `src/stores/**` only, so every page/component/composable instance was INVISIBLE to it** — green throughout while 13 scans sat outside its field of view. Scope is now asserted, so narrowing it fails loudly instead of shrinking coverage behind a passing tick | **gate gap** | **fixed** `d88a783` |
-| P-193 | Check-in disagrees exactly as P-168 did: `useMatchDetail:92` shows the panel to any roster member, the backend accepts only captain/owner/delegate/staff → silent 403. Needs a product ruling | user-facing | open |
-| P-194 | **`v_player_league_teams` has no `left_at IS NULL` filter while `is_member` does, so `GET /v1/players/me/league-teams` returns teams the player has LEFT** — feeds `myTeams`, `hasEligibleTeams` and the team picker | correctness | open |
-| P-195 | Capacity count excludes `'withdrawn','rejected'`; `'rejected'` is not in the status enum (dead literal), and `disqualified` rows still occupy a slot | correctness | open |
+| P-193 | Check-in disagrees exactly as P-168 did: `useMatchDetail:92` shows the panel to any roster member, the backend accepts only captain/owner/delegate/staff → silent 403. Needs a product ruling | user-facing | **fixed** `a22e166+6478752` |
+| P-194 | **`v_player_league_teams` has no `left_at IS NULL` filter while `is_member` does, so `GET /v1/players/me/league-teams` returns teams the player has LEFT** — feeds `myTeams`, `hasEligibleTeams` and the team picker | correctness | **fixed** `9960a9a` (0087) |
+| P-195 | Capacity count excludes `'withdrawn','rejected'`; `'rejected'` is not in the status enum (dead literal), and `disqualified` rows still occupy a slot | correctness | **fixed** `9960a9a` |
 | P-196 | `progression.rs:122 fills_from` was dead code warning on every build — **no longer dead**: P-169's structural revert (`7a19c34`) is precisely what needed it (`:1076`). Verified: `cargo check -p portal-domain` emits no warning | debt | **fixed** `7a19c34` |
 | P-197 | **`team-management.spec.ts:1208` was RED, not merely obsolete** — its refusal regex stopped matching any backend string when `297a19e` unified the enforcement point. The message changed and the e2e was missed | test rot | **fixed** `085e7c5` |
-| P-198 | `update_season` writes the generic field update and THEN calls `update_roster_lock` — two non-transactional writes, so a DB error between them half-applies the PATCH | integrity | open |
-| P-199 | **`update_status` enforces a transition chain (Draft→Registration→Active→…) but `update_season` writes `status` as a plain field with NO validation, so `PATCH {status}` bypasses the chain entirely** — two mechanisms disagreeing about the same rule | enforcement | open |
-| P-200 | `LeagueTeamSeasonResponse` carries no `roster_lock_status`, so `TeamDetailPage` makes a second round-trip to learn its own roster's lock (field on an already-registered DTO; no `openapi.rs` change needed) | user-facing | open |
+| P-198 | `update_season` writes the generic field update and THEN calls `update_roster_lock` — two non-transactional writes, so a DB error between them half-applies the PATCH | integrity | **fixed** `9960a9a` |
+| P-199 | **`update_status` enforces a transition chain (Draft→Registration→Active→…) but `update_season` writes `status` as a plain field with NO validation, so `PATCH {status}` bypasses the chain entirely** — two mechanisms disagreeing about the same rule | enforcement | **fixed** `9960a9a` |
+| P-200 | `LeagueTeamSeasonResponse` carries no `roster_lock_status`, so `TeamDetailPage` makes a second round-trip to learn its own roster's lock (field on an already-registered DTO; no `openapi.rs` change needed) | user-facing | **fixed** `9960a9a`+web |
+| P-207 | The season edit modal offers all six statuses while the PATCH now enforces the transition chain (P-199) — an illegal pick 400s with a generic snackbar instead of never being offered; derive `statusOptions` from the legal transitions of the current status | user-facing | open |
 | P-170 | After an override the claimed (wrong) score showed beside the corrected one with nothing saying which governs. **Owner ruling: show the corrected score.** Claim row kept (it is evidence); the UI now marks it superseded | user-facing | **fixed** `97f4ae7+64f83a4` |
 | P-171 | `MatchResultsTab` printed `submitted_by_user_id` as a raw UUID while `submitted_by_display_name` sat unused on the same DTO — P-95/P-115/P-123 class | user-facing | **fixed** `97f4ae7` |
 | P-172 | Evidence/demo chips read `id.slice(0, 8)`; v7 prefixes are timestamps, so files attached seconds apart rendered as identical chips | user-facing | **fixed** `97f4ae7` |
 | P-173 | `tournament_matches.participant1_score` is `NOT NULL DEFAULT 0`, so "no result yet" is indistinguishable from "0-0" at the column level — `winner_registration_id` is the only honest has-result signal, and `?? '-'` fallbacks on those fields are dead code | latent | open |
 | P-174 | **A player who leaves or is removed keeps a My Teams card whose chip printed the literal `left`/`removed`** — `teamStatusMap` was fed a THIRD enum nobody had keyed it against, and the P-112 sweep had deleted those values as belonging to neither | **live leak** | **fixed** `86701cc` |
-| P-175 | `EvidenceDisplay:165` renders `evidence_type` raw; the property is outside the ratchet's list so the guard cannot see it. `evidence_type` is `string` on the wire — P-112 class | user-facing | open |
-| P-176 | `AdminPipelinePage:376` renders `h.source` raw; `player_rating_history.source` is `VARCHAR(64)` with no CHECK, so genuinely unconstrained | debt | open |
-| P-177 | **`LeagueMembersModal` disables actions on `membership_type === 'owner'`, but `LeagueMembershipType` is admin/moderator/member — `'owner'` is unreachable, so those guards NEVER fire** | enforcement | open |
-| P-178 | `leagueStatusMap` is duplicated inline in three components instead of living in `statusMaps.ts`, so the ratchet cannot count it and it can drift three ways | debt | open |
+| P-175 | `EvidenceDisplay:165` renders `evidence_type` raw; the property is outside the ratchet's list so the guard cannot see it. `evidence_type` is `string` on the wire — P-112 class | user-facing | **fixed** `a22e166+6478752` |
+| P-176 | `AdminPipelinePage:376` renders `h.source` raw; `player_rating_history.source` is `VARCHAR(64)` with no CHECK, so genuinely unconstrained | debt | **fixed** `6478752` |
+| P-177 | **`LeagueMembersModal` disables actions on `membership_type === 'owner'`, but `LeagueMembershipType` is admin/moderator/member — `'owner'` is unreachable, so those guards NEVER fire** | enforcement | **fixed** `6478752` |
+| P-178 | `leagueStatusMap` is duplicated inline in three components instead of living in `statusMaps.ts`, so the ratchet cannot count it and it can drift three ways | debt | **fixed** `a22e166+6478752` |
 | P-179 | **A regression INTRODUCED by P-167 hours earlier**: the new server-sourced counts were never invalidated, so the badge was right on load and stale from the first approval onwards. The old page-derived count updated for free because it read the array the mutations write to | user-facing | **fixed** `4f8eb58` |
 
 **Inverse audit (2026-07-24):** all 268 spec operations joined against actual `web/src/`
@@ -1441,8 +1496,10 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
       1-2: still 26, unchanged** — no new drift introduced, and every entry is accounted for
       by P-67/P-70/P-71/P-74/P-92
 - [x] `match-workflow:253` name/assertion fixed (`c3d0122`) — the last misleading-name item
-- [ ] Register drained to decided-wontfix or fixed (**50 open** after waves 1-2; the
-      coverage wave is a finding *generator*, so this number rises before it falls)
+- [x] Register drained to decided-wontfix or fixed — **wave E close-out (2026-07-26): 193
+      fixed · 1 wontfix · 12 open**, and every one of the 12 is previously-triaged
+      ship-without debt, needs-product-decision, or test-infra (P-66, P-120, P-128, P-129,
+      P-143, P-149, P-154, P-155, P-156, P-173, P-183, P-189)
 - [x] **Full suite green in one run** (P-107) — 316/0 on 2026-07-25 (first attempt was 302/4/3)
 - [x] Final spot-check: deliberately break a component and watch the suite go **red** —
       regressed `matchStatusMap.ready.label` to the raw enum `'ready'`; `match-workflow:242`

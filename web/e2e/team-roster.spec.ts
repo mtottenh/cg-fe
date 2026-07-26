@@ -194,14 +194,17 @@ test.describe('Team Roster Management', () => {
       expect(stillOnTeam).toBeUndefined()
     }
 
-    // The removed user's membership shows on /my-teams with "Left" status
-    // (the backend keeps historical memberships, it just marks them Left).
+    // P-194 (spec change, ground rule 9): `v_player_league_teams` now filters
+    // `left_at IS NULL`, so a removed member's card is GONE from /my-teams.
+    // The old assertion here pinned the pre-P-194 behaviour (card kept, "Left"
+    // chip) — but the same rows fed `hasEligibleTeams` and the team picker,
+    // which offered teams the player was no longer on, and the register ruled
+    // the leak the defect. Assert the empty state FIRST so the absence check
+    // cannot pass vacuously before the fetch lands.
     await loginAsUser(page, { email: victim.email, password: victim.password })
     await page.goto('/my-teams')
-    await page.waitForLoadState('networkidle')
-
-    await expect(page.getByText(scenario.teamName, { exact: false })).toBeVisible({ timeout: 5_000 })
-    await expect(page.locator('.v-chip').filter({ hasText: 'Left' }).first()).toBeVisible()
+    await expect(page.getByText("You're Not on Any Teams Yet")).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText(scenario.teamName, { exact: false })).toHaveCount(0)
   })
 
   test('owner transfers team ownership; edit access moves to new owner (API — no transfer-ownership UI exists)', async ({ page }) => {

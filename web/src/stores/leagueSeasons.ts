@@ -16,7 +16,6 @@ export const useLeagueSeasonsStore = defineStore('leagueSeasons', () => {
 
   // Per-action states
   const fetchSeasonsState = createActionState()
-  const fetchSeasonState = createActionState()
   const createSeasonState = createActionState()
   const updateSeasonState = createActionState()
 
@@ -37,15 +36,10 @@ export const useLeagueSeasonsStore = defineStore('leagueSeasons', () => {
     }, 'Failed to fetch seasons')
   }
 
-  async function fetchSeason(seasonId: string): Promise<LeagueSeasonResponse> {
-    return withActionState(fetchSeasonState, async () => {
-      const result = await unwrapApi(api.GET('/v1/league-seasons/{season_id}', {
-        params: { path: { season_id: seasonId } },
-      }))
-      currentSeason.value = result.data
-      return currentSeason.value
-    }, 'Failed to fetch season')
-  }
+  // No single-season fetch here: P-67 retired it once as a superseded getter,
+  // P-148's lock resolution briefly revived it, and P-200 (the lock riding on
+  // the team-season response) killed its last consumer again. A dead action is
+  // the shape of an unwired feature — deleted rather than left ambiguous.
 
   async function createSeason(seasonData: CreateLeagueSeasonRequest): Promise<LeagueSeasonResponse> {
     return withActionState(createSeasonState, async () => {
@@ -87,14 +81,12 @@ export const useLeagueSeasonsStore = defineStore('leagueSeasons', () => {
     loading,
     error,
     fetchSeasons,
-    fetchSeason,
     createSeason,
     updateSeason,
     clearCurrent,
     clearSeasons,
     // Per-action states
     fetchSeasonsState,
-    fetchSeasonState,
     createSeasonState,
     updateSeasonState,
   }

@@ -443,6 +443,8 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
+import { api } from '@/api'
+import { unwrapApi } from '@/stores/helpers'
 import { useLeagueTeamsStore, type LeagueTeamMemberWithPlayer } from '@/stores/leagueTeams'
 import { useLeagueSeasonsStore, type LeagueSeasonResponse } from '@/stores/leagueSeasons'
 import { useAuthStore } from '@/stores/auth'
@@ -613,19 +615,23 @@ async function resolveSeasonFromLeague(leagueId: string): Promise<string | null>
 /**
  * Resolve the roster lock of the season this roster belongs to (P-148).
  *
- * The `season_id` comes from the viewer's own membership row when there is one,
- * and otherwise from the season's team list — the same summary
- * (`LeagueTeamSummaryResponse`) that `resolveSeasonFromLeague` already reads,
- * which carries `roster_lock_status` directly. Failures are swallowed: an
- * unknown lock renders no chip and offers the unrestricted role list, which is
- * exactly the pre-P-148 behaviour, and the API is still the enforcer.
+ * P-200: one round-trip now — `LeagueTeamSeasonResponse` carries the parent
+ * season's `roster_lock_status`, so the team-season GET answers directly.
+ * This also works for viewers with no membership row (the old path resolved
+ * the season id from `myTeams` and silently gave visitors no chip at all).
+ * Failures are swallowed: an unknown lock renders no chip and offers the
+ * unrestricted role list, which is exactly the pre-P-148 behaviour, and the
+ * API is still the enforcer.
  */
 async function loadSeasonRosterLock() {
   seasonRosterLock.value = null
-  const membership = teamsStore.myTeams.find(t => t.team_season_id === teamSeasonId.value)
-  if (!membership) return
-  const season = await seasonsStore.fetchSeason(membership.season_id).catch(() => null)
-  seasonRosterLock.value = season?.roster_lock_status ?? null
+  if (!teamSeasonId.value) return
+  const teamSeason = await unwrapApi(
+    api.GET('/v1/league-team-seasons/{team_season_id}', {
+      params: { path: { team_season_id: teamSeasonId.value } },
+    })
+  ).catch(() => null)
+  seasonRosterLock.value = teamSeason?.data.roster_lock_status ?? null
 }
 
 onMounted(async () => {

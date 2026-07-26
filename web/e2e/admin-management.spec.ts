@@ -659,7 +659,14 @@ test.describe('Admin Management', () => {
         'Cancelled',
       ])
 
-      await page.getByRole('option', { name: 'Active', exact: true }).click()
+      // P-199 (spec change, ground rule 9): the PATCH now enforces the same
+      // transition chain as the dedicated status endpoint, so a draft season
+      // can only move to Registration Open (or Cancelled) — the old pick here
+      // (draft → Active) exercised exactly the bypass P-199 closed. The modal
+      // still offers all six values; an illegal pick now 400s with an error
+      // snackbar rather than silently corrupting the lifecycle (filed P-207:
+      // derive the options from the legal transitions).
+      await page.getByRole('option', { name: 'Registration Open', exact: true }).click()
 
       const patchPromise = page.waitForResponse(
         (resp) =>
@@ -671,11 +678,22 @@ test.describe('Admin Management', () => {
 
       // UI: modal closed and the table re-read the season.
       await expect(editDialog).toBeHidden()
-      await expect(seasonRow.getByText('Active', { exact: true })).toBeVisible({ timeout: 15_000 })
+      await expect(seasonRow.getByText('Registration Open', { exact: true })).toBeVisible({
+        timeout: 15_000,
+      })
 
       // Backend.
       const persisted = await getSeason(adminToken, season.seasonId)
-      expect(persisted.status).toBe('active')
+      expect(persisted.status).toBe('registration')
+
+      // And the enforcement itself: a chain-illegal jump is refused. This is
+      // the P-199 fix observable on the wire — before it, this PATCH wrote
+      // `completed` straight onto a registration-phase season.
+      const illegal = await page.request.patch(`${API_URL}/v1/league-seasons/${season.seasonId}`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        data: { status: 'completed' },
+      })
+      expect(illegal.status(), 'a chain-illegal status PATCH must be refused').toBe(400)
     })
 
     test('should offer the three real roster-lock states in the edit modal', async ({ page }) => {

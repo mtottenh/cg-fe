@@ -24,7 +24,11 @@ env:
 jobs:
   e2e-tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # The suite outgrew 30 minutes during the 2026-07 audit-fix waves (every
+    # run since 07-26 died mid-suite with a healthy stack). 60 buys headroom;
+    # sharding (playwright --shard across a matrix) is the real fix when this
+    # creeps again.
+    timeout-minutes: 60
 
     services:
       postgres:

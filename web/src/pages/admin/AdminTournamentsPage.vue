@@ -7,6 +7,8 @@
       </v-btn>
     </div>
 
+    <ErrorAlert :error="error" retryable @clear="clearError" @retry="fetchData" />
+
     <!-- Filters -->
     <v-card class="mb-4">
       <v-card-text>
@@ -25,6 +27,7 @@
           </v-col>
           <v-col cols="12" md="3">
             <v-select
+          aria-label="Game"
               v-model="filters.game_id"
               :items="activeGames"
               item-title="display_name"
@@ -39,7 +42,7 @@
                 <v-list-item v-bind="itemProps">
                   <template v-slot:prepend>
                     <v-avatar size="24" rounded="sm">
-                      <v-img v-if="item.raw.icon_url" :src="item.raw.icon_url" />
+                      <v-img alt="" v-if="item.raw.icon_url" :src="item.raw.icon_url" />
                       <v-icon v-else size="16">mdi-gamepad-variant</v-icon>
                     </v-avatar>
                   </template>
@@ -49,6 +52,7 @@
           </v-col>
           <v-col cols="12" md="3">
             <v-select
+          aria-label="League"
               v-model="filters.league_id"
               :items="availableLeagues"
               item-title="name"
@@ -59,7 +63,7 @@
               hide-details
               clearable
             >
-              <template v-slot:item="{ item, props: itemProps }">
+              <template v-slot:item="{ item: _item, props: itemProps }">
                 <v-list-item v-bind="itemProps">
                   <template v-slot:prepend>
                     <v-icon size="small">mdi-trophy</v-icon>
@@ -70,6 +74,7 @@
           </v-col>
           <v-col cols="12" md="2">
             <v-select
+          aria-label="Status"
               v-model="filters.status"
               :items="statusOptions"
               item-title="label"
@@ -100,14 +105,14 @@
     <!-- Loading State -->
     <v-card v-if="loading && tournaments.length === 0" class="pa-8 text-center">
       <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading tournaments...</p>
+      <p class="text-medium-emphasis mt-4">Loading tournaments...</p>
     </v-card>
 
     <!-- Empty State -->
     <v-card v-else-if="filteredTournaments.length === 0" class="pa-8 text-center">
       <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-tournament</v-icon>
       <h3 class="text-h6 mb-2">No Tournaments Found</h3>
-      <p class="text-grey mb-4">
+      <p class="text-medium-emphasis mb-4">
         {{ tournaments.length === 0 ? 'Create your first tournament to get started.' : 'No tournaments match your filters.' }}
       </p>
       <v-btn v-if="tournaments.length === 0" color="primary" prepend-icon="mdi-plus" @click="createModalOpen = true">
@@ -120,86 +125,80 @@
 
     <!-- Tournaments Table -->
     <v-card v-else>
-      <v-data-table
-        :headers="headers"
-        :items="filteredTournaments"
-        :items-per-page="20"
-        :loading="loading"
-        class="elevation-0"
-        density="comfortable"
-        hover
-        @click:row="(_e: Event, { item }: { item: TournamentSummaryResponse }) => openTournament(item)"
-      >
-        <template v-slot:item.logo_url="{ item }">
-          <v-avatar size="36" rounded="sm">
-            <v-img v-if="item.logo_url" :src="item.logo_url" />
-            <v-icon v-else>mdi-tournament</v-icon>
-          </v-avatar>
-        </template>
-
-        <template v-slot:item.name="{ item }">
-          <div>
-            <div class="font-weight-medium">{{ item.name }}</div>
-            <div class="text-caption text-grey">{{ item.slug }}</div>
-          </div>
-        </template>
-
-        <template v-slot:item.game_id="{ item }">
-          <div class="d-flex align-center">
-            <v-avatar size="20" rounded="sm" class="mr-2">
-              <v-img v-if="getGame(item.game_id)?.icon_url" :src="getGame(item.game_id)?.icon_url" />
-              <v-icon v-else size="14">mdi-gamepad-variant</v-icon>
+      <div class="table-scroll">
+        <v-data-table
+          :headers="headers"
+          :items="filteredTournaments"
+          :items-per-page="20"
+          :loading="loading"
+          class="elevation-0"
+          density="comfortable"
+          hover
+          @click:row="(_e: Event, { item }: { item: TournamentSummaryResponse }) => openTournament(item)"
+        >
+          <template v-slot:item.logo_url="{ item }">
+            <v-avatar size="36" rounded="sm">
+              <v-img alt="" v-if="item.logo_url" :src="item.logo_url" />
+              <v-icon v-else>mdi-tournament</v-icon>
             </v-avatar>
-            <span>{{ getGame(item.game_id)?.display_name || 'Unknown' }}</span>
-          </div>
-        </template>
+          </template>
 
-        <template v-slot:item.format="{ item }">
-          <v-chip size="small" variant="tonal">
-            {{ formatTournamentFormat(item.format) }}
-          </v-chip>
-        </template>
+          <template v-slot:item.name="{ item }">
+            <div>
+              <div class="font-weight-medium">{{ item.name }}</div>
+              <div class="text-caption text-medium-emphasis">{{ item.slug }}</div>
+            </div>
+          </template>
 
-        <template v-slot:item.participant_type="{ item }">
-          <v-icon size="small" class="mr-1">
-            {{ item.participant_type === 'team' ? 'mdi-account-group' : 'mdi-account' }}
-          </v-icon>
-          {{ formatParticipantType(item.participant_type) }}
-        </template>
+          <template v-slot:item.game_id="{ item }">
+            <div class="d-flex align-center">
+              <v-avatar size="20" rounded="sm" class="mr-2">
+                <v-img alt="" v-if="getGame(item.game_id)?.icon_url" :src="getGame(item.game_id)?.icon_url ?? undefined" />
+                <v-icon v-else size="14">mdi-gamepad-variant</v-icon>
+              </v-avatar>
+              <span>{{ getGame(item.game_id)?.display_name || 'Unknown' }}</span>
+            </div>
+          </template>
 
-        <template v-slot:item.max_participants="{ item }">
-          {{ item.max_participants }}
-        </template>
+          <template v-slot:item.format="{ item }">
+            <v-chip size="small" variant="tonal">
+              {{ formatTournamentFormat(item.format) }}
+            </v-chip>
+          </template>
 
-        <template v-slot:item.starts_at="{ item }">
-          {{ item.starts_at ? formatDateTime(item.starts_at) : 'TBD' }}
-        </template>
+          <template v-slot:item.participant_type="{ item }">
+            <v-icon size="small" class="mr-1">
+              {{ item.participant_type === 'team' ? 'mdi-account-group' : 'mdi-account' }}
+            </v-icon>
+            {{ formatParticipantType(item.participant_type) }}
+          </template>
 
-        <template v-slot:item.status="{ item }">
-          <TournamentStatusChip :status="item.status" />
-        </template>
+          <template v-slot:item.max_participants="{ item }">
+            {{ item.max_participants }}
+          </template>
 
-        <template v-slot:item.actions="{ item }">
-          <div @click.stop>
-            <TournamentActionsMenu :tournament="item" @action="(action) => handleAction(item, action)" />
-          </div>
-        </template>
+          <template v-slot:item.starts_at="{ item }">
+            {{ item.starts_at ? formatShortDateTime(item.starts_at) : 'TBD' }}
+          </template>
 
-        <template v-slot:no-data>
-          <div class="text-center pa-4">
-            <p class="text-grey">No tournaments found</p>
-          </div>
-        </template>
-      </v-data-table>
+          <template v-slot:item.status="{ item }">
+            <TournamentStatusChip :status="item.status" />
+          </template>
+
+          <template v-slot:item.actions="{ item }">
+            <div @click.stop>
+              <TournamentActionsMenu :tournament="item" @action="(action) => handleAction(item, action)" />
+            </div>
+          </template>
+
+          <template v-slot:no-data>
+            <div class="text-center pa-4">
+              <p class="text-medium-emphasis">No tournaments found</p>
+            </div>
+          </template>
+        </v-data-table>
+      </div>
     </v-card>
-
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="clearError">
-      {{ error }}
-    </v-alert>
-
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
 
     <!-- Modals -->
     <TournamentCreateModal
@@ -217,24 +216,13 @@
     />
 
     <!-- Confirm Dialog -->
-    <v-dialog v-model="confirmDialogOpen" max-width="400" persistent>
-      <v-card>
-        <v-card-title>{{ confirmDialogTitle }}</v-card-title>
-        <v-card-text>{{ confirmDialogMessage }}</v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="confirmDialogOpen = false">Cancel</v-btn>
-          <v-btn :color="confirmDialogColor" variant="flat" :loading="actionLoading" @click="executeConfirmedAction">
-            {{ confirmDialogAction }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <ConfirmDialogHost :dialog="confirmDialog" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useGamesStore, type GameSummary } from '@/stores/games'
 import { useLeaguesStore } from '@/stores/leagues'
@@ -244,6 +232,12 @@ import TournamentStatusChip from '@/components/admin/TournamentStatusChip.vue'
 import TournamentActionsMenu from '@/components/admin/TournamentActionsMenu.vue'
 import TournamentCreateModal from '@/components/admin/TournamentCreateModal.vue'
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { useActionFeedback } from '@/composables/useActionFeedback'
+import { formatShortDateTime } from '@/utils/formatters'
 
 const router = useRouter()
 const gamesStore = useGamesStore()
@@ -260,24 +254,77 @@ const createModalOpen = ref(false)
 const editModalOpen = ref(false)
 const selectedTournament = ref<TournamentResponse | null>(null)
 
-// Confirm dialog state
-const confirmDialogOpen = ref(false)
-const confirmDialogTitle = ref('')
-const confirmDialogMessage = ref('')
-const confirmDialogAction = ref('')
-const confirmDialogColor = ref('primary')
-const pendingAction = ref<{ tournament: TournamentSummaryResponse; action: string } | null>(null)
-const actionLoading = ref(false)
-
 // Snackbar state
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+const snackbar = useSnackbar()
 
-// Computed
-const loading = computed(() => gamesStore.loading || tournamentsStore.loading || leaguesStore.loading)
-const error = computed(() => gamesStore.error || tournamentsStore.error || leaguesStore.error)
-const tournaments = computed(() => tournamentsStore.tournaments)
+// Confirm dialog
+const confirmDialog = useConfirmDialog()
+
+// Wraps store actions with snackbar + refetch.
+const feedback = useActionFeedback()
+
+// Data-driven confirm-and-execute config for lifecycle transitions
+const TOURNAMENT_CONFIRM_ACTIONS: Record<string, {
+  title: string
+  message: string
+  actionLabel: string
+  color: string
+  run: (id: string) => Promise<unknown>
+  success: string
+}> = {
+  publish: {
+    title: 'Publish Tournament',
+    message: 'Are you sure you want to publish this tournament? It will become visible to the public.',
+    actionLabel: 'Publish', color: 'primary',
+    run: (id) => tournamentsStore.publishTournament(id),
+    success: 'Tournament published successfully',
+  },
+  'open-registration': {
+    title: 'Open Registration',
+    message: 'Are you sure you want to open registration for this tournament?',
+    actionLabel: 'Open', color: 'success',
+    run: (id) => tournamentsStore.openRegistration(id),
+    success: 'Registration opened successfully',
+  },
+  'close-registration': {
+    title: 'Close Registration',
+    message: 'Are you sure you want to close registration? No new participants will be able to register.',
+    actionLabel: 'Close', color: 'warning',
+    run: (id) => tournamentsStore.closeRegistration(id),
+    success: 'Registration closed successfully',
+  },
+  start: {
+    title: 'Start Tournament',
+    message: 'Are you sure you want to start this tournament? This will generate the bracket and begin matches.',
+    actionLabel: 'Start', color: 'primary',
+    run: (id) => tournamentsStore.startTournament(id),
+    success: 'Tournament started successfully',
+  },
+  cancel: {
+    title: 'Cancel Tournament',
+    message: 'Are you sure you want to cancel this tournament? This action cannot be undone.',
+    actionLabel: 'Cancel Tournament', color: 'error',
+    run: (id) => tournamentsStore.cancelTournament(id),
+    success: 'Tournament cancelled',
+  },
+  finalize: {
+    title: 'Finalize Tournament',
+    message: 'Are you sure you want to finalize this tournament? Results will be locked.',
+    actionLabel: 'Finalize', color: 'success',
+    run: (id) => tournamentsStore.finalizeTournament(id),
+    success: 'Tournament finalized',
+  },
+}
+
+// Store-backed reactive refs
+const { tournaments, loading: tournamentsLoading, error: tournamentsError } = storeToRefs(tournamentsStore)
+// P-122: was `storeToRefs(gamesStore)`, which surfaced AdminGamesPage's
+// admin-only fetchAllGames failures on this page. It awaits fetchGames alone.
+const gamesLoading = computed(() => gamesStore.fetchGamesState.loading)
+const gamesError = computed(() => gamesStore.fetchGamesState.error)
+const { loading: leaguesLoading, error: leaguesError } = storeToRefs(leaguesStore)
+const loading = computed(() => gamesLoading.value || tournamentsLoading.value || leaguesLoading.value)
+const error = computed(() => gamesError.value || tournamentsError.value || leaguesError.value)
 
 const activeGames = computed(() => gamesStore.games.filter((g) => g.status === 'active'))
 
@@ -289,9 +336,6 @@ const availableLeagues = computed(() => {
   }
   return leagues
 })
-
-// All seasons for league dropdown
-const allSeasons = computed(() => leagueSeasonsStore.seasons)
 
 // Leagues for create modal (with game_id for filtering)
 const leaguesForModal = computed(() =>
@@ -318,12 +362,11 @@ const seasonsForModal = computed(() =>
 const statusOptions = [
   { value: 'draft', label: 'Draft' },
   { value: 'published', label: 'Published' },
-  { value: 'registration_open', label: 'Registration Open' },
-  { value: 'registration_closed', label: 'Registration Closed' },
-  { value: 'check_in_open', label: 'Check-in Open' },
-  { value: 'ready', label: 'Ready' },
+  { value: 'registration', label: 'Registration Open' },
+  { value: 'scheduled', label: 'Scheduled' },
   { value: 'in_progress', label: 'In Progress' },
   { value: 'completed', label: 'Completed' },
+  { value: 'finalized', label: 'Finalized' },
   { value: 'cancelled', label: 'Cancelled' },
 ]
 
@@ -372,11 +415,6 @@ function getGame(gameId: string): GameSummary | undefined {
   return gamesStore.games.find((g) => g.id === gameId)
 }
 
-function getLeague(leagueId: string | undefined) {
-  if (!leagueId) return undefined
-  return leaguesStore.leagues.find((l) => l.id === leagueId)
-}
-
 function formatParticipantType(type: string): string {
   switch (type) {
     case 'individual':
@@ -390,15 +428,6 @@ function formatParticipantType(type: string): string {
   }
 }
 
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 function clearFilters() {
   search.value = ''
   filters.value = {}
@@ -406,7 +435,7 @@ function clearFilters() {
 
 function clearError() {
   tournamentsStore.error = null
-  gamesStore.error = null
+  gamesStore.fetchGamesState.error = null
   leaguesStore.error = null
 }
 
@@ -417,7 +446,7 @@ async function fetchData() {
       tournamentsStore.fetchTournaments({
         game_id: filters.value.game_id,
         league_id: filters.value.league_id,
-        status: filters.value.status,
+        status: filters.value.status ?? undefined,
       }),
       gamesStore.fetchGames(),
       leaguesStore.fetchLeagues(1, 100), // Fetch all leagues for dropdown
@@ -445,87 +474,50 @@ function openTournament(tournament: TournamentSummaryResponse) {
 
 // Action handlers
 async function handleAction(tournament: TournamentSummaryResponse, action: string) {
+  const confirmable = TOURNAMENT_CONFIRM_ACTIONS[action]
+  if (confirmable) {
+    confirmDialog.confirm({
+      title: confirmable.title,
+      message: confirmable.message,
+      action: confirmable.actionLabel,
+      color: confirmable.color,
+      handler: async () => {
+        await feedback.run(
+          () => confirmable.run(tournament.id),
+          {
+            success: confirmable.success,
+            errorSource: tournamentsStore,
+            after: fetchData,
+            rethrow: true, // keep the confirm dialog open on error
+          },
+        )
+      },
+    })
+    return
+  }
+
   switch (action) {
     case 'edit':
       await openEditModal(tournament)
-      break
-    case 'publish':
-      confirmAction(tournament, action, 'Publish Tournament', 'Are you sure you want to publish this tournament? It will become visible to the public.', 'Publish', 'primary')
-      break
-    case 'open-registration':
-      confirmAction(tournament, action, 'Open Registration', 'Are you sure you want to open registration for this tournament?', 'Open', 'success')
-      break
-    case 'close-registration':
-      confirmAction(tournament, action, 'Close Registration', 'Are you sure you want to close registration? No new participants will be able to register.', 'Close', 'warning')
-      break
-    case 'start':
-      confirmAction(tournament, action, 'Start Tournament', 'Are you sure you want to start this tournament? This will generate the bracket and begin matches.', 'Start', 'primary')
-      break
+      return
     case 'view-registrations':
       router.push({ name: 'admin-tournament-detail', params: { id: tournament.id }, query: { tab: 'registrations' } })
-      break
+      return
     case 'view-bracket':
       router.push({ name: 'admin-tournament-detail', params: { id: tournament.id }, query: { tab: 'bracket' } })
-      break
+      return
     case 'manage-matches':
       router.push({ name: 'admin-tournament-detail', params: { id: tournament.id }, query: { tab: 'matches' } })
-      break
+      return
     case 'view-public':
       window.open(`/tournaments/${tournament.slug}`, '_blank')
-      break
+      return
+    case 'view-results':
+    case 'view-details':
+      router.push({ name: 'admin-tournament-detail', params: { id: tournament.id } })
+      return
     default:
-      showSnackbar(`Action "${action}" not implemented yet`, 'info')
-  }
-}
-
-function confirmAction(
-  tournament: TournamentSummaryResponse,
-  action: string,
-  title: string,
-  message: string,
-  actionLabel: string,
-  color: string
-) {
-  pendingAction.value = { tournament, action }
-  confirmDialogTitle.value = title
-  confirmDialogMessage.value = message
-  confirmDialogAction.value = actionLabel
-  confirmDialogColor.value = color
-  confirmDialogOpen.value = true
-}
-
-async function executeConfirmedAction() {
-  if (!pendingAction.value) return
-
-  const { tournament, action } = pendingAction.value
-  actionLoading.value = true
-
-  try {
-    switch (action) {
-      case 'publish':
-        await tournamentsStore.publishTournament(tournament.id)
-        showSnackbar('Tournament published successfully', 'success')
-        break
-      case 'open-registration':
-        await tournamentsStore.openRegistration(tournament.id)
-        showSnackbar('Registration opened successfully', 'success')
-        break
-      case 'close-registration':
-        await tournamentsStore.closeRegistration(tournament.id)
-        showSnackbar('Registration closed successfully', 'success')
-        break
-      case 'start':
-        await tournamentsStore.startTournament(tournament.id)
-        showSnackbar('Tournament started successfully', 'success')
-        break
-    }
-    confirmDialogOpen.value = false
-    await fetchData()
-  } catch {
-    showSnackbar(tournamentsStore.error || 'Action failed', 'error')
-  } finally {
-    actionLoading.value = false
-    pendingAction.value = null
+      snackbar.show(`Action "${action}" not implemented yet`, 'info')
   }
 }
 
@@ -534,28 +526,29 @@ async function openEditModal(tournament: TournamentSummaryResponse) {
     selectedTournament.value = await tournamentsStore.fetchTournament(tournament.id)
     editModalOpen.value = true
   } catch {
-    showSnackbar('Failed to load tournament details', 'error')
+    snackbar.show('Failed to load tournament details', 'error')
   }
 }
 
 // Modal callbacks
 function onTournamentCreated() {
-  showSnackbar('Tournament created successfully', 'success')
+  snackbar.show('Tournament created successfully', 'success')
   fetchData()
 }
 
 function onTournamentSaved() {
-  showSnackbar('Tournament updated successfully', 'success')
+  snackbar.show('Tournament updated successfully', 'success')
   fetchData()
-}
-
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
 }
 
 onMounted(() => {
   fetchData()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

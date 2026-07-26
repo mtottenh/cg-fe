@@ -1,9 +1,9 @@
 <template>
-  <v-dialog v-model="dialogOpen" max-width="600" persistent>
+  <v-dialog v-model="open" max-width="600" persistent>
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Create Ban</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -23,6 +23,7 @@
 
           <!-- Ban Type -->
           <v-select
+          aria-label="Ban Type *"
             v-model="form.ban_type"
             :items="banTypeOptions"
             label="Ban Type *"
@@ -99,6 +100,7 @@
               </v-col>
               <v-col cols="6">
                 <v-select
+          aria-label="Unit"
                   v-model="durationUnit"
                   :items="durationUnitOptions"
                   label="Unit"
@@ -147,28 +149,22 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useBansStore, type BanType, type CreateBanRequest } from '@/stores/bans'
+import { useFormRules } from '@/composables/useFormRules'
 import UserSearchAutocomplete from '@/components/admin/UserSearchAutocomplete.vue'
 import LeagueSearchAutocomplete from '@/components/admin/LeagueSearchAutocomplete.vue'
+import { banTypeMap, getStatusColor, getStatusIcon } from '@/utils/statusMaps'
 import type { components } from '@/api/types'
 
 type PlayerSummary = components['schemas']['PlayerSearchResponse']
 type LeagueResponse = components['schemas']['LeagueResponse']
 
-const props = defineProps<{
-  modelValue: boolean
-}>()
-
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: boolean): void
   (e: 'created'): void
 }>()
 
-const bansStore = useBansStore()
+const open = defineModel<boolean>({ required: true })
 
-const dialogOpen = computed({
-  get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value),
-})
+const bansStore = useBansStore()
 
 const formRef = ref()
 const formValid = ref(false)
@@ -211,51 +207,10 @@ const isFormComplete = computed(() => {
   return true
 })
 
-const rules = {
-  required: (v: unknown) => !!v || 'This field is required',
-  minLength: (min: number) => (v: string) =>
-    !v || v.length >= min || `Must be at least ${min} characters`,
-  positiveNumber: (v: number) => v > 0 || 'Must be a positive number',
-  uuid: (v: string) => {
-    if (!v) return true
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    return uuidRegex.test(v) || 'Must be a valid UUID'
-  },
-}
+const rules = useFormRules()
 
-function getBanTypeIcon(type: string): string {
-  switch (type) {
-    case 'platform':
-      return 'mdi-block-helper'
-    case 'matchmaking':
-      return 'mdi-controller-off'
-    case 'chat':
-      return 'mdi-message-off'
-    case 'league':
-      return 'mdi-trophy-broken'
-    case 'tournament':
-      return 'mdi-tournament'
-    default:
-      return 'mdi-gavel'
-  }
-}
-
-function getBanTypeColor(type: string): string {
-  switch (type) {
-    case 'platform':
-      return 'error'
-    case 'matchmaking':
-      return 'warning'
-    case 'chat':
-      return 'info'
-    case 'league':
-      return 'purple'
-    case 'tournament':
-      return 'orange'
-    default:
-      return 'grey'
-  }
-}
+const getBanTypeIcon = (type: string) => getStatusIcon(banTypeMap, type)
+const getBanTypeColor = (type: string) => getStatusColor(banTypeMap, type)
 
 function calculateDurationSeconds(): number | undefined {
   if (durationType.value === 'permanent') {
@@ -278,7 +233,11 @@ async function submit() {
 
   try {
     const request: CreateBanRequest = {
-      user_id: selectedPlayer.value.id,
+      // P-155: bans act on the ACCOUNT, so send the user id the search
+      // result now carries. This used to send the *player* id, which was
+      // only correct via the seed's deliberate 1:1 id invariant — an
+      // invariant whose own doc reserves the right to migrate away.
+      user_id: selectedPlayer.value.user_id,
       ban_type: form.value.ban_type,
       reason: form.value.reason,
       duration_seconds: calculateDurationSeconds(),
@@ -307,7 +266,7 @@ async function submit() {
 }
 
 function close() {
-  dialogOpen.value = false
+  open.value = false
   resetForm()
 }
 
@@ -326,8 +285,8 @@ function resetForm() {
 }
 
 // Reset form when dialog closes
-watch(dialogOpen, (open) => {
-  if (!open) {
+watch(open, (isOpen) => {
+  if (!isOpen) {
     resetForm()
   }
 })

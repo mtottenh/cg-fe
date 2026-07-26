@@ -11,6 +11,8 @@
       </v-btn>
     </div>
 
+    <ErrorAlert :error="error" retryable @clear="rbacStore.clearError()" @retry="loadData" />
+
     <!-- Tabs -->
     <v-tabs v-model="activeTab" class="mb-4">
       <v-tab value="roles">
@@ -20,6 +22,18 @@
       <v-tab value="permissions">
         <v-icon start>mdi-shield-lock</v-icon>
         Permissions
+      </v-tab>
+      <!--
+        P-70: this page could author a role and hang permissions off it, but
+        never attach one to a PERSON — so admins, organisers and moderators
+        could only be minted by seed or hand-written SQL, and on day one nobody
+        could onboard a moderator. The three store actions this tab drives
+        (getUserRoles / assignRoleToUser / revokeRoleFromUser) already existed
+        with zero consumers.
+      -->
+      <v-tab value="users">
+        <v-icon start>mdi-account-key-outline</v-icon>
+        Users
       </v-tab>
     </v-tabs>
 
@@ -36,103 +50,113 @@
             <v-progress-circular indeterminate color="primary" />
           </v-overlay>
 
-          <v-data-table
-            :headers="roleHeaders"
-            :items="roles"
-            :items-per-page="20"
-            class="elevation-0"
-          >
-            <template v-slot:item.name="{ item }">
-              <div class="d-flex align-center">
+          <div class="table-scroll">
+            <v-data-table
+              :headers="roleHeaders"
+              :items="roles"
+              :items-per-page="20"
+              class="elevation-0"
+            >
+              <template v-slot:item.name="{ item }">
+                <div class="d-flex align-center">
+                  <v-chip
+                    v-if="item.color"
+                    :color="item.color"
+                    size="x-small"
+                    class="mr-2"
+                    variant="flat"
+                  />
+                  <span class="font-weight-medium">{{ item.display_name }}</span>
+                  <v-chip
+                    v-if="item.is_system"
+                    size="x-small"
+                    color="grey"
+                    variant="tonal"
+                    class="ml-2"
+                  >
+                    System
+                  </v-chip>
+                  <v-chip
+                    v-if="item.is_default"
+                    size="x-small"
+                    color="info"
+                    variant="tonal"
+                    class="ml-2"
+                  >
+                    Default
+                  </v-chip>
+                </div>
+                <div class="text-caption text-medium-emphasis">{{ item.name }}</div>
+              </template>
+
+              <template v-slot:item.category="{ item }">
                 <v-chip
-                  v-if="item.color"
-                  :color="item.color"
-                  size="x-small"
-                  class="mr-2"
-                  variant="flat"
-                />
-                <span class="font-weight-medium">{{ item.display_name }}</span>
-                <v-chip
-                  v-if="item.is_system"
-                  size="x-small"
-                  color="grey"
+                  :color="getCategoryColor(item.category)"
+                  size="small"
                   variant="tonal"
-                  class="ml-2"
                 >
-                  System
+                  {{ getStatusLabel(permissionCategoryMap, item.category) }}
                 </v-chip>
-                <v-chip
-                  v-if="item.is_default"
-                  size="x-small"
-                  color="info"
-                  variant="tonal"
-                  class="ml-2"
+              </template>
+
+              <template v-slot:item.priority="{ item }">
+                <span class="text-caption">{{ item.priority }}</span>
+              </template>
+
+              <template v-slot:item.description="{ item }">
+                <div class="text-truncate" style="max-width: 300px" :title="item.description ?? undefined">
+                  {{ item.description || '-' }}
+                </div>
+              </template>
+
+              <!--
+                The three aria-labels here used to be rotated one position out
+                of step with the handlers they sit on: the button announced as
+                "Manage permissions" was the one wired to `confirmDeleteRole`.
+                A screen-reader user asking to manage permissions would have
+                been given the destructive action instead. Each label now names
+                what its own @click does, matching the visible `title`.
+              -->
+              <template v-slot:item.actions="{ item }">
+                <v-btn aria-label="Manage permissions"
+                  icon
+                  size="small"
+                  variant="text"
+                  title="Manage Permissions"
+                  @click="openRolePermissionsModal(item)"
                 >
-                  Default
-                </v-chip>
-              </div>
-              <div class="text-caption text-grey">{{ item.name }}</div>
-            </template>
+                  <v-icon>mdi-shield-key</v-icon>
+                </v-btn>
+                <v-btn aria-label="Edit role"
+                  icon
+                  size="small"
+                  variant="text"
+                  title="Edit Role"
+                  @click="openEditRoleModal(item)"
+                >
+                  <v-icon>mdi-pencil</v-icon>
+                </v-btn>
+                <v-btn aria-label="Delete role"
+                  v-if="!item.is_system"
+                  icon
+                  size="small"
+                  variant="text"
+                  color="error"
+                  title="Delete Role"
+                  @click="confirmDeleteRole(item)"
+                >
+                  <v-icon>mdi-delete</v-icon>
+                </v-btn>
+              </template>
 
-            <template v-slot:item.category="{ item }">
-              <v-chip
-                :color="getCategoryColor(item.category)"
-                size="small"
-                variant="tonal"
-              >
-                {{ item.category }}
-              </v-chip>
-            </template>
-
-            <template v-slot:item.priority="{ item }">
-              <span class="text-caption">{{ item.priority }}</span>
-            </template>
-
-            <template v-slot:item.description="{ item }">
-              <div class="text-truncate" style="max-width: 300px" :title="item.description">
-                {{ item.description || '-' }}
-              </div>
-            </template>
-
-            <template v-slot:item.actions="{ item }">
-              <v-btn
-                icon
-                size="small"
-                variant="text"
-                title="Manage Permissions"
-                @click="openRolePermissionsModal(item)"
-              >
-                <v-icon>mdi-shield-key</v-icon>
-              </v-btn>
-              <v-btn
-                icon
-                size="small"
-                variant="text"
-                title="Edit Role"
-                @click="openEditRoleModal(item)"
-              >
-                <v-icon>mdi-pencil</v-icon>
-              </v-btn>
-              <v-btn
-                v-if="!item.is_system"
-                icon
-                size="small"
-                variant="text"
-                color="error"
-                title="Delete Role"
-                @click="confirmDeleteRole(item)"
-              >
-                <v-icon>mdi-delete</v-icon>
-              </v-btn>
-            </template>
-
-            <template v-slot:no-data>
-              <div class="text-center pa-8">
-                <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-key</v-icon>
-                <p class="text-grey">No roles found</p>
-              </div>
-            </template>
-          </v-data-table>
+              <template v-slot:no-data>
+                <div class="text-center pa-8">
+                  <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-key</v-icon>
+                  <p class="text-medium-emphasis">No roles found</p>
+                </div>
+              </template>
+            </v-data-table>
+          </div>
         </v-card>
       </v-window-item>
 
@@ -164,7 +188,7 @@
                   >
                     {{ category }}
                   </v-chip>
-                  <span class="text-body-2 text-grey">{{ perms.length }} permissions</span>
+                  <span class="text-body-2 text-medium-emphasis">{{ perms.length }} permissions</span>
                 </div>
               </v-expansion-panel-title>
               <v-expansion-panel-text>
@@ -206,43 +230,177 @@
 
           <div v-if="permissions.length === 0" class="text-center pa-8">
             <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-shield-lock</v-icon>
-            <p class="text-grey">No permissions found</p>
+            <p class="text-medium-emphasis">No permissions found</p>
           </div>
+        </v-card>
+      </v-window-item>
+
+      <!-- Users Tab (P-70) -->
+      <v-window-item value="users">
+        <v-card>
+          <v-card-text>
+            <p class="text-body-2 text-medium-emphasis mb-4">
+              Platform roles are what make someone an administrator, organiser or
+              moderator. Find a person to see the roles they hold and change them.
+            </p>
+
+            <!--
+              P-95's lesson, applied: search by name. Asking an operator for a
+              user UUID makes the feature unusable, because no surface in the
+              product displays one.
+            -->
+            <v-row align="start">
+              <v-col cols="12" md="5">
+                <UserSearchAutocomplete
+                  v-model="selectedPlayer"
+                  label="Find a user"
+                  placeholder="Search by player name..."
+                  @select="onUserSelected"
+                />
+              </v-col>
+            </v-row>
+
+            <ErrorAlert
+              :error="userLookupError"
+              @clear="clearUserLookupError"
+            />
+
+            <template v-if="selectedUserId">
+              <v-divider class="my-4" />
+
+              <div class="d-flex align-center mb-4">
+                <v-icon class="mr-2">mdi-account</v-icon>
+                <span class="text-subtitle-1 font-weight-medium" data-testid="role-subject">
+                  {{ selectedUserLabel }}
+                </span>
+              </div>
+
+              <!-- Assign -->
+              <v-row align="center" class="mb-2">
+                <v-col cols="12" md="5">
+                  <v-select
+                    aria-label="Role to assign"
+                    v-model="roleToAssign"
+                    :items="grantableRoleOptions"
+                    label="Role to assign"
+                    variant="outlined"
+                    density="compact"
+                    hide-details="auto"
+                    data-testid="role-to-assign"
+                    :disabled="grantableRoleOptions.length === 0"
+                    :messages="grantableRoleOptions.length === 0 ? noGrantableRolesMessage : undefined"
+                  />
+                </v-col>
+                <v-col cols="12" md="3">
+                  <v-btn
+                    color="primary"
+                    prepend-icon="mdi-account-plus"
+                    :loading="rbacStore.assignRoleState.loading"
+                    :disabled="!roleToAssign"
+                    data-testid="assign-role"
+                    @click="assignRole"
+                  >
+                    Assign Role
+                  </v-btn>
+                </v-col>
+              </v-row>
+
+              <ErrorAlert
+                :error="rbacStore.assignRoleState.error"
+                @clear="rbacStore.assignRoleState.error = null"
+              />
+
+              <!-- Current assignments -->
+              <div class="table-scroll">
+                <v-data-table
+                  :headers="userRoleHeaders"
+                  :items="userRoles"
+                  :items-per-page="20"
+                  class="elevation-0"
+                  data-testid="user-roles-table"
+                >
+                  <template v-slot:item.role="{ item }">
+                    <div class="d-flex align-center" data-testid="user-role-row">
+                      <v-chip
+                        v-if="item.role.color"
+                        :color="item.role.color"
+                        size="x-small"
+                        class="mr-2"
+                        variant="flat"
+                      />
+                      <div>
+                        <div class="font-weight-medium">{{ item.role.display_name }}</div>
+                        <div class="text-caption text-medium-emphasis">{{ item.role.name }}</div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template v-slot:item.scope="{ item }">
+                    <span v-if="item.scope_type" class="text-caption">
+                      {{ item.scope_type }}
+                    </span>
+                    <span v-else class="text-caption text-medium-emphasis">Platform-wide</span>
+                  </template>
+
+                  <template v-slot:item.granted_at="{ item }">
+                    <span class="text-caption">{{ formatDate(item.granted_at) }}</span>
+                  </template>
+
+                  <template v-slot:item.expires_at="{ item }">
+                    <span class="text-caption">
+                      {{ item.expires_at ? formatDate(item.expires_at) : 'Never' }}
+                    </span>
+                  </template>
+
+                  <!--
+                    Revoke is confirm-gated: taking a role away is a privilege
+                    change, and the operator has to be told WHOSE and WHICH.
+                    The button is only offered for roles this admin could also
+                    grant — see `canRevoke` for why that is a guard-rail and
+                    not a security boundary.
+                  -->
+                  <template v-slot:item.actions="{ item }">
+                    <v-btn
+                      v-if="canRevoke(item.role.priority)"
+                      aria-label="Revoke role"
+                      icon
+                      size="small"
+                      variant="text"
+                      color="error"
+                      title="Revoke Role"
+                      :data-testid="`revoke-role-${item.role.name}`"
+                      @click="confirmRevokeRole(item)"
+                    >
+                      <v-icon>mdi-account-remove</v-icon>
+                    </v-btn>
+                    <span v-else class="text-caption text-medium-emphasis">
+                      Outranks you
+                    </span>
+                  </template>
+
+                  <template v-slot:no-data>
+                    <div class="text-center pa-8">
+                      <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-off</v-icon>
+                      <p class="text-medium-emphasis" data-testid="no-user-roles">
+                        This user holds no platform roles
+                      </p>
+                    </div>
+                  </template>
+                </v-data-table>
+              </div>
+
+              <ErrorAlert
+                :error="rbacStore.revokeRoleState.error"
+                @clear="rbacStore.revokeRoleState.error = null"
+              />
+            </template>
+          </v-card-text>
         </v-card>
       </v-window-item>
     </v-window>
 
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="rbacStore.clearError()">
-      {{ error }}
-    </v-alert>
-
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
-
     <!-- Delete Confirmation Dialog -->
-    <v-dialog v-model="deleteDialogOpen" max-width="400">
-      <v-card>
-        <v-card-title>Delete Role</v-card-title>
-        <v-card-text>
-          Are you sure you want to delete the role
-          <strong>{{ roleToDelete?.display_name }}</strong>?
-          This action cannot be undone.
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="deleteDialogOpen = false">Cancel</v-btn>
-          <v-btn
-            color="error"
-            variant="flat"
-            :loading="deleting"
-            @click="executeDeleteRole"
-          >
-            Delete
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <ConfirmDialogHost :dialog="confirmDialog" />
 
     <!-- Modals -->
     <RoleCreateEditModal
@@ -261,17 +419,43 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRbacStore, type RoleResponse, type PermissionResponse } from '@/stores/rbac'
+import { storeToRefs } from 'pinia'
+import {
+  useRbacStore,
+  type RoleResponse,
+  type PermissionResponse,
+  type UserRoleAssignmentResponse,
+} from '@/stores/rbac'
+import { useAuthStore } from '@/stores/auth'
+import { usePlayersStore } from '@/stores/players'
 import RoleCreateEditModal from '@/components/admin/RoleCreateEditModal.vue'
 import RolePermissionsModal from '@/components/admin/RolePermissionsModal.vue'
+import UserSearchAutocomplete from '@/components/admin/UserSearchAutocomplete.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import { formatDate } from '@/utils/formatters'
+import { permissionCategoryMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import type { components } from '@/api/types'
+
+type PlayerSummary = components['schemas']['PlayerSearchResponse']
 
 const rbacStore = useRbacStore()
+const authStore = useAuthStore()
+const playersStore = usePlayersStore()
+const { roles, permissions, userRoles, loading, error } = storeToRefs(rbacStore)
 
 // State
 const activeTab = ref('roles')
-const deleteDialogOpen = ref(false)
-const roleToDelete = ref<RoleResponse | null>(null)
-const deleting = ref(false)
+
+// ── Users tab (P-70) ────────────────────────────────────────────────────────
+const selectedPlayer = ref<PlayerSummary | null>(null)
+/** The *user* id — `UserSearchAutocomplete` yields a PLAYER id, see below. */
+const selectedUserId = ref<string | null>(null)
+const selectedUserLabel = ref('')
+const roleToAssign = ref<string | null>(null)
+const userLookupError = ref<string | null>(null)
 
 // Modal state
 const roleModalOpen = ref(false)
@@ -280,15 +464,8 @@ const rolePermissionsModalOpen = ref(false)
 const selectedRoleForPermissions = ref<RoleResponse | null>(null)
 
 // Snackbar
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
-
-// Computed
-const roles = computed(() => rbacStore.roles)
-const permissions = computed(() => rbacStore.permissions)
-const loading = computed(() => rbacStore.loading)
-const error = computed(() => rbacStore.error)
+const snackbar = useSnackbar()
+const confirmDialog = useConfirmDialog()
 
 const permissionsByCategory = computed(() => {
   const grouped: Record<string, PermissionResponse[]> = {}
@@ -296,7 +473,7 @@ const permissionsByCategory = computed(() => {
     if (!grouped[perm.category]) {
       grouped[perm.category] = []
     }
-    grouped[perm.category].push(perm)
+    grouped[perm.category]!.push(perm)
   }
   return grouped
 })
@@ -310,6 +487,56 @@ const roleHeaders = [
   { title: 'Actions', key: 'actions', width: '130px', sortable: false, align: 'center' as const },
 ]
 
+const userRoleHeaders = [
+  { title: 'Role', key: 'role', sortable: false },
+  { title: 'Scope', key: 'scope', width: '140px', sortable: false },
+  { title: 'Granted', key: 'granted_at', width: '130px' },
+  { title: 'Expires', key: 'expires_at', width: '130px' },
+  { title: 'Actions', key: 'actions', width: '120px', sortable: false, align: 'center' as const },
+]
+
+/** Exempt from the priority ceiling, matching `handlers/roles.rs:30`. */
+const SUPER_ADMIN_ROLE = 'super_admin'
+
+/**
+ * The acting admin's own ceiling.
+ *
+ * This mirrors the backend rule at `handlers/roles.rs:575-603` exactly: a
+ * caller may only grant roles *strictly below* their own highest-priority
+ * role, and a caller holding `super_admin` is exempt (otherwise `>=` would
+ * stop super_admin granting super_admin). Mirroring rather than inventing
+ * matters — a UI that offered a role the API refuses would put a 403 in front
+ * of the operator with no way to tell which roles are actually available.
+ */
+const actingPriorityCeiling = computed(() => {
+  const mine = authStore.roles
+  if (mine.some((r) => r.role.name === SUPER_ADMIN_ROLE)) return Number.POSITIVE_INFINITY
+  return mine.reduce((max, r) => Math.max(max, r.role.priority), Number.NEGATIVE_INFINITY)
+})
+
+const grantableRoleOptions = computed(() =>
+  roles.value
+    .filter((r) => r.priority < actingPriorityCeiling.value)
+    .map((r) => ({ value: r.id, title: `${r.display_name} (${r.name})` })),
+)
+
+const noGrantableRolesMessage =
+  'Your own role does not outrank any assignable role, so you cannot grant one.'
+
+/**
+ * Whether the acting admin may revoke a role of this priority.
+ *
+ * **The backend does not enforce this.** `assign_role_to_user` applies the
+ * priority ceiling; `revoke_role_from_user` (`handlers/roles.rs:646`) checks
+ * only `admin.users.manage`, so an API caller holding that permission can
+ * strip a role from someone who outranks them — including a super_admin. This
+ * check is therefore a guard-rail against an accidental click, not a security
+ * boundary, and the honest fix belongs in the handler.
+ */
+function canRevoke(rolePriority: number): boolean {
+  return rolePriority < actingPriorityCeiling.value
+}
+
 // Methods
 async function loadData() {
   try {
@@ -322,16 +549,7 @@ async function loadData() {
   }
 }
 
-function getCategoryColor(category: string): string {
-  const colors: Record<string, string> = {
-    platform: 'purple',
-    team: 'blue',
-    league: 'green',
-    tournament: 'orange',
-    admin: 'error',
-  }
-  return colors[category] || 'grey'
-}
+const getCategoryColor = (category: string) => getStatusColor(permissionCategoryMap, category)
 
 function openCreateRoleModal() {
   selectedRole.value = null
@@ -349,40 +567,130 @@ function openRolePermissionsModal(role: RoleResponse) {
 }
 
 function confirmDeleteRole(role: RoleResponse) {
-  roleToDelete.value = role
-  deleteDialogOpen.value = true
-}
-
-async function executeDeleteRole() {
-  if (!roleToDelete.value) return
-
-  deleting.value = true
-  try {
-    await rbacStore.deleteRole(roleToDelete.value.id)
-    showSnackbar('Role deleted successfully', 'success')
-    deleteDialogOpen.value = false
-  } catch {
-    showSnackbar('Failed to delete role', 'error')
-  } finally {
-    deleting.value = false
-  }
+  confirmDialog.confirm({
+    title: 'Delete Role',
+    message: `Are you sure you want to delete the role ${role.display_name}? This action cannot be undone.`,
+    action: 'Delete',
+    color: 'error',
+    handler: async () => {
+      await rbacStore.deleteRole(role.id)
+      snackbar.show('Role deleted successfully', 'success')
+    },
+  })
 }
 
 function onRoleSaved() {
-  showSnackbar('Role saved successfully', 'success')
+  snackbar.show('Role saved successfully', 'success')
 }
 
 function onRolePermissionsUpdated() {
-  showSnackbar('Role permissions updated', 'success')
+  snackbar.show('Role permissions updated', 'success')
 }
 
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
+// ── Users tab (P-70) ────────────────────────────────────────────────────────
+
+function clearUserLookupError() {
+  userLookupError.value = null
 }
+
+/**
+ * `UserSearchAutocomplete` is backed by `GET /v1/players`, whose `id` is a
+ * PLAYER id, while every RBAC endpoint is user-scoped. Today those two UUIDs
+ * happen to be equal: `register_user` derives them together through
+ * `make_shared_account_ids` (api `portal-domain/src/services/user.rs:145-171`)
+ * and that 1:1 invariant is documented and deliberate. It is also documented
+ * as *migratable* — point 3 of that comment reserves the right to hand out
+ * distinct ids for alt accounts — and `PlayerRepository::create`
+ * (`portal-db/src/repositories/user.rs:315`) already inserts a player without
+ * an explicit id, so the schema does not enforce the equality either.
+ *
+ * Resolving through `GET /v1/players/{id}` costs one request and makes this
+ * tab independent of all that. It is worth the request because the failure
+ * mode is silent rather than loud: `/v1/admin/users/{some_other_uuid}/roles`
+ * answers 200 with an empty list, not a 404, so a tab that assumed the ids
+ * matched would simply report "no platform roles" for everybody the day the
+ * invariant changed — on the surface that decides who is an administrator.
+ */
+async function onUserSelected(player: PlayerSummary | null) {
+  roleToAssign.value = null
+  rbacStore.clearUserRoles()
+  userLookupError.value = null
+
+  if (!player) {
+    selectedUserId.value = null
+    selectedUserLabel.value = ''
+    return
+  }
+
+  selectedUserLabel.value = player.display_name
+
+  try {
+    const full = await playersStore.fetchPlayer(player.id)
+    if (!full?.user_id) {
+      userLookupError.value = `Could not resolve a user account for ${player.display_name}.`
+      selectedUserId.value = null
+      return
+    }
+    selectedUserId.value = full.user_id
+    await rbacStore.getUserRoles(full.user_id)
+  } catch (e) {
+    selectedUserId.value = null
+    userLookupError.value = e instanceof Error ? e.message : 'Failed to load this user'
+  }
+}
+
+async function assignRole() {
+  if (!selectedUserId.value || !roleToAssign.value) return
+  const role = roles.value.find((r) => r.id === roleToAssign.value)
+  try {
+    await rbacStore.assignRoleToUser(selectedUserId.value, roleToAssign.value)
+    snackbar.show(
+      `Granted ${role?.display_name ?? 'role'} to ${selectedUserLabel.value}`,
+      'success',
+    )
+    roleToAssign.value = null
+  } catch {
+    // Surfaced by the assign-action ErrorAlert; the store keeps the real
+    // reason (e.g. the backend's priority-ceiling 403) rather than a generic
+    // page-wide message — P-116/P-124.
+  }
+}
+
+function confirmRevokeRole(assignment: UserRoleAssignmentResponse) {
+  const userId = selectedUserId.value
+  if (!userId) return
+  confirmDialog.confirm({
+    title: 'Revoke Role',
+    // Names the role AND the person: revoking a platform role is a privilege
+    // change, and a dialog that says "this role" is the P-123 mistake in a
+    // different table.
+    message: `Remove the ${assignment.role.display_name} role from ${selectedUserLabel.value}? They lose every permission it grants immediately.`,
+    action: 'Revoke',
+    color: 'error',
+    handler: async () => {
+      await rbacStore.revokeRoleFromUser(
+        userId,
+        assignment.role.id,
+        assignment.scope_type ?? undefined,
+        assignment.scope_id ?? undefined,
+      )
+      snackbar.show(
+        `Revoked ${assignment.role.display_name} from ${selectedUserLabel.value}`,
+        'success',
+      )
+    },
+  })
+}
+
 
 onMounted(() => {
   loadData()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

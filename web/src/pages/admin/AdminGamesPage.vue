@@ -4,6 +4,8 @@
       <h1 class="text-h4">Games</h1>
     </div>
 
+    <ErrorAlert :error="error" retryable @clear="error = null" @retry="fetchGames" />
+
     <v-card>
       <v-card-title class="d-flex align-center">
         <v-text-field
@@ -29,126 +31,141 @@
         </v-btn>
       </v-card-title>
 
-      <v-data-table
-        :headers="headers"
-        :items="filteredGames"
-        :loading="loading"
-        :items-per-page="10"
-        class="elevation-0"
-      >
-        <template v-slot:item.icon_url="{ item }">
-          <v-avatar size="32" rounded="sm">
-            <v-img v-if="item.icon_url" :src="item.icon_url" />
-            <v-icon v-else>mdi-gamepad-variant</v-icon>
-          </v-avatar>
-        </template>
+      <div class="table-scroll">
+        <v-data-table
+          :headers="headers"
+          :items="filteredGames"
+          :loading="loading"
+          :items-per-page="10"
+          class="elevation-0"
+        >
+          <template v-slot:item.icon_url="{ item }">
+            <v-avatar size="32" rounded="sm">
+              <v-img alt="" v-if="item.icon_url" :src="item.icon_url" />
+              <v-icon v-else>mdi-gamepad-variant</v-icon>
+            </v-avatar>
+          </template>
 
-        <template v-slot:item.status="{ item }">
-          <v-chip
-            :color="item.status === 'active' ? 'success' : 'grey'"
-            size="small"
-            variant="flat"
-          >
-            {{ item.status }}
-          </v-chip>
-        </template>
+          <template v-slot:item.status="{ item }">
+            <v-chip
+              :color="item.status === 'active' ? 'success' : 'grey'"
+              size="small"
+              variant="flat"
+            >
+              {{ getStatusLabel(gameStatusMap, item.status) }}
+            </v-chip>
+          </template>
 
-        <template v-slot:item.is_featured="{ item }">
-          <v-icon v-if="item.is_featured" color="warning">mdi-star</v-icon>
-          <v-icon v-else color="grey-lighten-1">mdi-star-outline</v-icon>
-        </template>
+          <template v-slot:item.is_featured="{ item }">
+            <v-icon v-if="item.is_featured" color="warning">mdi-star</v-icon>
+            <v-icon v-else color="grey-lighten-1">mdi-star-outline</v-icon>
+          </template>
 
-        <template v-slot:item.actions="{ item }">
-          <v-btn
-            icon
-            size="small"
-            variant="text"
-            @click="openEditModal(item)"
-            title="Edit"
-          >
-            <v-icon>mdi-pencil</v-icon>
-          </v-btn>
-          <v-btn
-            v-if="item.status === 'active'"
-            icon
-            size="small"
-            variant="text"
-            color="error"
-            :loading="toggleLoading === item.id"
-            @click="disableGame(item)"
-            title="Disable"
-          >
-            <v-icon>mdi-eye-off</v-icon>
-          </v-btn>
-          <v-btn
-            v-else
-            icon
-            size="small"
-            variant="text"
-            color="success"
-            :loading="toggleLoading === item.id"
-            @click="enableGame(item)"
-            title="Enable"
-          >
-            <v-icon>mdi-eye</v-icon>
-          </v-btn>
-        </template>
+          <!-- P-89: these four aria-labels were each rotated one position off the
+               handler they fire — the control announced as "Enable game" called
+               handleDisableGame, so a screen-reader user activating "Enable"
+               DISABLED the game. Identical defect to P-45 (RBAC role rows, fixed
+               fbe1500), which was point-fixed and never swept, so it came back
+               here. Each aria-label now names what its @click does. -->
+          <template v-slot:item.actions="{ item }">
+            <v-btn aria-label="Configure game"
+              icon
+              size="small"
+              variant="text"
+              @click="openConfigPanel(item)"
+              title="Configure"
+            >
+              <v-icon>mdi-cog</v-icon>
+            </v-btn>
+            <v-btn aria-label="Edit game"
+              icon
+              size="small"
+              variant="text"
+              @click="openEditModal(item)"
+              title="Edit"
+            >
+              <v-icon>mdi-pencil</v-icon>
+            </v-btn>
+            <v-btn aria-label="Disable game"
+              v-if="item.status === 'active'"
+              icon
+              size="small"
+              variant="text"
+              color="error"
+              :loading="toggleLoading === item.id"
+              @click="handleDisableGame(item)"
+              title="Disable"
+            >
+              <v-icon>mdi-eye-off</v-icon>
+            </v-btn>
+            <v-btn aria-label="Enable game"
+              v-else
+              icon
+              size="small"
+              variant="text"
+              color="success"
+              :loading="toggleLoading === item.id"
+              @click="handleEnableGame(item)"
+              title="Enable"
+            >
+              <v-icon>mdi-eye</v-icon>
+            </v-btn>
+          </template>
 
-        <template v-slot:no-data>
-          <div class="text-center pa-4">
-            <v-icon size="64" color="grey-lighten-1" class="mb-2">mdi-gamepad-variant-outline</v-icon>
-            <p class="text-grey">No games found</p>
-          </div>
-        </template>
-      </v-data-table>
+          <template v-slot:no-data>
+            <div class="text-center pa-4">
+              <v-icon size="64" color="grey-lighten-1" class="mb-2">mdi-gamepad-variant-outline</v-icon>
+              <p class="text-medium-emphasis">No games found</p>
+            </div>
+          </template>
+        </v-data-table>
+      </div>
     </v-card>
-
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="error = null">
-      {{ error }}
-    </v-alert>
-
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
 
     <GameEditModal
       v-model="editModalOpen"
       :game="selectedGame"
       @saved="onGameSaved"
     />
+
+    <!-- Game Config Dialog (maps CRUD, map pool, rank tiers, team size) -->
+    <GameConfigDialog
+      v-model="configDialogOpen"
+      :game="configGame"
+      @saved="fetchGames"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { ApiError } from '@/api'
+import { storeToRefs } from 'pinia'
+import { useGamesStore, type GameSummary } from '@/stores/games'
+import { useSnackbar } from '@/composables/useSnackbar'
 import GameEditModal from '@/components/admin/GameEditModal.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import GameConfigDialog from '@/components/admin/GameConfigDialog.vue'
+import { gameStatusMap, getStatusLabel } from '@/utils/statusMaps'
 
-// Game summary type - matches backend GameSummaryResponse
-interface GameSummary {
-  id: string
-  display_name: string
-  short_name: string | null
-  description: string | null
-  icon_url: string | null
-  team_size_default: number
-  status: string
-  is_featured: boolean
-}
+const gamesStore = useGamesStore()
+const snackbar = useSnackbar()
 
-const games = ref<GameSummary[]>([])
-const loading = ref(true)
-const error = ref<string | null>(null)
 const search = ref('')
 const toggleLoading = ref<string | null>(null)
 const editModalOpen = ref(false)
 const selectedGame = ref<GameSummary | null>(null)
 
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+// Config dialog state (all config UI lives in GameConfigDialog)
+const configDialogOpen = ref(false)
+const configGame = ref<GameSummary | null>(null)
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+// P-122: this comment used to be false. `loading`/`error` claimed to come from
+// `aggregateActionStates` over every games-action state; the store actually
+// hand-rolled a computed over two of thirteen, so a failed enable/disable/map
+// write left this page silent. They now come from a real aggregate over the
+// twelve admin actions — excluding the PUBLIC fetchGames state, whose inclusion
+// was what leaked admin 403s onto HomePage.
+const { adminLoading: loading, adminError: error } = storeToRefs(gamesStore)
 
 const headers = [
   { title: '', key: 'icon_url', width: '50px', sortable: false },
@@ -158,108 +175,54 @@ const headers = [
   { title: 'Team Size', key: 'team_size_default', width: '100px', align: 'center' as const },
   { title: 'Status', key: 'status', width: '100px' },
   { title: 'Featured', key: 'is_featured', width: '90px', align: 'center' as const },
-  { title: 'Actions', key: 'actions', width: '120px', sortable: false, align: 'center' as const },
+  { title: 'Actions', key: 'actions', width: '150px', sortable: false, align: 'center' as const },
 ]
 
 const filteredGames = computed(() => {
-  if (!search.value) return games.value
+  if (!search.value) return gamesStore.allGames
   const q = search.value.toLowerCase()
-  return games.value.filter(g =>
+  return gamesStore.allGames.filter(g =>
     g.id.toLowerCase().includes(q) ||
     g.display_name.toLowerCase().includes(q) ||
     (g.short_name?.toLowerCase().includes(q))
   )
 })
 
+/**
+ * P-88: this table reads the **unfiltered** catalog, not `GET /v1/games`'s
+ * active-only default. The Enable button lives inside a row, so listing only
+ * active games meant that disabling one deleted the control that undoes the
+ * disable: the game left the table on the next fetch and could never come back
+ * from the admin UI. An admin config surface has to be able to see the things
+ * it has turned off.
+ */
 async function fetchGames() {
-  loading.value = true
-  error.value = null
   try {
-    const response = await fetch(`${API_URL}/v1/games`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to fetch games')
-    }
-
-    const result = await response.json()
-    games.value = result.data
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to load games'
-    }
-  } finally {
-    loading.value = false
+    await gamesStore.fetchAllGames()
+  } catch {
+    // Error captured in store
   }
 }
 
-async function enableGame(game: GameSummary) {
+async function handleEnableGame(game: GameSummary) {
   toggleLoading.value = game.id
   try {
-    const response = await fetch(`${API_URL}/v1/games/${game.id}/enable`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to enable game')
-    }
-
-    const result = await response.json()
-    // Update local state
-    const index = games.value.findIndex(g => g.id === game.id)
-    if (index !== -1) {
-      games.value[index] = result.data
-    }
-    showSnackbar('Game enabled successfully', 'success')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
-    } else {
-      showSnackbar('Failed to enable game', 'error')
-    }
+    await gamesStore.enableGame(game.id)
+    snackbar.show('Game enabled', 'success')
+  } catch {
+    snackbar.show(gamesStore.enableGameState.error || 'Failed to enable game', 'error')
   } finally {
     toggleLoading.value = null
   }
 }
 
-async function disableGame(game: GameSummary) {
+async function handleDisableGame(game: GameSummary) {
   toggleLoading.value = game.id
   try {
-    const response = await fetch(`${API_URL}/v1/games/${game.id}/disable`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to disable game')
-    }
-
-    const result = await response.json()
-    // Update local state
-    const index = games.value.findIndex(g => g.id === game.id)
-    if (index !== -1) {
-      games.value[index] = result.data
-    }
-    showSnackbar('Game disabled successfully', 'success')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
-    } else {
-      showSnackbar('Failed to disable game', 'error')
-    }
+    await gamesStore.disableGame(game.id)
+    snackbar.show('Game disabled', 'success')
+  } catch {
+    snackbar.show(gamesStore.disableGameState.error || 'Failed to disable game', 'error')
   } finally {
     toggleLoading.value = null
   }
@@ -270,21 +233,24 @@ function openEditModal(game: GameSummary) {
   editModalOpen.value = true
 }
 
-function onGameSaved(updatedGame: GameSummary) {
-  const index = games.value.findIndex(g => g.id === updatedGame.id)
-  if (index !== -1) {
-    games.value[index] = updatedGame
-  }
-  showSnackbar('Game updated successfully', 'success')
+function openConfigPanel(game: GameSummary) {
+  configGame.value = game
+  configDialogOpen.value = true
 }
 
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
+function onGameSaved() {
+  snackbar.show('Game updated', 'success')
+  fetchGames()
 }
 
 onMounted(() => {
   fetchGames()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

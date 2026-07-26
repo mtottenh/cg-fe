@@ -1,0 +1,28 @@
+# Vault password files — never commit.
+*.vault_pass
+.vault_pass
+
+# The real vault stays on the control machine only — never committed, even
+# encrypted. Only vault.example.yml (placeholders) is tracked.
+ansible/group_vars/all/vault.yml
+ansible/group_vars/all/vault.yml.unencrypted
+
+# Downloaded debs when running `just deploy`.
+tmp/
+*.deb
+
+# Ansible runtime.
+*.retry
+.ansible/
+
+# Editor noise.
+.idea/
+.vscode/
+*.swp
+
+# Backup age keys — the private key must never live in the repo (or on /mnt/c
+# at all: drvfs cannot hold real 600 perms). Keep it in the password manager.
+*.key
+
+# Provisioning secrets loaded by the justfile (LINODE_TOKEN=...).
+.env

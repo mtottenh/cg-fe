@@ -26,6 +26,16 @@ const router = createRouter({
       meta: { guest: true, layout: 'default' },
     },
 
+    // Steam sign-in completion — the backend redirects here with tokens
+    // in the URL fragment. Not marked `guest`: by the time the page acts,
+    // the user becomes authenticated and a guest guard would bounce them.
+    {
+      path: '/auth/steam/complete',
+      name: 'steam-complete',
+      component: () => import('@/pages/SteamCompletePage.vue'),
+      meta: { layout: 'default' },
+    },
+
     // Public browse routes - use dynamic layout
     {
       path: '/leagues',
@@ -180,6 +190,39 @@ const router = createRouter({
           component: () => import('@/pages/admin/AdminTournamentDetailPage.vue'),
         },
         {
+          path: 'demos',
+          name: 'admin-demos',
+          component: () => import('@/pages/admin/AdminDemosPage.vue'),
+        },
+        {
+          path: 'game-servers',
+          name: 'admin-game-servers',
+          component: () => import('@/pages/admin/AdminGameServersPage.vue'),
+        },
+        {
+          path: 'demos/:id',
+          name: 'admin-demo-detail',
+          component: () => import('@/pages/admin/AdminDemoDetailPage.vue'),
+        },
+        {
+          // P-73: operator visibility into everything upstream of the demo
+          // catalog (tracking tokens, discovered-match queue, enrichment),
+          // plus the P-64 backfill and the P-68 rating override.
+          path: 'pipeline',
+          name: 'admin-pipeline',
+          component: () => import('@/pages/admin/AdminPipelinePage.vue'),
+        },
+        {
+          path: 'disputes',
+          name: 'admin-disputes',
+          component: () => import('@/pages/admin/AdminDisputesPage.vue'),
+        },
+        {
+          path: 'result-reviews',
+          name: 'admin-result-reviews',
+          component: () => import('@/pages/admin/AdminResultReviewsPage.vue'),
+        },
+        {
           path: 'settings',
           name: 'admin-settings',
           component: () => import('@/pages/admin/AdminSettingsPage.vue'),
@@ -190,9 +233,15 @@ const router = createRouter({
 })
 
 // Navigation guard for authentication and authorization
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore()
-  const isAuthenticated = authStore.isAuthenticated || authStore.isDevMode
+
+  // Wait for auth initialization on first navigation
+  if (!authStore.initialized) {
+    await authStore.initialize()
+  }
+
+  const isAuthenticated = authStore.isAuthenticated
 
   // Redirect authenticated users away from guest-only pages (login, register)
   if (to.meta.guest && isAuthenticated) {

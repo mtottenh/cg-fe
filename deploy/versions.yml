@@ -1,0 +1,13 @@
+# Release pins deployed by `just deploy-all`. One place to answer "what is
+# (supposed to be) running in prod" — cross-check with `just installed`.
+#
+# Values are release tags (vX.Y.Z); empty string = skip that service.
+# Remember: each repo's build-deb workflow refuses a tag that doesn't match
+# its Cargo.toml/package version, so a published tag always names the real
+# artifact version.
+
+api: "v0.2.0"        # mtottenh/cg              — portal-api + portal-scanner debs
+web: "v0.1.0"        # mtottenh/cg-fe           — portal-web deb
+demo_stats: "v0.2.0" # mtottenh/csgo-demo-stats — portal-demo-stats deb
+steam_bot: ""        # mtottenh/cg-steam-bot    — v0.1.0 exists; pin once the
+                     # dedicated Steam bot account + vault_steam_bot_* are set

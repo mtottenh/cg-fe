@@ -28,11 +28,17 @@ export default defineConfig({
   // Limit parallel workers on CI
   workers: process.env.CI ? 1 : undefined,
 
-  // Reporter configuration
+  // Reporter configuration. The output folders are per-instance: two agents
+  // running concurrently would otherwise write the same report and
+  // test-results directories, and the loser's artefacts vanish silently.
+  // e2e-ephemeral.sh exports these; unset means the historical paths.
   reporter: [
-    ['html', { outputFolder: 'playwright-report' }],
+    ['html', { outputFolder: process.env.E2E_REPORT_DIR || 'playwright-report' }],
     ['list'],
   ],
+
+  // Per-test artefacts (traces, screenshots, videos) — same reasoning.
+  outputDir: process.env.E2E_RESULTS_DIR || 'test-results',
 
   // Shared settings for all projects
   use: {
@@ -69,10 +75,12 @@ export default defineConfig({
   // Web server configuration - starts the dev server before tests
   webServer: [
     {
-      // Start the Vue dev server
-      command: 'npm run dev',
-      url: 'http://localhost:5173',
-      reuseExistingServer: !process.env.CI,
+      // Start the Vue dev server. E2E_WEB_PORT lets the ephemeral runner
+      // (scripts/e2e-ephemeral.sh) start its own instance beside a normal
+      // dev server without clobbering it.
+      command: `npm run dev -- --port ${process.env.E2E_WEB_PORT || '5173'} --strictPort`,
+      url: `http://localhost:${process.env.E2E_WEB_PORT || '5173'}`,
+      reuseExistingServer: !process.env.CI && !process.env.E2E_WEB_PORT,
       timeout: 120 * 1000,
     },
   ],

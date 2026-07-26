@@ -13,14 +13,26 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
-    "generate:api": "openapi-typescript http://localhost:3000/api-docs/openapi.json -o src/api/types.ts"
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.e2e.json",
+    "typecheck:app": "vue-tsc --noEmit -p tsconfig.app.json",
+    "typecheck:e2e": "tsc --noEmit -p tsconfig.e2e.json",
+    "lint": "eslint . --ext .ts,.vue --max-warnings 0",
+    "lint:fix": "eslint . --ext .ts,.vue --fix --max-warnings 0",
+    "generate:api": "openapi-typescript http://localhost:3000/api-docs/openapi.json -o src/api/types.ts",
+    "test:e2e:ephemeral": "./scripts/e2e-ephemeral.sh",
+    "test:quality": "node e2e/scripts/check-test-quality.mjs && node e2e/scripts/check-status-maps.mjs && node e2e/scripts/check-a11y.mjs && node e2e/scripts/check-dead-store-actions.mjs && node e2e/scripts/sync-register.mjs --check",
+    "test:status-maps": "node e2e/scripts/check-status-maps.mjs",
+    "test:a11y": "node e2e/scripts/check-a11y.mjs",
+    "register:sync": "node e2e/scripts/sync-register.mjs"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
     "@vueuse/core": "^14.1.0",
+    "chart.js": "^4.5.1",
     "openapi-fetch": "^0.13.5",
     "pinia": "^3.0.4",
     "vue": "^3.5.24",
+    "vue-chartjs": "^5.3.3",
     "vue-router": "^4.6.3",
     "vuetify": "^3.11.0"
   },
@@ -28,14 +40,20 @@
     "@playwright/test": "^1.57.0",
     "@types/node": "^24.10.1",
     "@vitejs/plugin-vue": "^6.0.2",
+    "@vue/eslint-config-typescript": "^14.2.0",
     "@vue/test-utils": "^2.4.6",
     "@vue/tsconfig": "^0.8.1",
+    "eslint": "^9.15.0",
+    "eslint-plugin-vue": "^9.32.0",
     "happy-dom": "^20.0.11",
     "openapi-typescript": "^7.8.0",
     "sass": "^1.94.2",
     "typescript": "~5.9.3",
+    "typescript-eslint": "^8.18.0",
     "vite": "^7.2.4",
+    "vite-plugin-vuetify": "^2.1.3",
     "vitest": "^4.0.14",
+    "vue-eslint-parser": "^9.4.3",
     "vue-tsc": "^3.1.5"
   }
 }

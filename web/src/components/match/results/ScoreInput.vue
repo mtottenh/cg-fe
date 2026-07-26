@@ -4,7 +4,7 @@
       <v-chip size="small" :color="gameColor" variant="flat">
         {{ gameLabel }}
       </v-chip>
-      <span v-if="mapName" class="text-caption text-grey ml-2">{{ mapName }}</span>
+      <span v-if="mapName" class="text-caption text-medium-emphasis ml-2">{{ mapName }}</span>
     </div>
 
     <div class="score-row d-flex align-center">
@@ -14,6 +14,7 @@
 
       <v-text-field
         v-model.number="localTeamAScore"
+        :aria-label="`${teamAName} score, game ${gameNumber}`"
         type="number"
         min="0"
         max="99"
@@ -25,10 +26,11 @@
         @update:model-value="emitTeamAScore"
       />
 
-      <span class="vs text-grey">-</span>
+      <span class="vs text-medium-emphasis">-</span>
 
       <v-text-field
         v-model.number="localTeamBScore"
+        :aria-label="`${teamBName} score, game ${gameNumber}`"
         type="number"
         min="0"
         max="99"
@@ -67,6 +69,7 @@ const props = withDefaults(
     allowTies?: boolean
   }>(),
   {
+    mapName: undefined,
     disabled: false,
     showValidation: true,
     allowTies: false,

@@ -1,0 +1,150 @@
+{
+  "uid": "portal-bots",
+  "title": "Portal — Steam bots",
+  "description": "cs2-poller (Web API share-code discovery) + cs2-enricher (Game Coordinator). Managed by Ansible (roles/monitoring).",
+  "tags": ["portal"],
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "browser",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Tracked players",
+      "gridPos": { "h": 8, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none", "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "cs2_poller_tracked_players", "instant": true } ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Poll cycles (by outcome)",
+      "gridPos": { "h": 8, "w": 10, "x": 4, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome) (rate(cs2_poller_cycles_total[10m]))", "legendFormat": "{{outcome}}" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(cs2_poller_cycle_duration_seconds_bucket[30m])))", "legendFormat": "duration p95 (s)" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Steam Web API requests (by outcome) — watch auth-expired",
+      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "sum by (outcome) (rate(cs2_poller_steam_requests_total[10m]))", "legendFormat": "{{outcome}}" } ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Share codes discovered / submissions",
+      "gridPos": { "h": 8, "w": 10, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(cs2_poller_sharecodes_discovered_total[10m])", "legendFormat": "discovered" },
+        { "refId": "B", "expr": "sum by (outcome) (rate(cs2_poller_submissions_total[10m]))", "legendFormat": "submitted {{outcome}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Poller loop age",
+      "gridPos": { "h": 8, "w": 4, "x": 10, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 900 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "time() - cs2_poller_last_success_timestamp_seconds", "instant": true } ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "GC session",
+      "gridPos": { "h": 8, "w": 4, "x": 14, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "cs2_enricher_gc_session_up", "instant": true } ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Enricher queue depth",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 20 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "cs2_enricher_queue_depth", "instant": true } ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "GC reconnects / logon failures (by reason)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (reason) (rate(cs2_enricher_gc_reconnects_total[15m]))", "legendFormat": "reconnect {{reason}}" },
+        { "refId": "B", "expr": "sum by (reason) (rate(cs2_enricher_logon_failures_total[15m]))", "legendFormat": "logon-fail {{reason}}" }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Matches enriched (by outcome) + duration p95",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome) (rate(cs2_enricher_matches_enriched_total[15m]))", "legendFormat": "{{outcome}}" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(cs2_enricher_enrich_duration_seconds_bucket[30m])))", "legendFormat": "duration p95 (s)" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Rank extractions (by outcome)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "sum by (outcome) (rate(cs2_enricher_rank_extractions_total[15m]))", "legendFormat": "{{outcome}}" } ]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Enricher loop age",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 900 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "time() - cs2_enricher_last_success_timestamp_seconds", "instant": true } ]
+    }
+  ]
+}

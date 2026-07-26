@@ -1,0 +1,191 @@
+---
+# Non-secret config shared by all roles. Secrets live in vault.yml.
+
+# --- Postgres ---------------------------------------------------------------
+postgres_version: 16
+postgres_db: portal_prod
+postgres_user: portal
+# Every DB consumer on this host connects over the Unix socket
+# (portal-api / scanner / pg_dump all use host=/var/run/postgresql, peer
+# auth). Nothing uses TCP, so Postgres binds NO TCP listener at all:
+# an empty listen_addresses is strictly stronger than binding loopback —
+# it removes the 127.0.0.1:5432 surface entirely (no local non-postgres
+# process, no `ssh -L` tunnel, can reach it over TCP). To connect for
+# admin, use the socket: `sudo -u postgres psql`. Set to "127.0.0.1" only
+# if a future TCP-only client on this box needs loopback access; the
+# pg_hba loopback rules below stay as a scram-guarded fallback for that.
+postgres_listen_addresses: ""
+
+# --- portal-api -------------------------------------------------------------
+# Path to the .deb the playbook will apt-install. Set by `just deploy`,
+# or point at a local file when iterating.
+portal_api_deb_path: ""
+
+# API connects to Postgres over the Unix socket — no TCP, no password on
+# the wire. The portal unix user is granted LOGIN and peer auth.
+portal_api_database_url: "postgres:///{{ postgres_db }}?host=/var/run/postgresql&user={{ postgres_user }}"
+
+# Token lifetimes. Workspace defaults are baked into the binary but we
+# set these explicitly so a rollback doesn't silently change behavior.
+portal_access_token_expiry_minutes: 15
+portal_refresh_token_expiry_minutes: 10080
+
+# Comma-separated CORS allow-list. "" means no CORS (recommended when the
+# frontend is served from the same origin by Caddy).
+portal_cors_origins: "https://{{ portal_domain }}"
+
+# --- portal-scanner ---------------------------------------------------------
+# Path to the .deb the playbook will apt-install. Set by `just deploy`.
+portal_scanner_deb_path: ""
+
+# UUID of the game (CS2) scanned demos are cataloged under. This is a
+# runtime DB id, so there is no sane default. After the first API converge:
+#   sudo -u portal psql -d portal_prod -c 'SELECT id, name FROM games;'
+# then set this (group_vars or -e). The portal_scanner role refuses to run
+# while it's empty.
+scanner_game_id: ""
+
+# Only scan keys under this prefix in the demos bucket ("" = whole bucket).
+scanner_s3_prefix: ""
+scanner_interval_secs: 300              # S3 scan poll interval
+scanner_processing_interval_secs: 60    # pending-demo processing interval
+
+# --- portal-demo-stats (CS2 demo parser) -------------------------------------
+# Path to the .deb (built in the sibling demo-stats-service repo). Set via
+# `just deploy-demo-stats`.
+portal_demo_stats_deb_path: ""
+
+demo_stats_port: 3100
+
+# Game-server integration (MatchZy) — docs/matchzy-integration.md.
+# Off by default. Enabling adds the agents.<domain> Caddy site (client
+# certificates verified against the portal CA) and PORTAL_AGENT_CA_DIR in
+# api.env. One-time bootstrap on the portal host:
+#   portal-cli gameserver ca-init --dir /etc/portal/agent-ca
+# NOTE: the CA dir is NOT covered by the pg_dump backups — copy it into your
+# backup routine; losing the key means re-enrolling every agent. Requires a
+# DNS A record for agents.{{ portal_domain }}.
+gameserver_integration_enabled: false
+portal_agent_ca_dir: /etc/portal/agent-ca
+
+# Public https front for the demo parser. The API's SSRF guard requires an
+# https, non-private URL, so Caddy proxies demos.<domain> → 127.0.0.1:3100.
+# Requires a DNS A record for demos.{{ portal_domain }}.
+cs2_demo_service_url: "https://demos.{{ portal_domain }}"
+
+# --- Steam bots (cs2-poller + cs2-enricher) ---------------------------------
+# Opt-in: cs2-enricher needs a dedicated Steam bot account (Prime + CS2).
+# Flip to true (and set the vault_steam_bot_* keys) to deploy the bots, or
+# use `just deploy-steam-bot <deb>` which enables it for that run.
+portal_steam_bot_enabled: false
+# Path to the portal-steam-bot .deb built in the sibling steam_bot workspace.
+portal_steam_bot_deb_path: ""
+steam_bot_game_slug: cs2
+steam_bot_poll_interval_secs: 60        # cs2-poller: Web API poll cadence
+steam_bot_enrich_interval_secs: 30      # cs2-enricher: GC fetch cadence
+steam_bot_enrich_batch_size: 5          # matches enriched per cycle
+steam_bot_skip_demo_rank: false         # true = GC scoreboard only, no demo
+
+# --- Object Storage (evidence + demo bucket) --------------------------------
+# gb-lon-1 = London, where the existing cs2-10mans demo bucket lives; keep
+# storage in the same region as the Linode (see provision.yml).
+linode_object_storage_region: gb-lon-1
+linode_object_storage_endpoint: "https://{{ linode_object_storage_region }}.linodeobjects.com"
+
+portal_evidence_bucket: portal-evidence
+portal_evidence_public_url: "https://{{ portal_evidence_bucket }}.{{ linode_object_storage_region }}.linodeobjects.com"
+
+portal_demos_bucket: portal-demos
+
+# --- Operator SSH key --------------------------------------------------------
+# Public key installed for the ops user by roles/base (and injected into
+# root by provision.yml on a fresh Linode). Set to "" to manage keys by hand.
+ops_ssh_pubkey_file: "~/.ssh/id_ed25519.pub"
+
+# --- Backups ---------------------------------------------------------------
+backup_bucket: portal-backups
+# Keep 30 days of nightly dumps locally in /var/lib/portal/backups (plain
+# zstd — the box already holds the live DB, so a local plaintext dump adds
+# no exposure); upload age-ENCRYPTED copies to Object Storage.
+backup_local_retention_days: 30
+backup_schedule: "OnCalendar=*-*-* 03:15:00"    # 03:15 server local
+
+# REQUIRED (site.yml validation rejects an empty value): age recipient the
+# box encrypts uploads to. Generate once on the control machine:
+#   age-keygen -o portal-backup.key       # → prints "Public key: age1..."
+# Put the PUBLIC key here; the private key goes in your password manager
+# and must NEVER land on the box — an attacker with the box (or the bucket
+# keys, which the API also holds) can then read no historical backups.
+backup_age_public_key: "age1mrcfatcyuhjeh9aukp2ew8s8dwt4wws8zssmaz3qjzhqs53yccxsk5spfl"
+
+# Remote retention: dumps in the bucket expire after this many days via an
+# S3 lifecycle rule the backups role applies (idempotently) from the box.
+backup_remote_retention_days: 180
+
+# zstd level for the nightly dump. 12 gets most of -19's ratio at a
+# fraction of the CPU on the 2-core Linode.
+backup_zstd_level: 12
+
+# Optional dead-man's-switch ping (e.g. healthchecks.io). The backup
+# scripts GET this URL on success and $URL/fail on failure; leave "" to
+# disable. Without it a silently-failing backup looks identical to a
+# working one.
+backup_healthcheck_url: ""
+
+# /etc/portal (env files + the gameserver agent-ca, if enabled) → encrypted
+# archive in s3://<bucket>/config/. Weekly: config changes rarely and every
+# converge re-renders it from the vault anyway; the irreplaceable part is
+# the agent CA key.
+backup_config_schedule: "OnCalendar=Mon *-*-* 03:45:00"
+
+# Monthly restore rehearsal: newest local dump → portal_restore_test →
+# sanity counts → drop. A backup you've never restored is a hope, not a
+# backup — this turns the quarterly-rehearsal advice into a mechanism.
+backup_restore_verify_schedule: "OnCalendar=*-*-01 04:30:00"
+
+# --- Monitoring (docs/observability-design.md) -------------------------------
+# Opt-in: Prometheus + Grafana + Loki + Alloy + node/postgres exporters, all
+# loopback-only; Grafana is the single ingress via the grafana.<domain>
+# Caddy vhost (needs a DNS A record). Set vault_grafana_admin_password (and
+# optionally vault_alert_webhook_url) before enabling. Enabling also turns
+# on the METRICS_ADDR loopback exporters in the service env files, so re-run
+# the service roles (a full `just bootstrap` covers everything).
+monitoring_enabled: false
+
+# How the operator reaches Grafana (everything else is always loopback):
+#   public  — grafana.<domain> Caddy vhost + DNS A record + ACME cert
+#             (the cert lands in Certificate Transparency logs, publicly
+#             advertising that a Grafana exists here)
+#   tailnet — Tailscale Serve proxies HTTPS on the machine's ts.net name
+#             to loopback Grafana. No public vhost, no DNS record, no CT
+#             entry; Grafana never leaves 127.0.0.1. Needs MagicDNS +
+#             HTTPS Certificates enabled on the tailnet (admin console)
+#             and vault_tailscale_auth_key for the first converge.
+#             Break-glass if the tailnet is down: ssh -L 3001:127.0.0.1:3001.
+monitoring_ingress: public
+
+# Loopback listen ports for the stack. 3110 for Loki because
+# portal-demo-stats owns the Loki default 3100.
+monitoring_prometheus_port: 9090
+monitoring_grafana_port: 3001
+monitoring_loki_port: 3110
+monitoring_loki_grpc_port: 9096
+monitoring_alloy_port: 12345
+monitoring_node_exporter_port: 9100
+monitoring_postgres_exporter_port: 9187
+
+# Retention: Prometheus ~50 MB/day at the <2k series/service budget → 30d
+# fits the 80 GB disk easily; Loki is a query index over journald (14d),
+# journald itself remains the archive.
+monitoring_prometheus_retention: 30d
+monitoring_loki_retention_hours: 336
+
+# The design doc's §3 port table — this dict IS the service registry.
+# Prometheus scrape jobs and each role's METRICS_ADDR line derive from it.
+# cs2-poller / cs2-enricher are only scraped when portal_steam_bot_enabled.
+monitoring_metrics_ports:
+  portal-api: 9464
+  portal-scanner: 9465
+  portal-demo-stats: 9466
+  cs2-poller: 9467
+  cs2-enricher: 9468

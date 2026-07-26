@@ -1,0 +1,16 @@
+---
+- name: daemon-reload
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: restart cs2-poller
+  ansible.builtin.systemd:
+    name: cs2-poller
+    state: restarted
+    daemon_reload: true
+
+- name: restart cs2-enricher
+  ansible.builtin.systemd:
+    name: cs2-enricher
+    state: restarted
+    daemon_reload: true

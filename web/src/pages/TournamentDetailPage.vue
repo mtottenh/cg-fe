@@ -1,15 +1,26 @@
 <template>
   <v-container>
+    <ErrorAlert :error="error" retryable @clear="clearError" @retry="fetchData" />
+
     <!-- Loading State -->
-    <div v-if="loading && !tournament" class="text-center pa-8">
-      <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading tournament...</p>
-    </div>
+    <v-skeleton-loader v-if="loading && !tournament" type="article" class="mb-4" />
 
     <!-- Content -->
     <template v-else-if="tournament">
+      <!-- Breadcrumb: the league → tournament chain is navigable upward -->
+      <v-breadcrumbs :items="breadcrumbs" class="pa-0 mb-4" />
+
       <!-- Header -->
       <TournamentHeader :tournament="tournament" :game="game" class="mb-6" />
+
+      <!-- Organizer Toolbar (inline management for organizers) -->
+      <OrganizerToolbar
+        v-if="isOrganizer"
+        :tournament="tournament"
+        @edit="editModalOpen = true"
+        @manage-registrations="activeTab = 'participants'"
+        @action-complete="fetchData"
+      />
 
       <!-- Registration Card (if applicable) -->
       <TournamentRegistrationCard
@@ -17,6 +28,8 @@
         :tournament="tournament"
         :my-registration="myRegistration"
         :loading="registering"
+        :has-eligible-teams="hasEligibleTeams"
+        :is-invited="isInvited"
         class="mb-6"
         @register="handleRegister"
         @withdraw="handleWithdraw"
@@ -30,11 +43,13 @@
           <v-tab value="participants">
             Participants
             <v-chip size="x-small" class="ml-2" variant="tonal">
-              {{ registrations.length }}
+              {{ participantCount }}
             </v-chip>
           </v-tab>
           <v-tab value="bracket" :disabled="!hasBracket">Bracket</v-tab>
           <v-tab value="matches" :disabled="matches.length === 0">Matches</v-tab>
+          <v-tab value="awards" data-testid="awards-tab">Awards</v-tab>
+          <v-tab value="stats" data-testid="stats-tab">Stats</v-tab>
         </v-tabs>
 
         <v-divider />
@@ -53,12 +68,14 @@
                     </div>
                   </div>
 
-                  <!-- Rules -->
-                  <div v-if="tournament.rules_url" class="mb-6">
+                  <!-- Rules (creator-supplied URL — only http/https ever
+                       reaches the DOM) -->
+                  <div v-if="isHttpUrl(tournament.rules_url)" class="mb-6">
                     <h3 class="text-h6 mb-3">Rules</h3>
                     <v-btn
-                      :href="tournament.rules_url"
+                      :href="tournament.rules_url ?? undefined"
                       target="_blank"
+                      rel="noopener noreferrer"
                       variant="outlined"
                       prepend-icon="mdi-file-document"
                     >
@@ -103,7 +120,7 @@
                         </template>
                         <v-list-item-title>Participants</v-list-item-title>
                         <v-list-item-subtitle>
-                          {{ registrations.length }} / {{ tournament.max_participants }}
+                          {{ participantCount }} / {{ tournament.max_participants }}
                         </v-list-item-subtitle>
                       </v-list-item>
 
@@ -148,40 +165,94 @@
           <!-- Participants Tab -->
           <v-tabs-window-item value="participants">
             <v-card-text>
-              <v-data-table
-                :headers="participantHeaders"
-                :items="registrations"
-                :loading="loading"
-                density="comfortable"
-              >
-                <template v-slot:item.participant_logo_url="{ item }">
-                  <v-avatar size="32" rounded="sm">
-                    <v-img v-if="item.participant_logo_url" :src="item.participant_logo_url" />
-                    <v-icon v-else>mdi-account</v-icon>
-                  </v-avatar>
-                </template>
+              <div class="table-scroll">
+                <v-data-table
+                  :headers="participantHeaders"
+                  :items="registrations"
+                  :items-per-page="PARTICIPANTS_PER_PAGE"
+                  :loading="loading"
+                  density="comfortable"
+                >
+                  <template v-slot:item.participant_logo_url="{ item }">
+                    <v-avatar size="32" rounded="sm">
+                      <v-img alt="" v-if="item.participant_logo_url" :src="item.participant_logo_url" />
+                      <v-icon v-else>mdi-account</v-icon>
+                    </v-avatar>
+                  </template>
 
-                <template v-slot:item.participant_name="{ item }">
-                  <div class="font-weight-medium">{{ item.participant_name }}</div>
-                </template>
+                  <template v-slot:item.participant_name="{ item }">
+                    <div class="font-weight-medium">{{ item.participant_name }}</div>
+                  </template>
 
-                <template v-slot:item.seed="{ item }">
-                  <v-chip v-if="item.seed" size="small" variant="tonal">
-                    #{{ item.seed }}
-                  </v-chip>
-                  <span v-else class="text-grey">-</span>
-                </template>
+                  <template v-slot:item.status="{ item }">
+                    <v-chip size="small" variant="tonal" :color="registrationStatusColor(item.status)">
+                      {{ registrationStatusLabel(item.status) }}
+                    </v-chip>
+                  </template>
 
-                <template v-slot:item.checked_in="{ item }">
-                  <v-icon v-if="item.checked_in" color="success" size="small">mdi-check-circle</v-icon>
-                </template>
+                  <template v-slot:item.seed="{ item }">
+                    <v-chip v-if="item.seed" size="small" variant="tonal">
+                      #{{ item.seed }}
+                    </v-chip>
+                    <span v-else class="text-medium-emphasis">-</span>
+                  </template>
 
-                <template v-slot:no-data>
-                  <div class="text-center pa-4">
-                    <p class="text-grey">No participants registered yet</p>
-                  </div>
-                </template>
-              </v-data-table>
+                  <template v-slot:item.checked_in="{ item }">
+                    <v-icon v-if="item.checked_in" color="success" size="small">mdi-check-circle</v-icon>
+                  </template>
+
+                  <template v-if="isOrganizer" v-slot:item.actions="{ item }">
+                    <div v-if="item.status === 'pending'" class="d-flex ga-1">
+                      <v-btn
+                        size="small"
+                        color="success"
+                        variant="tonal"
+                        :loading="regActionLoadingId === item.id"
+                        :disabled="regActionLoadingId !== null && regActionLoadingId !== item.id"
+                        @click="handleApproveRegistration(item)"
+                      >
+                        Approve
+                      </v-btn>
+                      <v-btn
+                        size="small"
+                        color="error"
+                        variant="tonal"
+                        :disabled="regActionLoadingId !== null"
+                        @click="handleRejectRegistration(item)"
+                      >
+                        Reject
+                      </v-btn>
+                    </div>
+                    <span v-else class="text-medium-emphasis text-caption">-</span>
+                  </template>
+
+                  <template v-slot:no-data>
+                    <div class="text-center pa-4">
+                      <p class="text-medium-emphasis">No participants registered yet</p>
+                    </div>
+                  </template>
+
+                  <!-- Server-side pager. The list is paginated by the API, so
+                       without this the tab silently showed the first 20 rows of
+                       a 128-player event and offered no way to reach the rest —
+                       including, for an organiser, the pending rows that needed
+                       approving (P-167). -->
+                  <template v-slot:bottom>
+                    <div v-if="registrationsPagination.total_pages > 1" class="d-flex justify-center pa-4">
+                      <v-pagination
+                        :model-value="participantsPage"
+                        :length="registrationsPagination.total_pages"
+                        :total-visible="7"
+                        data-testid="participants-pagination"
+                        @update:model-value="goToParticipantsPage"
+                      />
+                    </div>
+                    <div class="text-center text-caption text-medium-emphasis pb-2">
+                      Showing {{ registrations.length }} of {{ registrationsPagination.total_items }} registrations
+                    </div>
+                  </template>
+                </v-data-table>
+              </div>
             </v-card-text>
           </v-tabs-window-item>
 
@@ -191,6 +262,7 @@
               <TournamentBracket
                 :brackets="brackets"
                 :matches="matches"
+                :highlight-registration-id="myRegistration?.id"
                 @match-click="openMatch"
               />
             </v-card-text>
@@ -214,11 +286,27 @@
                 </v-col>
               </v-row>
 
-              <div v-if="matches.length === 0" class="text-center pa-8">
-                <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-sword-cross</v-icon>
-                <h3 class="text-h6 mb-2">No Matches Yet</h3>
-                <p class="text-grey">Matches will appear here once the tournament starts.</p>
-              </div>
+              <EmptyState
+                v-if="matches.length === 0"
+                icon="mdi-sword-cross"
+                title="No Matches Yet"
+                subtitle="Matches will appear here once the tournament starts."
+                variant="text"
+              />
+            </v-card-text>
+          </v-tabs-window-item>
+
+          <!-- Awards Tab -->
+          <v-tabs-window-item value="awards">
+            <v-card-text>
+              <AwardsPanel scope-type="tournament" :scope-id="tournament.id" />
+            </v-card-text>
+          </v-tabs-window-item>
+
+          <!-- Stats Tab -->
+          <v-tabs-window-item value="stats">
+            <v-card-text>
+              <StatsLeaderboard scope="tournament" :scope-id="tournament.id" />
             </v-card-text>
           </v-tabs-window-item>
         </v-tabs-window>
@@ -226,29 +314,30 @@
     </template>
 
     <!-- Not Found -->
-    <v-card v-else-if="!loading" class="pa-8 text-center" variant="outlined">
-      <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-alert-circle</v-icon>
-      <h3 class="text-h6 mb-2">Tournament Not Found</h3>
-      <p class="text-grey mb-4">The tournament you're looking for doesn't exist or has been removed.</p>
-      <v-btn color="primary" :to="{ name: 'tournaments' }">
-        Browse Tournaments
-      </v-btn>
-    </v-card>
-
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="clearError">
-      {{ error }}
-    </v-alert>
-
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
+    <EmptyState
+      v-else-if="!loading"
+      icon="mdi-alert-circle"
+      title="Tournament Not Found"
+      subtitle="The tournament you're looking for doesn't exist or has been removed."
+    >
+      <template #action>
+        <v-btn color="primary" class="mt-4" :to="{ name: 'tournaments' }">
+          Browse Tournaments
+        </v-btn>
+      </template>
+    </EmptyState>
 
     <!-- Registration Modals -->
+    <!-- `registrations` here answers "which of MY teams are already in?", so it
+         is fed the caller's own rows, not a page of the tournament's list: past
+         row 20 the page sample missed the caller's registered team and offered
+         it again, and the API then rejected the duplicate with no explanation
+         (P-167). -->
     <TeamRegistrationModal
       v-if="tournament"
       v-model="showTeamRegistrationModal"
       :tournament="tournament"
-      :registrations="registrations"
+      :registrations="myRegistrations"
       @register="handleTeamRegister"
     />
 
@@ -258,22 +347,52 @@
       :tournament="tournament"
       @register="handlePlayerRegister"
     />
+
+    <TournamentEditModal
+      v-if="tournament"
+      v-model="editModalOpen"
+      :tournament="tournament"
+      @saved="fetchData"
+    />
   </v-container>
+  <ConfirmDialogHost :dialog="confirmDialog" />
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useGamesStore, type GameSummary } from '@/stores/games'
 import { useAuthStore } from '@/stores/auth'
-import { useTournamentsStore, type TournamentMatchResponse } from '@/stores/tournaments'
+import {
+  useTournamentsStore,
+  formatTournamentFormat,
+  formatSchedulingMode,
+  formatParticipantType,
+  participantTypeIcon,
+  type TournamentMatchResponse,
+} from '@/stores/tournaments'
+import { formatMatchFormat } from '@/utils/matchStatus'
 import TournamentHeader from '@/components/tournament/TournamentHeader.vue'
 import TournamentRegistrationCard from '@/components/tournament/TournamentRegistrationCard.vue'
+import OrganizerToolbar from '@/components/tournament/OrganizerToolbar.vue'
+import { useTournamentContext } from '@/composables/useTournamentContext'
 import TournamentBracket from '@/components/tournament/TournamentBracket.vue'
+import AwardsPanel from '@/components/awards/AwardsPanel.vue'
+import StatsLeaderboard from '@/components/awards/StatsLeaderboard.vue'
 import TournamentMatchCard from '@/components/tournament/TournamentMatchCard.vue'
 import TeamRegistrationModal from '@/components/tournament/TeamRegistrationModal.vue'
 import PlayerRegistrationModal from '@/components/tournament/PlayerRegistrationModal.vue'
+import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
+import { useActionFeedback } from '@/composables/useActionFeedback'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import { formatDateTime } from '@/utils/formatters'
+import { isHttpUrl } from '@/utils/urls'
+import { registrationStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 const route = useRoute()
 const router = useRouter()
@@ -282,22 +401,88 @@ const authStore = useAuthStore()
 const tournamentsStore = useTournamentsStore()
 const leagueTeamsStore = useLeagueTeamsStore()
 
+// Store-backed reactive refs (tournament must be resolved before useTournamentContext).
+const {
+  loading, error,
+  currentTournament: tournament,
+  registrations: allRegistrations,
+  myRegistrations, registrationCounts, registrationsPagination,
+  matches, brackets,
+} = storeToRefs(tournamentsStore)
+
+const {
+  isOrganizer, isTeamTournament, myRegistration, hasEligibleTeams, isInvited,
+  loadOrganizerRoles,
+} = useTournamentContext(tournament)
+
 // State
-const activeTab = ref('overview')
-const registering = ref(false)
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+const breadcrumbs = computed(() => {
+  const items: Array<{ title: string; to?: object; disabled?: boolean }> = [
+    { title: 'Tournaments', to: { name: 'tournaments' } },
+  ]
+  if (tournament.value?.league_id) {
+    items.unshift({
+      title: 'League',
+      to: { name: 'league-detail', params: { id: tournament.value.league_id } },
+    })
+  }
+  items.push({ title: tournament.value?.name ?? 'Tournament', disabled: true })
+  return items
+})
+
+// Tab is URL-addressable (?tab=bracket) so views can be deep-linked and
+// survive refresh — same pattern as LeaguesPage's filter sync.
+const VALID_TABS = ['overview', 'participants', 'bracket', 'matches', 'awards', 'stats']
+const initialTab = typeof route.query.tab === 'string' && VALID_TABS.includes(route.query.tab)
+  ? route.query.tab
+  : 'overview'
+const activeTab = ref(initialTab)
+
+watch(activeTab, (tab) => {
+  const current = route.query.tab ?? 'overview'
+  if (current === tab) return
+  router.replace({ query: { ...route.query, tab: tab === 'overview' ? undefined : tab } })
+})
+
+watch(() => route.query.tab, (tab) => {
+  const next = typeof tab === 'string' && VALID_TABS.includes(tab) ? tab : 'overview'
+  if (next !== activeTab.value) activeTab.value = next
+})
+const feedback = useActionFeedback()
+const confirmDialog = useConfirmDialog()
 const showTeamRegistrationModal = ref(false)
 const showPlayerRegistrationModal = ref(false)
+const editModalOpen = ref(false)
 
-// Computed
-const loading = computed(() => tournamentsStore.loading)
-const error = computed(() => tournamentsStore.error)
-const tournament = computed(() => tournamentsStore.currentTournament)
-const registrations = computed(() => tournamentsStore.registrations)
-const matches = computed(() => tournamentsStore.matches)
-const brackets = computed(() => tournamentsStore.brackets)
+// Aggregated loading signal for the registration panel — true whenever any
+// registration-related store action is in flight.
+const registering = computed(() =>
+  tournamentsStore.registerTeamState.loading
+    || tournamentsStore.registerPlayerState.loading
+    || tournamentsStore.withdrawState.loading
+    || tournamentsStore.checkInState.loading
+)
+/**
+ * The rows of the participants table.
+ *
+ * These are whatever page the server returned, unfiltered: the table is
+ * server-paginated now, so dropping rows client-side would make "page 3 of 7"
+ * a lie about a page it had already shrunk. Withdrawn and disqualified rows
+ * carry their status chip and are honest about themselves; the headline
+ * participant count uses the server's `participating` figure, which excludes
+ * them.
+ */
+const registrations = computed(() => allRegistrations.value)
+
+/**
+ * How many participants this tournament actually has (P-167).
+ *
+ * Was `registrations.length` — the size of ONE PAGE. A 64-slot tournament with
+ * 40 entrants rendered "20 / 64" in the overview, advertising 44 free slots
+ * that do not exist, and the tab badge agreed with it.
+ */
+const participantCount = computed(() => registrationCounts.value?.participating ?? 0)
+
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 const game = computed<GameSummary | undefined>(() => {
@@ -311,101 +496,63 @@ const showRegistrationCard = computed(() => {
   if (!tournament.value) return false
   const status = tournament.value.status
   // Show registration card for published tournaments onward (not drafts or completed/cancelled)
-  // Note: backend uses 'registration' not 'registration_open'
-  return ['published', 'registration', 'check_in', 'ready', 'in_progress'].includes(status)
+  return ['published', 'registration', 'scheduled', 'in_progress'].includes(status)
 })
 
-const isTeamTournament = computed(() => tournament.value?.participant_type === 'team')
+// Format helpers — delegated to the shared tournament formatters.
+const formatLabel = computed(() =>
+  tournament.value ? formatTournamentFormat(tournament.value.format) : ''
+)
+const matchFormatLabel = computed(() =>
+  tournament.value ? formatMatchFormat(tournament.value.default_match_format) : ''
+)
+const participantIcon = computed(() => participantTypeIcon(tournament.value?.participant_type))
+const participantTypeLabel = computed(() =>
+  tournament.value
+    ? formatParticipantType(tournament.value.participant_type, tournament.value.team_size)
+    : ''
+)
+const schedulingModeLabel = computed(() =>
+  tournament.value ? formatSchedulingMode(tournament.value.scheduling_mode) : ''
+)
 
-const myRegistration = computed(() => {
-  if (!authStore.playerId) return null
+// Registration action state
+const regActionLoadingId = ref<string | null>(null)
 
-  // For individual tournaments, check by player_id
-  if (!isTeamTournament.value) {
-    return registrations.value.find((r) => r.player_id === authStore.playerId)
-  }
+// Participants table paging. The API pages this list, so the page number is
+// state the page owns and refetches on — the previous version rendered page 1
+// and had no way to reach any other.
+const PARTICIPANTS_PER_PAGE = 20
+const participantsPage = ref(1)
 
-  // For team tournaments, check if any of user's teams is registered
-  const myTeamSeasonIds = leagueTeamsStore.myTeams.map((t) => t.team_season_id)
-  return registrations.value.find(
-    (r) => r.team_season_id && myTeamSeasonIds.includes(r.team_season_id) && r.status !== 'withdrawn'
-  )
-})
-
-// Format helpers
-const formatLabel = computed(() => {
-  if (!tournament.value) return ''
-  switch (tournament.value.format) {
-    case 'single_elimination':
-      return 'Single Elimination'
-    case 'double_elimination':
-      return 'Double Elimination'
-    case 'round_robin':
-      return 'Round Robin'
-    case 'swiss':
-      return 'Swiss'
-    case 'groups_and_playoffs':
-      return 'Groups & Playoffs'
-    default:
-      return tournament.value.format
-  }
-})
-
-const matchFormatLabel = computed(() => {
-  if (!tournament.value) return ''
-  switch (tournament.value.default_match_format) {
-    case 'bo1':
-      return 'Best of 1'
-    case 'bo3':
-      return 'Best of 3'
-    case 'bo5':
-      return 'Best of 5'
-    case 'bo7':
-      return 'Best of 7'
-    default:
-      return tournament.value.default_match_format
-  }
-})
-
-const participantIcon = computed(() => {
-  if (!tournament.value) return 'mdi-account'
-  return tournament.value.participant_type === 'team' ? 'mdi-account-group' : 'mdi-account'
-})
-
-const participantTypeLabel = computed(() => {
-  if (!tournament.value) return ''
-  if (tournament.value.participant_type === 'team') {
-    return `Teams (${tournament.value.team_size} players)`
-  }
-  return 'Individuals'
-})
-
-const schedulingModeLabel = computed(() => {
-  if (!tournament.value) return ''
-  switch (tournament.value.scheduling_mode) {
-    case 'live':
-      return 'Live Event'
-    case 'self_scheduled':
-      return 'Self-Scheduled'
-    case 'hybrid':
-      return 'Hybrid'
-    default:
-      return tournament.value.scheduling_mode
-  }
-})
+/**
+ * Paging is an explicit fetch rather than a watcher, so that resetting the page
+ * on a route change cannot fire a request for the tournament being navigated
+ * away from and clobber the new one's list.
+ */
+function goToParticipantsPage(page: number) {
+  participantsPage.value = page
+  const id = tournamentsStore.currentTournament?.id
+  if (id) tournamentsStore.fetchRegistrations(id, { page, per_page: PARTICIPANTS_PER_PAGE })
+}
 
 // Table headers
-const participantHeaders = [
-  { title: '', key: 'participant_logo_url', width: '50px', sortable: false },
-  { title: 'Participant', key: 'participant_name' },
-  { title: 'Seed', key: 'seed', width: '80px' },
-  { title: 'Checked In', key: 'checked_in', width: '100px' },
-]
+const participantHeaders = computed(() => {
+  const headers = [
+    { title: '', key: 'participant_logo_url', width: '50px', sortable: false },
+    { title: 'Participant', key: 'participant_name' },
+    { title: 'Status', key: 'status', width: '120px' },
+    { title: 'Seed', key: 'seed', width: '80px' },
+    { title: 'Checked In', key: 'checked_in', width: '100px' },
+  ]
+  if (isOrganizer.value) {
+    headers.push({ title: 'Actions', key: 'actions', width: '150px', sortable: false })
+  }
+  return headers
+})
 
-function formatDateTime(dateStr: string | null | undefined): string {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleString()
-}
+const registrationStatusColor = (status: string) => getStatusColor(registrationStatusMap, status)
+const registrationStatusLabel = (status: string) => getStatusLabel(registrationStatusMap, status)
 
 function clearError() {
   tournamentsStore.error = null
@@ -439,76 +586,123 @@ function handleRegister() {
 
 async function handleTeamRegister(teamSeasonId: string, participantName: string, participantLogoUrl?: string) {
   if (!tournament.value) return
-
-  registering.value = true
   showTeamRegistrationModal.value = false
-  try {
-    await tournamentsStore.registerTeam(tournament.value.id, {
+  await feedback.run(
+    () => tournamentsStore.registerTeam(tournament.value!.id, {
       team_season_id: teamSeasonId,
       participant_name: participantName,
       participant_logo_url: participantLogoUrl ?? null,
-    })
-    showSnackbar('Team registered successfully!', 'success')
-    await fetchData()
-  } catch {
-    showSnackbar(tournamentsStore.error || 'Failed to register team', 'error')
-  } finally {
-    registering.value = false
-  }
+    }),
+    {
+      success: 'Team registered successfully!',
+      failureFallback: 'Failed to register team',
+      errorSource: tournamentsStore,
+      after: fetchData,
+    },
+  )
 }
 
 async function handlePlayerRegister(participantName: string) {
   if (!tournament.value) return
-
-  registering.value = true
   showPlayerRegistrationModal.value = false
-  try {
-    await tournamentsStore.registerPlayer(tournament.value.id, {
+  await feedback.run(
+    () => tournamentsStore.registerPlayer(tournament.value!.id, {
       participant_name: participantName,
-    })
-    showSnackbar('Successfully registered!', 'success')
-    await fetchData()
-  } catch {
-    showSnackbar(tournamentsStore.error || 'Failed to register', 'error')
-  } finally {
-    registering.value = false
-  }
+    }),
+    {
+      success: 'Successfully registered!',
+      failureFallback: 'Failed to register',
+      errorSource: tournamentsStore,
+      after: fetchData,
+    },
+  )
 }
 
-async function handleWithdraw() {
+function handleWithdraw() {
   if (!tournament.value || !myRegistration.value) return
-
-  registering.value = true
-  try {
-    await tournamentsStore.withdrawFromTournament(tournament.value.id, myRegistration.value.id)
-    showSnackbar('Successfully withdrawn', 'success')
-    await fetchData()
-  } catch {
-    showSnackbar(tournamentsStore.error || 'Failed to withdraw', 'error')
-  } finally {
-    registering.value = false
-  }
+  confirmDialog.confirm({
+    title: 'Withdraw from Tournament',
+    message: `Withdraw from ${tournament.value.name}? Your registration is removed and your spot may be given to someone else.`,
+    action: 'Withdraw',
+    color: 'error',
+    handler: async () => {
+      await feedback.run(
+        () => tournamentsStore.withdrawFromTournament(tournament.value!.id, myRegistration.value!.id),
+        {
+          success: 'Successfully withdrawn',
+          failureFallback: 'Failed to withdraw',
+          errorSource: tournamentsStore,
+          after: fetchData,
+          rethrow: true,
+        },
+      )
+    },
+  })
 }
 
 async function handleCheckIn() {
   if (!tournament.value || !myRegistration.value) return
-
-  registering.value = true
-  try {
-    await tournamentsStore.checkIn(tournament.value.id, myRegistration.value.id)
-    showSnackbar('Successfully checked in!', 'success')
-    await fetchData()
-  } catch {
-    showSnackbar(tournamentsStore.error || 'Failed to check in', 'error')
-  } finally {
-    registering.value = false
-  }
+  await feedback.run(
+    () => tournamentsStore.checkIn(tournament.value!.id, myRegistration.value!.id),
+    {
+      success: 'Successfully checked in!',
+      failureFallback: 'Failed to check in',
+      errorSource: tournamentsStore,
+      after: fetchData,
+    },
+  )
 }
 
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
+// Organizer registration actions
+//
+// The counts are refetched after each decision: the pending badge is a server
+// figure now, so approving a registration has to ask the server again or the
+// badge sits at its old number (P-179 — reported against the previous,
+// client-counted version of the same badge).
+async function refreshRegistrationCounts() {
+  if (tournament.value) await tournamentsStore.fetchRegistrationCounts(tournament.value.id)
+}
+
+async function handleApproveRegistration(registration: { id: string; participant_name: string }) {
+  if (!tournament.value) return
+  regActionLoadingId.value = registration.id
+  await feedback.run(
+    () => tournamentsStore.approveRegistration(tournament.value!.id, registration.id),
+    {
+      success: `${registration.participant_name} approved`,
+      failureFallback: 'Failed to approve registration',
+      errorSource: tournamentsStore,
+      after: refreshRegistrationCounts,
+    },
+  )
+  regActionLoadingId.value = null
+}
+
+function handleRejectRegistration(registration: { id: string; participant_name: string }) {
+  if (!tournament.value) return
+  confirmDialog.confirm({
+    title: 'Reject Registration',
+    message: `Reject ${registration.participant_name}'s registration? They will not participate in this tournament.`,
+    action: 'Reject',
+    color: 'error',
+    handler: async () => {
+      regActionLoadingId.value = registration.id
+      try {
+        await feedback.run(
+          () => tournamentsStore.rejectRegistration(tournament.value!.id, registration.id),
+          {
+            success: `${registration.participant_name} rejected`,
+            failureFallback: 'Failed to reject registration',
+            errorSource: tournamentsStore,
+            after: refreshRegistrationCounts,
+            rethrow: true,
+          },
+        )
+      } finally {
+        regActionLoadingId.value = null
+      }
+    },
+  })
 }
 
 async function fetchData() {
@@ -518,11 +712,26 @@ async function fetchData() {
     if (tournamentsStore.currentTournament) {
       const id = tournamentsStore.currentTournament.id
       const fetchPromises: Promise<unknown>[] = [
-        tournamentsStore.fetchRegistrations(id),
+        // The visible page of the participants table — explicitly paged, and
+        // read ONLY as a table. Nothing is derived from it: identity and the
+        // counts come from the two self-scoped endpoints below, because
+        // deriving either from a page is what broke for every participant past
+        // row 20 (P-167).
+        tournamentsStore.fetchRegistrations(id, {
+          page: participantsPage.value,
+          per_page: PARTICIPANTS_PER_PAGE,
+        }),
+        tournamentsStore.fetchRegistrationCounts(id),
         tournamentsStore.fetchMatches(id),
         tournamentsStore.fetchBrackets(id),
         gamesStore.fetchGames(),
       ]
+
+      // "Am I registered?" — resolved server-side, so the answer does not
+      // depend on where the caller's row happens to sort (P-167).
+      if (authStore.isAuthenticated) {
+        fetchPromises.push(tournamentsStore.fetchMyRegistrations(id).catch(() => []))
+      }
 
       // Fetch user's teams for team tournaments when authenticated
       if (
@@ -530,6 +739,23 @@ async function fetchData() {
         authStore.isAuthenticated
       ) {
         fetchPromises.push(leagueTeamsStore.fetchMyTeams())
+      }
+
+      // Load organizer roles for non-admin users
+      if (authStore.isAuthenticated) {
+        fetchPromises.push(loadOrganizerRoles())
+      }
+
+      // P-51: for invite-only tournaments, load the invite list so the
+      // registration card knows whether THIS viewer is invited. The endpoint
+      // self-scopes — a non-organiser receives only their own invitation — so
+      // this is safe to call for any authenticated viewer. Non-critical:
+      // failure just falls back to the soft gate.
+      if (
+        tournamentsStore.currentTournament.registration_type === 'invite_only' &&
+        authStore.isAuthenticated
+      ) {
+        fetchPromises.push(tournamentsStore.fetchInvitations(id).catch(() => []))
       }
 
       await Promise.all(fetchPromises)
@@ -542,7 +768,12 @@ async function fetchData() {
 // Watch for route changes
 watch(
   () => route.params.slug,
-  () => {
+  (slug) => {
+    // Param empties out while navigating away — don't fire a spurious fetch.
+    if (!slug) return
+    // A new tournament starts at page 1 of its participants, not at whatever
+    // page the previous one was left on.
+    participantsPage.value = 1
     fetchData()
   }
 )
@@ -551,3 +782,10 @@ onMounted(() => {
   fetchData()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

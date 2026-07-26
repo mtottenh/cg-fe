@@ -1,0 +1,22 @@
+---
+# Third-party roles from Ansible Galaxy. Install with:
+#     ansible-galaxy install -r requirements.yml
+#
+# We keep this list short on purpose — every external role is code you
+# don't control. Pin versions; upgrade deliberately.
+
+roles:
+  - name: geerlingguy.postgresql
+    version: "3.5.2"
+
+collections:
+  - name: community.general
+    version: ">=8.0.0"
+  - name: ansible.posix
+    version: ">=1.5.0"
+  # postgresql_user / postgresql_db modules used by roles/postgres.
+  - name: community.postgresql
+    version: ">=3.0.0"
+  # provision.yml — creates the Ubuntu 26.04 Linode (needs LINODE_TOKEN).
+  - name: linode.cloud
+    version: ">=0.30.0"

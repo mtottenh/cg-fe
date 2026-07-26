@@ -1,0 +1,69 @@
+---
+# Copy to vault.yml and `ansible-vault encrypt ansible/group_vars/all/vault.yml`.
+# The encrypted file goes in git; the vault password does not.
+
+# --- Postgres ---------------------------------------------------------------
+# Not strictly required — the Unix socket uses peer auth — but set it so
+# a password-based fallback (e.g. external tooling running as root) works.
+vault_postgres_password: "CHANGE_ME"
+
+# --- portal-api -------------------------------------------------------------
+# openssl rand -hex 32
+vault_jwt_secret: "CHANGE_ME_at_least_32_bytes"
+
+# --- Linode Object Storage --------------------------------------------------
+# Same key pair is fine for evidence + demos + backups if bucket policies
+# are distinct. Split them if you want tighter blast radius.
+vault_linode_access_key: "CHANGE_ME"
+vault_linode_secret_key: "CHANGE_ME"
+
+# --- Internal API key used by the scanner to call back into the API -------
+# Mint one with the portal CLI (api-keys create) or reuse a rotated key.
+vault_portal_scanner_api_key: "cgp_CHANGE_ME"
+
+# --- Steam Web API key ------------------------------------------------------
+# https://steamcommunity.com/dev/apikey — used by Steam sign-in for
+# persona/avatar enrichment. The key on the old cs210mans box is considered
+# exposed (see docs/deployment-cs210mans-audit.md) — issue a fresh one.
+vault_steam_api_key: "CHANGE_ME"
+
+# --- Steam bots (cs2-poller + cs2-enricher) ---------------------------------
+# Only required when portal_steam_bot_enabled=true.
+# API key the bots authenticate to the portal with (mint via the portal CLI).
+vault_steam_bot_api_key: "cgp_CHANGE_ME"
+# Dedicated Steam bot account for the enricher's Game Coordinator login —
+# NOT a personal account. Needs CS2 in its library and ideally Prime.
+vault_steam_bot_username: "CHANGE_ME"
+vault_steam_bot_password: "CHANGE_ME"
+# Steam Guard TOTP shared secret (base64) for unattended 2FA login.
+vault_steam_bot_shared_secret: "CHANGE_ME"
+# (The poller's STEAM_WEB_API_KEY reuses vault_steam_api_key above.)
+
+# --- Monitoring (only required when monitoring_enabled=true) ----------------
+# Grafana admin login at https://grafana.<domain>. Applied on Grafana's
+# FIRST start only (it seeds the admin user in grafana.db); to change it
+# later run `grafana-cli admin reset-admin-password` on the box.
+vault_grafana_admin_password: "CHANGE_ME"
+# Optional webhook Grafana alerts POST to (healthchecks.io / ntfy / any
+# URL that accepts a POST — same provider family as backup_healthcheck_url).
+# Leave "" to keep alerts visible in the Grafana UI only.
+vault_alert_webhook_url: ""
+# Only required when monitoring_ingress=tailnet AND the box has not joined
+# the tailnet yet: a pre-authorized key from the Tailscale admin console
+# (Settings → Keys → "Auth keys"; single-use is fine — re-converges skip
+# `tailscale up` once the node is joined, even after the key expires).
+vault_tailscale_auth_key: "tskey-auth-CHANGE_ME"
+
+# --- Game-server hosts (only required when the gameservers group has hosts) -
+# RCON password per game host, keyed by INVENTORY HOSTNAME. The CS2 server
+# must run with -usercon and this password; the agent drives MatchZy with it.
+# vault_gameserver_rcon_passwords:
+#   cs2-lon-1: "CHANGE_ME"
+
+# --- Optional per-service S3 credential overrides ---------------------------
+# The scanner and the demo-stats service default to the vault_linode_* pair
+# above. Uncomment to give them their own keys (tighter blast radius).
+# vault_scanner_s3_access_key: "CHANGE_ME"
+# vault_scanner_s3_secret_key: "CHANGE_ME"
+# vault_demo_stats_s3_access_key: "CHANGE_ME"
+# vault_demo_stats_s3_secret_key: "CHANGE_ME"

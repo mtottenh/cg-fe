@@ -1,0 +1,124 @@
+---
+# Postgres {{ postgres_version }} from the PGDG apt repo. Ubuntu 24.04
+# shipped Postgres 16 in main, but newer releases (Ubuntu 26.04) ship a
+# newer default — pinning the major version through PGDG keeps the same
+# postgresql-16 package name working on Ubuntu 24.04/26.04 and Debian 12
+# alike, and keeps the DB major version an explicit choice (upgrades are
+# a pg_upgrade exercise, not an apt side effect).
+#
+# Defense-in-depth (socket-only — no TCP listener; see vars.yml):
+#   1. listen_addresses = ''            — the daemon binds NO TCP port,
+#                                         only the /var/run/postgresql socket.
+#   2. pg_hba.conf allows local socket + 127.0.0.1/32 only (the loopback
+#      host rules are a scram-guarded fallback if TCP is ever re-enabled).
+#   3. ufw blocks 5432 anyway (base role, default deny).
+#   4. systemd drop-in: IPAddressDeny=any + IPAddressAllow=localhost.
+
+- name: PGDG apt repo
+  block:
+    - name: /etc/apt/keyrings exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: PGDG signing key
+      ansible.builtin.get_url:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        dest: /etc/apt/keyrings/pgdg.asc
+        mode: "0644"
+
+    - name: PGDG apt source
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/pgdg.list
+        mode: "0644"
+        content: |
+          deb [signed-by=/etc/apt/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main
+
+- name: Install Postgres {{ postgres_version }}
+  ansible.builtin.apt:
+    update_cache: true
+    name:
+      - "postgresql-{{ postgres_version }}"
+      - "postgresql-contrib-{{ postgres_version }}"
+    state: present
+
+- name: Restrict Postgres TCP listeners (empty = socket-only, no TCP)
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    regexp: '^\s*#?\s*listen_addresses\s*='
+    line: "listen_addresses = '{{ postgres_listen_addresses }}'"
+    validate: /bin/true
+  notify: restart postgres
+
+- name: pg_hba — local socket + loopback only
+  ansible.builtin.copy:
+    dest: "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+    content: |
+      # Managed by Ansible. Do not edit by hand.
+      # TYPE  DATABASE   USER        ADDRESS         METHOD
+      local   all        postgres                    peer
+      local   all        all                         peer
+      host    all        all         127.0.0.1/32    scram-sha-256
+      host    all        all         ::1/128         scram-sha-256
+  notify: restart postgres
+
+# -----------------------------------------------------------------------------
+# systemd drop-in: belt-and-braces network isolation. Even if Postgres
+# somehow tried to bind publicly, the kernel would refuse the packets
+# because the cgroup's eBPF filter rejects non-loopback.
+# -----------------------------------------------------------------------------
+- name: postgresql.service — drop-in dir
+  ansible.builtin.file:
+    path: /etc/systemd/system/postgresql@{{ postgres_version }}-main.service.d
+    state: directory
+    mode: "0755"
+
+- name: postgresql.service — IPAddress{Allow,Deny}
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/postgresql@{{ postgres_version }}-main.service.d/10-network.conf
+    mode: "0644"
+    content: |
+      # Only loopback traffic. systemd's eBPF filter rejects anything else.
+      [Service]
+      IPAddressDeny=any
+      IPAddressAllow=localhost
+      RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+  notify:
+    - daemon-reload
+    - restart postgres
+
+- name: Ensure Postgres is running
+  ansible.builtin.systemd:
+    name: "postgresql@{{ postgres_version }}-main"
+    enabled: true
+    state: started
+
+# -----------------------------------------------------------------------------
+# Role + database. Using peer auth — the portal unix user (created by the
+# portal-api deb's postinst) maps to the portal Postgres role via
+# pg_ident.conf default ("user foo = role foo"). No password on the wire.
+# -----------------------------------------------------------------------------
+- name: Ensure portal role exists
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ postgres_user }}"
+    password: "{{ vault_postgres_password }}"
+    role_attr_flags: "LOGIN"
+    state: present
+
+- name: Ensure portal_prod DB exists
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ postgres_db }}"
+    owner: "{{ postgres_user }}"
+    encoding: UTF-8
+    lc_collate: C.UTF-8
+    lc_ctype: C.UTF-8
+    template: template0
+    state: present

@@ -1,5 +1,5 @@
 <template>
-  <v-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" max-width="500">
+  <v-dialog v-model="open" max-width="500" persistent>
     <v-card>
       <v-card-title class="d-flex align-center">
         <v-icon :color="isReject ? 'warning' : 'error'" class="mr-2">
@@ -14,7 +14,7 @@
         <!-- Participant Info -->
         <div v-if="registration" class="d-flex align-center mb-4">
           <v-avatar size="48" rounded="sm" class="mr-3">
-            <v-img v-if="registration.participant_logo_url" :src="registration.participant_logo_url" />
+            <v-img alt="" v-if="registration.participant_logo_url" :src="registration.participant_logo_url" />
             <v-icon v-else>mdi-account</v-icon>
           </v-avatar>
           <div>
@@ -79,51 +79,33 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import type { TournamentRegistrationResponse } from '@/stores/tournaments'
+import { useFormRules } from '@/composables/useFormRules'
+import { registrationStatusMap, getStatusColor as mapStatusColor } from '@/utils/statusMaps'
 
-const props = defineProps<{
-  modelValue: boolean
-  mode: 'reject' | 'disqualify'
+const props = defineProps<{  mode: 'reject' | 'disqualify'
   registration: TournamentRegistrationResponse | null
   loading?: boolean
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  confirm: [reason: string]
+const emit = defineEmits<{  confirm: [reason: string]
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const reason = ref('')
 
 const isReject = computed(() => props.mode === 'reject')
 
+const { required: _required, ...formRules } = useFormRules()
 const rules = {
+  ...formRules,
   required: (v: string) => !!v?.trim() || 'Reason is required',
 }
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'pending':
-      return 'warning'
-    case 'approved':
-      return 'success'
-    case 'checked_in':
-      return 'primary'
-    case 'active':
-      return 'info'
-    case 'rejected':
-    case 'disqualified':
-      return 'error'
-    case 'withdrawn':
-    case 'eliminated':
-    case 'no_show':
-      return 'grey'
-    default:
-      return 'grey'
-  }
-}
+const getStatusColor = (status: string) => mapStatusColor(registrationStatusMap, status)
 
 function close() {
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 function confirm() {
@@ -131,8 +113,7 @@ function confirm() {
 }
 
 // Reset reason when modal opens
-watch(
-  () => props.modelValue,
+watch(open,
   (isOpen) => {
     if (isOpen) {
       reason.value = ''

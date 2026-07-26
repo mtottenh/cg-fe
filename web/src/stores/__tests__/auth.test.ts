@@ -79,35 +79,10 @@ describe('Auth Store', () => {
       expect(store.isAuthenticated).toBe(false)
     })
 
-    it('should return false when token is dev-token', () => {
-      const store = useAuthStore()
-      store.enableDevMode()
-      expect(store.isAuthenticated).toBe(false)
-    })
-
     it('should return true when token is a valid JWT-like string', () => {
       const store = useAuthStore()
       store.setToken('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.signature')
       expect(store.isAuthenticated).toBe(true)
-    })
-  })
-
-  describe('isDevMode', () => {
-    it('should return false when token is null', () => {
-      const store = useAuthStore()
-      expect(store.isDevMode).toBe(false)
-    })
-
-    it('should return false when token is a regular token', () => {
-      const store = useAuthStore()
-      store.setToken('some-real-token')
-      expect(store.isDevMode).toBe(false)
-    })
-
-    it('should return true when token is dev-token', () => {
-      const store = useAuthStore()
-      store.enableDevMode()
-      expect(store.isDevMode).toBe(true)
     })
   })
 
@@ -139,6 +114,7 @@ describe('Auth Store', () => {
         id: '1',
         username: 'test',
         email: 'test@example.com',
+        auth_provider: 'local',
         created_at: '',
         updated_at: '',
         email_verified: true,
@@ -161,6 +137,7 @@ describe('Auth Store', () => {
         updated_at: '',
         social_links: {},
         steam_linked: false,
+        looking_for_team: false,
       }
       store.logout()
       expect(store.player).toBeNull()
@@ -171,32 +148,6 @@ describe('Auth Store', () => {
       store.setToken('token-to-remove')
       store.logout()
       expect(localStorageMock.removeItem).toHaveBeenCalledWith('token')
-    })
-  })
-
-  describe('enableDevMode', () => {
-    it('should set token to dev-token', () => {
-      const store = useAuthStore()
-      store.enableDevMode()
-      expect(store.token).toBe('dev-token')
-    })
-
-    it('should persist dev-token to localStorage', () => {
-      const store = useAuthStore()
-      store.enableDevMode()
-      expect(localStorageMock.setItem).toHaveBeenCalledWith('token', 'dev-token')
-    })
-
-    it('should make isDevMode return true', () => {
-      const store = useAuthStore()
-      store.enableDevMode()
-      expect(store.isDevMode).toBe(true)
-    })
-
-    it('should make isAuthenticated return false (dev mode is not real auth)', () => {
-      const store = useAuthStore()
-      store.enableDevMode()
-      expect(store.isAuthenticated).toBe(false)
     })
   })
 
@@ -216,14 +167,11 @@ describe('Auth Store', () => {
       expect(store.isAuthenticated).toBe(false)
     })
 
-    it('should transition from dev mode to authenticated when setting real token', () => {
+    it('should treat the legacy dev-token like any other opaque token (bypass removed)', () => {
       const store = useAuthStore()
-      store.enableDevMode()
-      expect(store.isDevMode).toBe(true)
-      expect(store.isAuthenticated).toBe(false)
-
-      store.setToken('real-jwt-token')
-      expect(store.isDevMode).toBe(false)
+      store.setToken('dev-token')
+      // No special-casing remains: a non-JWT string has no exp claim and is
+      // treated as authenticated client-side (server still rejects it).
       expect(store.isAuthenticated).toBe(true)
     })
   })

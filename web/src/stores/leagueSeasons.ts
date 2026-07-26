@@ -1,135 +1,69 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import { api, ApiError } from '@/api'
+import { ref, computed } from 'vue'
+import { api } from '@/api'
 import type { components } from '@/api/types'
+import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
+import { replaceById } from '@/utils/collections'
 
 // Use generated types
 type LeagueSeasonResponse = components['schemas']['LeagueSeasonResponse']
 type CreateLeagueSeasonRequest = components['schemas']['CreateLeagueSeasonRequest']
 type UpdateLeagueSeasonRequest = components['schemas']['UpdateLeagueSeasonRequest']
-type ApiErrorResponse = components['schemas']['ApiError']
 
 export const useLeagueSeasonsStore = defineStore('leagueSeasons', () => {
   const seasons = ref<LeagueSeasonResponse[]>([])
   const currentSeason = ref<LeagueSeasonResponse | null>(null)
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+
+  // Per-action states
+  const fetchSeasonsState = createActionState()
+  const createSeasonState = createActionState()
+  const updateSeasonState = createActionState()
+
+  // Computed aliases for backward compatibility
+  const loading = computed(() => fetchSeasonsState.loading)
+  const error = computed({
+    get: () => fetchSeasonsState.error,
+    set: (val: string | null) => { fetchSeasonsState.error = val },
+  })
 
   async function fetchSeasons(leagueId: string): Promise<LeagueSeasonResponse[]> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/league-seasons', {
+    return withActionState(fetchSeasonsState, async () => {
+      const result = await unwrapApi(api.GET('/v1/league-seasons', {
         params: { query: { league_id: leagueId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      seasons.value = data!.data
+      }))
+      seasons.value = result.data
       return seasons.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch seasons'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch seasons')
   }
 
-  async function fetchSeason(seasonId: string): Promise<LeagueSeasonResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/league-seasons/{season_id}', {
-        params: { path: { season_id: seasonId } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentSeason.value = data!.data
-      return currentSeason.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch season'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
-  }
+  // No single-season fetch here: P-67 retired it once as a superseded getter,
+  // P-148's lock resolution briefly revived it, and P-200 (the lock riding on
+  // the team-season response) killed its last consumer again. A dead action is
+  // the shape of an unwired feature — deleted rather than left ambiguous.
 
   async function createSeason(seasonData: CreateLeagueSeasonRequest): Promise<LeagueSeasonResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.POST('/v1/league-seasons', {
+    return withActionState(createSeasonState, async () => {
+      const result = await unwrapApi(api.POST('/v1/league-seasons', {
         body: seasonData,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const newSeason = data!.data
+      }))
+      const newSeason = result.data
       seasons.value = [...seasons.value, newSeason]
       currentSeason.value = newSeason
       return newSeason
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to create season'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to create season')
   }
 
   async function updateSeason(seasonId: string, seasonData: UpdateLeagueSeasonRequest): Promise<LeagueSeasonResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.PATCH('/v1/league-seasons/{season_id}', {
+    return withActionState(updateSeasonState, async () => {
+      const result = await unwrapApi(api.PATCH('/v1/league-seasons/{season_id}', {
         params: { path: { season_id: seasonId } },
         body: seasonData,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      const updatedSeason = data!.data
-      // Update in list if present
-      const index = seasons.value.findIndex(s => s.id === seasonId)
-      if (index !== -1) {
-        seasons.value[index] = updatedSeason
-      }
+      }))
+      const updatedSeason = result.data
+      replaceById(seasons.value, updatedSeason)
       currentSeason.value = updatedSeason
       return updatedSeason
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to update season'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to update season')
   }
 
   function clearCurrent() {
@@ -147,11 +81,14 @@ export const useLeagueSeasonsStore = defineStore('leagueSeasons', () => {
     loading,
     error,
     fetchSeasons,
-    fetchSeason,
     createSeason,
     updateSeason,
     clearCurrent,
     clearSeasons,
+    // Per-action states
+    fetchSeasonsState,
+    createSeasonState,
+    updateSeasonState,
   }
 })
 

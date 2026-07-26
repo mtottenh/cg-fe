@@ -1,14 +1,13 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="600"
     persistent
   >
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Edit Game: {{ game?.id }}</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -44,6 +43,7 @@
                 label="Sort Order"
                 type="number"
                 hint="Lower numbers appear first"
+                :rules="[rules.required, wholeNumber]"
                 variant="outlined"
                 density="comfortable"
               />
@@ -108,29 +108,18 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { ApiError } from '@/api'
+import { api, ApiError } from '@/api'
+import { unwrapApi } from '@/stores/helpers/apiAction'
+import type { GameSummary } from '@/stores/games'
+import { useFormRules } from '@/composables/useFormRules'
 
-// Game summary type
-interface GameSummary {
-  id: string
-  display_name: string
-  short_name: string | null
-  description: string | null
-  icon_url: string | null
-  team_size_default: number
-  status: string
-  is_featured: boolean
-}
-
-const props = defineProps<{
-  modelValue: boolean
-  game: GameSummary | null
+const props = defineProps<{  game: GameSummary | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  saved: [game: GameSummary]
+const emit = defineEmits<{  saved: [game: GameSummary]
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const formRef = ref()
 const formValid = ref(false)
@@ -146,20 +135,15 @@ const form = ref({
   sort_order: 0,
 })
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const rules = useFormRules()
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Max ${max} characters`,
-  url: (v: string) => {
-    if (!v) return true
-    try {
-      new URL(v)
-      return true
-    } catch {
-      return 'Must be a valid URL'
-    }
-  },
+/**
+ * `v-model.number` leaves a value it cannot parse as the raw string, so a
+ * cleared field arrives here as `''` and a half-typed one as `'-'`. Both would
+ * be sent verbatim and 400. `rules.required` rejects `''`; this rejects the rest.
+ */
+function wholeNumber(v: unknown) {
+  return (typeof v === 'number' && Number.isInteger(v)) || 'Must be a whole number'
 }
 
 // Watch for game changes to populate form
@@ -171,14 +155,17 @@ watch(() => props.game, (newGame) => {
       description: newGame.description || '',
       icon_url: newGame.icon_url || '',
       is_featured: newGame.is_featured,
-      sort_order: 0,
+      // P-90: this used to be a hardcoded `0`, because `GameSummaryResponse`
+      // carried no `sort_order` — so the field showed every game a number that
+      // was not its own (cs2 is 1, aoe4 is 2). The DTO now returns it.
+      sort_order: newGame.sort_order,
     }
   }
 }, { immediate: true })
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function save() {
@@ -206,7 +193,11 @@ async function save() {
     if (form.value.is_featured !== props.game.is_featured) {
       body.is_featured = form.value.is_featured
     }
-    if (form.value.sort_order !== 0) {
+    // P-90: the old guard was `!== 0`, a workaround for the fabricated seed
+    // above — it kept the modal from writing a phantom 0 over the real order,
+    // at the cost of making 0 unsettable for every game. Now that the field is
+    // seeded from the actual value, "changed" is the honest test.
+    if (form.value.sort_order !== props.game.sort_order) {
       body.sort_order = form.value.sort_order
     }
 
@@ -216,32 +207,24 @@ async function save() {
       return
     }
 
-    const response = await fetch(`${API_URL}/v1/games/${props.game.id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify(body),
-    })
+    const result = await unwrapApi(api.PATCH('/v1/games/{game_id}', {
+      params: { path: { game_id: props.game.id } },
+      body,
+    }))
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to update game')
-    }
-
-    const result = await response.json()
-
+    const detail = result.data
     // Convert GameDetailResponse to GameSummary format
     const updatedGame: GameSummary = {
-      id: result.data.id,
-      display_name: result.data.display_name,
-      short_name: result.data.short_name,
-      description: result.data.description,
-      icon_url: result.data.icon_url,
-      team_size_default: result.data.team_size?.default || props.game.team_size_default,
-      status: result.data.status,
-      is_featured: result.data.is_featured,
+      id: detail.id,
+      display_name: detail.display_name,
+      short_name: detail.short_name,
+      slug: detail.slug || props.game!.slug,
+      description: detail.description,
+      icon_url: detail.icon_url,
+      team_size_default: detail.team_size?.default || props.game!.team_size_default,
+      status: detail.status,
+      is_featured: detail.is_featured,
+      sort_order: detail.sort_order,
     }
 
     emit('saved', updatedGame)

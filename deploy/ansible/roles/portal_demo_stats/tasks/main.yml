@@ -1,0 +1,88 @@
+---
+# Install/upgrade the portal-demo-stats deb (self-hosted CS2 demo parser —
+# replaces the external demos.cs210mans.uk dependency) and render its env
+# file. The deb's postinst creates the `portal` user and
+# /var/lib/portal-demo-stats/{demos,stats}; this role ships the artifact
+# and the config.
+#
+# The portal API reaches it via CS2_DEMO_SERVICE_URL. In prod that URL must
+# be https and non-private per the API's SSRF validation — front this
+# service with Caddy (e.g. demos.<your-domain> → localhost:3100) rather
+# than pointing the API at localhost directly.
+
+- name: Check whether portal-demo-stats is already installed
+  ansible.builtin.command: dpkg-query -W -f='${Status}' portal-demo-stats
+  register: portal_demo_stats_pkg
+  changed_when: false
+  failed_when: false
+
+- name: Assert we have a deb to install (or an existing install to configure)
+  ansible.builtin.assert:
+    that:
+      - (portal_demo_stats_deb_path | default('') | length > 0)
+        or ('install ok installed' in portal_demo_stats_pkg.stdout)
+    fail_msg: >-
+      portal-demo-stats is not installed and no deb was provided — pass
+      -e portal_demo_stats_deb_path=/path/to/portal-demo-stats_X.Y.Z_amd64.deb
+      (built in the sibling demo-stats-service repo; see `just deploy-demo-stats`).
+
+- name: Copy portal-demo-stats deb to target
+  ansible.builtin.copy:
+    src: "{{ portal_demo_stats_deb_path }}"
+    dest: "/tmp/{{ portal_demo_stats_deb_path | basename }}"
+    mode: "0644"
+  when: portal_demo_stats_deb_path | default('') | length > 0
+
+- name: Install the portal-demo-stats deb
+  ansible.builtin.apt:
+    deb: "/tmp/{{ portal_demo_stats_deb_path | basename }}"
+    state: present
+    # Rollback IS a deploy: an older deb must not be refused
+    # ("a later version is already installed").
+    allow_downgrade: true
+  when: portal_demo_stats_deb_path | default('') | length > 0
+  notify: restart portal-demo-stats
+
+- name: Remove the copied deb from /tmp
+  ansible.builtin.file:
+    path: "/tmp/{{ portal_demo_stats_deb_path | basename }}"
+    state: absent
+  when: portal_demo_stats_deb_path | default('') | length > 0
+
+- name: Render /etc/portal/demo-stats.env from vault
+  ansible.builtin.template:
+    src: demo-stats.env.j2
+    dest: /etc/portal/demo-stats.env
+    owner: root
+    group: portal
+    mode: "0640"
+  notify: restart portal-demo-stats
+
+- name: Ensure portal-demo-stats is running
+  ansible.builtin.systemd:
+    name: portal-demo-stats
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# -----------------------------------------------------------------------------
+# Health gate — a deploy that leaves the parser dead must fail the play.
+# Handlers are flushed first so we probe the NEW binary.
+# -----------------------------------------------------------------------------
+- name: Flush pending restarts before probing
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for portal-demo-stats to bind :{{ demo_stats_port | default(3100) }}
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ demo_stats_port | default(3100) }}"
+    timeout: 60
+
+- name: portal-demo-stats /health answers 200
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ demo_stats_port | default(3100) }}/health"
+    status_code: 200
+  register: portal_demo_stats_health
+  retries: 6
+  delay: 5
+  until: portal_demo_stats_health.status == 200

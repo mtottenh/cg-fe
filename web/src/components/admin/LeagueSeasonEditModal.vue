@@ -1,14 +1,13 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="600"
     persistent
   >
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Edit Season: {{ season?.name }}</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -99,6 +98,7 @@
 
             <v-col cols="6">
               <v-select
+          aria-label="Status"
                 v-model="form.status"
                 :items="statusOptions"
                 item-title="label"
@@ -111,6 +111,7 @@
 
             <v-col cols="6">
               <v-select
+          aria-label="Roster Lock"
                 v-model="form.roster_lock_status"
                 :items="rosterLockOptions"
                 item-title="label"
@@ -118,6 +119,8 @@
                 label="Roster Lock"
                 variant="outlined"
                 density="comfortable"
+                :hint="rosterLockMeaning"
+                persistent-hint
               />
             </v-col>
           </v-row>
@@ -148,43 +151,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api'
+import { useFormRules } from '@/composables/useFormRules'
+import { getStatusLabel, seasonStatusMap } from '@/utils/statusMaps'
+import { rosterLockLabel } from '@/utils/rosterLock'
+import {
+  useLeagueSeasonsStore,
+  type LeagueSeasonResponse,
+  type UpdateLeagueSeasonRequest,
+} from '@/stores/leagueSeasons'
 
-interface LeagueSeason {
-  id: string
-  league_id: string
-  name: string
-  slug: string
-  description: string | null
-  status: string
-  registration_start: string | null
-  registration_end: string | null
-  season_start: string | null
-  season_end: string | null
-  team_size_min: number | null
-  team_size_max: number | null
-  max_substitutes: number | null
-  max_teams: number | null
-  roster_lock_status: string
-  created_by: string
-  created_at: string
-  updated_at: string
-}
+type LeagueSeason = LeagueSeasonResponse
+const leagueSeasonsStore = useLeagueSeasonsStore()
 
-const props = defineProps<{
-  modelValue: boolean
-  season: LeagueSeason | null
+const props = defineProps<{  season: LeagueSeason | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  saved: []
+const emit = defineEmits<{  saved: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const formRef = ref()
 const formValid = ref(false)
-const saving = ref(false)
+const saving = computed(() => leagueSeasonsStore.updateSeasonState.loading)
 const error = ref<string | null>(null)
 
 const form = ref({
@@ -199,37 +190,70 @@ const form = ref({
   roster_lock_status: 'open',
 })
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+// ---------------------------------------------------------------------------
+// Option lists (COVERAGE-PLAN §9b P-17)
+//
+// Both lists offered values the API rejects with 400. `registration_open`,
+// `registration_closed` and `in_progress` are not season statuses — the CHECK
+// constraint and `SeasonStatus` permit draft / registration / active /
+// playoffs / completed / cancelled
+// (api/migrations/0025_league_teams_and_seasons.sql:61) — and `'locked'` is not
+// a `RosterLockStatus` (`:69`), so picking it produced
+// 400 "Invalid roster lock status" (portal-api/src/dto/requests/league_team.rs:211-217).
+//
+// Labels are pulled from the shared maps rather than re-typed, so this control
+// and the Seasons table speak with one voice.
+// ---------------------------------------------------------------------------
+// P-207: the options are the season's CURRENT status plus the transitions the
+// server says are legal (`allowed_status_transitions`, computed from
+// `SeasonStatus::allowed_transitions` — the same list the PATCH enforces since
+// P-199). Offering all six values made every chain-illegal pick a control
+// that 400s (the P-82 shape); deriving them client-side would hand-copy the
+// lifecycle rule (the P-15 shape). The server's answer is the option list.
+const statusOptions = computed(() => {
+  const current = props.season?.status
+  const allowed = props.season?.allowed_status_transitions ?? []
+  const values = current ? [current, ...allowed] : allowed
+  return values.map((value) => ({
+    value,
+    label: getStatusLabel(seasonStatusMap, value),
+  }))
+})
 
-const statusOptions = [
-  { value: 'draft', label: 'Draft' },
-  { value: 'registration_open', label: 'Registration Open' },
-  { value: 'registration_closed', label: 'Registration Closed' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'cancelled', label: 'Cancelled' },
-]
+// P-14 is FIXED: `LeagueSeasonService::update_season` now forwards
+// `roster_lock_status` (by delegating to `update_roster_lock`, which also
+// stamps the `roster_locked_by` / `roster_locked_at` audit columns), so this
+// select is live. It used to be a silent no-op — the API accepted and validated
+// the field and then dropped it, which left every roster-lock check downstream
+// unreachable. The option list stays pinned to the three values the backend
+// enum actually declares (P-17).
+const ROSTER_LOCK_STATUSES = ['open', 'soft_lock', 'hard_lock'] as const
 
-const rosterLockOptions = [
-  { value: 'open', label: 'Open' },
-  { value: 'locked', label: 'Locked' },
-]
+const rosterLockOptions = ROSTER_LOCK_STATUSES.map((value) => ({
+  value,
+  label: rosterLockLabel(value) ?? 'Open',
+}))
+
+// P-148: this control is no longer decoration. It used to be ANDed with the
+// season's phase (`SeasonStatus::allows_roster_changes()` — draft/registration
+// only), so once a season went live NOTHING could change a roster and the lock
+// had no say. The owner ruled that the lock is an optional, per-season
+// decision — "this is a casual league, so adding team members half way through
+// may be okay" — so the phase no longer votes and this select is the whole
+// rule. Which means an operator has to be able to read what each value does
+// without going to the source, hence the persistent hint.
+const ROSTER_LOCK_MEANING: Record<string, string> = {
+  open: 'Rosters can change freely, including mid-season, until the season is completed or cancelled.',
+  soft_lock: 'Substitutes only — captains and players are frozen.',
+  hard_lock: 'Frozen — no roster changes at all, including captaincy.',
+}
+
+const rosterLockMeaning = computed(
+  () => ROSTER_LOCK_MEANING[form.value.roster_lock_status] ?? '',
+)
 
 const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => !v || v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
-  slug: (v: string) => {
-    if (!v) return true
-    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(v)) {
-      return 'Must be lowercase letters, numbers, and hyphens'
-    }
-    return true
-  },
-  positiveNumber: (v: number | null) => {
-    if (v === null || v === undefined || v === 0) return true
-    return v > 0 || 'Must be positive'
-  },
+  ...useFormRules(),
   nonNegativeNumber: (v: number | null) => {
     if (v === null || v === undefined) return true
     return v >= 0 || 'Must be non-negative'
@@ -240,16 +264,16 @@ const rules = {
   },
 }
 
-watch(() => props.modelValue, (isOpen) => {
+watch(open, (isOpen) => {
   if (isOpen && props.season) {
     form.value = {
       name: props.season.name,
       slug: props.season.slug,
       description: props.season.description || '',
-      team_size_min: props.season.team_size_min,
-      team_size_max: props.season.team_size_max,
-      max_substitutes: props.season.max_substitutes,
-      max_teams: props.season.max_teams,
+      team_size_min: props.season.team_size_min ?? null,
+      team_size_max: props.season.team_size_max ?? null,
+      max_substitutes: props.season.max_substitutes ?? null,
+      max_teams: props.season.max_teams ?? null,
       status: props.season.status,
       roster_lock_status: props.season.roster_lock_status,
     }
@@ -259,75 +283,50 @@ watch(() => props.modelValue, (isOpen) => {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function save() {
   if (!formValid.value || !props.season) return
-
-  saving.value = true
   error.value = null
 
+  const body: UpdateLeagueSeasonRequest = {}
+
+  if (form.value.name !== props.season.name) body.name = form.value.name
+  if (form.value.slug !== props.season.slug) body.slug = form.value.slug
+  if (form.value.description !== (props.season.description || '')) {
+    body.description = form.value.description || null
+  }
+  if (form.value.team_size_min !== props.season.team_size_min) {
+    body.team_size_min = form.value.team_size_min
+  }
+  if (form.value.team_size_max !== props.season.team_size_max) {
+    body.team_size_max = form.value.team_size_max
+  }
+  if (form.value.max_substitutes !== props.season.max_substitutes) {
+    body.max_substitutes = form.value.max_substitutes
+  }
+  if (form.value.max_teams !== props.season.max_teams) {
+    body.max_teams = form.value.max_teams
+  }
+  if (form.value.status !== props.season.status) body.status = form.value.status
+  if (form.value.roster_lock_status !== props.season.roster_lock_status) {
+    body.roster_lock_status = form.value.roster_lock_status
+  }
+
+  if (Object.keys(body).length === 0) {
+    close()
+    return
+  }
+
   try {
-    const body: Record<string, unknown> = {}
-
-    if (form.value.name !== props.season.name) {
-      body.name = form.value.name
-    }
-    if (form.value.slug !== props.season.slug) {
-      body.slug = form.value.slug
-    }
-    if (form.value.description !== (props.season.description || '')) {
-      body.description = form.value.description || null
-    }
-    if (form.value.team_size_min !== props.season.team_size_min) {
-      body.team_size_min = form.value.team_size_min
-    }
-    if (form.value.team_size_max !== props.season.team_size_max) {
-      body.team_size_max = form.value.team_size_max
-    }
-    if (form.value.max_substitutes !== props.season.max_substitutes) {
-      body.max_substitutes = form.value.max_substitutes
-    }
-    if (form.value.max_teams !== props.season.max_teams) {
-      body.max_teams = form.value.max_teams
-    }
-    if (form.value.status !== props.season.status) {
-      body.status = form.value.status
-    }
-    if (form.value.roster_lock_status !== props.season.roster_lock_status) {
-      body.roster_lock_status = form.value.roster_lock_status
-    }
-
-    if (Object.keys(body).length === 0) {
-      close()
-      return
-    }
-
-    const response = await fetch(`${API_URL}/v1/league-seasons/${props.season.id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to update season')
-    }
-
+    await leagueSeasonsStore.updateSeason(props.season.id, body)
     emit('saved')
     close()
   } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to update season'
-    }
-  } finally {
-    saving.value = false
+    error.value = e instanceof ApiError
+      ? e.detail
+      : (leagueSeasonsStore.updateSeasonState.error ?? 'Failed to update season')
   }
 }
 </script>

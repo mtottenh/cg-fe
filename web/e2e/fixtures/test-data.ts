@@ -16,6 +16,22 @@ export function uniqueUsername(): string {
   return `testuser_${uniqueId()}`
 }
 
+/**
+ * CS2 competitive map pool, matching the game's seeded `default_map_pool`
+ * (migration 0018). `map_pool` is REQUIRED on tournament creation, so every
+ * fixture that creates a tournament must send one - import this rather than
+ * hand-rolling a list, so a pool change lands in exactly one place.
+ */
+export const CS2_MAP_POOL = [
+  'de_dust2',
+  'de_mirage',
+  'de_inferno',
+  'de_nuke',
+  'de_ancient',
+  'de_anubis',
+  'de_vertigo',
+]
+
 // Test user templates
 export const testUsers = {
   // Standard test user - use unique credentials each run
@@ -23,7 +39,12 @@ export const testUsers = {
     username: uniqueUsername(),
     email: uniqueEmail(),
     password: 'TestPassword123!',
-    display_name: 'Test Player',
+    // Must be unique, like the username and email. Registration does NOT enforce
+    // display-name uniqueness, but PATCH /v1/players/me DOES (409 "already
+    // taken") — so a shared 'Test Player' made every profile-save test after the
+    // first one fail. See COVERAGE-PLAN.md §9b P-5 for the product
+    // inconsistency this exposed.
+    display_name: `Test Player ${uniqueId()}`,
   }),
 
   // Admin user - seeded by Docker entrypoint via portal-cli bootstrap
@@ -31,6 +52,21 @@ export const testUsers = {
   admin: {
     username_or_email: process.env.E2E_ADMIN_EMAIL || 'admin@example.com',
     password: process.env.E2E_ADMIN_PASSWORD || 'AdminPassword123!',
+  },
+
+  // Second test player — fixed credentials for multi-player E2E flows
+  // Registered by global-setup.ts; used for match scheduling, result submission, invitations
+  player2: {
+    username: 'e2e_player2',
+    email: 'e2e_player2@example.com',
+    password: 'Player2Password123!',
+    display_name: 'E2E Player 2',
+  },
+
+  // Login credentials for player2
+  player2Login: {
+    username_or_email: 'e2e_player2@example.com',
+    password: 'Player2Password123!',
   },
 
   // Invalid credentials for negative tests

@@ -1,7 +1,7 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <div class="d-flex align-center mb-6">
-      <v-btn icon variant="text" class="mr-2" @click="$router.back()">
+      <v-btn aria-label="Back" icon variant="text" class="mr-2" @click="$router.back()">
         <v-icon>mdi-arrow-left</v-icon>
       </v-btn>
       <div>
@@ -44,7 +44,7 @@
     <!-- Quick Tips Card -->
     <v-card class="mt-6" variant="tonal" color="info">
       <v-card-text>
-        <div class="d-flex align-start gap-3">
+        <div class="d-flex align-start ga-3">
           <v-icon color="info">mdi-lightbulb-outline</v-icon>
           <div>
             <p class="text-subtitle-2 mb-1">Tips for setting availability:</p>

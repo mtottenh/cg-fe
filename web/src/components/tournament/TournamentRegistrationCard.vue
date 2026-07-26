@@ -87,6 +87,43 @@
             </div>
           </template>
 
+          <!-- Registration Open but no eligible teams -->
+          <template v-else-if="tournament.is_registration_open && isTeamTournament && hasEligibleTeams === false">
+            <v-chip color="info">
+              <v-icon start>mdi-information</v-icon>
+              No Eligible Teams
+            </v-chip>
+          </template>
+
+          <!-- Invite-only: registration is gated on an invite list this viewer
+               cannot read (see FINDING in the script block). The plain
+               "Register Team" / "Register Now" call to action is withheld so
+               nobody is invited to walk into a 403; what is offered instead
+               states its own precondition. -->
+          <template v-else-if="needsInvitation">
+            <!-- P-51: known-uninvited -> hard block, no register affordance. -->
+            <div v-if="invitationHardBlock" class="text-right" data-testid="invite-only-gate">
+              <v-chip color="warning" size="large" data-testid="invitation-required-block">
+                <v-icon start>mdi-email-lock-outline</v-icon>
+                Not Invited
+              </v-chip>
+            </div>
+            <!-- Invite state not yet knowable -> soft conditional affordance. -->
+            <div v-else class="text-right" data-testid="invite-only-gate">
+              <v-btn
+                color="warning"
+                variant="tonal"
+                size="large"
+                :loading="loading"
+                data-testid="register-with-invitation"
+                @click="$emit('register')"
+              >
+                <v-icon start>mdi-email-check-outline</v-icon>
+                I Have an Invitation
+              </v-btn>
+            </div>
+          </template>
+
           <!-- Registration Coming Soon -->
           <template v-else-if="isRegistrationComingSoon">
             <v-chip color="info">
@@ -117,12 +154,31 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { TournamentResponse, TournamentRegistrationResponse } from '@/stores/tournaments'
+import { formatDateTime } from '@/utils/formatters'
 
-const props = defineProps<{
-  tournament: TournamentResponse
-  myRegistration: TournamentRegistrationResponse | null | undefined
-  loading?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    tournament: TournamentResponse
+    myRegistration: TournamentRegistrationResponse | null | undefined
+    loading?: boolean
+    hasEligibleTeams?: boolean
+    /**
+     * P-51: whether THIS viewer holds a pending invitation to an invite-only
+     * tournament. `true` -> the invite-only gate opens (register affordance).
+     * `false` -> hard block (the gate states the invitation is required and
+     * offers no register button — the prior soft P-47 behaviour let an uninvited
+     * caller click through to a guaranteed 403). `undefined` -> not knowable
+     * (not invite-only, or the invite list has not loaded); falls back to the
+     * old conditional affordance so nothing regresses when the signal is absent.
+     *
+     * `withDefaults(..., { isInvited: undefined })` is load-bearing: without it
+     * Vue's boolean-prop casting coerces an absent prop to `false`, which would
+     * silently turn every not-yet-known case into a hard block.
+     */
+    isInvited?: boolean
+  }>(),
+  { isInvited: undefined },
+)
 
 defineEmits<{
   register: []
@@ -131,12 +187,61 @@ defineEmits<{
 }>()
 
 const canRegister = computed(() => {
-  return props.tournament.is_registration_open && !props.myRegistration
+  if (!props.tournament.is_registration_open) return false
+  if (props.myRegistration) return false
+  if (isTeamTournament.value && props.hasEligibleTeams === false) return false
+  // Invite-only entry is conditional on an invite list. P-51: when the viewer's
+  // own invitation is known to exist (`isInvited === true`) the gate opens and
+  // the normal register affordance is offered. Otherwise `needsInvitation`
+  // renders either a hard block (known-uninvited) or the soft conditional
+  // affordance (invite state not yet knowable).
+  if (isInviteOnly.value) return props.isInvited === true
+  return true
 })
 
 const isTeamTournament = computed(() => {
   return props.tournament.participant_type === 'team'
 })
+
+const isInviteOnly = computed(() => props.tournament.registration_type === 'invite_only')
+
+/**
+ * Invite-only, registration open, and this viewer is not already in.
+ *
+ * FINDING (P-47 follow-up) — the invite state is NOT knowable here.
+ * All three invitation endpoints require `tournament.participants.manage`
+ * (`api/crates/portal-api/src/handlers/tournaments/registration.rs:118`, `:180`,
+ * `:225`), and no field on `TournamentResponse` carries the viewer's own
+ * invitation. A captain therefore cannot be told whether *they* are invited —
+ * only that an invitation is required. So this component does the one honest
+ * thing available: it withholds the unconditional "Register" call to action
+ * (which promised entry it cannot deliver — the P-8 dead-end family) and
+ * offers an explicitly conditional one instead, with the precondition stated
+ * before the click rather than as a 403 afterwards.
+ *
+ * P-51 RESOLUTION — the invite state IS now knowable: `list_invitations`
+ * self-scopes, so `isInvited` tells this component whether the viewer holds an
+ * invitation. When `isInvited === true`, `canRegister` opens and this gate does
+ * not render. When `isInvited === false`, the gate is a HARD block (no register
+ * button — see `invitationHardBlock`). When `isInvited === undefined` (invite
+ * list not loaded), it degrades to the original soft conditional affordance.
+ */
+const needsInvitation = computed(() => {
+  if (!isInviteOnly.value) return false
+  if (!props.tournament.is_registration_open) return false
+  if (props.myRegistration) return false
+  if (isTeamTournament.value && props.hasEligibleTeams === false) return false
+  // A known invitation is handled by `canRegister`, not the gate.
+  if (props.isInvited === true) return false
+  return true
+})
+
+/**
+ * The viewer is definitively NOT invited (self-scoped invite list loaded and
+ * carried no invitation for them). The gate offers no register button at all —
+ * clicking through would be a guaranteed 403.
+ */
+const invitationHardBlock = computed(() => needsInvitation.value && props.isInvited === false)
 
 // Registration hasn't opened yet (tournament is published but registration not open)
 const isRegistrationComingSoon = computed(() => {
@@ -150,14 +255,14 @@ const canCheckIn = computed(() => {
 const canWithdraw = computed(() => {
   if (!props.myRegistration) return false
   const status = props.tournament.status
-  // Note: backend uses 'registration' not 'registration_open'
-  return ['registration'].includes(status)
+  return ['registration', 'scheduled'].includes(status)
 })
 
 const cardColor = computed(() => {
   if (props.myRegistration?.checked_in) return 'success'
   if (props.myRegistration?.status === 'approved') return 'primary'
   if (props.myRegistration?.status === 'pending') return 'warning'
+  if (needsInvitation.value) return 'warning'
   if (props.tournament.is_registration_open) return 'success'
   if (isRegistrationComingSoon.value) return 'info'
   return 'grey'
@@ -167,6 +272,7 @@ const iconColor = computed(() => {
   if (props.myRegistration?.checked_in) return 'success'
   if (props.myRegistration?.status === 'approved') return 'primary'
   if (props.myRegistration?.status === 'pending') return 'warning'
+  if (needsInvitation.value) return 'warning'
   if (props.tournament.is_registration_open) return 'success'
   if (isRegistrationComingSoon.value) return 'info'
   return 'grey'
@@ -177,6 +283,7 @@ const icon = computed(() => {
   if (props.myRegistration?.status === 'approved' && canCheckIn.value) return 'mdi-checkbox-marked-circle-outline'
   if (props.myRegistration?.status === 'approved') return 'mdi-check'
   if (props.myRegistration?.status === 'pending') return 'mdi-clock-outline'
+  if (needsInvitation.value) return 'mdi-email-lock-outline'
   if (props.tournament.is_registration_open) return 'mdi-account-plus'
   if (isRegistrationComingSoon.value) return 'mdi-calendar-clock'
   return 'mdi-lock'
@@ -187,6 +294,7 @@ const title = computed(() => {
   if (props.myRegistration?.status === 'approved' && canCheckIn.value) return 'Check-in Now Open'
   if (props.myRegistration?.status === 'approved') return "You're Registered"
   if (props.myRegistration?.status === 'pending') return 'Registration Pending'
+  if (needsInvitation.value) return 'Invitation Required'
   if (props.tournament.is_registration_open) return 'Join This Tournament'
   if (isRegistrationComingSoon.value) return 'Registration Opens Soon'
   return 'Registration Closed'
@@ -197,6 +305,11 @@ const subtitle = computed(() => {
   if (props.myRegistration?.status === 'approved' && canCheckIn.value) return 'Check in now to confirm your participation'
   if (props.myRegistration?.status === 'approved') return 'Check-in will open before the tournament starts'
   if (props.myRegistration?.status === 'pending') return 'Your registration is awaiting admin approval'
+  if (needsInvitation.value) {
+    return isTeamTournament.value
+      ? 'This tournament is invite only. Only teams the organiser has invited can register — ask them for an invitation if you have not had one.'
+      : 'This tournament is invite only. Only players the organiser has invited can register — ask them for an invitation if you have not had one.'
+  }
   if (props.tournament.is_registration_open) {
     return isTeamTournament.value ? 'Register your team to compete' : 'Sign up now to compete'
   }
@@ -209,7 +322,4 @@ const subtitle = computed(() => {
   return 'Registration for this tournament has closed'
 })
 
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString()
-}
 </script>

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login, register, loginAsAdmin, clearAuthState } from './fixtures/auth.fixture'
+import { login, register, clearAuthState } from './fixtures/auth.fixture'
 import { testUsers } from './fixtures/test-data'
 
 test.describe('Authentication', () => {
@@ -33,8 +33,9 @@ test.describe('Authentication', () => {
       // Blur to trigger validation
       await page.getByRole('textbox', { name: 'Email' }).blur()
 
-      // Validation error should appear
-      await expect(page.getByText('Minimum 3 characters')).toBeVisible()
+      // Validation error should appear (useFormRules.minLength returns
+      // "Must be at least N characters").
+      await expect(page.getByText('Must be at least 3 characters')).toBeVisible()
     })
 
     test('should show validation error for invalid email', async ({ page }) => {
@@ -45,8 +46,8 @@ test.describe('Authentication', () => {
       await page.getByRole('textbox', { name: 'Email' }).fill('invalid-email')
       await page.getByRole('textbox', { name: 'Email' }).blur()
 
-      // Validation error should appear
-      await expect(page.getByText('Must be a valid email')).toBeVisible()
+      // Validation error should appear (useFormRules.email returns "Invalid email").
+      await expect(page.getByText('Invalid email')).toBeVisible()
     })
 
     test('should show validation error for short password', async ({ page }) => {
@@ -57,8 +58,8 @@ test.describe('Authentication', () => {
       await passwordInput.fill('short')
       await passwordInput.blur()
 
-      // Validation error should appear
-      await expect(page.getByText('Minimum 8 characters')).toBeVisible()
+      // Validation error should appear.
+      await expect(page.getByText('Must be at least 8 characters')).toBeVisible()
     })
 
     test('should show error for duplicate username', async ({ page }) => {
@@ -168,24 +169,33 @@ test.describe('Authentication', () => {
     })
 
     test('should redirect to intended page after login', async ({ page }) => {
-      // First register a user
+      // Register a user so we have working credentials, then drop the session
+      // so the auth guard actually fires on the next navigation.
       const userData = testUsers.standard()
       await register(page, userData)
+      await clearAuthState(page)
 
-      // Try to access a protected page (will redirect to login)
-      await page.goto('/tournaments')
-      const currentUrl = page.url()
+      // `/profile` is a genuinely protected route — `meta.requiresAuth: true`
+      // at src/router/index.ts:99-103. The guard at src/router/index.ts:240-243
+      // bounces unauthenticated visitors to `login` with `?redirect=<fullPath>`.
+      //
+      // This test previously targeted `/tournaments`, which is PUBLIC
+      // (src/router/index.ts:66-71) and was additionally visited while still
+      // authenticated — so no redirect ever happened, the `if (…/login…)` body
+      // never ran, and the test could not fail.
+      await page.goto('/profile')
+      await expect(page).toHaveURL(/\/login\?redirect=(%2F|\/)profile/)
 
-      // If redirected to login with redirect param
-      if (currentUrl.includes('/login')) {
-        // Login
-        await page.getByRole('textbox', { name: 'Username or Email' }).fill(userData.username)
-        await page.locator('input[type="password"]').first().fill(userData.password)
-        await page.getByRole('button', { name: 'Login' }).click()
+      // Log in from the page the guard sent us to.
+      await page.getByRole('textbox', { name: 'Username or Email' }).fill(userData.username)
+      await page.locator('input[type="password"]').first().fill(userData.password)
+      await page.getByRole('button', { name: 'Login' }).click()
 
-        // Should redirect to originally intended page
-        await expect(page).toHaveURL('/tournaments')
-      }
+      // LoginPage.handleSubmit pushes `query.redirect` (src/pages/LoginPage.vue:101-102),
+      // so we land on the originally intended page — not on `/`.
+      await expect(page).toHaveURL('/profile')
+      // …and the protected page really rendered (ProfilePage's edit link).
+      await expect(page.getByRole('link', { name: 'Edit Profile' })).toBeVisible()
     })
   })
 

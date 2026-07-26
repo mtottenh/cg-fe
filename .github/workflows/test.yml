@@ -1,0 +1,84 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  # Lets release-web.yml run this as its test gate (`uses: ./.github/workflows/test.yml`).
+  workflow_call:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Frontend unit tests
+  frontend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: cd web && npm ci
+
+      - name: Run unit tests
+        run: cd web && npm run test:run
+
+      # `npm run typecheck` uses `-p tsconfig.app.json`, the project config
+      # that includes src/**. The old `vue-tsc --noEmit` at repo root picked
+      # up the project-references root (with `files: []`) and typechecked
+      # nothing. The `build` job below already runs `vue-tsc -b` — this
+      # explicit step fails faster with a clearer error.
+      - name: Type check
+        run: cd web && npm run typecheck
+
+      # `lint` runs with --max-warnings 0: the warning backlog was cleared,
+      # so any new warning fails CI instead of quietly accumulating.
+      - name: Lint
+        run: cd web && npm run lint
+
+      # Ratchet against tests that CANNOT FAIL (visibility guards that skip the
+      # body exactly when the UI is broken, tautologies, or-assertions). Counts
+      # are baselined per file and may only decrease — see web/e2e/COVERAGE-PLAN.md.
+      - name: E2E test-quality ratchet
+        run: cd web && npm run test:quality
+
+  # NOTE: the backend (mtottenh/cg) is tested by its OWN repo CI (clippy, fmt,
+  # full test suite) and exercised end-to-end by e2e.yml here. This workflow
+  # deliberately covers only the frontend to avoid duplicating that — and the
+  # fragile cross-repo checkout it required.
+
+  # Build check (frontend)
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Frontend build
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd web && npm ci
+
+      - name: Build frontend
+        run: cd web && npm run build
+        env:
+          VITE_API_URL: http://localhost:3000

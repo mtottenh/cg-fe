@@ -5,7 +5,7 @@
       <span class="text-body-2 text-truncate flex-grow-1" :title="evidence.name">
         {{ evidence.name }}
       </span>
-      <v-btn
+      <v-btn aria-label="Remove evidence"
         v-if="!readonly"
         icon="mdi-close"
         size="x-small"

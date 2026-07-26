@@ -1,11 +1,5 @@
 <template>
-  <v-navigation-drawer
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
-    :rail="rail"
-    permanent
-    color="surface"
-  >
+  <v-navigation-drawer v-model="open" :rail="rail" permanent color="surface">
     <v-list density="compact" nav>
       <v-list-item
         prepend-icon="mdi-view-dashboard"
@@ -37,6 +31,31 @@
         :active="route.name?.toString().startsWith('admin-tournaments')"
       />
 
+      <v-list-subheader v-if="!rail">Content</v-list-subheader>
+
+      <v-list-item
+        prepend-icon="mdi-file-video"
+        title="Demos"
+        :to="{ name: 'admin-demos' }"
+        :active="route.name?.toString().startsWith('admin-demo')"
+      />
+
+      <v-list-item
+        prepend-icon="mdi-pipe"
+        title="Pipeline"
+        :to="{ name: 'admin-pipeline' }"
+        :active="route.name === 'admin-pipeline'"
+      />
+
+      <v-list-subheader v-if="!rail">Infrastructure</v-list-subheader>
+
+      <v-list-item
+        prepend-icon="mdi-server-network"
+        title="Game Servers"
+        :to="{ name: 'admin-game-servers' }"
+        :active="route.name?.toString().startsWith('admin-game-servers')"
+      />
+
       <v-list-subheader v-if="!rail">Players & Moderation</v-list-subheader>
 
       <v-list-item
@@ -51,6 +70,20 @@
         title="Bans"
         :to="{ name: 'admin-bans' }"
         :active="route.name?.toString().startsWith('admin-bans')"
+      />
+
+      <v-list-item
+        prepend-icon="mdi-alert-decagram"
+        title="Disputes"
+        :to="{ name: 'admin-disputes' }"
+        :active="route.name?.toString().startsWith('admin-disputes')"
+      />
+
+      <v-list-item
+        prepend-icon="mdi-clipboard-check"
+        title="Result Reviews"
+        :to="{ name: 'admin-result-reviews' }"
+        :active="route.name?.toString().startsWith('admin-result-reviews')"
       />
 
       <v-list-item
@@ -89,12 +122,12 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 
 defineProps<{
-  modelValue: boolean
   rail: boolean
 }>()
 
 defineEmits<{
-  'update:modelValue': [value: boolean]
   'update:rail': [value: boolean]
 }>()
+
+const open = defineModel<boolean>({ required: true })
 </script>

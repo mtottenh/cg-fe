@@ -4,12 +4,15 @@
       <h1 class="text-h4">All Teams</h1>
     </div>
 
+    <ErrorAlert :error="error" retryable @clear="error = null" @retry="fetchTeams()" />
+
     <!-- Filters -->
     <v-card class="mb-4">
       <v-card-text>
         <v-row>
           <v-col cols="12" md="4">
             <v-select
+          aria-label="Select League"
               v-model="selectedLeagueId"
               :items="myLeagues"
               item-title="league_name"
@@ -25,6 +28,7 @@
           </v-col>
           <v-col cols="12" md="4">
             <v-select
+          aria-label="Select Season"
               v-model="selectedSeasonId"
               :items="seasons"
               item-title="name"
@@ -59,97 +63,101 @@
     <v-card v-if="!selectedLeagueId" class="pa-8 text-center">
       <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-filter</v-icon>
       <h3 class="text-h6 mb-2">Select a League to View Teams</h3>
-      <p class="text-grey">Choose a league from the dropdown above, then select a season to see all teams.</p>
+      <p class="text-medium-emphasis">Choose a league from the dropdown above, then select a season to see all teams.</p>
     </v-card>
 
     <!-- League selected but no season -->
     <v-card v-else-if="!selectedSeasonId" class="pa-8 text-center">
       <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-calendar</v-icon>
       <h3 class="text-h6 mb-2">Select a Season</h3>
-      <p class="text-grey">Choose a season to view teams registered for that season.</p>
+      <p class="text-medium-emphasis">Choose a season to view teams registered for that season.</p>
     </v-card>
 
     <!-- Loading state -->
     <v-card v-else-if="loadingTeams && teams.length === 0" class="pa-8 text-center">
       <v-progress-circular indeterminate color="primary" size="48" />
-      <p class="text-grey mt-4">Loading teams...</p>
+      <p class="text-medium-emphasis mt-4">Loading teams...</p>
     </v-card>
 
     <!-- Teams Table -->
     <v-card v-else>
-      <v-data-table
-        :headers="headers"
-        :items="teams"
-        :loading="loadingTeams"
-        :items-per-page="20"
-        class="elevation-0"
-      >
-        <template v-slot:item.team_logo_url="{ item }">
-          <v-avatar size="36">
-            <v-img v-if="item.team_logo_url" :src="item.team_logo_url" />
-            <v-icon v-else>mdi-account-group</v-icon>
-          </v-avatar>
-        </template>
+      <div class="table-scroll">
+        <v-data-table
+          :headers="headers"
+          :items="teams"
+          :loading="loadingTeams"
+          :items-per-page="20"
+          class="elevation-0"
+        >
+          <template v-slot:item.team_logo_url="{ item }">
+            <v-avatar size="36">
+              <v-img alt="" v-if="item.team_logo_url" :src="item.team_logo_url" />
+              <v-icon v-else>mdi-account-group</v-icon>
+            </v-avatar>
+          </template>
 
-        <template v-slot:item.team_name="{ item }">
-          <div>
-            <div class="font-weight-medium">{{ item.team_name }}</div>
-            <div class="text-caption text-grey">[{{ item.team_tag }}]</div>
-          </div>
-        </template>
+          <template v-slot:item.team_name="{ item }">
+            <div>
+              <div class="font-weight-medium">{{ item.team_name }}</div>
+              <div class="text-caption text-medium-emphasis">[{{ item.team_tag }}]</div>
+            </div>
+          </template>
 
-        <template v-slot:item.team_status="{ item }">
-          <v-chip
-            :color="getStatusColor(item.team_status)"
-            size="small"
-            variant="flat"
-          >
-            {{ item.team_status }}
-          </v-chip>
-        </template>
+          <!--
+            The label used to be `{{ item.team_status }}` — the raw
+            `LeagueTeamStatus` enum — even though this file already imported
+            `teamStatusMap` and used its COLOR half. Same half-used-map defect
+            as P-10 on the admin registrations table.
+          -->
+          <template v-slot:item.team_status="{ item }">
+            <v-chip
+              :color="getStatusColor(item.team_status)"
+              size="small"
+              variant="flat"
+            >
+              {{ getStatusLabel(teamStatusMap, item.team_status) }}
+            </v-chip>
+          </template>
 
-        <template v-slot:item.active_member_count="{ item }">
-          {{ item.active_member_count }} members
-        </template>
+          <template v-slot:item.active_member_count="{ item }">
+            {{ item.active_member_count }} members
+          </template>
 
-        <template v-slot:item.actions="{ item }">
-          <v-btn
-            icon
-            size="small"
-            variant="text"
-            @click="viewTeamDetail(item)"
-            title="View Details"
-          >
-            <v-icon>mdi-eye</v-icon>
-          </v-btn>
-        </template>
+          <template v-slot:item.actions="{ item }">
+            <v-btn aria-label="View team details"
+              icon
+              size="small"
+              variant="text"
+              @click="viewTeamDetail(item)"
+              title="View Details"
+            >
+              <v-icon>mdi-eye</v-icon>
+            </v-btn>
+          </template>
 
-        <template v-slot:no-data>
-          <div class="text-center pa-8">
-            <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-group-outline</v-icon>
-            <p class="text-grey">No teams registered for this season</p>
-          </div>
-        </template>
+          <template v-slot:no-data>
+            <div class="text-center pa-8">
+              <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-group-outline</v-icon>
+              <p class="text-medium-emphasis">No teams registered for this season</p>
+            </div>
+          </template>
 
-        <template v-slot:bottom>
-          <div class="d-flex justify-center pa-4">
-            <v-pagination
-              v-model="currentPage"
-              :length="pagination.total_pages"
-              :total-visible="7"
-              @update:model-value="goToPage"
-            />
-          </div>
-          <div class="text-center text-caption text-grey pb-2">
-            Showing {{ teams.length }} of {{ pagination.total_items }} teams
-          </div>
-        </template>
-      </v-data-table>
+          <template v-slot:bottom>
+            <div class="d-flex justify-center pa-4">
+              <v-pagination
+                v-model="currentPage"
+                :length="pagination.total_pages"
+                :total-visible="7"
+                @update:model-value="goToPage"
+              />
+            </div>
+            <div class="text-center text-caption text-medium-emphasis pb-2">
+              Showing {{ teams.length }} of {{ pagination.total_items }} teams
+            </div>
+          </template>
+        </v-data-table>
+      </div>
     </v-card>
-
-    <v-alert v-if="error" type="error" class="mt-4" closable @click:close="error = null">
-      {{ error }}
-    </v-alert>
 
     <!-- Team Detail Modal -->
     <LeagueTeamDetailModal
@@ -167,6 +175,8 @@ import { useLeaguesStore, type UserLeagueMembership } from '@/stores/leagues'
 import { useLeagueSeasonsStore, type LeagueSeasonResponse } from '@/stores/leagueSeasons'
 import { useLeagueTeamsStore, type LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
 import LeagueTeamDetailModal from '@/components/admin/LeagueTeamDetailModal.vue'
+import { teamStatusMap, getStatusColor as mapStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import ErrorAlert from '@/components/ErrorAlert.vue'
 import type { components } from '@/api/types'
 
 type PaginationMeta = components['schemas']['PaginationMeta']
@@ -206,18 +216,7 @@ const headers = [
 ]
 
 // Helpers
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'active':
-      return 'success'
-    case 'inactive':
-      return 'grey'
-    case 'suspended':
-      return 'error'
-    default:
-      return 'grey'
-  }
-}
+const getStatusColor = (status: string) => mapStatusColor(teamStatusMap, status)
 
 // API calls
 async function fetchMyLeagues() {
@@ -229,7 +228,10 @@ async function fetchMyLeagues() {
       ADMIN_ROLES.includes(l.membership_type)
     )
   } catch {
-    error.value = leaguesStore.error || 'Failed to load leagues'
+    // P-124 (unlisted instance, same defect): `leaguesStore.error` is a
+    // computed alias over `fetchLeaguesState` (stores/leagues.ts:27) — the
+    // public league LIST — while the call that just failed is `fetchMyLeagues`.
+    error.value = leaguesStore.fetchMyLeaguesState.error || 'Failed to load leagues'
   } finally {
     loadingLeagues.value = false
   }
@@ -248,7 +250,12 @@ async function onLeagueChange() {
     await seasonsStore.fetchSeasons(selectedLeagueId.value)
     seasons.value = seasonsStore.seasons
   } catch {
-    error.value = seasonsStore.error || 'Failed to load seasons'
+    // P-124: this one was already correct — but only by coincidence, because
+    // `seasonsStore.error` happens to alias `fetchSeasonsState`, the action
+    // being called. Naming the state directly is what stops it becoming the
+    // next instance the day that alias is repointed, which is exactly how the
+    // other three reads in this file went wrong.
+    error.value = seasonsStore.fetchSeasonsState.error || 'Failed to load seasons'
   } finally {
     loadingSeasons.value = false
   }
@@ -271,7 +278,10 @@ async function fetchTeams(page = 1) {
     pagination.value = teamsStore.pagination
     currentPage.value = page
   } catch {
-    error.value = teamsStore.error || 'Failed to load teams'
+    // P-124: `teamsStore.error` aliases `fetchMyTeamsState` — the admin's own
+    // memberships, which this page never fetches — so a failed season-teams
+    // load showed the fallback while the real reason sat unread one field away.
+    error.value = teamsStore.fetchTeamsInSeasonState.error || 'Failed to load teams'
   } finally {
     loadingTeams.value = false
   }
@@ -290,3 +300,10 @@ onMounted(() => {
   fetchMyLeagues()
 })
 </script>
+
+<style scoped>
+/* Wide tables scroll within themselves; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

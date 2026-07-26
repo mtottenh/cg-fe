@@ -1,0 +1,44 @@
+# {{ ansible_managed }}
+# Overrides only — Grafana's built-in defaults.ini supplies the rest.
+
+[server]
+protocol = http
+http_addr = 127.0.0.1
+http_port = {{ monitoring_grafana_port }}
+{% if monitoring_ingress | default('public') == 'tailnet' %}
+# Reached over the operator tailnet only: Tailscale Serve terminates HTTPS
+# on the machine's ts.net name and proxies to this loopback port. There is
+# no public vhost and no DNS record.
+domain = {{ monitoring_tailnet_dnsname }}
+root_url = https://{{ monitoring_tailnet_dnsname }}/
+{% else %}
+domain = grafana.{{ portal_domain }}
+root_url = https://grafana.{{ portal_domain }}/
+{% endif %}
+
+[security]
+# Applied on FIRST start only (seeds the admin user in grafana.db). To
+# rotate later: grafana-cli admin reset-admin-password '<new>' on the box.
+admin_user = admin
+admin_password = {{ vault_grafana_admin_password }}
+cookie_secure = true
+
+[users]
+allow_sign_up = false
+allow_org_create = false
+
+# Operator-only (observability-design.md §8 default). Flip to enabled=true
+# org_role=Viewer if league admins ever need read-only dashboards.
+[auth.anonymous]
+enabled = false
+
+[analytics]
+reporting_enabled = false
+check_for_updates = false
+
+[news]
+news_feed_enabled = false
+
+# Grafana's own /metrics — scraped by the loopback Prometheus.
+[metrics]
+enabled = true

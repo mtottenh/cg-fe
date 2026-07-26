@@ -4,6 +4,7 @@
       <div class="d-flex align-center">
         <h3 class="text-h6 mr-4">Teams</h3>
         <v-select
+          aria-label="Season"
           :model-value="selectedSeasonId"
           @update:model-value="$emit('update:selected-season-id', $event)"
           :items="seasons"
@@ -44,7 +45,7 @@
     >
       <template v-slot:item.team_logo_url="{ item }">
         <v-avatar size="32" rounded="sm">
-          <v-img v-if="item.team_logo_url" :src="item.team_logo_url" />
+          <v-img :alt="item.team_name ?? ''" v-if="item.team_logo_url" :src="item.team_logo_url" />
           <v-icon v-else>mdi-shield</v-icon>
         </v-avatar>
       </template>
@@ -52,7 +53,7 @@
       <template v-slot:item.team_name="{ item }">
         <div>
           <div class="font-weight-medium">{{ item.team_name }}</div>
-          <div class="text-caption text-grey">[{{ item.team_tag }}]</div>
+          <div class="text-caption text-medium-emphasis">[{{ item.team_tag }}]</div>
         </div>
       </template>
 
@@ -76,7 +77,7 @@
             rounded
             style="max-width: 60px"
           />
-          <span class="ml-2 text-caption text-grey">
+          <span class="ml-2 text-caption text-medium-emphasis">
             / {{ item.team_size_max || '?' }}
           </span>
         </div>
@@ -93,7 +94,7 @@
       </template>
 
       <template v-slot:item.actions="{ item }">
-        <v-btn
+        <v-btn aria-label="Manage team"
           icon
           size="small"
           variant="text"
@@ -107,7 +108,7 @@
       <template v-slot:no-data>
         <div class="text-center pa-8">
           <v-icon size="48" color="grey-lighten-1">mdi-account-group-outline</v-icon>
-          <p class="text-grey mt-2">No teams registered for this season</p>
+          <p class="text-medium-emphasis mt-2">No teams registered for this season</p>
           <v-btn
             color="primary"
             variant="tonal"
@@ -124,46 +125,12 @@
 </template>
 
 <script setup lang="ts">
-interface LeagueSeason {
-  id: string
-  league_id: string
-  name: string
-  slug: string
-  description: string | null
-  status: string
-  registration_start: string | null
-  registration_end: string | null
-  season_start: string | null
-  season_end: string | null
-  team_size_min: number | null
-  team_size_max: number | null
-  max_substitutes: number | null
-  max_teams: number | null
-  roster_lock_status: string
-  created_by: string
-  created_at: string
-  updated_at: string
-}
+import type { LeagueSeasonResponse } from '@/stores/leagueSeasons'
+import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
+import { teamStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
-interface LeagueTeamSummary {
-  team_id: string
-  team_name: string
-  team_tag: string
-  team_logo_url: string | null
-  team_status: string
-  league_id: string
-  owner_player_id: string
-  season_id: string | null
-  team_season_id: string | null
-  season_status: string | null
-  roster_lock_status: string | null
-  team_size_min: number | null
-  team_size_max: number | null
-  active_member_count: number
-  captain_count: number
-  player_count: number
-  substitute_count: number
-}
+type LeagueSeason = LeagueSeasonResponse
+type LeagueTeamSummary = LeagueTeamSummaryResponse
 
 defineProps<{
   leagueId: string
@@ -189,19 +156,8 @@ const headers = [
   { title: 'Actions', key: 'actions', width: '80px', sortable: false, align: 'center' as const },
 ]
 
-function formatStatus(status: string): string {
-  return status.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ')
-}
-
-function getTeamStatusColor(status: string): string {
-  switch (status) {
-    case 'active': return 'success'
-    case 'inactive': return 'grey'
-    case 'disbanded': return 'error'
-    case 'pending': return 'warning'
-    default: return 'grey'
-  }
-}
+const formatStatus = (status: string) => getStatusLabel(teamStatusMap, status)
+const getTeamStatusColor = (status: string) => getStatusColor(teamStatusMap, status)
 
 function getRosterFillPercent(team: LeagueTeamSummary): number {
   if (!team.team_size_max) return 0

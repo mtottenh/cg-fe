@@ -4,9 +4,36 @@
  * Uses real admin authentication instead of dev-token.
  */
 
-import { testUsers } from './fixtures/test-data'
+import { writeFileSync, mkdirSync } from 'fs'
+import { dirname } from 'path'
+import { fileURLToPath } from 'url'
+import { testUsers, CS2_MAP_POOL } from './fixtures/test-data'
+import { SEEDED_STATE_PATH } from './seeded-state-path'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
+
+// `__dirname` is undefined in ESM scope (package.json has "type": "module").
+// Resolve the e2e directory from the module URL so the seeded-state file
+// lands next to this script regardless of working directory.
+const THIS_DIR = dirname(fileURLToPath(import.meta.url))
+
+/** Shared seeded state persisted for test specs */
+export interface SeededState {
+  adminToken: string
+  player2Token: string | null
+  player2Id: string | null
+  tournamentId: string | null
+  matchIds: string[]
+  leagueId: string | null
+  seasonId: string | null
+  teamId: string | null
+}
+
+function persistSeededState(state: SeededState): void {
+  mkdirSync(THIS_DIR, { recursive: true })
+  writeFileSync(SEEDED_STATE_PATH, JSON.stringify(state, null, 2))
+  console.log(`Seeded state persisted to ${SEEDED_STATE_PATH}`)
+}
 
 interface Tournament {
   id: string
@@ -52,7 +79,7 @@ async function seedTournaments(token: string): Promise<void> {
   console.log('Seeding test tournaments...')
 
   // Try to fetch the tournament directly by slug first
-  const checkResponse = await fetch(`${API_URL}/v1/tournaments/slug/e2e-test-tournament`)
+  const checkResponse = await fetch(`${API_URL}/v1/tournaments/by-slug/e2e-test-tournament`)
   if (checkResponse.ok) {
     console.log('Test tournament already exists, skipping seed')
     return
@@ -81,14 +108,20 @@ async function seedTournaments(token: string): Promise<void> {
 
   // Create test tournament with open registration
   // Using POST /v1/tournaments endpoint
+  // Pin the server-defaulted fields explicitly so the seeded contract is
+  // visible here rather than implied by DTO defaults.
   const tournamentData = {
     name: 'E2E Test Tournament',
     slug: 'e2e-test-tournament',
     game_id: gameId,
     format: 'single_elimination',
+    map_pool: CS2_MAP_POOL,
     participant_type: 'individual',
     min_participants: 2,
     max_participants: 16,
+    registration_type: 'open',
+    scheduling_mode: 'live',
+    default_match_format: 'bo1',
     description: 'Tournament created for E2E testing',
   }
 
@@ -107,7 +140,7 @@ async function seedTournaments(token: string): Promise<void> {
   if (createResponse.status === 409) {
     console.log('Test tournament already exists (409 Conflict), continuing with setup')
     // Try to get the existing tournament ID for further setup
-    const refetchResponse = await fetch(`${API_URL}/v1/tournaments/slug/e2e-test-tournament`)
+    const refetchResponse = await fetch(`${API_URL}/v1/tournaments/by-slug/e2e-test-tournament`)
     if (refetchResponse.ok) {
       const existingTournament = await refetchResponse.json()
       const tournamentId = existingTournament.data?.id || existingTournament.id
@@ -175,6 +208,7 @@ interface PlayerLeagueTeamMembership {
   team_id: string
   team_name: string
   team_tag: string
+  team_season_id: string
   season_id: string
   league_id: string
 }
@@ -194,17 +228,18 @@ async function seedLeagueAndSeason(token: string): Promise<{ leagueId: string | 
   const gameId = games[0].id
   console.log(`Using game for league: ${games[0].name} (${gameId})`)
 
-  // Check if test league already exists
-  const leaguesResponse = await fetch(`${API_URL}/v1/leagues`)
-  const leaguesData = await leaguesResponse.json()
-  const leagues: League[] = leaguesData.data || []
-
+  // Check if the test league already exists. Look it up by slug directly rather
+  // than scanning `GET /v1/leagues`, whose first page is only 20 rows: prior runs
+  // leave e2e-season-league-* leagues that crowd our slug off page 1, so a page-1
+  // scan would miss it, try to re-create it, and 409 on every run (P-28 class —
+  // pagination mistaken for "not found").
   let leagueId: string | null = null
-  const existingLeague = leagues.find((l) => l.slug === 'e2e-test-league')
+  const bySlug = await fetch(`${API_URL}/v1/leagues/by-slug/e2e-test-league`)
 
-  if (existingLeague) {
+  if (bySlug.ok) {
+    const existing = (await bySlug.json()).data as League
     console.log('Test league already exists, using existing')
-    leagueId = existingLeague.id
+    leagueId = existing.id
   } else {
     // Create test league
     const leagueData = {
@@ -296,6 +331,9 @@ async function seedLeagueAndSeason(token: string): Promise<{ leagueId: string | 
   const season = await createSeasonResponse.json()
   seasonId = season.data?.id || season.id
   console.log(`Created test season: ${season.data?.name || season.name}`)
+  if (!seasonId) {
+    throw new Error(`Season creation response has no id: ${JSON.stringify(season)}`)
+  }
 
   // Open registration on the season (changes status from draft to registration)
   await openSeasonRegistration(token, seasonId)
@@ -325,26 +363,17 @@ async function openSeasonRegistration(token: string, seasonId: string): Promise<
   }
 }
 
-async function activateSeason(token: string, _leagueId: string, seasonId: string): Promise<void> {
-  console.log('Activating season...')
-  // NOTE: Season update is at /v1/league-seasons/{season_id}
-  const response = await fetch(`${API_URL}/v1/league-seasons/${seasonId}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ status: 'active' }),
-  })
+// `_activateSeason` lived here, unreferenced, "kept for seed scenarios that need
+// an in-progress season". Removed when P-81 turned the typechecker on over e2e/:
+// it had no callers, and git has it if such a scenario ever arrives. Keeping it
+// would have cost a `@ts-ignore` — a suppression to preserve dead code is a bad
+// trade, and P-67 is the standing position on dead surfaces.
 
-  if (response.ok) {
-    console.log('Season activated')
-  } else {
-    console.log('Could not activate season (may already be active)')
-  }
-}
-
-async function seedTeamForAdmin(token: string, _leagueId: string, seasonId: string): Promise<string | null> {
+async function seedTeamForAdmin(
+  token: string,
+  _leagueId: string,
+  seasonId: string
+): Promise<{ teamId: string; teamSeasonId: string } | null> {
   console.log('Seeding test team for admin user...')
 
   // Check if admin already has a team
@@ -358,7 +387,10 @@ async function seedTeamForAdmin(token: string, _leagueId: string, seasonId: stri
     const myTeams: PlayerLeagueTeamMembership[] = myTeamsData.data || []
     if (myTeams.length > 0) {
       console.log('Admin already has a team, using existing')
-      return myTeams[0].team_id
+      return {
+        teamId: myTeams[0].team_id,
+        teamSeasonId: myTeams[0].team_season_id,
+      }
     }
   }
 
@@ -389,21 +421,25 @@ async function seedTeamForAdmin(token: string, _leagueId: string, seasonId: stri
   // Response is { data: { team: { id, name, ... }, team_season: { ... } } }
   const createdTeam = teamResponse.data?.team || teamResponse.data || teamResponse
   const teamId = createdTeam?.id
-  console.log(`Created test team: ${createdTeam?.name} (${teamId})`)
-  return teamId
+  const teamSeasonId = teamResponse.data?.team_season?.id
+  console.log(`Created test team: ${createdTeam?.name} (${teamId}, season entry ${teamSeasonId})`)
+  if (!teamId || !teamSeasonId) {
+    throw new Error(`Team creation response missing ids: ${JSON.stringify(teamResponse)}`)
+  }
+  return { teamId, teamSeasonId }
 }
 
-async function seedTeamTournament(token: string, leagueId: string, teamId: string): Promise<void> {
+async function seedTeamTournament(token: string, leagueId: string, teamSeasonId: string): Promise<void> {
   console.log('Seeding team-based tournament...')
 
   // Try to fetch the team tournament directly by slug first
-  const checkResponse = await fetch(`${API_URL}/v1/tournaments/slug/e2e-team-tournament`)
+  const checkResponse = await fetch(`${API_URL}/v1/tournaments/by-slug/e2e-team-tournament`)
   if (checkResponse.ok) {
     const existingTournament = await checkResponse.json()
     const tournamentId = existingTournament.data?.id || existingTournament.id
     console.log('Team tournament already exists, ensuring team is registered')
     if (tournamentId) {
-      await ensureTeamRegistered(token, tournamentId, teamId)
+      await ensureTeamRegistered(token, tournamentId, teamSeasonId)
     }
     return
   }
@@ -429,16 +465,21 @@ async function seedTeamTournament(token: string, leagueId: string, teamId: strin
   const gameId = games[0].id
 
   // Create team-based tournament
+  // NOTE: the create DTO has a single `team_size` field — the old
+  // min_team_size/max_team_size keys were silently ignored by serde.
   const tournamentData = {
     name: 'E2E Team Tournament',
     slug: 'e2e-team-tournament',
     game_id: gameId,
     format: 'single_elimination',
+    map_pool: CS2_MAP_POOL,
     participant_type: 'team',
     min_participants: 2,
     max_participants: 8,
-    min_team_size: 1,
-    max_team_size: 5,
+    team_size: 5,
+    registration_type: 'open',
+    scheduling_mode: 'live',
+    default_match_format: 'bo1',
     league_id: leagueId,
     description: 'Team-based tournament for E2E testing',
   }
@@ -456,13 +497,13 @@ async function seedTeamTournament(token: string, leagueId: string, teamId: strin
   // Handle 409 Conflict - tournament already exists (race condition)
   if (createResponse.status === 409) {
     console.log('Team tournament already exists (409 Conflict), continuing with setup')
-    const refetchResponse = await fetch(`${API_URL}/v1/tournaments/slug/e2e-team-tournament`)
+    const refetchResponse = await fetch(`${API_URL}/v1/tournaments/by-slug/e2e-team-tournament`)
     if (refetchResponse.ok) {
       const existingTournament = await refetchResponse.json()
       const tournamentId = existingTournament.data?.id || existingTournament.id
       if (tournamentId) {
         await ensureTournamentReady(token, tournamentId)
-        await ensureTeamRegistered(token, tournamentId, teamId)
+        await ensureTeamRegistered(token, tournamentId, teamSeasonId)
       }
     }
     return
@@ -478,7 +519,7 @@ async function seedTeamTournament(token: string, leagueId: string, teamId: strin
   console.log(`Created team tournament: ${tournament.data?.slug || tournament.slug}`)
 
   await ensureTournamentReady(token, tournamentId)
-  await ensureTeamRegistered(token, tournamentId, teamId)
+  await ensureTeamRegistered(token, tournamentId, teamSeasonId)
   console.log('Team tournament setup complete')
 }
 
@@ -486,15 +527,27 @@ async function seedTeamTournament(token: string, leagueId: string, teamId: strin
  * Ensure team is registered for the tournament.
  * Handles case where team is already registered.
  */
-async function ensureTeamRegistered(token: string, tournamentId: string, teamId: string): Promise<void> {
-  const registerResponse = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/registrations`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ team_id: teamId }),
-  })
+async function ensureTeamRegistered(
+  token: string,
+  tournamentId: string,
+  teamSeasonId: string
+): Promise<void> {
+  // NOTE: Team registration is POST .../registrations/team and takes the
+  // team's SEASON entry id (team_season_id), not the team id.
+  const registerResponse = await fetch(
+    `${API_URL}/v1/tournaments/${tournamentId}/registrations/team`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        team_season_id: teamSeasonId,
+        participant_name: 'E2E Admin Team',
+      }),
+    }
+  )
 
   if (registerResponse.ok) {
     console.log('Team registered for tournament')
@@ -502,8 +555,173 @@ async function ensureTeamRegistered(token: string, tournamentId: string, teamId:
     console.log('Team already registered for tournament')
   } else {
     const error = await registerResponse.text()
-    console.log(`Could not register team for tournament: ${error}`)
+    throw new Error(
+      `Could not register team for tournament (${registerResponse.status}): ${error}`
+    )
   }
+}
+
+/**
+ * Register (or login) the second test player for multi-player E2E flows.
+ * Returns { token, playerId } or nulls if it fails.
+ */
+async function seedPlayer2(): Promise<{ token: string; playerId: string } | null> {
+  console.log('Seeding second test player (e2e_player2)...')
+
+  // Try to login first — player may already exist from a previous run
+  const loginResponse = await fetch(`${API_URL}/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(testUsers.player2Login),
+  })
+
+  if (loginResponse.ok) {
+    const loginData = await loginResponse.json()
+    console.log('Player 2 already exists, logged in')
+    return {
+      token: loginData.data.access_token,
+      playerId: loginData.data.player_id,
+    }
+  }
+
+  // Register new player
+  const registerResponse = await fetch(`${API_URL}/v1/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(testUsers.player2),
+  })
+
+  if (!registerResponse.ok) {
+    const error = await registerResponse.text()
+    console.error(`Failed to register player 2 (${registerResponse.status}): ${error}`)
+    return null
+  }
+
+  const registerData = await registerResponse.json()
+  console.log('Player 2 registered successfully')
+  return {
+    token: registerData.data.access_token,
+    playerId: registerData.data.player?.id || registerData.data.player_id,
+  }
+}
+
+/**
+ * Register a player for an individual tournament.
+ */
+async function registerPlayerForTournament(
+  token: string,
+  tournamentId: string,
+  label: string
+): Promise<string | null> {
+  const response = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/registrations/player`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    // Required body — this was missing and hidden for months by the shared
+    // dev DB, where both players were "already registered" (409 path).
+    body: JSON.stringify({ participant_name: label.slice(0, 50) }),
+  })
+
+  if (response.ok) {
+    const data = await response.json()
+    const regId = data.data?.id || data.id
+    console.log(`${label} registered for tournament (registration: ${regId})`)
+    return regId
+  } else if (response.status === 409) {
+    console.log(`${label} already registered for tournament`)
+    return 'already-registered'
+  } else {
+    const error = await response.text()
+    console.error(`Failed to register ${label} for tournament (${response.status}): ${error}`)
+    return null
+  }
+}
+
+/**
+ * Approve pending registrations, seed, close registration, and start the
+ * tournament to generate bracket matches. Returns array of match IDs.
+ *
+ * Every step tolerates "already done" (reruns against a seeded DB), but the
+ * caller MUST verify matchIds is non-empty — an empty result means the
+ * bracket was never generated and most match/dispute specs would silently
+ * skip.
+ */
+async function startTournamentAndGetMatches(
+  token: string,
+  tournamentId: string
+): Promise<string[]> {
+  const authHeaders = { Authorization: `Bearer ${token}` }
+
+  // Approve all pending registrations (admin) — start requires approved
+  // participants.
+  const regsResponse = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/registrations`, {
+    headers: authHeaders,
+  })
+  if (regsResponse.ok) {
+    const regsData = await regsResponse.json()
+    const regs: Array<{ id: string; status: string }> = regsData.data || []
+    for (const reg of regs.filter((r) => r.status === 'pending')) {
+      const approveResponse = await fetch(
+        `${API_URL}/v1/tournaments/${tournamentId}/registrations/${reg.id}/approve`,
+        { method: 'POST', headers: authHeaders }
+      )
+      console.log(
+        approveResponse.ok
+          ? `Approved registration ${reg.id}`
+          : `Could not approve registration ${reg.id} (${approveResponse.status})`
+      )
+    }
+  }
+
+  // Auto-seed (no-op failure if already started/seeded)
+  const seedResponse = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/seeding/auto`, {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ algorithm: 'random' }),
+  })
+  console.log(
+    seedResponse.ok ? 'Tournament seeded' : 'Could not seed (may already be seeded/started)'
+  )
+
+  // Close registration
+  const closeResponse = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/close-registration`, {
+    method: 'POST',
+    headers: authHeaders,
+  })
+  if (closeResponse.ok) {
+    console.log('Tournament registration closed')
+  } else {
+    console.log('Could not close registration (may already be closed)')
+  }
+
+  // Start tournament to generate bracket
+  const startResponse = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/start`, {
+    method: 'POST',
+    headers: authHeaders,
+  })
+  if (startResponse.ok) {
+    console.log('Tournament started — bracket generated')
+  } else {
+    console.log(`Could not start tournament (${startResponse.status}: ${await startResponse.text()})`)
+  }
+
+  // Fetch generated matches
+  const matchesResponse = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/matches`, {
+    headers: authHeaders,
+  })
+
+  if (!matchesResponse.ok) {
+    console.log('Could not fetch matches')
+    return []
+  }
+
+  const matchesData = await matchesResponse.json()
+  const matches = matchesData.data || []
+  const matchIds = matches.map((m: { id: string }) => m.id)
+  console.log(`Found ${matchIds.length} matches: ${matchIds.join(', ')}`)
+  return matchIds
 }
 
 async function globalSetup(): Promise<void> {
@@ -524,22 +742,67 @@ async function globalSetup(): Promise<void> {
     const adminToken = await getAdminToken()
     console.log('Admin authentication successful')
 
+    // Seed second test player. Match/dispute/results specs need it — fail
+    // loudly instead of letting ~60 tests silently skip.
+    const player2 = await seedPlayer2()
+    if (!player2) {
+      throw new Error('Failed to seed player 2 — match and dispute specs depend on it')
+    }
+
     // Seed tournaments with real auth
     await seedTournaments(adminToken)
 
+    // Get tournament ID for match seeding
+    let matchIds: string[] = []
+    const tournamentResponse = await fetch(`${API_URL}/v1/tournaments/by-slug/e2e-test-tournament`)
+    if (!tournamentResponse.ok) {
+      throw new Error(
+        `Seeded tournament not retrievable by slug (${tournamentResponse.status}) — check /v1/tournaments/by-slug routing`
+      )
+    }
+    const tournamentData = await tournamentResponse.json()
+    const tournamentId: string | null = tournamentData.data?.id || tournamentData.id || null
+    if (!tournamentId) {
+      throw new Error(`Tournament response has no id: ${JSON.stringify(tournamentData)}`)
+    }
+
+    // Register both players for individual tournament and generate matches
+    await registerPlayerForTournament(adminToken, tournamentId, 'Admin (Player 1)')
+    await registerPlayerForTournament(player2.token, tournamentId, 'Player 2')
+    matchIds = await startTournamentAndGetMatches(adminToken, tournamentId)
+    if (matchIds.length === 0) {
+      throw new Error(
+        'Tournament has no matches after seeding — bracket generation failed. ' +
+          'Match/dispute/results specs would silently skip; fix seeding instead.'
+      )
+    }
+
     // Seed league and season for team management tests
     const { leagueId, seasonId } = await seedLeagueAndSeason(adminToken)
+    if (!leagueId || !seasonId) {
+      throw new Error('League/season seeding did not produce ids')
+    }
 
     // Create a team for the admin user (for profile and team tests)
-    let teamId: string | null = null
-    if (leagueId && seasonId) {
-      teamId = await seedTeamForAdmin(adminToken, leagueId, seasonId)
+    const team = await seedTeamForAdmin(adminToken, leagueId, seasonId)
+    if (!team) {
+      throw new Error('Team seeding failed')
     }
 
     // Seed team-based tournament
-    if (leagueId && teamId) {
-      await seedTeamTournament(adminToken, leagueId, teamId)
-    }
+    await seedTeamTournament(adminToken, leagueId, team.teamSeasonId)
+
+    // Persist seeded state for test specs
+    persistSeededState({
+      adminToken,
+      player2Token: player2.token,
+      player2Id: player2.playerId,
+      tournamentId,
+      matchIds,
+      leagueId,
+      seasonId,
+      teamId: team.teamId,
+    })
 
     console.log('\n========================================')
     console.log('Global Setup Complete')

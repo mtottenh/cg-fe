@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api, ApiError } from '@/api'
+import { api } from '@/api'
 import type { components } from '@/api/types'
+import { unwrapApi, createActionState, withActionState, aggregateActionStates } from '@/stores/helpers'
 
 // Use generated types
 type Player = components['schemas']['PlayerResponse']
@@ -9,7 +10,9 @@ type PlayerSearchResult = components['schemas']['PlayerSearchResponse']
 type SocialLinks = components['schemas']['SocialLinksResponse']
 type UpdateProfileRequest = components['schemas']['UpdatePlayerProfileRequest']
 type PaginationMeta = components['schemas']['PaginationMeta']
-type ApiErrorResponse = components['schemas']['ApiError']
+type SubmitRatingRequest = components['schemas']['SubmitRatingRequest']
+type PlayerGameProfile = components['schemas']['PlayerGameProfileResponse']
+type PlayerRatingHistory = components['schemas']['PlayerRatingHistoryResponse']
 
 /**
  * @deprecated The old PlayerTeamMembershipResponse type has been replaced with league team memberships.
@@ -28,63 +31,57 @@ export const usePlayersStore = defineStore('players', () => {
   const players = ref<PlayerSearchResult[]>([])
   const currentPlayer = ref<Player | null>(null)
   const playerTeams = ref<PlayerTeam[]>([])
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+  const myMatches = ref<components['schemas']['TournamentMatchResponse'][]>([])
   const pagination = ref<PaginationMeta>({ page: 1, per_page: 20, total_items: 0, total_pages: 0 })
 
-  async function fetchPlayers(page = 1, perPage = 20, search?: string) {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/players', {
-        params: { query: { page, per_page: perPage, search } },
-      })
+  const fetchPlayersState = createActionState()
+  const fetchPlayerState = createActionState()
+  const fetchMyProfileState = createActionState()
+  const updateMyProfileState = createActionState()
+  const fetchMyMatchesState = createActionState()
+  const submitPlayerRatingState = createActionState()
+  const fetchRatingHistoryState = createActionState()
 
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
+  const { loading, error } = aggregateActionStates([
+    fetchPlayersState, fetchPlayerState, fetchMyProfileState,
+    updateMyProfileState, fetchMyMatchesState,
+  ])
 
-      players.value = data!.data
-      pagination.value = data!.pagination
+  async function fetchPlayers(filters?: {
+    q?: string
+    game_id?: string
+    team_status?: string
+    country_code?: string
+    page?: number
+    per_page?: number
+  }) {
+    return withActionState(fetchPlayersState, async () => {
+      const result = await unwrapApi(api.GET('/v1/players', {
+        params: {
+          query: {
+            page: filters?.page ?? 1,
+            per_page: filters?.per_page ?? 20,
+            q: filters?.q,
+            game_id: filters?.game_id,
+            team_status: filters?.team_status,
+            country_code: filters?.country_code,
+          },
+        },
+      }))
+      players.value = result.data
+      pagination.value = result.pagination
       return players.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch players'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch players')
   }
 
   async function fetchPlayer(id: string) {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/players/{player_id}', {
+    return withActionState(fetchPlayerState, async () => {
+      const result = await unwrapApi(api.GET('/v1/players/{player_id}', {
         params: { path: { player_id: id } },
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentPlayer.value = data!.data
+      }))
+      currentPlayer.value = result.data
       return currentPlayer.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch player'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch player')
   }
 
   /**
@@ -98,71 +95,118 @@ export const usePlayersStore = defineStore('players', () => {
   }
 
   async function fetchMyProfile() {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.GET('/v1/players/me')
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentPlayer.value = data!.data
+    return withActionState(fetchMyProfileState, async () => {
+      const result = await unwrapApi(api.GET('/v1/players/me'))
+      currentPlayer.value = result.data
       return currentPlayer.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to fetch profile'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to fetch profile')
   }
 
   async function updateMyProfile(profileData: UpdateProfileRequest) {
-    loading.value = true
-    error.value = null
-    try {
-      const { data, error: apiError } = await api.PATCH('/v1/players/me', {
+    return withActionState(updateMyProfileState, async () => {
+      const result = await unwrapApi(api.PATCH('/v1/players/me', {
         body: profileData,
-      })
-
-      if (apiError) {
-        const err = apiError as ApiErrorResponse
-        throw new ApiError(err.status, err.detail, err.errors ?? undefined)
-      }
-
-      currentPlayer.value = data!.data
+      }))
+      currentPlayer.value = result.data
       return currentPlayer.value
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        error.value = e.detail
-      } else {
-        error.value = 'Failed to update profile'
-      }
-      throw e
-    } finally {
-      loading.value = false
-    }
+    }, 'Failed to update profile')
+  }
+
+  async function fetchMyMatches(filters?: {
+    status?: string
+    tournament_id?: string
+    limit?: number
+    offset?: number
+  }) {
+    return withActionState(fetchMyMatchesState, async () => {
+      const result = await unwrapApi(api.GET('/v1/users/me/matches', {
+        params: { query: filters },
+      }))
+      myMatches.value = result.data
+      return myMatches.value
+    }, 'Failed to fetch matches')
+  }
+
+  /**
+   * P-68: operator override for a wrong scraped rating.
+   *
+   * Ratings normally arrive from the enricher's demo-derived path
+   * (`handlers/internal.rs process_demo_ratings`). That value drives seeding
+   * and league entry gates (`min_rating_per_player`), so a bad extraction
+   * silently misseeds brackets and can lock a player out of a league — and
+   * until now `POST /v1/players/{id}/games/{game}/rating` had no UI consumer
+   * at all, so there was no remedy short of SQL.
+   *
+   * `source` is the audit trail: it is stored verbatim on the history row
+   * (`player_rating_history.source`, VARCHAR(64)) and is the only free-text
+   * field the table has — there is no separate `reason` column, so the
+   * operator's reason goes here rather than being collected and discarded
+   * (P-84/P-94).
+   */
+  async function submitPlayerRating(
+    playerId: string,
+    gameId: string,
+    body: SubmitRatingRequest,
+  ): Promise<PlayerGameProfile> {
+    return withActionState(submitPlayerRatingState, async () => {
+      const result = await unwrapApi(api.POST('/v1/players/{player_id}/games/{game_id}/rating', {
+        params: { path: { player_id: playerId, game_id: gameId } },
+        body,
+      }))
+      return result.data
+    }, 'Failed to submit rating')
+  }
+
+  /** Rating history for a player+game, newest first. */
+  async function fetchRatingHistory(
+    playerId: string,
+    gameId: string,
+    limit = 10,
+  ): Promise<PlayerRatingHistory[]> {
+    return withActionState(fetchRatingHistoryState, async () => {
+      const result = await unwrapApi(
+        api.GET('/v1/players/{player_id}/games/{game_id}/rating-history', {
+          params: { path: { player_id: playerId, game_id: gameId }, query: { limit } },
+        }),
+      )
+      return result.data
+    }, 'Failed to fetch rating history')
   }
 
   return {
     players,
     currentPlayer,
     playerTeams,
+    myMatches,
     loading,
     error,
     pagination,
+    fetchPlayersState,
+    fetchPlayerState,
+    fetchMyProfileState,
+    updateMyProfileState,
     fetchPlayers,
     fetchPlayer,
     fetchPlayerTeams,
     fetchMyProfile,
     updateMyProfile,
+    fetchMyMatches,
+    fetchMyMatchesState,
+    submitPlayerRating,
+    submitPlayerRatingState,
+    fetchRatingHistory,
+    fetchRatingHistoryState,
   }
 })
 
 // Re-export types for convenience
-export type { Player, PlayerSearchResult, PlayerTeam, SocialLinks, UpdateProfileRequest }
+export type {
+  Player,
+  PlayerSearchResult,
+  PlayerTeam,
+  SocialLinks,
+  UpdateProfileRequest,
+  SubmitRatingRequest,
+  PlayerGameProfile,
+  PlayerRatingHistory,
+}

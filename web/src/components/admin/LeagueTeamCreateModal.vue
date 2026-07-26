@@ -1,14 +1,13 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="600"
     persistent
   >
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Create New Team</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -22,7 +21,8 @@
               <v-text-field
                 v-model="form.name"
                 label="Team Name"
-                :rules="[rules.required, rules.minLength(2), rules.maxLength(100)]"
+                :rules="[rules.required, rules.minLength(2), rules.maxLength(50)]"
+                counter="50"
                 variant="outlined"
                 density="comfortable"
               />
@@ -32,10 +32,11 @@
               <v-text-field
                 v-model="form.tag"
                 label="Team Tag"
-                :rules="[rules.required, rules.minLength(2), rules.maxLength(8), rules.tag]"
+                :rules="[rules.required, rules.minLength(2), rules.maxLength(5), rules.tag]"
+                counter="5"
                 variant="outlined"
                 density="comfortable"
-                hint="2-8 character tag (e.g., AST, NAV, G2)"
+                hint="2-5 character tag (e.g., AST, NAV, G2)"
                 persistent-hint
               />
             </v-col>
@@ -44,7 +45,8 @@
               <v-textarea
                 v-model="form.description"
                 label="Description (Optional)"
-                :rules="[rules.maxLength(2000)]"
+                :rules="[rules.maxLength(1000)]"
+                counter="1000"
                 rows="2"
                 variant="outlined"
                 density="comfortable"
@@ -125,22 +127,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api'
+import { useFormRules } from '@/composables/useFormRules'
+import {
+  useLeagueTeamsStore,
+  type CreateLeagueTeamRequest,
+} from '@/stores/leagueTeams'
 
-const props = defineProps<{
-  modelValue: boolean
-  seasonId: string
+const props = defineProps<{  seasonId: string
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  created: []
+const emit = defineEmits<{  created: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
+
+const leagueTeamsStore = useLeagueTeamsStore()
 
 const formRef = ref()
 const formValid = ref(false)
-const saving = ref(false)
+const saving = computed(() => leagueTeamsStore.createTeamState.loading)
 const error = ref<string | null>(null)
 
 const form = ref({
@@ -152,31 +159,29 @@ const form = ref({
   logo_url: '',
 })
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
-
+/**
+ * P-41: every bound here mirrors `CreateLeagueTeamRequest`
+ * (api/crates/portal-api/src/dto/requests/league_team.rs:247-275), which the
+ * `ValidatedJson` extractor enforces on the endpoint this modal POSTs to —
+ * name 2..=50, tag 2..=5, description ..=1000.
+ *
+ * This form used to offer name ≤ 100, tag ≤ 8 and description ≤ 2000, so it
+ * accepted three classes of input it then sent to a guaranteed 400, while the
+ * public form on `LeagueDetailPage` disagreed with BOTH by demanding name ≥ 3.
+ * Neither form was right; the DTO is.
+ */
 const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => !v || v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
+  ...useFormRules(),
   tag: (v: string) => {
     if (!v) return true
-    if (!/^[A-Z0-9]{2,8}$/.test(v.toUpperCase())) {
-      return 'Must be 2-8 alphanumeric characters'
+    if (!/^[A-Z0-9]{2,5}$/.test(v.toUpperCase())) {
+      return 'Must be 2-5 alphanumeric characters'
     }
     return true
   },
-  url: (v: string) => {
-    if (!v) return true
-    try {
-      new URL(v)
-      return true
-    } catch {
-      return 'Must be a valid URL'
-    }
-  },
 }
 
-watch(() => props.modelValue, (isOpen) => {
+watch(open, (isOpen) => {
   if (isOpen) {
     form.value = {
       name: '',
@@ -192,58 +197,30 @@ watch(() => props.modelValue, (isOpen) => {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function save() {
   if (!formValid.value || !props.seasonId) return
-
-  saving.value = true
   error.value = null
 
+  const body: CreateLeagueTeamRequest = {
+    name: form.value.name,
+    tag: form.value.tag.toUpperCase(),
+  }
+  if (form.value.description) body.description = form.value.description
+  if (form.value.primary_color) body.primary_color = form.value.primary_color
+  if (form.value.secondary_color) body.secondary_color = form.value.secondary_color
+  if (form.value.logo_url) body.logo_url = form.value.logo_url
+
   try {
-    const body: Record<string, unknown> = {
-      name: form.value.name,
-      tag: form.value.tag.toUpperCase(),
-    }
-
-    if (form.value.description) {
-      body.description = form.value.description
-    }
-    if (form.value.primary_color) {
-      body.primary_color = form.value.primary_color
-    }
-    if (form.value.secondary_color) {
-      body.secondary_color = form.value.secondary_color
-    }
-    if (form.value.logo_url) {
-      body.logo_url = form.value.logo_url
-    }
-
-    const response = await fetch(`${API_URL}/v1/league-seasons/${props.seasonId}/teams`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to create team')
-    }
-
+    await leagueTeamsStore.createTeam(props.seasonId, body)
     emit('created')
     close()
   } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to create team'
-    }
-  } finally {
-    saving.value = false
+    error.value = e instanceof ApiError
+      ? e.detail
+      : (leagueTeamsStore.createTeamState.error ?? 'Failed to create team')
   }
 }
 </script>

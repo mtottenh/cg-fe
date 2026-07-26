@@ -1,0 +1,238 @@
+---
+# Game-server host: portal-server-agent installed, registered, enrolled,
+# and MatchZy wired for demo upload — zero manual steps per host beyond an
+# SSH login, an inventory entry, and its RCON password in the vault.
+#
+# Flow (docs/matchzy-integration.md §5):
+#   1. install the portal-server-agent deb
+#   2. render /etc/portal/portal-server-agent.env (RCON creds from vault)
+#   3. first converge only: register the server in the portal registry
+#      (portal-cli gameserver create, idempotent by inventory hostname),
+#      mint a one-time enrollment token, and run
+#      `portal-server-agent enroll` — the agent generates its keypair
+#      locally and receives a client certificate signed by the portal CA
+#   4. wire MatchZy's config.cfg with the demo-upload block enrollment
+#      persisted to /etc/portal/agent/matchzy_portal.cfg
+#   5. health gates: unit active, then the portal actually sees heartbeats
+#
+# The portal-side steps run delegated to the portal host as the `portal`
+# unix user (socket peer auth — same as every other DB consumer there).
+
+# --- Preconditions ------------------------------------------------------------
+
+- name: Game-server integration is enabled
+  ansible.builtin.assert:
+    that: gameserver_integration_enabled | default(false)
+    fail_msg: >-
+      Hosts exist in the gameservers group but
+      gameserver_integration_enabled is false (group_vars/all/vars.yml).
+      The agents.{{ portal_domain }} vhost, the agent CA, and the API's
+      gameserver surface are all gated on it — enable it (and create the
+      agents. DNS A record) before converging game hosts.
+
+- name: RCON password for this host is in the vault
+  ansible.builtin.assert:
+    that:
+      - vault_gameserver_rcon_passwords is defined
+      - inventory_hostname in vault_gameserver_rcon_passwords
+      - "'CHANGE_ME' not in vault_gameserver_rcon_passwords[inventory_hostname]"
+    fail_msg: >-
+      vault_gameserver_rcon_passwords has no entry for
+      {{ inventory_hostname }} — add it with `just edit-vault` (the CS2
+      server must run with -usercon and this password).
+
+- name: Check whether portal-server-agent is installed
+  ansible.builtin.command: dpkg-query -W -f='${Status}' portal-server-agent
+  register: gameserver_agent_dpkg
+  changed_when: false
+  failed_when: false
+
+- name: A deb is available (path given or already installed)
+  ansible.builtin.assert:
+    that: >-
+      gameserver_agent_deb_path | default('') | length > 0
+      or 'install ok installed' in gameserver_agent_dpkg.stdout
+    fail_msg: >-
+      portal-server-agent is not installed and no deb was supplied. Build
+      it in the sibling server-agent repo (cargo deb) and run
+      `just deploy-agent <path-to-deb>`.
+
+# --- Install ------------------------------------------------------------------
+
+- name: Copy the agent deb to the host
+  ansible.builtin.copy:
+    src: "{{ gameserver_agent_deb_path }}"
+    dest: /tmp/portal-server-agent.deb
+    mode: "0644"
+  when: gameserver_agent_deb_path | default('') | length > 0
+
+- name: Install the agent deb
+  ansible.builtin.apt:
+    deb: /tmp/portal-server-agent.deb
+    allow_downgrade: true
+  when: gameserver_agent_deb_path | default('') | length > 0
+  notify: restart portal-server-agent
+
+- name: Remove the copied deb
+  ansible.builtin.file:
+    path: /tmp/portal-server-agent.deb
+    state: absent
+  when: gameserver_agent_deb_path | default('') | length > 0
+
+# --- Config -------------------------------------------------------------------
+
+- name: /etc/portal exists
+  ansible.builtin.file:
+    path: /etc/portal
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# systemd reads EnvironmentFile as root before dropping to the service
+# user, so root-only keeps the RCON password off every other account.
+- name: Agent environment file
+  ansible.builtin.template:
+    src: portal-server-agent.env.j2
+    dest: /etc/portal/portal-server-agent.env
+    owner: root
+    group: root
+    mode: "0600"
+  notify: restart portal-server-agent
+
+# --- Registration + enrollment (first converge per host) ----------------------
+
+- name: Check for existing agent certificate
+  ansible.builtin.stat:
+    path: /etc/portal/agent/client.pem
+  register: gameserver_agent_cert
+
+- name: Register and enroll
+  when: not gameserver_agent_cert.stat.exists
+  block:
+    # Idempotent by name — an existing registry row for this inventory
+    # hostname is reused, so a re-run after a failed enroll can't mint
+    # duplicate servers.
+    - name: Register the server in the portal registry
+      ansible.builtin.command: >-
+        portal-cli gameserver create
+        --name {{ inventory_hostname }}
+        --game-slug {{ steam_bot_game_slug | default('cs2') }}
+        --ip {{ gameserver_public_ip | default(ansible_host) }}
+        --port {{ gameserver_game_port }}
+        --gotv-port {{ gameserver_gotv_port }}
+        --region {{ gameserver_region }}
+        --quiet
+      delegate_to: "{{ groups['portal'] | first }}"
+      become: true
+      become_user: portal
+      environment:
+        DATABASE_URL: "{{ portal_api_database_url }}"
+      register: gameserver_agent_server_id
+      changed_when: false   # registration bookkeeping; reuses existing rows
+
+    - name: Mint a one-time enrollment token
+      ansible.builtin.command: >-
+        portal-cli gameserver enroll-token
+        {{ gameserver_agent_server_id.stdout_lines | last | trim }} --quiet
+      delegate_to: "{{ groups['portal'] | first }}"
+      become: true
+      become_user: portal
+      environment:
+        DATABASE_URL: "{{ portal_api_database_url }}"
+      register: gameserver_agent_token
+      changed_when: true
+      no_log: true
+
+    # Keypair generated on THIS host; only the CSR travels. Writes
+    # client.key/pem, portal-ca.pem and matchzy_portal.cfg into
+    # /etc/portal/agent and chowns them to the service user.
+    - name: Enroll the agent against the portal
+      ansible.builtin.command: >-
+        portal-server-agent enroll
+        --url https://{{ portal_domain }}
+        --token {{ gameserver_agent_token.stdout_lines | last | trim }}
+        --dir /etc/portal/agent
+      args:
+        creates: /etc/portal/agent/client.pem
+      no_log: true
+      notify: restart portal-server-agent
+
+# --- MatchZy demo-upload wiring -----------------------------------------------
+
+- name: Check for the enrollment's MatchZy snippet
+  ansible.builtin.stat:
+    path: /etc/portal/agent/matchzy_portal.cfg
+  register: gameserver_agent_matchzy_snippet
+
+- name: Wire MatchZy demo upload
+  when:
+    - gameserver_matchzy_config_path | default('') | length > 0
+    - gameserver_agent_matchzy_snippet.stat.exists
+  block:
+    - name: Read the enrollment snippet
+      ansible.builtin.slurp:
+        src: /etc/portal/agent/matchzy_portal.cfg
+      register: gameserver_agent_matchzy_cfg
+      no_log: true   # contains the demo-upload bearer token
+
+    - name: Managed demo-upload block in MatchZy config
+      ansible.builtin.blockinfile:
+        path: "{{ gameserver_matchzy_config_path }}"
+        create: true
+        owner: "{{ gameserver_matchzy_config_owner }}"
+        mode: "0640"
+        marker: "// {mark} ANSIBLE MANAGED — portal demo upload"
+        block: "{{ gameserver_agent_matchzy_cfg.content | b64decode }}"
+      no_log: true
+
+- name: Note when MatchZy wiring was skipped for a pre-existing enrollment
+  ansible.builtin.debug:
+    msg: >-
+      gameserver_matchzy_config_path is set but
+      /etc/portal/agent/matchzy_portal.cfg does not exist — this host was
+      enrolled by an agent version that only PRINTED the MatchZy cvars.
+      Either paste them by hand or re-enroll (revoke via
+      `portal-cli gameserver revoke`, remove /etc/portal/agent, re-run).
+  when:
+    - gameserver_matchzy_config_path | default('') | length > 0
+    - not gameserver_agent_matchzy_snippet.stat.exists
+
+# --- Service + health gates ---------------------------------------------------
+
+- name: Agent enabled and started
+  ansible.builtin.systemd:
+    name: portal-server-agent
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Flush pending restarts before probing
+  ansible.builtin.meta: flush_handlers
+
+- name: Agent unit is active (not crash-looping)
+  ansible.builtin.command: systemctl is-active --quiet portal-server-agent  # noqa: command-instead-of-module
+  register: gameserver_agent_active
+  changed_when: false
+  retries: 3
+  delay: 5
+  until: gameserver_agent_active.rc == 0
+
+# End-to-end: the PORTAL saw a heartbeat (any status but 'offline' —
+# 'error' still proves the WSS channel works, it just means the CS2
+# server's RCON isn't answering yet). Heartbeats are 30s apart.
+- name: Portal sees this agent's heartbeats
+  ansible.builtin.command: portal-cli --format json gameserver list
+  delegate_to: "{{ groups['portal'] | first }}"
+  become: true
+  become_user: portal
+  environment:
+    DATABASE_URL: "{{ portal_api_database_url }}"
+  register: gameserver_agent_registry
+  changed_when: false
+  retries: 8
+  delay: 15
+  until: >-
+    (gameserver_agent_registry.stdout | from_json
+     | selectattr('name', 'equalto', inventory_hostname)
+     | map(attribute='status') | first | default('offline')) != 'offline'

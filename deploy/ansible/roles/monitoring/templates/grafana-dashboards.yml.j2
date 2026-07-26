@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+apiVersion: 1
+
+providers:
+  - name: portal
+    folder: Portal
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 60
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

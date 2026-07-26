@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-row align="center" class="mb-6">
       <v-col>
         <h1 class="text-h3">My Teams</h1>
@@ -13,14 +13,68 @@
       </v-col>
     </v-row>
 
-    <v-alert v-if="leagueTeamsStore.error" type="error" class="mb-4" closable>
-      {{ leagueTeamsStore.error }}
-    </v-alert>
+    <ErrorAlert
+      :error="loadError"
+      retryable
+      @clear="clearLoadError"
+      @retry="fetchData"
+    />
 
-    <v-progress-linear v-if="leagueTeamsStore.loading" indeterminate class="mb-4" />
+    <v-progress-linear v-if="loadingData" indeterminate class="mb-4" />
+
+    <!-- League memberships without teams -->
+    <template v-if="leaguesWithoutTeams.length > 0">
+      <h2 class="text-h5 mb-4">
+        <v-icon start>mdi-trophy</v-icon>
+        My Leagues
+      </h2>
+      <v-row class="mb-8">
+        <v-col v-for="membership in leaguesWithoutTeams" :key="membership.league_id" cols="12" sm="6" md="4">
+          <v-card class="h-100">
+            <v-card-item>
+              <template v-slot:prepend>
+                <v-avatar color="warning" size="48" rounded="lg">
+                  <v-img alt="" v-if="membership.league_logo_url" :src="membership.league_logo_url" />
+                  <v-icon v-else>mdi-trophy</v-icon>
+                </v-avatar>
+              </template>
+              <v-card-title>{{ membership.league_name }}</v-card-title>
+              <v-card-subtitle>
+                <!--
+                  P-133: this is a LEAGUE membership, so it must go through
+                  `leagueRoleMap` — `getRoleColor`/`teamRoleMap` above is for
+                  the team roster chip and shares no values with it.
+                -->
+                <v-chip size="x-small" :color="getMembershipColor(membership.membership_type)" variant="flat" class="mr-1">
+                  {{ getMembershipLabel(membership.membership_type) }}
+                </v-chip>
+              </v-card-subtitle>
+            </v-card-item>
+            <v-card-text>
+              <div class="text-caption text-medium-emphasis">
+                <v-icon size="small" class="mr-1">mdi-calendar</v-icon>
+                Joined {{ formatJoinDate(membership.joined_at) }}
+              </div>
+              <v-alert type="info" variant="tonal" density="compact" class="mt-2">
+                You haven't joined a team yet. Visit the league to create or join one.
+              </v-alert>
+            </v-card-text>
+            <v-card-actions>
+              <v-btn color="primary" variant="tonal" :to="`/leagues/${membership.league_id}`">
+                View League
+              </v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-col>
+      </v-row>
+    </template>
 
     <!-- Team memberships grouped by league -->
     <template v-if="teamsByLeague.length > 0">
+      <h2 v-if="leaguesWithoutTeams.length > 0" class="text-h5 mb-4">
+        <v-icon start>mdi-shield-account</v-icon>
+        My Teams
+      </h2>
       <div v-for="group in teamsByLeague" :key="group.leagueId" class="mb-6">
         <div class="d-flex align-center mb-3">
           <v-icon size="20" class="mr-2">mdi-trophy</v-icon>
@@ -36,7 +90,7 @@
               <v-card-item>
                 <template v-slot:prepend>
                   <v-avatar color="primary" size="48">
-                    <v-img v-if="membership.team_logo_url" :src="membership.team_logo_url" />
+                    <v-img alt="" v-if="membership.team_logo_url" :src="membership.team_logo_url" />
                     <span v-else class="text-h6">{{ membership.team_tag?.substring(0, 2) || '??' }}</span>
                   </v-avatar>
                 </template>
@@ -52,7 +106,7 @@
                     variant="flat"
                     class="mr-2"
                   >
-                    {{ formatRole(membership.role) }}
+                    {{ getRoleLabel(membership.role) }}
                   </v-chip>
                   <v-chip
                     size="small"
@@ -68,6 +122,23 @@
               </v-card-text>
 
               <v-card-actions>
+                <!--
+                  P-71: "My Teams" had no link to the team itself — only to the
+                  league — so every owner-side team control (register for the
+                  next season, transfer ownership, disband) was unreachable from
+                  the one page that lists a player's teams. The season id is
+                  carried so TeamDetailPage opens on the right roster instead of
+                  guessing from the 3 newest seasons.
+                -->
+                <v-btn
+                  variant="text"
+                  size="small"
+                  color="primary"
+                  :data-testid="`view-team-${membership.team_id}`"
+                  :to="`/teams/${membership.team_id}?season=${membership.team_season_id}`"
+                >
+                  View Team
+                </v-btn>
                 <v-btn
                   variant="text"
                   size="small"
@@ -94,19 +165,19 @@
     </template>
 
     <!-- Empty state -->
-    <v-row v-else-if="!leagueTeamsStore.loading">
-      <v-col cols="12" class="text-center py-12">
-        <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-group-outline</v-icon>
-        <h3 class="text-h5 text-medium-emphasis mb-2">You're Not on Any Teams Yet</h3>
-        <p class="text-body-2 text-medium-emphasis mb-4">
-          Join a league and create or join a team to get started!
-        </p>
-        <v-btn color="primary" to="/leagues">
+    <EmptyState
+      v-else-if="!loadingData && !loadError"
+      icon="mdi-account-group-outline"
+      title="You're Not on Any Teams Yet"
+      subtitle="Join a league and create or join a team to get started!"
+    >
+      <template #action>
+        <v-btn color="primary" class="mt-4" to="/leagues">
           <v-icon start>mdi-trophy</v-icon>
           Browse Leagues
         </v-btn>
-      </v-col>
-    </v-row>
+      </template>
+    </EmptyState>
 
     <!-- Pending invitations banner -->
     <v-banner
@@ -125,47 +196,28 @@
     </v-banner>
 
     <!-- Leave team confirmation dialog -->
-    <v-dialog v-model="leaveDialog" max-width="400">
-      <v-card>
-        <v-card-title>Leave Team?</v-card-title>
-        <v-card-text>
-          Are you sure you want to leave <strong>{{ selectedMembership?.team_name }}</strong>?
-          You'll need to be re-invited to rejoin.
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="leaveDialog = false">Cancel</v-btn>
-          <v-btn
-            color="error"
-            variant="flat"
-            :loading="leaving"
-            @click="leaveTeam"
-          >
-            Leave Team
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <ConfirmDialogHost :dialog="confirmDialog" />
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useLeagueTeamsStore, type PlayerLeagueTeamMembershipResponse } from '@/stores/leagueTeams'
+import { useLeaguesStore } from '@/stores/leagues'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import { teamRoleMap, teamStatusMap, leagueRoleMap, getStatusColor as mapStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 const leagueTeamsStore = useLeagueTeamsStore()
+const leaguesStore = useLeaguesStore()
 
 // State
-const leaveDialog = ref(false)
-const selectedMembership = ref<PlayerLeagueTeamMembershipResponse | null>(null)
-const leaving = ref(false)
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+const snackbar = useSnackbar()
+const confirmDialog = useConfirmDialog()
 
 // Group teams by league
 interface LeagueGroup {
@@ -194,74 +246,104 @@ const teamsByLeague = computed((): LeagueGroup[] => {
   )
 })
 
+// Leagues where user is a member but has no team
+const leaguesWithoutTeams = computed(() => {
+  const leagueIdsWithTeams = new Set(leagueTeamsStore.myTeams.map(t => t.league_id))
+  return leaguesStore.myLeagues.filter(m => !leagueIdsWithTeams.has(m.league_id))
+})
+
+function formatJoinDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
 // Helpers
-function formatRole(role: string): string {
-  return role.charAt(0).toUpperCase() + role.slice(1)
-}
-
-function getRoleColor(role: string): string {
-  switch (role) {
-    case 'captain':
-    case 'founder':
-      return 'primary'
-    case 'player':
-      return 'success'
-    case 'substitute':
-      return 'info'
-    default:
-      return 'grey'
-  }
-}
-
-function formatStatus(status: string): string {
-  return status.charAt(0).toUpperCase() + status.slice(1)
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'active':
-      return 'success'
-    case 'inactive':
-      return 'grey'
-    case 'left':
-      return 'error'
-    default:
-      return 'grey'
-  }
-}
-
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
-}
+//
+// P-133 — TWO different role enums are rendered on this page and both were fed
+// through `teamRoleMap`.
+//
+// `membership.role` on a TEAM card is `LeagueTeamRole`
+// (captain | player | substitute) and was right. `membership.membership_type`
+// on a LEAGUE card is `LeagueMembershipType` (admin | moderator | member) and
+// shares not one value with it, so every lookup missed and
+// `getStatusColor`'s `?? 'grey'` fallback fired for every league membership
+// that has ever rendered here — a league admin's chip was styled identically
+// to a plain member's. Nothing looked broken at the call site, which is
+// exactly why a map that silently returns undefined is worse than no map: the
+// wrong answer arrives already dressed as the right one.
+//
+// The label was papered over separately: `formatRole` is a bare
+// capitalise-first-letter, so it produced plausible text ("Admin") without ever
+// consulting a map — which is why the miss never surfaced as a raw wire value
+// and the ratchet's regex could not see it either.
+const getRoleColor = (role: string) => mapStatusColor(teamRoleMap, role)
+const getRoleLabel = (role: string) => getStatusLabel(teamRoleMap, role)
+const getMembershipColor = (type: string) => mapStatusColor(leagueRoleMap, type)
+const getMembershipLabel = (type: string) => getStatusLabel(leagueRoleMap, type)
+const formatStatus = (status: string) => getStatusLabel(teamStatusMap, status)
+const getStatusColor = (status: string) => mapStatusColor(teamStatusMap, status)
 
 // Actions
 function confirmLeaveTeam(membership: PlayerLeagueTeamMembershipResponse) {
-  selectedMembership.value = membership
-  leaveDialog.value = true
+  confirmDialog.confirm({
+    title: 'Leave Team?',
+    message: `Are you sure you want to leave ${membership.team_name}? You'll need to be re-invited to rejoin.`,
+    action: 'Leave Team',
+    color: 'error',
+    handler: async () => {
+      await leagueTeamsStore.leaveTeam(membership.team_season_id)
+      snackbar.show(`Left ${membership.team_name}`, 'success')
+    },
+  })
 }
 
-async function leaveTeam() {
-  if (!selectedMembership.value) return
+/**
+ * P-124 — the alert used to bind `leagueTeamsStore.error`, a computed alias
+ * over `fetchMyTeamsState` (stores/leagueTeams.ts:55). That is one of the
+ * three calls `fetchData` makes, so the page reported a failed team fetch and
+ * stayed silent for the other two: a failed `fetchMyLeagues` left the "My
+ * Leagues" section empty with nothing on screen to say why, which reads as
+ * "you are in no leagues" — a wrong answer, not a missing one.
+ *
+ * All three legs run concurrently and any of them can fail, so this reports
+ * the first one that did, in the order they are listed.
+ */
+const loadError = computed(
+  () =>
+    leagueTeamsStore.fetchMyTeamsState.error ||
+    leagueTeamsStore.fetchMyInvitationsState.error ||
+    leaguesStore.fetchMyLeaguesState.error,
+)
 
-  leaving.value = true
+/**
+ * Same alias defect on the LOADING side: the spinner and the "You're Not on
+ * Any Teams Yet" empty state were gated on `leagueTeamsStore.loading`, which
+ * covers only `fetchMyTeams`. An empty state is an assertion about the data,
+ * so it must not render while the data is unknown or failed.
+ */
+const loadingData = computed(
+  () =>
+    leagueTeamsStore.fetchMyTeamsState.loading ||
+    leagueTeamsStore.fetchMyInvitationsState.loading ||
+    leaguesStore.fetchMyLeaguesState.loading,
+)
+
+function clearLoadError() {
+  leagueTeamsStore.fetchMyTeamsState.error = null
+  leagueTeamsStore.fetchMyInvitationsState.error = null
+  leaguesStore.fetchMyLeaguesState.error = null
+}
+
+async function fetchData() {
   try {
-    await leagueTeamsStore.leaveTeam(selectedMembership.value.team_season_id)
-    showSnackbar(`Left ${selectedMembership.value.team_name}`, 'success')
-    leaveDialog.value = false
+    await Promise.all([
+      leagueTeamsStore.fetchMyTeams(),
+      leagueTeamsStore.fetchMyInvitations(),
+      leaguesStore.fetchMyLeagues(),
+    ])
   } catch {
-    showSnackbar(leagueTeamsStore.error || 'Failed to leave team', 'error')
-  } finally {
-    leaving.value = false
+    // Errors are captured in stores
   }
 }
 
-onMounted(async () => {
-  // Fetch both teams and invitations
-  await Promise.all([
-    leagueTeamsStore.fetchMyTeams(),
-    leagueTeamsStore.fetchMyInvitations(),
-  ])
-})
+onMounted(() => { fetchData() })
 </script>

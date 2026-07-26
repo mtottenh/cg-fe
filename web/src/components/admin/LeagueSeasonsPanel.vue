@@ -26,7 +26,7 @@
       <template v-slot:item.name="{ item }">
         <div>
           <div class="font-weight-medium">{{ item.name }}</div>
-          <div class="text-caption text-grey">{{ item.slug }}</div>
+          <div class="text-caption text-medium-emphasis">{{ item.slug }}</div>
         </div>
       </template>
 
@@ -57,16 +57,17 @@
 
       <template v-slot:item.roster_lock_status="{ item }">
         <v-chip
-          :color="item.roster_lock_status === 'locked' ? 'error' : 'success'"
+          :color="rosterChipColor(item.roster_lock_status)"
           size="x-small"
           variant="flat"
+          :title="rosterLockHint(item.roster_lock_status) ?? undefined"
         >
-          {{ item.roster_lock_status === 'locked' ? 'Locked' : 'Open' }}
+          {{ rosterChipLabel(item.roster_lock_status) }}
         </v-chip>
       </template>
 
       <template v-slot:item.actions="{ item }">
-        <v-btn
+        <v-btn aria-label="Edit season"
           icon
           size="small"
           variant="text"
@@ -75,7 +76,7 @@
         >
           <v-icon>mdi-pencil</v-icon>
         </v-btn>
-        <v-btn
+        <v-btn aria-label="View teams"
           icon
           size="small"
           variant="text"
@@ -89,7 +90,7 @@
       <template v-slot:no-data>
         <div class="text-center pa-8">
           <v-icon size="48" color="grey-lighten-1">mdi-calendar-blank</v-icon>
-          <p class="text-grey mt-2">No seasons yet</p>
+          <p class="text-medium-emphasis mt-2">No seasons yet</p>
           <v-btn
             color="primary"
             variant="tonal"
@@ -106,26 +107,12 @@
 </template>
 
 <script setup lang="ts">
-interface LeagueSeason {
-  id: string
-  league_id: string
-  name: string
-  slug: string
-  description: string | null
-  status: string
-  registration_start: string | null
-  registration_end: string | null
-  season_start: string | null
-  season_end: string | null
-  team_size_min: number | null
-  team_size_max: number | null
-  max_substitutes: number | null
-  max_teams: number | null
-  roster_lock_status: string
-  created_by: string
-  created_at: string
-  updated_at: string
-}
+import { formatDate } from '@/utils/formatters'
+import type { LeagueSeasonResponse } from '@/stores/leagueSeasons'
+import { seasonStatusMap, getStatusColor as mapStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import { rosterLockColor, rosterLockHint, rosterLockLabel } from '@/utils/rosterLock'
+
+type LeagueSeason = LeagueSeasonResponse
 
 defineProps<{
   leagueId: string
@@ -149,23 +136,25 @@ const headers = [
   { title: 'Actions', key: 'actions', width: '100px', sortable: false, align: 'center' as const },
 ]
 
-function formatStatus(status: string): string {
-  return status.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ')
-}
+const formatStatus = (status: string) => getStatusLabel(seasonStatusMap, status)
+const getStatusColor = (status: string) => mapStatusColor(seasonStatusMap, status)
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'draft': return 'grey'
-    case 'registration_open': return 'info'
-    case 'registration_closed': return 'warning'
-    case 'in_progress': return 'success'
-    case 'completed': return 'primary'
-    case 'cancelled': return 'error'
-    default: return 'grey'
-  }
-}
+// ---------------------------------------------------------------------------
+// Roster column (COVERAGE-PLAN §9b P-22 — a second instance of P-11)
+//
+// This column used to render `roster_lock_status === 'locked' ? 'Locked' : 'Open'`.
+// The DB CHECK permits only open / soft_lock / hard_lock
+// (api/migrations/0025_league_teams_and_seasons.sql:69), so `'locked'` can never
+// occur and EVERY season — locked or not — reported "Open" to admins.
+//
+// `utils/rosterLock.ts` is the single mirror of the backend enum and fails
+// CLOSED: a value we do not recognise is treated as `hard_lock` rather than
+// silently reading as "unlocked". `rosterLockLabel` returns null for `open`
+// (its callers use it as a "show a warning chip?" test); this column always
+// shows a chip, so the open case supplies its own label and colour here.
+// ---------------------------------------------------------------------------
+const rosterChipLabel = (value: string | null | undefined) => rosterLockLabel(value) ?? 'Open'
+const rosterChipColor = (value: string | null | undefined) =>
+  rosterLockLabel(value) === null ? 'success' : rosterLockColor(value)
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString()
-}
 </script>

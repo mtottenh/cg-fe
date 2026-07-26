@@ -1,338 +1,994 @@
-import { test, expect } from '@playwright/test'
-import { loginAsAdmin } from './fixtures/auth.fixture'
-import { testTournaments } from './fixtures/test-data'
+import { test, expect, type Page } from '@playwright/test'
+import { loginAsAdmin, getAdminToken } from './fixtures/auth.fixture'
+import {
+  createCheckInScenario,
+  primeAuthStorage,
+  type CheckInScenario,
+} from './fixtures/checkin.fixture'
+import { setAvailabilityWindow } from './fixtures/match.fixture'
+import {
+  createSelfScheduledScenario,
+  completeMatchWithResult,
+  type SelfScheduledScenario,
+  type MatchDetails,
+} from './fixtures/match-workflow-extra.fixture'
 
 /**
  * Match workflow tests covering:
- * - Match detail page viewing
- * - Match scheduling (propose/accept/reject/counter)
+ * - Match detail page viewing and navigation
+ * - Match scheduling (self-scheduled panel, availability calendar, proposals)
+ * - The full scheduling negotiation: propose / accept / counter / reject
  * - Match check-in
- * - Match status timeline
+ * - Match status display and completed-match results
  *
- * NOTE: These tests require a tournament with matches to exist in the system.
- * If no matches exist, some tests will be skipped gracefully.
+ * Every test drives the UI against an ephemeral tournament built through the
+ * backend API in a beforeAll (see fixtures/match-workflow-extra.fixture.ts),
+ * so the whole spec is self-contained: no seeded tournaments, no skips.
+ *
+ * Scenarios are shared within a describe only when its tests are read-only;
+ * flows that mutate match state (proposals, results) build their own.
  */
 
-test.describe('Match Workflows', () => {
-  test.describe('Match Detail Page', () => {
-    test('should navigate to tournament detail page', async ({ page }) => {
-      await loginAsAdmin(page)
+// ---------------------------------------------------------------------------
+// Read-only backend cross-checks for the negotiation tests.
+//
+// No fixture proposes a schedule any more: `proposeScheduleViaApi` was
+// deleted from `match-workflow-extra.fixture.ts` because proposing is the
+// action under test here and must be a click. No shared fixture READS the
+// proposal endpoints either, so the readers live locally.
+//
+// `/schedule/active` and `/schedule/history` take no auth extractor
+// (api/crates/portal-api/src/handlers/tournaments/scheduling.rs:273 and :309),
+// so any valid bearer token works.
+// ---------------------------------------------------------------------------
+const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
-      await page.goto('/tournaments')
+interface ScheduleProposal {
+  id: string
+  proposed_by_user_id: string
+  proposed_times: string[]
+  selected_time?: string
+  status: string
+  rejection_reason?: string
+  /**
+   * "Who took the terminal action" — NOT "the opponent". On a withdrawal it is
+   * the proposer themselves (see COVERAGE-PLAN P-9), which is why the UI never
+   * labels it as a responder.
+   */
+  responded_by_user_id?: string | null
+}
 
-      // Find any tournament link
-      const tournamentLink = page.locator('a[href*="/tournaments/"]').first()
-      const isVisible = await tournamentLink.isVisible().catch(() => false)
+interface ScheduledMatch {
+  id: string
+  status: string
+  /**
+   * Absent (not null) while unscheduled — `TournamentMatchResponse` marks it
+   * `skip_serializing_if = "Option::is_none"`
+   * (api/crates/portal-api/src/dto/responses/tournament.rs:453-455).
+   */
+  scheduled_at?: string
+}
 
-      if (isVisible) {
-        await tournamentLink.click()
+async function apiGet<T>(path: string, token: string, context: string): Promise<T> {
+  const resp = await fetch(`${API_URL}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const text = await resp.text()
+  if (!resp.ok) {
+    throw new Error(`${context} failed (${resp.status}): ${text}`)
+  }
+  return (JSON.parse(text) as { data: T }).data
+}
 
-        // Should be on tournament detail page
-        await expect(page).toHaveURL(/\/tournaments\/[^/]+$/)
-      } else {
-        // No tournaments available - test passes but logs warning
-        test.skip()
-      }
-    })
+/** The single pending proposal for a match, or null when there is none. */
+function getActiveProposal(
+  token: string,
+  tournamentId: string,
+  matchId: string,
+): Promise<ScheduleProposal | null> {
+  return apiGet<ScheduleProposal | null>(
+    `/v1/tournaments/${tournamentId}/matches/${matchId}/schedule/active`,
+    token,
+    'Get active proposal',
+  )
+}
 
-    test('should display match card on tournament detail if matches exist', async ({ page }) => {
-      await loginAsAdmin(page)
+/** Every proposal ever raised on a match, in creation order. */
+function getProposalHistory(
+  token: string,
+  tournamentId: string,
+  matchId: string,
+): Promise<ScheduleProposal[]> {
+  return apiGet<ScheduleProposal[]>(
+    `/v1/tournaments/${tournamentId}/matches/${matchId}/schedule/history`,
+    token,
+    'Get proposal history',
+  )
+}
 
-      // Try to find a tournament with matches
-      await page.goto(`/tournaments/${testTournaments.standard.slug}`)
+/**
+ * Match read that exposes `scheduled_at` — the fixture's `fetchMatchDetails`
+ * only projects the result-related columns.
+ */
+function getScheduledMatch(
+  token: string,
+  tournamentId: string,
+  matchId: string,
+): Promise<ScheduledMatch> {
+  return apiGet<ScheduledMatch>(
+    `/v1/tournaments/${tournamentId}/matches/${matchId}`,
+    token,
+    'Get match',
+  )
+}
 
-      // Wait for page to load
-      await page.waitForLoadState('networkidle')
+/**
+ * A `datetime-local` input value (`YYYY-MM-DDTHH:mm`) N days out at a whole
+ * hour. Well clear of ScheduleTimePicker's `:min` of now + 1h
+ * (ScheduleTimePicker.vue:172-176) and of the backend's "proposed times must
+ * be in the future" rule (services/tournament/scheduling.rs:94-100).
+ */
+function localDateTimeInput(daysAhead: number, hour: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + daysAhead)
+  d.setHours(hour, 0, 0, 0)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
-      // Check if matches section exists
-      const matchesSection = page.getByText('Matches')
-      const hasMatches = await matchesSection.isVisible().catch(() => false)
+/**
+ * Assert a page shows the match as scheduled for `iso`.
+ *
+ * The agreed time is rendered by `formatDateTime` (= `toLocaleString()`,
+ * utils/formatters.ts:15-18) in the header chip (MatchDetailPage.vue:97-100),
+ * so the expected label is produced by the browser's own Intl rather than
+ * Node's — same locale and timezone as the component that rendered it.
+ * `.first()`: once scheduled, the check-in card repeats the same timestamp
+ * (MatchDetailPage.vue:145-151).
+ */
+async function expectMatchScheduledAt(page: Page, iso: string): Promise<void> {
+  await expect(page.getByText('Match Scheduled')).toBeVisible({ timeout: 15000 })
+  const label = await page.evaluate((value: string) => new Date(value).toLocaleString(), iso)
+  await expect(page.getByText(label).first()).toBeVisible()
+}
 
-      if (hasMatches) {
-        // Should see match cards or bracket
-        await expect(page.locator('.v-card').first()).toBeVisible()
-      } else {
-        // Tournament may not have generated bracket yet
-        // Just verify page loaded correctly
-        const pageTitle = await page.title()
-        expect(pageTitle).toBeTruthy()
-      }
-    })
+/**
+ * Send one proposal through MatchSchedulingPanel's MANUAL picker and assert the
+ * POST landed. Manual rather than calendar because it needs no seeded
+ * availability, and it exercises the `pickerValid` gate.
+ */
+async function proposeViaManualPicker(
+  page: Page,
+  matchId: string,
+  daysAhead: number,
+  hour: number,
+): Promise<void> {
+  const panel = page.locator('.v-card').filter({ hasText: 'Schedule Match' }).first()
+  await expect(panel).toBeVisible({ timeout: 20000 })
 
-    test('should display match not found for invalid match ID', async ({ page }) => {
-      await loginAsAdmin(page)
+  await panel.getByRole('button', { name: 'Manual' }).click()
+  await expect(panel.getByText('Custom Times')).toBeVisible()
+  await panel
+    .locator('input[type="datetime-local"]')
+    .first()
+    .fill(localDateTimeInput(daysAhead, hour))
 
-      // Navigate to a non-existent match
-      await page.goto('/tournaments/e2e-test-tournament/matches/00000000-0000-0000-0000-000000000000')
+  const sendProposal = panel.getByRole('button', { name: 'Send Proposal' })
+  await expect(sendProposal).toBeEnabled()
 
-      // Should see "Match Not Found" heading
-      await expect(page.getByRole('heading', { name: /Match Not Found/i })).toBeVisible({ timeout: 10000 })
+  const proposeCall = page.waitForResponse(
+    (res) =>
+      res.url().includes(`/matches/${matchId}/schedule/propose`) &&
+      res.request().method() === 'POST',
+    { timeout: 20000 },
+  )
+  await sendProposal.click()
+  const proposeRes = await proposeCall
+  expect(proposeRes.ok(), `POST /schedule/propose returned ${proposeRes.status()}`).toBe(true)
+  await expect(page.getByText('Your Proposal')).toBeVisible({ timeout: 15000 })
+}
+
+test.describe('Match browsing and navigation', () => {
+  let adminToken: string
+  let scenario: SelfScheduledScenario
+
+  test.beforeAll(async () => {
+    adminToken = await getAdminToken()
+    // In-progress tournament, two approved players, one round-1 match in `ready`.
+    scenario = await createSelfScheduledScenario(adminToken)
+  })
+
+  test('navigates from the tournaments list to a tournament detail page', async ({ page }) => {
+    await loginAsAdmin(page)
+    await page.goto('/tournaments')
+
+    // The scenario guarantees at least one tournament exists, so the grid
+    // always renders at least one clickable card.
+    const firstCard = page.locator('.tournament-card').first()
+    await expect(firstCard).toBeVisible({ timeout: 15000 })
+    await firstCard.click()
+
+    await expect(page).toHaveURL(/\/tournaments\/[^/]+$/)
+  })
+
+  test('tournament detail shows the generated match on the Matches tab', async ({ page }) => {
+    await loginAsAdmin(page)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
+
+    const matchesTab = page.getByRole('tab', { name: 'Matches' })
+    await expect(matchesTab).toBeEnabled({ timeout: 15000 })
+    await matchesTab.click()
+
+    const matchCard = page.locator('.match-card').first()
+    await expect(matchCard).toBeVisible()
+
+    // Both participants and the match format footer render on the card.
+    await expect(matchCard.getByText(scenario.p1.participantName)).toBeVisible()
+    await expect(matchCard.getByText(scenario.p2.participantName)).toBeVisible()
+    await expect(matchCard.getByText('Bo1')).toBeVisible()
+  })
+
+  test('shows Match Not Found for an unknown match id', async ({ page }) => {
+    await loginAsAdmin(page)
+    await page.goto(
+      `/tournaments/${scenario.tournamentSlug}/matches/00000000-0000-0000-0000-000000000000`,
+    )
+
+    await expect(page.getByRole('heading', { name: /Match Not Found/i })).toBeVisible({
+      timeout: 15000,
     })
   })
 
-  test.describe('Match Scheduling Panel', () => {
-    test('should display scheduling panel for self-scheduled tournaments', async ({ page }) => {
-      await loginAsAdmin(page)
+  test('displays tournament and match status chips', async ({ page }) => {
+    await loginAsAdmin(page)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
 
-      // This test requires a self-scheduled tournament with matches
-      // We'll verify the component renders when applicable
+    // Tournament header chip: the tournament started, so it shows Live Now.
+    await expect(page.getByText('Live Now').first()).toBeVisible({ timeout: 15000 })
 
-      await page.goto(`/tournaments/${testTournaments.standard.slug}`)
-
-      // Wait for tournament to load
-      await page.waitForLoadState('networkidle')
-
-      // Check scheduling mode indicator if available
-      const scheduleInfo = page.getByText(/self.?scheduled|scheduling/i)
-      const hasSelfScheduling = await scheduleInfo.isVisible().catch(() => false)
-
-      if (!hasSelfScheduling) {
-        // Tournament doesn't use self-scheduling, skip
-        test.skip()
-      }
-    })
-
-    test('scheduling panel should have time input fields', async ({ page }) => {
-      // This is a smoke test for the scheduling panel component
-      await loginAsAdmin(page)
-
-      // Navigate to any match page to see if scheduling panel appears
-      await page.goto(`/tournaments/${testTournaments.standard.slug}`)
-
-      // Look for schedule-related content
-      const scheduleContent = page.getByText('Schedule Match')
-      const hasSchedulePanel = await scheduleContent.isVisible().catch(() => false)
-
-      if (hasSchedulePanel) {
-        // Should see time input fields
-        await expect(page.locator('input[type="datetime-local"]').first()).toBeVisible()
-      } else {
-        // No scheduling panel on this page
-        test.skip()
-      }
-    })
+    // Match card status chip: freshly generated matches sit in `ready`, which
+    // `matchStatusMap` renders as the human label "Ready"
+    // (statusMaps.ts:47, via TournamentMatchCard.vue:92).
+    //
+    // This assertion used to read `hasText: 'ready'` and survived only because
+    // Playwright text matching is case-insensitive — so it passed identically
+    // whether the chip showed the mapped label or leaked the raw enum, which is
+    // exactly the P-4/P-10/P-21/P-44 defect class this suite exists to catch.
+    // `exact: true` is case-sensitive, so it now distinguishes the two.
+    await page.getByRole('tab', { name: 'Matches' }).click()
+    const matchCard = page.locator('.match-card').first()
+    await expect(matchCard).toBeVisible()
+    await expect(matchCard.locator('.v-chip').getByText('Ready', { exact: true })).toBeVisible()
   })
 
-  test.describe('Match Status Timeline', () => {
-    test('should display match status on tournament detail', async ({ page }) => {
-      await loginAsAdmin(page)
+  test('bracket tab renders the bracket view', async ({ page }) => {
+    await loginAsAdmin(page)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
 
-      await page.goto(`/tournaments/${testTournaments.standard.slug}`)
+    const bracketTab = page.getByRole('tab', { name: 'Bracket' })
+    await expect(bracketTab).toBeEnabled({ timeout: 15000 })
+    await bracketTab.click()
 
-      // Wait for page to load
-      await page.waitForLoadState('networkidle')
-
-      // Look for status chips/badges
-      const statusChip = page.locator('.v-chip').first()
-      const hasStatus = await statusChip.isVisible().catch(() => false)
-
-      if (hasStatus) {
-        // Status chips display match states like "Pending", "Scheduled", etc.
-        await expect(statusChip).toBeVisible()
-      }
-    })
+    // The bracket container renders and is NOT the empty state, because the
+    // tournament has generated matches.
+    //
+    // Known display gap (pre-existing, surfaced by de-skipping this test):
+    // the backend serializes bracket_type as "single_elim"
+    // (portal-core BracketType::Display) while TournamentBracket.vue only
+    // renders round columns for "single_elimination"/"winners", so round
+    // headers like "Finals" never appear for single-elim brackets. Round
+    // info coverage lives on the match detail page test instead.
+    await expect(page.locator('.bracket-container')).toBeVisible()
+    await expect(page.getByText('No Bracket Available')).toHaveCount(0)
   })
 
-  test.describe('Match Check-in', () => {
-    test('check-in panel should appear when match is in check-in phase', async ({ page }) => {
-      // This test verifies the check-in component exists when in correct state
-      await loginAsAdmin(page)
+  test('navigates from the Matches tab to the match detail page with breadcrumbs', async ({ page }) => {
+    await loginAsAdmin(page)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
 
-      await page.goto(`/tournaments/${testTournaments.standard.slug}`)
+    const matchesTab = page.getByRole('tab', { name: 'Matches' })
+    await expect(matchesTab).toBeEnabled({ timeout: 15000 })
+    await matchesTab.click()
 
-      // Look for check-in related content
-      const checkInContent = page.getByText(/check.?in/i)
-      const hasCheckIn = await checkInContent.isVisible().catch(() => false)
+    await page.locator('.match-card').first().click()
 
-      if (hasCheckIn) {
-        // Should see check-in button or status
-        await expect(checkInContent).toBeVisible()
-      } else {
-        // No matches in check-in phase, skip
-        test.skip()
-      }
-    })
+    await expect(page).toHaveURL(
+      new RegExp(`/tournaments/${scenario.tournamentSlug}/matches/[^/]+$`),
+    )
+
+    // Breadcrumbs render with a link back to the tournaments list. Scope to
+    // the breadcrumb bar — the nav drawer also has a Tournaments link.
+    const breadcrumbs = page.locator('.v-breadcrumbs')
+    await expect(breadcrumbs).toBeVisible({ timeout: 15000 })
+    await expect(breadcrumbs.getByRole('link', { name: 'Tournaments' })).toBeVisible()
+    await expect(page.getByText(scenario.tournamentName).first()).toBeVisible()
   })
 
-  test.describe('Match Result Display', () => {
-    test('should display score for completed matches', async ({ page }) => {
-      await loginAsAdmin(page)
+  test('match detail shows match format, round, and status timeline', async ({ page }) => {
+    await loginAsAdmin(page)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`)
 
-      await page.goto(`/tournaments/${testTournaments.standard.slug}`)
+    // Header chips: match number, round, and best-of format.
+    await expect(page.getByText('Best of 1')).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText(/Round \d/).first()).toBeVisible()
+    await expect(page.getByText(/Match #\d/).first()).toBeVisible()
 
-      // Wait for page to load
-      await page.waitForLoadState('networkidle')
-
-      // Look for score display (format: "X - Y" or similar)
-      const scoreDisplay = page.locator('text=/\\d+\\s*-\\s*\\d+/').first()
-      const hasScores = await scoreDisplay.isVisible().catch(() => false)
-
-      if (hasScores) {
-        await expect(scoreDisplay).toBeVisible()
-      } else {
-        // No completed matches with scores yet
-        test.skip()
-      }
-    })
-
-    test('should display winner indicator for completed matches', async ({ page }) => {
-      await loginAsAdmin(page)
-
-      await page.goto(`/tournaments/${testTournaments.standard.slug}`)
-
-      // Wait for page to load
-      await page.waitForLoadState('networkidle')
-
-      // Look for final/completed status chip
-      const completedChip = page.getByText(/final|completed|winner/i)
-      const hasCompleted = await completedChip.isVisible().catch(() => false)
-
-      if (hasCompleted) {
-        await expect(completedChip).toBeVisible()
-      }
-    })
+    // Status timeline card renders for every match.
+    await expect(page.getByText('Match Status').first()).toBeVisible()
   })
 
-  test.describe('Tournament Bracket View', () => {
-    test('should display bracket for bracket-type tournaments', async ({ page }) => {
-      await loginAsAdmin(page)
+  test('shows Registration Closed once the tournament is underway', async ({ page }) => {
+    await loginAsAdmin(page)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
 
-      await page.goto(`/tournaments/${testTournaments.standard.slug}`)
-
-      // Wait for page to load
-      await page.waitForLoadState('networkidle')
-
-      // Look for bracket-related elements
-      const bracketElement = page.getByText(/bracket|round|match/i).first()
-      const hasBracket = await bracketElement.isVisible().catch(() => false)
-
-      if (hasBracket) {
-        await expect(bracketElement).toBeVisible()
-      }
-    })
-
-    test('should show round information in bracket', async ({ page }) => {
-      await loginAsAdmin(page)
-
-      await page.goto(`/tournaments/${testTournaments.standard.slug}`)
-
-      // Wait for page to load
-      await page.waitForLoadState('networkidle')
-
-      // Look for round indicators
-      const roundText = page.getByText(/round \d|quarterfinal|semifinal|final/i).first()
-      const hasRounds = await roundText.isVisible().catch(() => false)
-
-      if (hasRounds) {
-        await expect(roundText).toBeVisible()
-      }
-    })
+    // The admin has no registration and the tournament is in progress, so
+    // the registration card must show the closed state. (.first(): the text
+    // appears both as the card heading and inside a status chip.)
+    await expect(page.getByText('Registration Closed').first()).toBeVisible({ timeout: 15000 })
   })
 
-  test.describe('Match Navigation', () => {
-    test('should navigate to match from tournament bracket', async ({ page }) => {
-      await loginAsAdmin(page)
+  test('displays the participant count', async ({ page }) => {
+    await loginAsAdmin(page)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
 
-      await page.goto(`/tournaments/${testTournaments.standard.slug}`)
-
-      // Wait for page to load
-      await page.waitForLoadState('networkidle')
-
-      // Look for clickable match element
-      const matchLink = page.locator('a[href*="/matches/"]').first()
-      const hasMatchLink = await matchLink.isVisible().catch(() => false)
-
-      if (hasMatchLink) {
-        await matchLink.click()
-
-        // Should be on match detail page
-        await expect(page).toHaveURL(/\/tournaments\/[^/]+\/matches\/[^/]+$/)
-      } else {
-        // No match links, skip
-        test.skip()
-      }
-    })
-
-    test('match detail page should have breadcrumbs', async ({ page }) => {
-      await loginAsAdmin(page)
-
-      // First get to a tournament page
-      await page.goto(`/tournaments/${testTournaments.standard.slug}`)
-      await page.waitForLoadState('networkidle')
-
-      // Try to navigate to any match
-      const matchLink = page.locator('a[href*="/matches/"]').first()
-      const hasMatchLink = await matchLink.isVisible().catch(() => false)
-
-      if (hasMatchLink) {
-        await matchLink.click()
-
-        // Should see breadcrumb navigation
-        const breadcrumb = page.locator('.v-breadcrumbs')
-        await expect(breadcrumb).toBeVisible()
-
-        // Breadcrumb should contain link back to tournaments
-        await expect(page.getByRole('link', { name: 'Tournaments' })).toBeVisible()
-      } else {
-        test.skip()
-      }
-    })
-  })
-
-  test.describe('Match Format Information', () => {
-    test('should display match format (BO1, BO3, etc)', async ({ page }) => {
-      await loginAsAdmin(page)
-
-      await page.goto(`/tournaments/${testTournaments.standard.slug}`)
-
-      // Wait for page to load
-      await page.waitForLoadState('networkidle')
-
-      // Look for match format indicators
-      const formatText = page.getByText(/best of \d|bo\d/i).first()
-      const hasFormat = await formatText.isVisible().catch(() => false)
-
-      if (hasFormat) {
-        await expect(formatText).toBeVisible()
-      }
-    })
+    // Overview tab info card: "Participants 2 / 4" for our two approved players.
+    await expect(page.getByText('2 / 4')).toBeVisible({ timeout: 15000 })
   })
 })
 
-test.describe('Tournament Registration Flow', () => {
-  // These tests complement the existing tournament-public.spec.ts
+test.describe('Match scheduling panel (self-scheduled)', () => {
+  let adminToken: string
+  let scenario: SelfScheduledScenario
 
-  test('should show registration closed message after deadline', async ({ page }) => {
-    await loginAsAdmin(page)
+  test.beforeAll(async () => {
+    adminToken = await getAdminToken()
+    scenario = await createSelfScheduledScenario(adminToken)
 
-    await page.goto(`/tournaments/${testTournaments.standard.slug}`)
-
-    // Wait for page to load
-    await page.waitForLoadState('networkidle')
-
-    // Look for registration status
-    const regClosedText = page.getByText(/registration.*closed|registration.*ended/i)
-    const isRegClosed = await regClosedText.isVisible().catch(() => false)
-
-    if (isRegClosed) {
-      await expect(regClosedText).toBeVisible()
+    // Seed weekly availability for both participants with a guaranteed
+    // overlap (16:00-22:00 every day) so the calendar overlay always has
+    // mutual slots to render.
+    for (let day = 0; day < 7; day++) {
+      const p1Window = await setAvailabilityWindow(scenario.p1.token, day, '14:00', '22:00', true)
+      const p2Window = await setAvailabilityWindow(scenario.p2.token, day, '16:00', '23:00', true)
+      if (!p1Window || !p2Window) {
+        throw new Error(`Failed to seed availability windows for day ${day}`)
+      }
     }
   })
 
-  test('should display participant count', async ({ page }) => {
-    await loginAsAdmin(page)
+  async function openMatchAsP1(page: import('@playwright/test').Page): Promise<void> {
+    await primeAuthStorage(page, scenario.p1.token, scenario.p1.userId)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`)
+  }
 
-    await page.goto(`/tournaments/${testTournaments.standard.slug}`)
+  test('participant sees the scheduling panel with the availability calendar', async ({ page }) => {
+    await openMatchAsP1(page)
 
-    // Wait for page to load
-    await page.waitForLoadState('networkidle')
+    // Panel renders because the tournament is self-scheduled, the match is
+    // `ready`, and the viewer is a participant.
+    await expect(page.getByText('Schedule Match')).toBeVisible({ timeout: 20000 })
 
-    // Look for participant count
-    const participantInfo = page.getByText(/\d+.*participant|registered|team/i)
-    const hasParticipantInfo = await participantInfo.isVisible().catch(() => false)
+    // Calendar overlay is the default view when the opponent is resolved:
+    // title, legend, and the availability settings link.
+    await expect(page.getByText('Availability', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('Mutual', { exact: true })).toBeVisible()
 
-    if (hasParticipantInfo) {
-      await expect(participantInfo.first()).toBeVisible()
+    const availabilityLink = page.getByRole('link', { name: /Update Your Availability/i })
+    await expect(availabilityLink).toBeVisible()
+    await expect(availabilityLink).toHaveAttribute('href', '/profile/availability')
+  })
+
+  test('availability calendar shows mutual slots from both players windows', async ({ page }) => {
+    await openMatchAsP1(page)
+
+    await expect(page.getByText('Schedule Match')).toBeVisible({ timeout: 20000 })
+
+    // Both players are available 16:00-22:00 every day, so the grid must
+    // contain mutual (or backend-suggested, which supersedes mutual) cells.
+    const overlapCells = page.locator('.grid-cell.cell-mutual, .grid-cell.cell-suggested')
+    await expect(overlapCells.first()).toBeVisible({ timeout: 20000 })
+  })
+
+  // NOTE: "selecting a mutual slot adds it to the proposed times" used to live
+  // here. It clicked a cell, asserted "1 time selected" and stopped — it never
+  // submitted, so `submitProposal` had no coverage. The cell click and that
+  // same summary assertion are now the opening moves of the end-to-end
+  // negotiation below, which then actually sends the proposal.
+
+  // P-8 regression. The overlay's week at offset 0 already starts TOMORROW
+  // (useAvailabilityOverlay.ts:46-53), so every earlier week is entirely in the
+  // past — yet "Previous week" was ungated and past weeks rendered identical
+  // bookable `cell-mutual` slots (weekly-recurring windows repeat backwards).
+  // Clicking one left "Send Proposal" enabled all the way to the backend's hard
+  // 400 "Proposed times must be in the future". Paging back is now blocked at
+  // the boundary, which is the only reachable route into that state.
+  test('the availability calendar cannot be paged into the past', async ({ page }) => {
+    await openMatchAsP1(page)
+    await expect(page.getByText('Schedule Match')).toBeVisible({ timeout: 20000 })
+
+    const previousWeek = page.getByRole('button', { name: 'Previous week' })
+    const nextWeek = page.getByRole('button', { name: 'Next week' })
+    const thisWeek = page.getByRole('button', { name: 'This Week' })
+
+    // At the boundary: nothing earlier is proposable, so there is no way back.
+    await expect(previousWeek).toBeDisabled()
+    await expect(thisWeek).toHaveCount(0)
+
+    // Forward is always allowed, and re-enables the return trip.
+    await nextWeek.click()
+    await expect(previousWeek).toBeEnabled()
+    await expect(thisWeek).toBeVisible()
+
+    // Coming back re-arms the boundary rather than sailing past it.
+    await previousWeek.click()
+    await expect(previousWeek).toBeDisabled()
+    await expect(thisWeek).toHaveCount(0)
+  })
+
+  test('manual mode shows the ScheduleTimePicker with quick select and custom times', async ({ page }) => {
+    await openMatchAsP1(page)
+
+    await expect(page.getByText('Schedule Match')).toBeVisible({ timeout: 20000 })
+
+    // Toggle from the calendar overlay to the manual picker.
+    await page.getByRole('button', { name: 'Manual' }).click()
+
+    // Heading is "Recommended Times" when backend suggestions loaded,
+    // "Quick Select" otherwise — either proves the picker rendered.
+    await expect(page.getByText(/Quick Select|Recommended Times/)).toBeVisible()
+    await expect(page.getByText('Custom Times')).toBeVisible()
+    await expect(page.locator('input[type="datetime-local"]').first()).toBeVisible()
+  })
+})
+
+/**
+ * The scheduling negotiation, driven end to end through two real browser
+ * sessions. Nothing here is seeded past the precondition (a self-scheduled
+ * tournament with a `ready` match): every proposal, acceptance, counter and
+ * rejection is a click.
+ *
+ * Two isolated contexts, one per player — the pattern from
+ * `veto-realtime.spec.ts:117-126`. Each test owns its own tournament because
+ * both mutate the same match's proposal state.
+ */
+test.describe('Schedule negotiation (two browser contexts)', () => {
+  test('P1 proposes a mutual slot, P2 accepts it, and both pages show the scheduled time', async ({
+    browser,
+  }) => {
+    test.setTimeout(180_000)
+    const adminToken = await getAdminToken()
+    const scenario = await createSelfScheduledScenario(adminToken)
+
+    // Weekly windows overlapping 16:00-22:00 so the calendar overlay has
+    // `cell-mutual` slots to offer. The overlay's week starts TOMORROW
+    // (useAvailabilityOverlay.ts:46-53) and its rows run 08:00-22:30
+    // (:71), so the earliest mutual cell is tomorrow 16:00 local — safely
+    // inside the backend's "must be in the future" rule.
+    for (let day = 0; day < 7; day++) {
+      const p1Window = await setAvailabilityWindow(scenario.p1.token, day, '14:00', '22:00', true)
+      const p2Window = await setAvailabilityWindow(scenario.p2.token, day, '16:00', '23:00', true)
+      if (!p1Window || !p2Window) {
+        throw new Error(`Failed to seed availability windows for day ${day}`)
+      }
     }
+
+    const matchUrl = `/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`
+    const contextP1 = await browser.newContext()
+    const contextP2 = await browser.newContext()
+
+    try {
+      const pageP1 = await contextP1.newPage()
+      const pageP2 = await contextP2.newPage()
+      await primeAuthStorage(pageP1, scenario.p1.token, scenario.p1.userId)
+      await primeAuthStorage(pageP2, scenario.p2.token, scenario.p2.userId)
+
+      // --- P1 picks a mutual slot and sends the proposal ------------------
+      // (MatchSchedulingPanel.submitProposal -> MatchDetailPage.handlePropose)
+      await pageP1.goto(matchUrl)
+      await pageP1.waitForLoadState('networkidle')
+
+      const p1Panel = pageP1.locator('.v-card').filter({ hasText: 'Schedule Match' }).first()
+      await expect(p1Panel).toBeVisible({ timeout: 20000 })
+
+      const mutualCells = p1Panel.locator('.grid-cell.cell-mutual, .grid-cell.cell-suggested')
+      await expect(mutualCells.first()).toBeVisible({ timeout: 20000 })
+      await mutualCells.first().click()
+      await expect(p1Panel.getByText(/1 time selected/)).toBeVisible()
+
+      const proposeCall = pageP1.waitForResponse(
+        (res) =>
+          res.url().includes(`/matches/${scenario.matchId}/schedule/propose`) &&
+          res.request().method() === 'POST',
+        { timeout: 20000 },
+      )
+      await p1Panel.getByRole('button', { name: 'Send Proposal' }).click()
+      const proposeRes = await proposeCall
+      expect(proposeRes.ok(), `POST /schedule/propose returned ${proposeRes.status()}`).toBe(true)
+
+      // P1's own view swaps the form for their pending proposal.
+      await expect(pageP1.getByText('Your Proposal')).toBeVisible({ timeout: 15000 })
+      await expect(pageP1.getByText('Waiting for your opponent to respond...')).toBeVisible()
+      await expect(pageP1.getByRole('button', { name: 'Send Proposal' })).toHaveCount(0)
+
+      // Backend: exactly the one slot P1 clicked, attributed to P1.
+      const pending = await getActiveProposal(
+        scenario.p1.token,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(pending?.status, 'P1s proposal must be pending in the backend').toBe('pending')
+      expect(pending?.proposed_by_user_id).toBe(scenario.p1.userId)
+      expect(pending?.proposed_times ?? []).toHaveLength(1)
+      const proposedTime = pending?.proposed_times[0] ?? ''
+
+      // --- P2 accepts one of the offered times ---------------------------
+      // (ProposalCard.handleAccept -> MatchDetailPage.handleAccept)
+      await pageP2.goto(matchUrl)
+      await pageP2.waitForLoadState('networkidle')
+
+      await expect(pageP2.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
+      // 'Awaiting Response' renders BOTH as the status chip and inside a <strong>
+      // in the body copy, so scope to the chip or Playwright strict mode fails.
+      await expect(
+        pageP2.locator('.v-chip').filter({ hasText: 'Awaiting Response' }).first(),
+      ).toBeVisible()
+
+      // Accept stays locked until a time is picked (ProposalCard.vue:109).
+      const acceptButton = pageP2.getByRole('button', { name: 'Accept' })
+      await expect(acceptButton).toBeDisabled()
+
+      const timeChoices = pageP2.getByRole('radio')
+      await expect(timeChoices).toHaveCount(1)
+      await timeChoices.first().check()
+      await expect(timeChoices.first()).toBeChecked()
+      await expect(acceptButton).toBeEnabled()
+
+      const acceptCall = pageP2.waitForResponse(
+        (res) =>
+          res.url().includes(`/matches/${scenario.matchId}/schedule/accept`) &&
+          res.request().method() === 'POST',
+        { timeout: 20000 },
+      )
+      await acceptButton.click()
+      const acceptRes = await acceptCall
+      expect(acceptRes.ok(), `POST /schedule/accept returned ${acceptRes.status()}`).toBe(true)
+
+      // Backend: the match now carries exactly the accepted instant.
+      const scheduled = await getScheduledMatch(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(scheduled.status).toBe('scheduled')
+      expect(scheduled.scheduled_at, 'accepting must stamp scheduled_at').toBeTruthy()
+      expect(new Date(scheduled.scheduled_at ?? '').getTime()).toBe(
+        new Date(proposedTime).getTime(),
+      )
+
+      // UI, acceptor's page (no reload — handleAccept refetches).
+      await expect(pageP2.getByText('Proposal from opponent')).toHaveCount(0)
+      await expectMatchScheduledAt(pageP2, proposedTime)
+
+      // UI, proposer's page: the same agreed time once refreshed.
+      await pageP1.reload()
+      await pageP1.waitForLoadState('networkidle')
+      await expect(pageP1.getByText('Waiting for your opponent to respond...')).toHaveCount(0)
+      await expectMatchScheduledAt(pageP1, proposedTime)
+    } finally {
+      await contextP1.close()
+      await contextP2.close()
+    }
+  })
+
+  test('P2 counter-proposes through the dialog and P1 rejects it, reopening scheduling', async ({
+    browser,
+  }) => {
+    test.setTimeout(180_000)
+    const adminToken = await getAdminToken()
+    const scenario = await createSelfScheduledScenario(adminToken)
+
+    const matchUrl = `/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`
+    const contextP1 = await browser.newContext()
+    const contextP2 = await browser.newContext()
+
+    try {
+      const pageP1 = await contextP1.newPage()
+      const pageP2 = await contextP2.newPage()
+      await primeAuthStorage(pageP1, scenario.p1.token, scenario.p1.userId)
+      await primeAuthStorage(pageP2, scenario.p2.token, scenario.p2.userId)
+
+      // --- P1 proposes through the manual picker -------------------------
+      // No availability is seeded here on purpose: with no mutual cells the
+      // calendar offers nothing, which is exactly when a player switches to
+      // Manual. This also exercises the `pickerValid` gate that the calendar
+      // path bypasses (MatchSchedulingPanel.vue:205-209).
+      await pageP1.goto(matchUrl)
+      await pageP1.waitForLoadState('networkidle')
+
+      const p1Panel = pageP1.locator('.v-card').filter({ hasText: 'Schedule Match' }).first()
+      await expect(p1Panel).toBeVisible({ timeout: 20000 })
+
+      const sendProposal = p1Panel.getByRole('button', { name: 'Send Proposal' })
+      await expect(sendProposal).toBeDisabled()
+
+      await p1Panel.getByRole('button', { name: 'Manual' }).click()
+      await expect(p1Panel.getByText('Custom Times')).toBeVisible()
+      await p1Panel
+        .locator('input[type="datetime-local"]')
+        .first()
+        .fill(localDateTimeInput(2, 19))
+      await expect(p1Panel.getByText(/1 time selected/)).toBeVisible()
+      await expect(sendProposal).toBeEnabled()
+
+      const proposeCall = pageP1.waitForResponse(
+        (res) =>
+          res.url().includes(`/matches/${scenario.matchId}/schedule/propose`) &&
+          res.request().method() === 'POST',
+        { timeout: 20000 },
+      )
+      await sendProposal.click()
+      const proposeRes = await proposeCall
+      expect(proposeRes.ok(), `POST /schedule/propose returned ${proposeRes.status()}`).toBe(true)
+      await expect(pageP1.getByText('Your Proposal')).toBeVisible({ timeout: 15000 })
+
+      const original = await getActiveProposal(
+        scenario.p1.token,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(original?.proposed_by_user_id).toBe(scenario.p1.userId)
+
+      // --- P2 counter-proposes through the dialog ------------------------
+      // (MatchSchedulingPanel.submitCounter -> MatchDetailPage.handleCounter)
+      await pageP2.goto(matchUrl)
+      await pageP2.waitForLoadState('networkidle')
+      await expect(pageP2.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
+
+      await pageP2.getByRole('button', { name: 'Counter-Propose' }).click()
+      const counterDialog = pageP2.getByRole('dialog')
+      await expect(counterDialog).toBeVisible()
+      await expect(counterDialog.getByText('Custom Times')).toBeVisible()
+
+      const counterSubmit = counterDialog.getByRole('button', { name: 'Send Counter-Proposal' })
+      await expect(counterSubmit).toBeDisabled()
+      await counterDialog
+        .locator('input[type="datetime-local"]')
+        .first()
+        .fill(localDateTimeInput(4, 20))
+      await expect(counterDialog.getByText(/1 time selected/)).toBeVisible()
+      await expect(counterSubmit).toBeEnabled()
+
+      const counterCall = pageP2.waitForResponse(
+        (res) =>
+          res.url().includes(`/matches/${scenario.matchId}/schedule/counter`) &&
+          res.request().method() === 'POST',
+        { timeout: 20000 },
+      )
+      await counterSubmit.click()
+      const counterRes = await counterCall
+      expect(counterRes.ok(), `POST /schedule/counter returned ${counterRes.status()}`).toBe(true)
+
+      // The roles flip: P2 now owns the live proposal.
+      await expect(pageP2.getByText('Your Proposal')).toBeVisible({ timeout: 15000 })
+      await expect(pageP2.getByText('Waiting for your opponent to respond...')).toBeVisible()
+
+      // Backend: P1's proposal is superseded, P2's counter is the live one.
+      const counter = await getActiveProposal(
+        scenario.p2.token,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(counter?.status).toBe('pending')
+      expect(counter?.proposed_by_user_id).toBe(scenario.p2.userId)
+      expect(counter?.proposed_times ?? []).toHaveLength(1)
+      const counterTime = counter?.proposed_times[0] ?? ''
+
+      const history = await getProposalHistory(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(history.map((p) => p.status).sort()).toEqual(['counter_proposed', 'pending'])
+
+      // --- P1 sees the counter and rejects it with a reason ---------------
+      // (ProposalCard.confirmReject -> MatchDetailPage.handleReject)
+      await pageP1.reload()
+      await pageP1.waitForLoadState('networkidle')
+      await expect(pageP1.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
+
+      // P1 is shown P2's time, formatted by `formatProposedTime`
+      // (stores/matchScheduling.ts:182-190) as the radio's label.
+      const counterLabel = await pageP1.evaluate(
+        (value: string) =>
+          new Date(value).toLocaleString(undefined, {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        counterTime,
+      )
+      await expect(pageP1.getByText(counterLabel).first()).toBeVisible()
+
+      await pageP1.getByRole('button', { name: 'Reject' }).click()
+      const rejectDialog = pageP1.getByRole('dialog')
+      await expect(rejectDialog.getByText('Reject Proposal')).toBeVisible()
+
+      const rejectReason = 'None of those work — our league fixture clashes.'
+      await rejectDialog.locator('textarea').first().fill(rejectReason)
+
+      const rejectCall = pageP1.waitForResponse(
+        (res) =>
+          res.url().includes(`/matches/${scenario.matchId}/schedule/reject`) &&
+          res.request().method() === 'POST',
+        { timeout: 20000 },
+      )
+      // Scoped to the dialog: the ProposalCard's own Reject button is still
+      // mounted behind it. Inside the dialog only Cancel / Reject exist.
+      await rejectDialog.getByRole('button', { name: 'Reject' }).click()
+      const rejectRes = await rejectCall
+      expect(rejectRes.ok(), `POST /schedule/reject returned ${rejectRes.status()}`).toBe(true)
+
+      // UI: scheduling reopens for P1 and the timeline records the rejection.
+      await expect(pageP1.getByText(/Propose times for this match/)).toBeVisible({
+        timeout: 15000,
+      })
+      await expect(pageP1.getByText('Proposal from opponent')).toHaveCount(0)
+      await expect(pageP1.getByText('Scheduling History')).toBeVisible()
+      await expect(pageP1.getByText('Rejected').first()).toBeVisible()
+
+      // Backend: no live proposal, and the reason P1 typed is persisted.
+      const afterReject = await getActiveProposal(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(afterReject).toBeNull()
+
+      const finalHistory = await getProposalHistory(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      const rejected = finalHistory.find((p) => p.id === counter?.id)
+      expect(rejected?.status).toBe('rejected')
+      expect(rejected?.rejection_reason).toBe(rejectReason)
+
+      // The match never left `ready`, so the pair can negotiate again.
+      const stillReady = await getScheduledMatch(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(stillReady.status).toBe('ready')
+      expect(stillReady.scheduled_at ?? null).toBeNull()
+    } finally {
+      await contextP1.close()
+      await contextP2.close()
+    }
+  })
+
+  // P-9. Withdrawing is the proposer's ONLY control over a live proposal: a
+  // mistyped time used to block scheduling for the full 48h TTL unless the
+  // opponent happened to answer.
+  test('P1 withdraws their own pending proposal, which the opponent cannot do, and then proposes again', async ({
+    browser,
+  }) => {
+    test.setTimeout(180_000)
+    const adminToken = await getAdminToken()
+    const scenario = await createSelfScheduledScenario(adminToken)
+
+    const matchUrl = `/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`
+    const contextP1 = await browser.newContext()
+    const contextP2 = await browser.newContext()
+
+    try {
+      const pageP1 = await contextP1.newPage()
+      const pageP2 = await contextP2.newPage()
+      await primeAuthStorage(pageP1, scenario.p1.token, scenario.p1.userId)
+      await primeAuthStorage(pageP2, scenario.p2.token, scenario.p2.userId)
+
+      // --- P1 proposes ----------------------------------------------------
+      await pageP1.goto(matchUrl)
+      await pageP1.waitForLoadState('networkidle')
+      await proposeViaManualPicker(pageP1, scenario.matchId, 3, 18)
+
+      const original = await getActiveProposal(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(original?.status).toBe('pending')
+      expect(original?.proposed_by_user_id).toBe(scenario.p1.userId)
+
+      // --- The affordance is proposer-only --------------------------------
+      const p1Panel = pageP1.locator('.v-card').filter({ hasText: 'Schedule Match' }).first()
+      const withdrawButton = p1Panel.getByRole('button', { name: 'Withdraw Proposal' })
+      await expect(withdrawButton).toBeVisible()
+      // The proposer answers nothing — those three belong to the opponent.
+      await expect(p1Panel.getByRole('button', { name: 'Accept' })).toHaveCount(0)
+      await expect(p1Panel.getByRole('button', { name: 'Counter-Propose' })).toHaveCount(0)
+      await expect(p1Panel.getByRole('button', { name: 'Reject' })).toHaveCount(0)
+
+      await pageP2.goto(matchUrl)
+      await pageP2.waitForLoadState('networkidle')
+      await expect(pageP2.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
+      await expect(pageP2.getByRole('button', { name: 'Counter-Propose' })).toBeVisible()
+      await expect(pageP2.getByRole('button', { name: 'Withdraw Proposal' })).toHaveCount(0)
+
+      // The backend enforces the same rule independently of the missing button.
+      // coverage-plan-exempt: RBAC 403 has no UI surface — the opponent has no
+      // withdraw control to click, which is asserted directly above.
+      const forbidden = await fetch(
+        `${API_URL}/v1/tournaments/${scenario.tournamentId}/matches/${scenario.matchId}/schedule/cancel`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${scenario.p2.token}`,
+          },
+          body: JSON.stringify({ proposal_id: original?.id }),
+        },
+      )
+      expect(forbidden.status, 'only the proposer may withdraw').toBe(403)
+
+      // --- P1 withdraws through the confirm dialog ------------------------
+      await withdrawButton.click()
+      const withdrawDialog = pageP1.getByRole('dialog')
+      await expect(withdrawDialog.getByText('Withdraw Proposal')).toBeVisible()
+
+      const cancelCall = pageP1.waitForResponse(
+        (res) =>
+          res.url().includes(`/matches/${scenario.matchId}/schedule/cancel`) &&
+          res.request().method() === 'POST',
+        { timeout: 20000 },
+      )
+      // exact: the card's own "Withdraw Proposal" button is still mounted behind
+      // the dialog; inside it only "Keep Proposal" and "Withdraw" exist.
+      await withdrawDialog.getByRole('button', { name: 'Withdraw', exact: true }).click()
+      const cancelRes = await cancelCall
+      expect(cancelRes.ok(), `POST /schedule/cancel returned ${cancelRes.status()}`).toBe(true)
+
+      // UI: the propose form is back and the withdrawal is on the timeline.
+      await expect(pageP1.getByText(/Propose times for this match/)).toBeVisible({
+        timeout: 15000,
+      })
+      await expect(pageP1.getByText('Waiting for your opponent to respond...')).toHaveCount(0)
+      await expect(pageP1.getByText('Scheduling History')).toBeVisible()
+      await expect(pageP1.getByText('Cancelled').first()).toBeVisible()
+
+      // Backend: no live proposal, and the row is `cancelled` — attributed to
+      // P1, because `responded_by_user_id` records who ENDED the proposal, not
+      // who was asked to respond.
+      const afterWithdraw = await getActiveProposal(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(afterWithdraw).toBeNull()
+
+      const history = await getProposalHistory(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      const withdrawn = history.find((p) => p.id === original?.id)
+      expect(withdrawn?.status).toBe('cancelled')
+      expect(withdrawn?.responded_by_user_id).toBe(scenario.p1.userId)
+
+      // --- Scheduling really did reopen -----------------------------------
+      await proposeViaManualPicker(pageP1, scenario.matchId, 5, 19)
+
+      const replacement = await getActiveProposal(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(replacement?.status).toBe('pending')
+      expect(replacement?.id).not.toBe(original?.id)
+      const replacementTime = replacement?.proposed_times[0] ?? ''
+
+      // And the opponent is offered the replacement, not the withdrawn times.
+      await pageP2.reload()
+      await pageP2.waitForLoadState('networkidle')
+      await expect(pageP2.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
+      const choices = pageP2.getByRole('radio')
+      await expect(choices).toHaveCount(1)
+
+      const replacementLabel = await pageP2.evaluate(
+        (value: string) =>
+          new Date(value).toLocaleString(undefined, {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        replacementTime,
+      )
+      await expect(pageP2.getByText(replacementLabel).first()).toBeVisible()
+
+      // The match itself never moved off `ready`.
+      const stillReady = await getScheduledMatch(
+        adminToken,
+        scenario.tournamentId,
+        scenario.matchId,
+      )
+      expect(stillReady.status).toBe('ready')
+      expect(stillReady.scheduled_at ?? null).toBeNull()
+    } finally {
+      await contextP1.close()
+      await contextP2.close()
+    }
+  })
+})
+
+test.describe('Match check-in', () => {
+  let scenario: CheckInScenario
+
+  test.beforeAll(async () => {
+    const adminToken = await getAdminToken()
+    // Fresh tournament whose match the fixture drives into `checking_in`.
+    scenario = await createCheckInScenario(undefined, adminToken, {
+      checkInRequired: true,
+    })
+  })
+
+  test('participant sees the check-in panel while the match is checking in', async ({ page }) => {
+    await primeAuthStorage(page, scenario.p1.token, scenario.p1.userId)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`)
+
+    await expect(page.getByText('Match Check-in')).toBeVisible({ timeout: 20000 })
+    await expect(page.getByText('Both participants need to check in')).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Check In$/i })).toBeVisible()
+
+    // The status timeline accompanies the check-in phase.
+    await expect(page.getByText('Match Status').first()).toBeVisible()
+  })
+})
+
+test.describe('Completed match display', () => {
+  let adminToken: string
+  let scenario: SelfScheduledScenario
+  let completedMatch: MatchDetails
+
+  test.beforeAll(async () => {
+    adminToken = await getAdminToken()
+    scenario = await createSelfScheduledScenario(adminToken)
+    // Advance to in_progress, P1 submits 1-0 claiming the win, P2 confirms.
+    completedMatch = await completeMatchWithResult(adminToken, scenario, 1, 0)
+    expect(completedMatch.winner_registration_id).toBe(scenario.p1.registrationId)
+  })
+
+  test('match detail shows the final score and highlights the winner', async ({ page }) => {
+    await loginAsAdmin(page)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`)
+
+    // Completed header: score, Final chip, and the winner rendered in the
+    // success style.
+    // exact: the claim summary caption also contains "P1 1 - 0 P2".
+    await expect(page.getByText('1 - 0', { exact: true })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText('Final', { exact: true })).toBeVisible()
+    await expect(page.locator('h3.text-success')).toHaveText(
+      new RegExp(scenario.p1.participantName),
+    )
+  })
+
+  test('tournament Matches tab shows the completed match with scores', async ({ page }) => {
+    await loginAsAdmin(page)
+    await page.goto(`/tournaments/${scenario.tournamentSlug}`)
+
+    const matchesTab = page.getByRole('tab', { name: 'Matches' })
+    await expect(matchesTab).toBeEnabled({ timeout: 15000 })
+    await matchesTab.click()
+
+    const matchCard = page.locator('.match-card').first()
+    await expect(matchCard).toBeVisible()
+    await expect(matchCard.getByText('Completed')).toBeVisible()
+
+    // Per-participant scores render on completed cards.
+    await expect(matchCard.locator('.score').filter({ hasText: '1' })).toBeVisible()
+    await expect(matchCard.locator('.score').filter({ hasText: '0' })).toBeVisible()
   })
 })

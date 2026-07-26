@@ -1,14 +1,14 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    :fullscreen="smAndDown"
+    v-model="open"
     max-width="900"
     persistent
   >
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Manage Members: {{ league?.league_name }}</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -51,7 +51,7 @@
               <template v-slot:item.username="{ item }">
                 <div>
                   <div class="font-weight-medium">{{ item.username }}</div>
-                  <div class="text-caption text-grey">{{ item.email }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ item.email }}</div>
                 </div>
               </template>
 
@@ -71,14 +71,14 @@
 
               <template v-slot:item.actions="{ item }">
                 <v-menu>
-                  <template v-slot:activator="{ props }">
-                    <v-btn
+                  <template v-slot:activator="{ props: activatorProps }">
+                    <v-btn aria-label="Change role"
                       icon
                       size="small"
                       variant="text"
-                      v-bind="props"
-                      :disabled="item.membership_type === 'owner'"
-                      title="Change Role"
+                      v-bind="activatorProps"
+                      :disabled="isLastAdmin(item)"
+                      :title="isLastAdmin(item) ? 'Cannot demote the last admin' : 'Change Role'"
                     >
                       <v-icon>mdi-account-cog</v-icon>
                     </v-btn>
@@ -96,15 +96,15 @@
                   </v-list>
                 </v-menu>
 
-                <v-btn
+                <v-btn aria-label="Remove member"
                   icon
                   size="small"
                   variant="text"
                   color="error"
-                  :disabled="item.membership_type === 'owner'"
+                  :disabled="isLastAdmin(item)"
                   :loading="removingMemberId === item.user_id"
                   @click="removeMember(item)"
-                  title="Remove Member"
+                  :title="isLastAdmin(item) ? 'Cannot remove the last admin' : 'Remove Member'"
                 >
                   <v-icon>mdi-account-remove</v-icon>
                 </v-btn>
@@ -113,7 +113,7 @@
               <template v-slot:no-data>
                 <div class="text-center pa-8">
                   <v-icon size="48" color="grey-lighten-1">mdi-account-group-outline</v-icon>
-                  <p class="text-grey mt-2">No members found</p>
+                  <p class="text-medium-emphasis mt-2">No members found</p>
                 </div>
               </template>
             </v-data-table>
@@ -142,14 +142,33 @@
               :items="invitations"
               :items-per-page="10"
               class="elevation-0"
+              data-testid="league-invitations-table"
             >
-              <template v-slot:item.user_id="{ item }">
-                <span class="text-caption">{{ item.user_id.substring(0, 8) }}...</span>
+              <template v-slot:item.username="{ item }">
+                <div data-testid="invitation-user">
+                  <div class="font-weight-medium">{{ item.display_name || item.username }}</div>
+                  <div v-if="item.display_name" class="text-caption text-medium-emphasis">
+                    {{ item.username }}
+                  </div>
+                </div>
+              </template>
+
+              <template v-slot:item.message="{ item }">
+                <span
+                  v-if="item.message"
+                  class="text-truncate"
+                  style="max-width: 200px; display: inline-block;"
+                  :title="item.message"
+                  data-testid="invitation-message"
+                >
+                  {{ item.message }}
+                </span>
+                <span v-else class="text-grey-lighten-1">-</span>
               </template>
 
               <template v-slot:item.status="{ item }">
-                <v-chip size="small" color="info" variant="flat">
-                  {{ item.status }}
+                <v-chip :color="getInvitationStatusColor(item.status)" size="small" variant="flat">
+                  {{ getInvitationStatusLabel(item.status) }}
                 </v-chip>
               </template>
 
@@ -162,7 +181,7 @@
               </template>
 
               <template v-slot:item.actions="{ item }">
-                <v-btn
+                <v-btn aria-label="Cancel invitation"
                   icon
                   size="small"
                   variant="text"
@@ -178,7 +197,7 @@
               <template v-slot:no-data>
                 <div class="text-center pa-8">
                   <v-icon size="48" color="grey-lighten-1">mdi-email-outline</v-icon>
-                  <p class="text-grey mt-2">No pending invitations</p>
+                  <p class="text-medium-emphasis mt-2">No pending invitations</p>
                 </div>
               </template>
             </v-data-table>
@@ -196,21 +215,33 @@
               :items="applications"
               :items-per-page="10"
               class="elevation-0"
+              data-testid="league-applications-table"
             >
-              <template v-slot:item.user_id="{ item }">
-                <span class="text-caption">{{ item.user_id.substring(0, 8) }}...</span>
+              <template v-slot:item.username="{ item }">
+                <div data-testid="application-user">
+                  <div class="font-weight-medium">{{ item.display_name || item.username }}</div>
+                  <div v-if="item.display_name" class="text-caption text-medium-emphasis">
+                    {{ item.username }}
+                  </div>
+                </div>
               </template>
 
               <template v-slot:item.message="{ item }">
-                <span v-if="item.message" class="text-truncate" style="max-width: 200px; display: inline-block;">
+                <span
+                  v-if="item.message"
+                  class="text-truncate"
+                  style="max-width: 200px; display: inline-block;"
+                  :title="item.message"
+                  data-testid="application-message"
+                >
                   {{ item.message }}
                 </span>
                 <span v-else class="text-grey-lighten-1">-</span>
               </template>
 
               <template v-slot:item.status="{ item }">
-                <v-chip size="small" color="warning" variant="flat">
-                  {{ item.status }}
+                <v-chip :color="getInvitationStatusColor(item.status)" size="small" variant="flat">
+                  {{ getInvitationStatusLabel(item.status) }}
                 </v-chip>
               </template>
 
@@ -219,7 +250,7 @@
               </template>
 
               <template v-slot:item.actions="{ item }">
-                <v-btn
+                <v-btn aria-label="Approve application"
                   icon
                   size="small"
                   variant="text"
@@ -230,7 +261,7 @@
                 >
                   <v-icon>mdi-check-circle</v-icon>
                 </v-btn>
-                <v-btn
+                <v-btn aria-label="Reject application"
                   icon
                   size="small"
                   variant="text"
@@ -246,7 +277,7 @@
               <template v-slot:no-data>
                 <div class="text-center pa-8">
                   <v-icon size="48" color="grey-lighten-1">mdi-clipboard-account-outline</v-icon>
-                  <p class="text-grey mt-2">No pending applications</p>
+                  <p class="text-medium-emphasis mt-2">No pending applications</p>
                 </div>
               </template>
             </v-data-table>
@@ -265,9 +296,6 @@
         {{ error }}
       </v-alert>
 
-      <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-        {{ snackbarText }}
-      </v-snackbar>
     </v-card>
 
     <!-- Invite User Modal -->
@@ -280,72 +308,84 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { ApiError } from '@/api'
-import { type UserLeagueMembership } from '@/stores/leagues'
+import { useDisplay } from 'vuetify'
+import { ref, computed, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useLeaguesStore, type UserLeagueMembership, type LeagueMemberResponse, type LeagueInvitationResponse } from '@/stores/leagues'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { formatDate } from '@/utils/formatters'
 import InviteUserModal from './InviteUserModal.vue'
+import { leagueRoleMap, getStatusColor, getStatusLabel, formatRole, type StatusMap } from '@/utils/statusMaps'
 
-interface LeagueMember {
-  id: string
-  league_id: string
-  user_id: string
-  username: string
-  email: string
-  membership_type: string
-  joined_at: string
+/**
+ * P-96: both tables interpolated `item.status` raw — the wire value — while
+ * the members table beside them mapped roles through `formatRole`. Invitations
+ * and applications are rows of the SAME `league_invitations` table, so they
+ * share one status enum: `LeagueInvitationStatus`
+ * (api/crates/portal-domain/src/entities/league.rs:264) and the
+ * `league_invitations_check_status` CHECK
+ * (api/migrations/0022_create_league_invitations.sql:18) both say
+ * pending / accepted / rejected / expired.
+ *
+ * Defined locally rather than in `src/utils/statusMaps.ts` only because that
+ * file was owned by a concurrent lane; it belongs there as
+ * `leagueInvitationStatusMap`. It cannot be compile-locked yet either —
+ * `LeagueInvitationResponse.status` is a bare `String` on the wire, so no
+ * union is generated (P-112).
+ */
+const leagueInvitationStatusMap: StatusMap = {
+  pending: { color: 'warning', label: 'Pending' },
+  accepted: { color: 'success', label: 'Accepted' },
+  rejected: { color: 'error', label: 'Rejected' },
+  expired: { color: 'grey', label: 'Expired' },
 }
 
-interface LeagueInvitation {
-  id: string
-  league_id: string
-  user_id: string
-  invitation_type: string
-  status: string
-  message: string | null
-  invited_by: string | null
-  responded_by: string | null
-  responded_at: string | null
-  expires_at: string | null
-  created_at: string
-}
+// Long scrolling forms in a small floating dialog are unusable on phones.
+const { smAndDown } = useDisplay()
 
-const props = defineProps<{
-  modelValue: boolean
-  league: UserLeagueMembership | null
+const props = defineProps<{  league: UserLeagueMembership | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  updated: []
+const emit = defineEmits<{  updated: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
+
+const leaguesStore = useLeaguesStore()
+const {
+  members,
+  leagueInvitations: invitations,
+  applications,
+} = storeToRefs(leaguesStore)
+const snackbar = useSnackbar()
 
 // State
 const activeTab = ref('members')
 const error = ref<string | null>(null)
-
-// Members
-const members = ref<LeagueMember[]>([])
-const loadingMembers = ref(false)
 const removingMemberId = ref<string | null>(null)
-
-// Invitations
-const invitations = ref<LeagueInvitation[]>([])
-const loadingInvitations = ref(false)
 const cancellingInvitationId = ref<string | null>(null)
 const inviteModalOpen = ref(false)
-
-// Applications
-const applications = ref<LeagueInvitation[]>([])
-const loadingApplications = ref(false)
 const processingApplicationId = ref<string | null>(null)
 const approving = ref(false)
 
-// Snackbar
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
+/**
+ * P-177: both action guards used to test `membership_type === 'owner'` — a
+ * value `LeagueMembershipType` does not contain (admin/moderator/member), so
+ * they NEVER fired and every member was actionable. The rule the backend
+ * actually enforces is last-admin protection ("cannot remove/demote the last
+ * admin"), so that is what the UI mirrors now: acting on an admin is blocked
+ * exactly when they are the only one. The API remains the enforcer.
+ */
+const isLastAdmin = (member: { membership_type: string }) =>
+  member.membership_type === 'admin' &&
+  members.value.filter(m => m.membership_type === 'admin').length <= 1
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+// Nested-state loading flags: keep computed() because we only want the inner
+// boolean, and `storeToRefs(leaguesStore).fetchMembersState.value.loading` would
+// need `.value` in script to reach the same thing.
+const loadingMembers = computed(() => leaguesStore.fetchMembersState.loading)
+const loadingInvitations = computed(() => leaguesStore.fetchLeagueInvitationsState.loading)
+const loadingApplications = computed(() => leaguesStore.fetchApplicationsState.loading)
 
 // Table headers
 const memberHeaders = [
@@ -355,8 +395,23 @@ const memberHeaders = [
   { title: 'Actions', key: 'actions', width: '100px', sortable: false, align: 'center' as const },
 ]
 
+/**
+ * P-115: both tables keyed their first column on `user_id` and rendered
+ * `item.user_id.substring(0, 8)`. No surface in the product shows a user's
+ * UUID, so the row named nobody — and because ids are UUID v7, whose first
+ * characters encode the creation timestamp, two invitations sent seconds apart
+ * shared their prefix and were genuinely ambiguous rather than merely cryptic.
+ * `LeagueInvitationResponse` now carries `username`/`display_name` the way
+ * `LeagueMemberResponse` always has, so both tables key on the name.
+ *
+ * P-114: `invitationHeaders` had no Message column at all, while
+ * `applicationHeaders` beside it did — so once P-94 made the invite message
+ * reach the API, the one surface an organiser would look at still never showed
+ * it.
+ */
 const invitationHeaders = [
-  { title: 'User ID', key: 'user_id' },
+  { title: 'User', key: 'username' },
+  { title: 'Message', key: 'message' },
   { title: 'Status', key: 'status', width: '100px' },
   { title: 'Sent', key: 'created_at', width: '120px' },
   { title: 'Expires', key: 'expires_at', width: '120px' },
@@ -364,7 +419,7 @@ const invitationHeaders = [
 ]
 
 const applicationHeaders = [
-  { title: 'User ID', key: 'user_id' },
+  { title: 'User', key: 'username' },
   { title: 'Message', key: 'message' },
   { title: 'Status', key: 'status', width: '100px' },
   { title: 'Applied', key: 'created_at', width: '120px' },
@@ -377,290 +432,105 @@ const availableRoles = [
   { value: 'member', label: 'Member' },
 ]
 
-// Helpers
-function formatRole(role: string): string {
-  return role.charAt(0).toUpperCase() + role.slice(1)
-}
-
-function getRoleColor(role: string): string {
-  switch (role) {
-    case 'owner': return 'purple'
-    case 'admin': return 'primary'
-    case 'moderator': return 'info'
-    default: return 'grey'
-  }
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString()
-}
-
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
-}
+const getRoleColor = (role: string) => getStatusColor(leagueRoleMap, role)
+const getInvitationStatusColor = (status: string) =>
+  getStatusColor(leagueInvitationStatusMap, status)
+const getInvitationStatusLabel = (status: string) =>
+  getStatusLabel(leagueInvitationStatusMap, status)
 
 // Watch for dialog opening
-watch(() => props.modelValue, async (isOpen) => {
+watch(open, async (isOpen) => {
   if (isOpen && props.league) {
     activeTab.value = 'members'
+    const leagueId = props.league.league_id
     await Promise.all([
-      fetchMembers(),
-      fetchInvitations(),
-      fetchApplications(),
+      leaguesStore.fetchMembers(leagueId).catch(() => {}),
+      leaguesStore.fetchLeagueInvitationsAdmin(leagueId).catch(() => {}),
+      leaguesStore.fetchApplications(leagueId).catch(() => {}),
     ])
   }
 })
 
-// API calls
-async function fetchMembers() {
+async function updateMemberRole(member: LeagueMemberResponse, newRole: string) {
   if (!props.league) return
-
-  loadingMembers.value = true
   try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/members`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to fetch members')
-    }
-
-    members.value = await response.json()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to load members'
-    }
-  } finally {
-    loadingMembers.value = false
-  }
-}
-
-async function fetchInvitations() {
-  if (!props.league) return
-
-  loadingInvitations.value = true
-  try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/invitations`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to fetch invitations')
-    }
-
-    invitations.value = await response.json()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to load invitations'
-    }
-  } finally {
-    loadingInvitations.value = false
-  }
-}
-
-async function fetchApplications() {
-  if (!props.league) return
-
-  loadingApplications.value = true
-  try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/applications`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to fetch applications')
-    }
-
-    applications.value = await response.json()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to load applications'
-    }
-  } finally {
-    loadingApplications.value = false
-  }
-}
-
-async function updateMemberRole(member: LeagueMember, newRole: string) {
-  if (!props.league) return
-
-  try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/members/${member.user_id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify({ membership_type: newRole }),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to update role')
-    }
-
-    showSnackbar(`Changed ${member.username}'s role to ${formatRole(newRole)}`, 'success')
-    await fetchMembers()
+    await leaguesStore.updateMemberRole(props.league.league_id, member.user_id, newRole)
+    snackbar.show(`Changed ${member.username}'s role to ${formatRole(newRole)}`, 'success')
+    await leaguesStore.fetchMembers(props.league.league_id)
     emit('updated')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
-    } else {
-      showSnackbar('Failed to update role', 'error')
-    }
+  } catch {
+    snackbar.show(leaguesStore.updateMemberRoleState.error || 'Failed to update role', 'error')
   }
 }
 
-async function removeMember(member: LeagueMember) {
+async function removeMember(member: LeagueMemberResponse) {
   if (!props.league) return
-
   removingMemberId.value = member.user_id
   try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/members/${member.user_id}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to remove member')
-    }
-
-    showSnackbar(`Removed ${member.username} from the league`, 'success')
-    await fetchMembers()
+    await leaguesStore.removeMember(props.league.league_id, member.user_id)
+    snackbar.show(`Removed ${member.username} from the league`, 'success')
     emit('updated')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
-    } else {
-      showSnackbar('Failed to remove member', 'error')
-    }
+  } catch {
+    snackbar.show(leaguesStore.removeMemberState.error || 'Failed to remove member', 'error')
   } finally {
     removingMemberId.value = null
   }
 }
 
-async function cancelInvitation(invitation: LeagueInvitation) {
+async function cancelInvitation(invitation: LeagueInvitationResponse) {
   if (!props.league) return
-
   cancellingInvitationId.value = invitation.id
   try {
-    // Use the reject endpoint to cancel an invitation
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/applications/${invitation.id}/reject`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to cancel invitation')
-    }
-
-    showSnackbar('Invitation cancelled', 'success')
-    await fetchInvitations()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
-    } else {
-      showSnackbar('Failed to cancel invitation', 'error')
-    }
+    await leaguesStore.rejectApplication(props.league.league_id, invitation.id)
+    snackbar.show('Invitation cancelled', 'success')
+    await leaguesStore.fetchLeagueInvitationsAdmin(props.league.league_id)
+  } catch {
+    snackbar.show('Failed to cancel invitation', 'error')
   } finally {
     cancellingInvitationId.value = null
   }
 }
 
-async function approveApplication(application: LeagueInvitation) {
+async function approveApplication(application: LeagueInvitationResponse) {
   if (!props.league) return
-
   processingApplicationId.value = application.id
   approving.value = true
   try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/applications/${application.id}/approve`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to approve application')
-    }
-
-    showSnackbar('Application approved', 'success')
-    await Promise.all([fetchApplications(), fetchMembers()])
+    await leaguesStore.approveApplication(props.league.league_id, application.id)
+    snackbar.show('Application approved', 'success')
+    await leaguesStore.fetchMembers(props.league.league_id)
     emit('updated')
-  } catch (e) {
-    if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
-    } else {
-      showSnackbar('Failed to approve application', 'error')
-    }
+  } catch {
+    snackbar.show(leaguesStore.approveApplicationState.error || 'Failed to approve application', 'error')
   } finally {
     processingApplicationId.value = null
     approving.value = false
   }
 }
 
-async function rejectApplication(application: LeagueInvitation) {
+async function rejectApplication(application: LeagueInvitationResponse) {
   if (!props.league) return
-
   processingApplicationId.value = application.id
   approving.value = false
   try {
-    const response = await fetch(`${API_URL}/v1/leagues/${props.league.league_id}/applications/${application.id}/reject`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to reject application')
-    }
-
-    showSnackbar('Application rejected', 'success')
-    await fetchApplications()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      showSnackbar(e.detail, 'error')
-    } else {
-      showSnackbar('Failed to reject application', 'error')
-    }
+    await leaguesStore.rejectApplication(props.league.league_id, application.id)
+    snackbar.show('Application rejected', 'success')
+  } catch {
+    snackbar.show(leaguesStore.rejectApplicationState.error || 'Failed to reject application', 'error')
   } finally {
     processingApplicationId.value = null
   }
 }
 
 function onUserInvited() {
-  showSnackbar('Invitation sent', 'success')
-  fetchInvitations()
+  snackbar.show('Invitation sent', 'success')
+  if (props.league) {
+    leaguesStore.fetchLeagueInvitationsAdmin(props.league.league_id)
+  }
 }
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 </script>

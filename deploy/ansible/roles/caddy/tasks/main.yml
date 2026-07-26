@@ -1,0 +1,62 @@
+---
+# Caddy as TLS terminator + reverse proxy + static file server for the
+# frontend (once /var/www/portal exists).
+#
+# The Caddyfile routes:
+#   /v1/*, /uploads/*, /swagger-ui/*, /api-docs/*, /health  → localhost:3000
+#   everything else                                         → /var/www/portal
+
+- name: Install Caddy from the official repo
+  block:
+    - name: /etc/apt/keyrings exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Caddy apt key
+      ansible.builtin.get_url:
+        url: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+        dest: /etc/apt/keyrings/caddy-stable.asc
+        mode: "0644"
+
+    - name: Caddy apt source
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/caddy-stable.list
+        mode: "0644"
+        content: |
+          deb [signed-by=/etc/apt/keyrings/caddy-stable.asc] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main
+          deb-src [signed-by=/etc/apt/keyrings/caddy-stable.asc] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main
+
+    - name: Install caddy
+      ansible.builtin.apt:
+        name: caddy
+        update_cache: true
+        state: present
+
+# Populated by the portal_web role (runs after this one in site.yml).
+# The official Caddy deb runs as the `caddy` user, created by the package
+# installed above.
+- name: /var/www/portal — frontend destination
+  ansible.builtin.file:
+    path: /var/www/portal
+    state: directory
+    owner: caddy
+    group: caddy
+    mode: "0755"
+
+- name: Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: /etc/caddy/Caddyfile
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "caddy validate --adapter caddyfile --config %s"
+  notify: reload caddy
+
+- name: Ensure caddy is running
+  ansible.builtin.systemd:
+    name: caddy
+    enabled: true
+    state: started

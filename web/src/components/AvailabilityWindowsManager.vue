@@ -26,7 +26,7 @@
       <div v-else>
         <v-list lines="two">
           <template v-for="day in 7" :key="day - 1">
-            <template v-if="windowsByDay[day - 1].length > 0">
+            <template v-if="(windowsByDay[day - 1]?.length ?? 0) > 0">
               <v-list-subheader>{{ getDayName(day - 1) }}</v-list-subheader>
               <v-list-item
                 v-for="window in windowsByDay[day - 1]"
@@ -51,10 +51,10 @@
                 </v-list-item-subtitle>
 
                 <template #append>
-                  <v-btn icon variant="text" size="small" @click="editWindow(window)">
+                  <v-btn aria-label="Edit availability window" icon variant="text" size="small" @click="editWindow(window)">
                     <v-icon>mdi-pencil</v-icon>
                   </v-btn>
-                  <v-btn icon variant="text" size="small" color="error" @click="confirmDelete(window)">
+                  <v-btn aria-label="Delete availability window" icon variant="text" size="small" color="error" @click="confirmDelete(window)">
                     <v-icon>mdi-delete</v-icon>
                   </v-btn>
                 </template>
@@ -77,6 +77,7 @@
         <v-card-text>
           <v-form ref="formRef" v-model="formValid">
             <v-select
+          aria-label="Day of Week"
               v-model="form.day_of_week"
               :items="dayOptions"
               label="Day of Week"
@@ -173,6 +174,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAvailabilityStore, getDayName, formatTimeRange, DAY_NAMES, type AvailabilityWindow } from '@/stores/availability'
+import { useFormRules } from '@/composables/useFormRules'
 
 const store = useAvailabilityStore()
 
@@ -199,7 +201,7 @@ const dayOptions = DAY_NAMES.map((name, index) => ({
 }))
 
 const rules = {
-  required: (v: unknown) => (v !== null && v !== undefined && v !== '') || 'Required',
+  ...useFormRules(),
   endAfterStart: () => {
     if (!form.value.start_time || !form.value.end_time) return true
     return form.value.end_time > form.value.start_time || 'End time must be after start time'

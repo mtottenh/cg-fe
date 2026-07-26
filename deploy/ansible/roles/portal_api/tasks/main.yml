@@ -1,0 +1,157 @@
+---
+# Install/upgrade the portal-api deb and render its env file from the
+# vault.
+#
+# The deb does the heavy lifting via its postinst:
+#   - creates the `portal` system user
+#   - creates /var/lib/portal and /etc/portal
+#   - seeds /etc/portal/api.env from example on first install
+#   - systemd daemon-reload + enable + start
+# This role just ships the artifact and overwrites the env file.
+
+- name: Check whether portal-api is already installed
+  ansible.builtin.command: dpkg-query -W -f='${Status}' portal-api
+  register: portal_api_pkg
+  changed_when: false
+  failed_when: false
+
+- name: Assert we have a deb to install (or an existing install to configure)
+  ansible.builtin.assert:
+    that:
+      - (portal_api_deb_path | default('') | length > 0)
+        or ('install ok installed' in portal_api_pkg.stdout)
+    fail_msg: >-
+      portal-api is not installed and no deb was provided — pass
+      -e portal_api_deb_path=/path/to/portal-api_X.Y.Z_amd64.deb
+      (or use `just deploy vX.Y.Z`).
+
+- name: Copy portal-api deb to target
+  ansible.builtin.copy:
+    src: "{{ portal_api_deb_path }}"
+    dest: "/tmp/{{ portal_api_deb_path | basename }}"
+    mode: "0644"
+  when: portal_api_deb_path | default('') | length > 0
+
+- name: Install the portal-api deb
+  ansible.builtin.apt:
+    deb: "/tmp/{{ portal_api_deb_path | basename }}"
+    state: present
+    # Rollback IS a deploy: `just deploy vPREV` hands us an older deb and
+    # apt must not refuse it ("a later version is already installed").
+    allow_downgrade: true
+  when: portal_api_deb_path | default('') | length > 0
+  notify: restart portal-api
+
+- name: Remove the copied deb from /tmp
+  ansible.builtin.file:
+    path: "/tmp/{{ portal_api_deb_path | basename }}"
+    state: absent
+  when: portal_api_deb_path | default('') | length > 0
+
+- name: Render /etc/portal/api.env from vault
+  ansible.builtin.template:
+    src: api.env.j2
+    dest: /etc/portal/api.env
+    owner: root
+    group: portal
+    mode: "0640"
+  notify: restart portal-api
+
+# -----------------------------------------------------------------------------
+# Agent CA (gameserver integration) — generated once, idempotently, so the
+# runbook's manual `portal-cli gameserver ca-init` step disappears. The API
+# (user portal) signs enrollment CSRs with ca.key; Caddy (user caddy) reads
+# ca.pem for client_auth on the agents vhost — hence 0755 dir, key kept
+# portal-owned 0600. NOT covered by pg_dump backups; config-backup archives
+# /etc/portal weekly (losing the key = re-enrolling every agent).
+# -----------------------------------------------------------------------------
+- name: Agent CA exists
+  when: gameserver_integration_enabled | default(false)
+  block:
+    - name: Agent CA directory
+      ansible.builtin.file:
+        path: "{{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}"
+        state: directory
+        owner: portal
+        group: portal
+        mode: "0755"
+
+    - name: Generate the agent CA (first converge only)
+      ansible.builtin.command: >-
+        portal-cli gameserver ca-init
+        --dir {{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}
+      args:
+        creates: "{{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}/ca.pem"
+      become: true
+      become_user: portal
+      environment:
+        DATABASE_URL: "{{ portal_api_database_url }}"
+      notify: restart portal-api
+
+    - name: CA certificate readable by Caddy
+      ansible.builtin.file:
+        path: "{{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}/ca.pem"
+        owner: portal
+        group: portal
+        mode: "0644"
+
+# -----------------------------------------------------------------------------
+# systemd drop-in — per-service outbound firewall. The API should only
+# talk to: localhost (Postgres), and Linode Object Storage. We can't
+# easily enumerate LOS's IPs, so we allow 'any' for now but note the
+# direction. Tighten later with explicit ranges.
+# -----------------------------------------------------------------------------
+- name: portal-api.service — drop-in dir
+  ansible.builtin.file:
+    path: /etc/systemd/system/portal-api.service.d
+    state: directory
+    mode: "0755"
+
+- name: portal-api.service — overrides (cgroup filters, tuning)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/portal-api.service.d/10-network.conf
+    mode: "0644"
+    content: |
+      # Loosen only when you can prove it. Outbound is 'any' today because
+      # Linode Object Storage IPs rotate; restrict to a named range once
+      # you have one.
+      [Service]
+      IPAddressDeny=
+      IPAddressAllow=any
+      # Tune with real numbers once prod metrics exist.
+      MemoryMax=2G
+  notify:
+    - daemon-reload
+    - restart portal-api
+
+- name: Ensure portal-api is running
+  ansible.builtin.systemd:
+    name: portal-api
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# -----------------------------------------------------------------------------
+# Health gate — a deploy that leaves a dead or crash-looping API must fail
+# the play, not exit green. Restart handlers are flushed first so we probe
+# the NEW binary, not the old one.
+# -----------------------------------------------------------------------------
+- name: Flush pending restarts before probing
+  ansible.builtin.meta: flush_handlers
+
+# Startup runs DB migrations BEFORE binding the port, so a generous timeout
+# doubles as the migration budget.
+- name: Wait for portal-api to bind :3000
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 3000
+    timeout: 180
+
+- name: portal-api /health answers 200
+  ansible.builtin.uri:
+    url: http://127.0.0.1:3000/health
+    status_code: 200
+  register: portal_api_health
+  retries: 12
+  delay: 5
+  until: portal_api_health.status == 200

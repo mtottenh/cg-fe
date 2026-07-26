@@ -10,42 +10,42 @@
       <template v-if="!activeProposal && canPropose">
         <p class="mb-4">Propose times for this match. Your opponent will be able to accept, reject, or counter-propose.</p>
 
-        <v-row>
-          <v-col v-for="(_, index) in proposedTimes" :key="index" cols="12" md="6">
-            <v-text-field
-              v-model="proposedTimes[index]"
-              :label="`Time Option ${index + 1}`"
-              type="datetime-local"
-              variant="outlined"
-              density="comfortable"
-              :rules="index === 0 ? [rules.required] : []"
-            >
-              <template v-slot:append>
-                <v-btn
-                  v-if="index > 0"
-                  icon
-                  size="small"
-                  variant="text"
-                  @click="removeTimeSlot(index)"
-                >
-                  <v-icon>mdi-close</v-icon>
-                </v-btn>
-              </template>
-            </v-text-field>
-          </v-col>
-        </v-row>
-
-        <div class="d-flex gap-2 mb-4">
-          <v-btn
-            v-if="proposedTimes.length < 5"
-            variant="tonal"
-            size="small"
-            @click="addTimeSlot"
-          >
-            <v-icon start>mdi-plus</v-icon>
-            Add Time Option
+        <!-- View mode toggle -->
+        <v-btn-toggle
+          v-if="opponentPlayerId"
+          v-model="viewMode"
+          mandatory
+          density="compact"
+          variant="outlined"
+          class="mb-4"
+        >
+          <v-btn value="calendar" size="small">
+            <v-icon start size="small">mdi-calendar-month</v-icon>
+            Calendar
           </v-btn>
-        </div>
+          <v-btn value="manual" size="small">
+            <v-icon start size="small">mdi-form-textbox</v-icon>
+            Manual
+          </v-btn>
+        </v-btn-toggle>
+
+        <!-- Calendar overlay mode -->
+        <AvailabilityCalendarOverlay
+          v-if="viewMode === 'calendar' && opponentPlayerId"
+          v-model="proposedTimes"
+          :opponent-player-id="opponentPlayerId"
+          :tournament-id="tournament.id"
+          :match-id="match.id"
+          class="mb-4"
+        />
+
+        <!-- Manual time picker mode -->
+        <ScheduleTimePicker
+          v-else
+          v-model="proposedTimes"
+          v-model:valid="pickerValid"
+          :suggested-times="suggestedTimes"
+        />
 
         <v-textarea
           v-model="notes"
@@ -78,15 +78,32 @@
           @accept="(time) => $emit('accept', time)"
           @reject="(reason) => $emit('reject', reason)"
           @counter="openCounterDialog"
+          @withdraw="$emit('withdraw')"
         />
+      </template>
+
+      <!-- Match is scheduled - show confirmation -->
+      <template v-else-if="match.status === 'scheduled'">
+        <v-alert type="success" variant="tonal" class="mb-4">
+          <div class="d-flex align-center">
+            <v-icon start>mdi-calendar-check</v-icon>
+            <div>
+              <strong>Match Scheduled</strong>
+              <div v-if="match.scheduled_at" class="text-body-2">
+                {{ formatScheduledTime(match.scheduled_at) }}
+              </div>
+            </div>
+          </div>
+        </v-alert>
+        <p class="text-body-2 text-medium-emphasis">
+          The match time has been agreed upon. Waiting for the match to begin.
+        </p>
       </template>
 
       <!-- Cannot propose -->
       <template v-else>
         <v-alert type="info" variant="tonal">
-          <p class="mb-0">
-            Waiting for match to be ready for scheduling. Both participants must be confirmed first.
-          </p>
+          <p class="mb-0">Scheduling is not available at this time.</p>
         </v-alert>
       </template>
     </v-card-text>
@@ -99,39 +116,11 @@
         <v-card-text>
           <p class="mb-4">Suggest alternative times that work better for you.</p>
 
-          <v-row>
-            <v-col v-for="(_, index) in counterTimes" :key="index" cols="12" md="6">
-              <v-text-field
-                v-model="counterTimes[index]"
-                :label="`Time Option ${index + 1}`"
-                type="datetime-local"
-                variant="outlined"
-                density="comfortable"
-              >
-                <template v-slot:append>
-                  <v-btn
-                    v-if="index > 0"
-                    icon
-                    size="small"
-                    variant="text"
-                    @click="counterTimes.splice(index, 1)"
-                  >
-                    <v-icon>mdi-close</v-icon>
-                  </v-btn>
-                </template>
-              </v-text-field>
-            </v-col>
-          </v-row>
-
-          <v-btn
-            v-if="counterTimes.length < 5"
-            variant="tonal"
-            size="small"
-            @click="counterTimes.push('')"
-          >
-            <v-icon start>mdi-plus</v-icon>
-            Add Time Option
-          </v-btn>
+          <ScheduleTimePicker
+            v-model="counterTimes"
+            v-model:valid="counterPickerValid"
+            :suggested-times="suggestedTimes"
+          />
 
           <v-textarea
             v-model="counterNotes"
@@ -164,54 +153,88 @@
 import { ref, computed } from 'vue'
 import type { TournamentResponse, TournamentMatchResponse } from '@/stores/tournaments'
 import type { ScheduleProposalResponse } from '@/stores/matchScheduling'
+import { formatDateTimeLongWithWeekday } from '@/utils/formatters'
 import ProposalCard from './ProposalCard.vue'
+import ScheduleTimePicker from './ScheduleTimePicker.vue'
+import AvailabilityCalendarOverlay from './AvailabilityCalendarOverlay.vue'
 
-const props = defineProps<{
-  tournament: TournamentResponse
-  match: TournamentMatchResponse
-  activeProposal: ScheduleProposalResponse | null
-  isProposer: boolean
-  canPropose: boolean
-  loading?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    tournament: TournamentResponse
+    match: TournamentMatchResponse
+    activeProposal: ScheduleProposalResponse | null
+    isProposer: boolean
+    canPropose: boolean
+    loading?: boolean
+    suggestedTimes?: string[]
+    opponentPlayerId?: string | null
+  }>(),
+  {
+    suggestedTimes: () => [],
+    opponentPlayerId: null,
+  }
+)
+
+// View mode: calendar (default when opponent is known) or manual
+const viewMode = ref<'calendar' | 'manual'>(props.opponentPlayerId ? 'calendar' : 'manual')
+
+function formatScheduledTime(iso: string): string {
+  return formatDateTimeLongWithWeekday(iso)
+}
 
 const emit = defineEmits<{
   propose: [times: string[], notes?: string]
   accept: [time: string]
   reject: [reason?: string]
   counter: [times: string[], notes?: string]
+  withdraw: []
 }>()
 
 // Proposal form state
 const proposedTimes = ref<string[]>(['', ''])
 const notes = ref('')
+const pickerValid = ref(false)
 
 // Counter-proposal dialog state
 const counterDialogOpen = ref(false)
 const counterTimes = ref<string[]>(['', ''])
 const counterNotes = ref('')
+const counterPickerValid = ref(false)
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
+/**
+ * Every filled slot parses and lands in the future.
+ *
+ * P-8: calendar mode used to skip validation entirely on the theory that "the
+ * overlay only offers valid cells". It didn't — the overlay's Previous-week
+ * button was ungated, past weeks rendered identically (weekly-recurring
+ * windows repeat backwards), and Send Proposal stayed enabled right up to the
+ * backend's hard 400 "Proposed times must be in the future"
+ * (services/tournament/scheduling.rs:94-100). The overlay now refuses past
+ * cells; this is the second line, so no view mode can arm a proposal the
+ * backend is guaranteed to reject.
+ */
+function allTimesInFuture(times: string[]): boolean {
+  const filled = times.filter((t) => t !== '')
+  if (filled.length === 0) return false
+  const now = Date.now()
+  return filled.every((t) => {
+    const ms = new Date(t).getTime()
+    return Number.isFinite(ms) && ms > now
+  })
 }
 
+// The manual picker must additionally pass its own field rules (`:min` of
+// now + 1h, ScheduleTimePicker.vue:172-176) — a past datetime shows a red
+// error and must NOT leave the submit button enabled.
 const hasValidTime = computed(() => {
-  return proposedTimes.value.some((t) => t !== '')
+  if (!allTimesInFuture(proposedTimes.value)) return false
+  if (viewMode.value === 'calendar') return true
+  return pickerValid.value
 })
 
 const hasValidCounterTime = computed(() => {
-  return counterTimes.value.some((t) => t !== '')
+  return allTimesInFuture(counterTimes.value) && counterPickerValid.value
 })
-
-function addTimeSlot() {
-  if (proposedTimes.value.length < 5) {
-    proposedTimes.value.push('')
-  }
-}
-
-function removeTimeSlot(index: number) {
-  proposedTimes.value.splice(index, 1)
-}
 
 function submitProposal() {
   const validTimes = proposedTimes.value

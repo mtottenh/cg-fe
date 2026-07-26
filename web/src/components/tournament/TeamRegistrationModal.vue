@@ -1,5 +1,5 @@
 <template>
-  <v-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" max-width="600">
+  <v-dialog v-model="open" max-width="600">
     <v-card>
       <v-card-title class="d-flex align-center">
         <v-icon class="mr-2">mdi-account-group-outline</v-icon>
@@ -12,7 +12,7 @@
         <!-- Loading State -->
         <div v-if="loadingTeams" class="text-center pa-8">
           <v-progress-circular indeterminate color="primary" />
-          <p class="text-grey mt-4">Loading your teams...</p>
+          <p class="text-medium-emphasis mt-4">Loading your teams...</p>
         </div>
 
         <!-- No Eligible Teams -->
@@ -28,7 +28,7 @@
           </p>
           <ul class="text-body-2 pl-4 mb-0">
             <li v-if="tournament.league_id">
-              Teams must be part of <strong>{{ tournament.league_name || 'the linked league' }}</strong>
+              Teams must be part of <strong>the linked league</strong>
             </li>
             <li>You must be a <strong>captain</strong> or <strong>manager</strong> of the team</li>
             <li>The team must not already be registered</li>
@@ -37,7 +37,7 @@
 
         <!-- Team Selection -->
         <template v-else>
-          <p class="text-body-2 text-grey mb-4">
+          <p class="text-body-2 text-medium-emphasis mb-4">
             Select a team to register for <strong>{{ tournament.name }}</strong>
           </p>
 
@@ -53,18 +53,19 @@
               <v-card-text class="d-flex align-center pa-3">
                 <v-radio :value="team.team_season_id" class="mr-0" />
                 <v-avatar size="40" rounded="sm" class="mx-3">
-                  <v-img v-if="team.team_logo_url" :src="team.team_logo_url" />
+                  <v-img alt="" v-if="team.team_logo_url" :src="team.team_logo_url" />
                   <v-icon v-else>mdi-shield</v-icon>
                 </v-avatar>
                 <div class="flex-grow-1">
                   <div class="font-weight-medium">{{ team.team_name }}</div>
-                  <div class="text-caption text-grey">
+                  <div class="text-caption text-medium-emphasis">
                     [{{ team.team_tag }}] &bull; {{ team.league_name }}
                     <span v-if="team.season_name"> &bull; {{ team.season_name }}</span>
                   </div>
                 </div>
-                <v-chip size="small" :color="team.role === 'captain' ? 'primary' : 'secondary'" variant="tonal">
-                  {{ team.role }}
+                <!-- P-132: `role` is `LeagueTeamRole`, not a display string. -->
+                <v-chip size="small" :color="getRoleColor(team.role)" variant="tonal">
+                  {{ getRoleLabel(team.role) }}
                 </v-chip>
               </v-card-text>
             </v-card>
@@ -106,17 +107,17 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useLeagueTeamsStore, type PlayerLeagueTeamMembershipResponse } from '@/stores/leagueTeams'
 import type { TournamentResponse, TournamentRegistrationResponse } from '@/stores/tournaments'
+import { useFormRules } from '@/composables/useFormRules'
+import { teamRoleMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
-const props = defineProps<{
-  modelValue: boolean
-  tournament: TournamentResponse
+const props = defineProps<{  tournament: TournamentResponse
   registrations: TournamentRegistrationResponse[]
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  register: [teamSeasonId: string, participantName: string, participantLogoUrl?: string]
+const emit = defineEmits<{  register: [teamSeasonId: string, participantName: string, participantLogoUrl?: string]
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const leagueTeamsStore = useLeagueTeamsStore()
 
@@ -127,7 +128,9 @@ const selectedTeamSeasonId = ref<string | null>(null)
 const participantName = ref('')
 
 // Validation rules
+const { maxLength: _maxLength, ...baseRules } = useFormRules()
 const rules = {
+  ...baseRules,
   required: (v: string) => !!v?.trim() || 'Required',
   maxLength: (v: string) => !v || v.length <= 100 || 'Max 100 characters',
 }
@@ -188,7 +191,7 @@ function selectTeam(team: PlayerLeagueTeamMembershipResponse) {
 }
 
 function close() {
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function handleRegister() {
@@ -202,6 +205,13 @@ async function handleRegister() {
   }
 }
 
+// P-132: the chip used to print the wire value and pick its colour from an
+// inline `role === 'captain'` ternary, which lumped `player` and `substitute`
+// together. `teamRoleMap` is keyed to `LeagueTeamRole`, so a fourth role would
+// fail to compile here rather than render raw.
+const getRoleColor = (role: string) => getStatusColor(teamRoleMap, role)
+const getRoleLabel = (role: string) => getStatusLabel(teamRoleMap, role)
+
 async function loadTeams() {
   loadingTeams.value = true
   try {
@@ -212,8 +222,7 @@ async function loadTeams() {
 }
 
 // Watch for dialog open
-watch(
-  () => props.modelValue,
+watch(open,
   (isOpen) => {
     if (isOpen) {
       // Reset state
@@ -225,7 +234,7 @@ watch(
 )
 
 onMounted(() => {
-  if (props.modelValue) {
+  if (open.value) {
     loadTeams()
   }
 })

@@ -23,18 +23,26 @@
         >
           <div class="participant-info">
             <v-avatar size="24" rounded="sm" class="mr-2">
-              <v-img v-if="match.participant1_logo_url" :src="match.participant1_logo_url" />
+              <v-img alt="" v-if="match.participant1_logo_url" :src="match.participant1_logo_url" />
               <v-icon v-else size="16">mdi-account</v-icon>
             </v-avatar>
+            <v-icon
+              v-if="isWinner(match.participant1_registration_id)"
+              size="x-small"
+              color="success"
+              class="mr-1"
+              aria-label="Winner"
+            >mdi-trophy</v-icon>
             <span class="participant-name text-truncate">
               {{ match.participant1_name || 'TBD' }}
+              <v-tooltip activator="parent" location="top">{{ match.participant1_name || 'TBD' }}</v-tooltip>
             </span>
             <v-chip v-if="match.participant1_seed" size="x-small" variant="text" class="ml-1">
               #{{ match.participant1_seed }}
             </v-chip>
           </div>
           <span class="score" :class="{ 'winning': isWinner(match.participant1_registration_id) }">
-            {{ match.status === 'completed' ? match.participant1_score : '-' }}
+            {{ showScores ? match.participant1_score : '-' }}
           </span>
         </div>
 
@@ -44,25 +52,33 @@
         >
           <div class="participant-info">
             <v-avatar size="24" rounded="sm" class="mr-2">
-              <v-img v-if="match.participant2_logo_url" :src="match.participant2_logo_url" />
+              <v-img alt="" v-if="match.participant2_logo_url" :src="match.participant2_logo_url" />
               <v-icon v-else size="16">mdi-account</v-icon>
             </v-avatar>
+            <v-icon
+              v-if="isWinner(match.participant2_registration_id)"
+              size="x-small"
+              color="success"
+              class="mr-1"
+              aria-label="Winner"
+            >mdi-trophy</v-icon>
             <span class="participant-name text-truncate">
               {{ match.participant2_name || 'TBD' }}
+              <v-tooltip activator="parent" location="top">{{ match.participant2_name || 'TBD' }}</v-tooltip>
             </span>
             <v-chip v-if="match.participant2_seed" size="x-small" variant="text" class="ml-1">
               #{{ match.participant2_seed }}
             </v-chip>
           </div>
           <span class="score" :class="{ 'winning': isWinner(match.participant2_registration_id) }">
-            {{ match.status === 'completed' ? match.participant2_score : '-' }}
+            {{ showScores ? match.participant2_score : '-' }}
           </span>
         </div>
       </div>
 
       <!-- Footer info -->
       <div v-if="!compact && (match.scheduled_at || match.match_format)" class="match-footer mt-2">
-        <div class="d-flex justify-space-between text-caption text-grey">
+        <div class="d-flex justify-space-between text-caption text-medium-emphasis">
           <span v-if="match.match_format">{{ formatMatchFormat(match.match_format) }}</span>
           <span v-if="match.scheduled_at">{{ formatDateTime(match.scheduled_at) }}</span>
         </div>
@@ -73,6 +89,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { matchStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import type { TournamentMatchResponse } from '@/stores/tournaments'
 
 const props = withDefaults(
@@ -93,63 +110,27 @@ const emit = defineEmits<{
   click: [match: TournamentMatchResponse]
 }>()
 
-const statusColor = computed(() => {
-  switch (props.match.status) {
-    case 'pending':
-      return 'grey'
-    case 'scheduling':
-      return 'info'
-    case 'scheduled':
-      return 'primary'
-    case 'checking_in':
-      return 'warning'
-    case 'pick_ban':
-      return 'info'
-    case 'in_progress':
-      return 'primary'
-    case 'awaiting_result':
-      return 'warning'
-    case 'completed':
-      return 'success'
-    case 'cancelled':
-      return 'error'
-    case 'disputed':
-      return 'error'
-    default:
-      return 'grey'
-  }
-})
+// Status presentation comes from utils/statusMaps.ts (COVERAGE-PLAN.md §9c).
+//
+// These were two hand-rolled `switch` statements that had drifted from
+// `TournamentMatchStatus` (portal-core/src/types/tournament.rs:231-255, mirrored
+// by the `tournament_matches_check_status` CHECK in
+// migrations/0030_create_tournaments.sql:369). They matched `scheduling`, which
+// is NOT a match status, and omitted `ready` and `forfeit`, which ARE — so a
+// match in either state hit `default` and leaked the raw enum onto the bracket
+// and the tournament Matches tab.
+const statusColor = computed(() => getStatusColor(matchStatusMap, props.match.status))
+
+// A live Bo3 at 1-0 should show 1-0 on the card, not "- / -".
+const showScores = computed(() =>
+  ['in_progress', 'awaiting_result', 'completed', 'disputed'].includes(props.match.status)
+)
 
 const statusVariant = computed(() => {
   return props.match.status === 'in_progress' ? 'flat' : 'tonal'
 })
 
-const statusLabel = computed(() => {
-  switch (props.match.status) {
-    case 'pending':
-      return 'Pending'
-    case 'scheduling':
-      return 'Scheduling'
-    case 'scheduled':
-      return 'Scheduled'
-    case 'checking_in':
-      return 'Check-in'
-    case 'pick_ban':
-      return 'Pick/Ban'
-    case 'in_progress':
-      return 'Live'
-    case 'awaiting_result':
-      return 'Awaiting Result'
-    case 'completed':
-      return 'Completed'
-    case 'cancelled':
-      return 'Cancelled'
-    case 'disputed':
-      return 'Disputed'
-    default:
-      return props.match.status
-  }
-})
+const statusLabel = computed(() => getStatusLabel(matchStatusMap, props.match.status))
 
 function isWinner(registrationId: string | null | undefined): boolean {
   if (!registrationId || !props.match.winner_registration_id) return false

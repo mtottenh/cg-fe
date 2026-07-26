@@ -13,19 +13,89 @@
 
       <!-- Score inputs for each game in the match -->
       <div class="scores-section mb-4">
-        <ScoreInput
-          v-for="(game, index) in games"
-          :key="game.gameNumber"
-          :game-number="game.gameNumber"
-          :team-a-name="teamAName"
-          :team-b-name="teamBName"
-          :team-a-score="game.teamAScore"
-          :team-b-score="game.teamBScore"
-          :map-name="game.mapName"
-          @update:team-a-score="updateGameScore(index, 'teamA', $event)"
-          @update:team-b-score="updateGameScore(index, 'teamB', $event)"
-        />
+        <div v-for="(game, index) in gamesView" :key="game.gameNumber">
+          <v-select
+          aria-label="`Map for game ${game.gameNumber}`"
+            v-if="!maps?.length && selectableMaps?.length"
+            :model-value="game.mapId"
+            :items="selectableMaps"
+            item-title="name"
+            item-value="id"
+            :label="`Map for game ${game.gameNumber}`"
+            variant="outlined"
+            density="compact"
+            hide-details="auto"
+            class="mb-2"
+            :rules="[(v: string) => !!v || 'Select the map that was played']"
+            @update:model-value="(v: string) => updateGameMap(index, v)"
+          />
+          <ScoreInput
+            :game-number="game.gameNumber"
+            :team-a-name="teamAName"
+            :team-b-name="teamBName"
+            :team-a-score="game.teamAScore"
+            :team-b-score="game.teamBScore"
+            :map-name="game.mapName"
+            @update:team-a-score="updateGameScore(index, 'teamA', $event)"
+            @update:team-b-score="updateGameScore(index, 'teamB', $event)"
+          />
+          <!-- Linked demo info for this game -->
+          <div
+            v-if="game.demo"
+            class="d-flex align-center ga-2 ml-2 mt-n1 mb-2"
+          >
+            <v-icon size="x-small" color="info">mdi-link</v-icon>
+            <span class="text-caption text-info">
+              <template v-if="game.demoMeta">
+                Demo: {{ game.demoMeta.map_name }} &mdash;
+                {{ game.demoMeta.team1_name }}
+                {{ game.demoMeta.team1_score }}
+                : {{ game.demoMeta.team2_score }}
+                {{ game.demoMeta.team2_name }}
+              </template>
+              <template v-else>
+                Demo: {{ game.demo.file_name }}
+              </template>
+            </span>
+            <v-chip
+              v-if="autoFilledGames.has(game.gameNumber)"
+              size="x-small"
+              color="info"
+              variant="tonal"
+            >
+              Auto-filled
+            </v-chip>
+            <v-btn
+              icon
+              size="x-small"
+              variant="text"
+              color="error"
+              aria-label="Unlink demo"
+              :loading="evidenceStore.unlinkDemoState.loading"
+              @click="unlinkGameDemo(game.gameNumber)"
+            >
+              <v-icon size="x-small">mdi-close</v-icon>
+            </v-btn>
+          </div>
+        </div>
       </div>
+
+      <!--
+        P-135: the Unlink button above offered no way to learn that it failed.
+        Unlinking used to no-op silently after a reload and report success; now
+        that it either deletes or refuses, the refusal has to be visible on the
+        surface that offered the action.
+      -->
+      <v-alert
+        v-if="evidenceStore.unlinkDemoState.error"
+        type="error"
+        variant="tonal"
+        density="compact"
+        class="mb-4"
+        data-testid="result-panel-unlink-error"
+      >
+        {{ evidenceStore.unlinkDemoState.error }}
+      </v-alert>
 
       <!-- Series winner display -->
       <v-alert v-if="seriesWinner" type="success" variant="tonal" class="mb-4">
@@ -58,7 +128,9 @@
       <!-- Evidence attachment - integrated as per architecture -->
       <EvidenceAttachmentPanel
         :match-id="matchId"
+        :match-format="matchFormat"
         @update:evidence-ids="evidenceIds = $event"
+        @update:demo-link-ids="demoLinkIds = $event"
       />
 
       <!-- Error display -->
@@ -87,6 +159,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useMatchResultsStore, type GameResultInput } from '@/stores/matchResults'
+import { useEvidenceStore } from '@/stores/evidence'
 import ScoreInput from './ScoreInput.vue'
 import EvidenceAttachmentPanel from '../evidence/EvidenceAttachmentPanel.vue'
 
@@ -106,7 +179,10 @@ const props = defineProps<{
   teamARegistrationId: string
   teamBRegistrationId: string
   matchFormat: 'bo1' | 'bo3' | 'bo5' | 'bo7'
+  /** Maps fixed by the veto, in game order. */
   maps?: Array<{ id: string; name: string }>
+  /** Tournament pool the submitter picks from when there was no veto. */
+  selectableMaps?: Array<{ id: string; name: string }>
 }>()
 
 const emit = defineEmits<{
@@ -114,6 +190,7 @@ const emit = defineEmits<{
 }>()
 
 const store = useMatchResultsStore()
+const evidenceStore = useEvidenceStore()
 const loading = computed(() => store.loading)
 const error = computed(() => store.error)
 
@@ -154,21 +231,40 @@ const games = ref<GameData[]>(
     gameNumber: i + 1,
     teamAScore: 0,
     teamBScore: 0,
-    mapId: props.maps?.[i]?.id || `map_${i + 1}`,
+    // No placeholder ids: map_id is validated server-side, so an unplayed
+    // slot stays empty until the submitter chooses a real map.
+    mapId: props.maps?.[i]?.id ?? '',
     mapName: props.maps?.[i]?.name,
   }))
 )
 
-// Reset games when format changes
+// Resize on format change, PRESERVING already-entered scores for games that
+// survive the resize — silently wiping user input is data loss.
 watch(numGames, (newNum) => {
-  games.value = Array.from({ length: newNum }, (_, i) => ({
-    gameNumber: i + 1,
-    teamAScore: 0,
-    teamBScore: 0,
-    mapId: props.maps?.[i]?.id || `map_${i + 1}`,
-    mapName: props.maps?.[i]?.name,
-  }))
+  games.value = Array.from({ length: newNum }, (_, i) =>
+    games.value[i] ?? {
+      gameNumber: i + 1,
+      teamAScore: 0,
+      teamBScore: 0,
+      mapId: props.maps?.[i]?.id ?? '',
+      mapName: props.maps?.[i]?.name,
+    }
+  )
+  for (const gameNumber of [...autoFilledGames.value]) {
+    if (gameNumber > newNum) autoFilledGames.value.delete(gameNumber)
+  }
 })
+
+// Maps arrive async (veto completion / parent fetch) — refresh each game's
+// map identity when they land, without touching entered scores.
+watch(() => props.maps, (maps) => {
+  if (!maps?.length) return
+  games.value = games.value.map((game, i) => ({
+    ...game,
+    mapId: maps[i]?.id || game.mapId,
+    mapName: maps[i]?.name ?? game.mapName,
+  }))
+}, { deep: true })
 
 // Notes
 const notes = ref('')
@@ -177,6 +273,90 @@ const notes = ref('')
 // Phase 1: This will always be empty
 // Phase 2: This will contain real IDs after uploads
 const evidenceIds = ref<string[]>([])
+const demoLinkIds = ref<string[]>([])
+
+// Auto-fill tracking
+const autoFilledGames = ref(new Set<number>())
+
+// Single O(n) join instead of an O(n) `.find()` per game per render, and no
+// non-null assertions in the template.
+const linkedDemoByGame = computed(() => {
+  const byGame = new Map<number, (typeof evidenceStore.linkedDemos)[number]>()
+  for (const item of evidenceStore.linkedDemos) {
+    if (item.link.game_number != null) byGame.set(item.link.game_number, item)
+  }
+  return byGame
+})
+
+const gamesView = computed(() =>
+  games.value.map((game) => {
+    const linked = linkedDemoByGame.value.get(game.gameNumber) ?? null
+    return {
+      ...game,
+      demo: linked?.demo ?? null,
+      demoMeta: linked?.demo.metadata ?? null,
+    }
+  })
+)
+
+function getLinkedDemoForGame(gameNumber: number) {
+  return linkedDemoByGame.value.get(gameNumber) ?? null
+}
+
+function mapDemoScoresToMatch(
+  metadata: { team1_name: string; team1_score: number; team2_name: string; team2_score: number },
+  teamAName: string,
+  teamBName: string,
+): { teamAScore: number; teamBScore: number } {
+  const t1 = metadata.team1_name.toLowerCase()
+  const t2 = metadata.team2_name.toLowerCase()
+  const a = teamAName.toLowerCase()
+  const b = teamBName.toLowerCase()
+
+  const team1IsB = t1.includes(b) || b.includes(t1)
+  const team2IsA = t2.includes(a) || a.includes(t2)
+
+  // If team1 matches teamB or team2 matches teamA, swap
+  if (team1IsB || team2IsA) {
+    return { teamAScore: metadata.team2_score, teamBScore: metadata.team1_score }
+  }
+
+  // Default: same order
+  return { teamAScore: metadata.team1_score, teamBScore: metadata.team2_score }
+}
+
+// Auto-fill scores from linked demo metadata
+watch(
+  () => evidenceStore.linkedDemos,
+  (linkedDemos) => {
+    for (const item of linkedDemos) {
+      const gameNum = item.link.game_number
+      if (gameNum == null || !item.demo.metadata) continue
+
+      const gameIndex = games.value.findIndex(g => g.gameNumber === gameNum)
+      if (gameIndex === -1) continue
+
+      const game = games.value[gameIndex]!
+      const isUntouched = game.teamAScore === 0 && game.teamBScore === 0
+      const wasPreviouslyAutoFilled = autoFilledGames.value.has(gameNum)
+      if (!isUntouched && !wasPreviouslyAutoFilled) continue
+
+      const mapped = mapDemoScoresToMatch(item.demo.metadata, props.teamAName, props.teamBName)
+      games.value[gameIndex]!.teamAScore = mapped.teamAScore
+      games.value[gameIndex]!.teamBScore = mapped.teamBScore
+      autoFilledGames.value.add(gameNum)
+    }
+  },
+  { deep: true }
+)
+
+async function unlinkGameDemo(gameNumber: number) {
+  const linked = getLinkedDemoForGame(gameNumber)
+  if (linked) {
+    await evidenceStore.unlinkDemoEvidence(props.matchId, linked.link.id)
+    autoFilledGames.value.delete(gameNumber)
+  }
+}
 
 // Computed: Series scores
 const teamASeriesWins = computed(() => {
@@ -214,6 +394,13 @@ const isValidSubmission = computed(() => {
   // Must have a series winner
   if (!seriesWinner.value) return false
 
+  // Every game that was actually played needs a real map: map_id is
+  // validated against the tournament pool / veto picks server-side.
+  for (const game of games.value) {
+    const played = game.teamAScore > 0 || game.teamBScore > 0
+    if (played && !game.mapId) return false
+  }
+
   // All played games must have valid scores
   for (const game of games.value) {
     if (game.teamAScore < 0 || game.teamBScore < 0) return false
@@ -225,25 +412,38 @@ const isValidSubmission = computed(() => {
 })
 
 // Methods
+function updateGameMap(index: number, mapId: string) {
+  const game = games.value[index]
+  if (!game) return
+  game.mapId = mapId
+  game.mapName = props.selectableMaps?.find((m) => m.id === mapId)?.name
+}
+
 function updateGameScore(index: number, team: 'teamA' | 'teamB', score: number) {
   if (team === 'teamA') {
-    games.value[index].teamAScore = score
+    games.value[index]!.teamAScore = score
   } else {
-    games.value[index].teamBScore = score
+    games.value[index]!.teamBScore = score
   }
+  // User manually edited, clear auto-fill tracking
+  autoFilledGames.value.delete(games.value[index]!.gameNumber)
 }
 
 async function handleSubmit() {
   if (!isValidSubmission.value || !seriesWinnerRegistrationId.value) return
 
-  // Convert games to GameResultInput format
-  const gameResults: GameResultInput[] = games.value.map((g) => ({
-    game_number: g.gameNumber,
-    map_id: g.mapId,
-    participant1_score: g.teamAScore,
-    participant2_score: g.teamBScore,
-    evidence_ids: [], // Per-game evidence not supported in Phase 1
-  }))
+  // Convert games to GameResultInput format, attaching per-game demo links
+  const gameResults: GameResultInput[] = games.value.map((g) => {
+    const linkedDemo = linkedDemoByGame.value.get(g.gameNumber)
+    return {
+      game_number: g.gameNumber,
+      map_id: g.mapId,
+      participant1_score: g.teamAScore,
+      participant2_score: g.teamBScore,
+      evidence_ids: [],
+      demo_link_id: linkedDemo?.link.id ?? null,
+    }
+  })
 
   try {
     await store.submitResult(
@@ -253,7 +453,7 @@ async function handleSubmit() {
       teamBSeriesWins.value,
       gameResults,
       evidenceIds.value,
-      [], // demoLinkIds - Phase 3
+      demoLinkIds.value,
       notes.value || undefined
     )
     emit('submitted')

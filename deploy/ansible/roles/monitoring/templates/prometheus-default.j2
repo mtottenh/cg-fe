@@ -1,0 +1,4 @@
+# {{ ansible_managed }}
+# Args for the Ubuntu prometheus package unit. Loopback only — Grafana is
+# the sole consumer and lives on the same box.
+ARGS="--web.listen-address=127.0.0.1:{{ monitoring_prometheus_port }} --storage.tsdb.retention.time={{ monitoring_prometheus_retention }}"

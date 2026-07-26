@@ -1,10 +1,12 @@
 <script setup lang="ts">
 defineProps<{
   error: string | null
+  retryable?: boolean
 }>()
 
 defineEmits<{
-  dismiss: []
+  clear: []
+  retry: []
 }>()
 </script>
 
@@ -14,8 +16,11 @@ defineEmits<{
     type="error"
     closable
     class="mb-4"
-    @click:close="$emit('dismiss')"
+    @click:close="$emit('clear')"
   >
     {{ error }}
+    <template v-if="retryable" #append>
+      <v-btn variant="text" size="small" @click="$emit('retry')">Retry</v-btn>
+    </template>
   </v-alert>
 </template>

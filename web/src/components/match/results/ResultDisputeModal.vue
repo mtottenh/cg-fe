@@ -61,6 +61,8 @@ import EvidenceAttachmentPanel from '../evidence/EvidenceAttachmentPanel.vue'
 const props = defineProps<{
   matchId: string
   claimId: string
+  tournamentId?: string
+  registrationId?: string
 }>()
 
 const emit = defineEmits<{
@@ -101,6 +103,10 @@ async function handleDispute() {
   if (!isValid.value) return
 
   try {
+    // Disputing the result claim now atomically opens the tournament dispute
+    // (flips the match to Disputed and creates the row the admin queue reads),
+    // so no separate raiseDispute call is needed. The old two-step flow would
+    // now fail the second call with "already has a pending dispute".
     await store.disputeResult(props.matchId, props.claimId, reason.value, evidenceIds.value)
     isOpen.value = false
     emit('disputed')

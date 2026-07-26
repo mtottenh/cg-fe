@@ -1,0 +1,49 @@
+#!/bin/bash
+# {{ ansible_managed }}
+#
+# Probe each Caddy vhost's live certificate through the local listener and
+# export not_after as a textfile metric. Caddy's admin endpoint doesn't
+# reliably expose cert expiry, so the CertExpiry alert
+# (portal_tls_cert_not_after_timestamp_seconds < 14d out) runs on this.
+# Runs daily from cert-expiry-metrics.timer.
+
+set -uo pipefail
+
+TEXTFILE_DIR=/var/lib/node_exporter/textfile
+OUT="$TEXTFILE_DIR/portal-tls-certs.prom"
+TMP="$OUT.tmp"
+
+DOMAINS=(
+    "{{ portal_domain }}"
+    "demos.{{ portal_domain }}"
+{% if monitoring_ingress | default('public') == 'public' %}
+    "grafana.{{ portal_domain }}"
+{% endif %}
+{% if gameserver_integration_enabled | default(false) %}
+    "agents.{{ portal_domain }}"
+{% endif %}
+)
+# (tailnet ingress: no grafana vhost to probe — Tailscale renews its own
+# ts.net certificate.)
+
+: > "$TMP"
+status=0
+for domain in "${DOMAINS[@]}"; do
+    not_after=$(echo \
+        | timeout 10 openssl s_client -connect 127.0.0.1:443 -servername "$domain" 2>/dev/null \
+        | openssl x509 -noout -enddate 2>/dev/null \
+        | cut -d= -f2)
+    if [ -n "$not_after" ]; then
+        epoch=$(date -d "$not_after" +%s)
+        echo "portal_tls_cert_not_after_timestamp_seconds{domain=\"$domain\"} $epoch" >> "$TMP"
+    else
+        echo "warning: could not read certificate for $domain" >&2
+        status=1
+    fi
+done
+
+# Atomic rename — node_exporter reads the directory concurrently. A domain
+# that failed the probe simply has no series, which the alert's no-data
+# handling treats as firing.
+mv "$TMP" "$OUT"
+exit $status

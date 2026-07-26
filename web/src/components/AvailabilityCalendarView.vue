@@ -2,12 +2,12 @@
   <v-card>
     <v-card-title class="d-flex justify-space-between align-center">
       <span>Availability Calendar</span>
-      <div class="d-flex align-center gap-2">
-        <v-btn icon variant="text" size="small" @click="previousPeriod">
+      <div class="d-flex align-center ga-2">
+        <v-btn aria-label="Previous period" icon variant="text" size="small" @click="previousPeriod">
           <v-icon>mdi-chevron-left</v-icon>
         </v-btn>
         <span class="text-body-1">{{ periodRangeLabel }}</span>
-        <v-btn icon variant="text" size="small" @click="nextPeriod">
+        <v-btn aria-label="Next period" icon variant="text" size="small" @click="nextPeriod">
           <v-icon>mdi-chevron-right</v-icon>
         </v-btn>
         <v-btn variant="text" size="small" @click="goToToday">Today</v-btn>
@@ -47,14 +47,14 @@
             >
               <template v-if="dayAvailability[day.dateStr]">
                 <div
-                  v-if="dayAvailability[day.dateStr].is_blocked"
+                  v-if="dayAvailability[day.dateStr]!.is_blocked"
                   class="blocked-day d-flex align-center justify-center"
                 >
                   <v-chip color="error" size="x-small">Blocked</v-chip>
                 </div>
                 <template v-else>
                   <div
-                    v-for="(slot, slotIndex) in dayAvailability[day.dateStr].available_slots"
+                    v-for="(slot, slotIndex) in dayAvailability[day.dateStr]!.available_slots"
                     :key="slotIndex"
                     class="time-slot"
                     :class="{ 'preferred-slot': slot.is_preferred }"
@@ -67,7 +67,7 @@
                     </span>
                   </div>
                   <div
-                    v-if="!dayAvailability[day.dateStr].available_slots?.length"
+                    v-if="!dayAvailability[day.dateStr]!.available_slots?.length"
                     class="no-availability text-center text-medium-emphasis"
                   >
                     <v-icon size="x-small">mdi-calendar-blank-outline</v-icon>
@@ -108,14 +108,14 @@
             >
               <template v-if="dayAvailability[day.dateStr]">
                 <div
-                  v-if="dayAvailability[day.dateStr].is_blocked"
+                  v-if="dayAvailability[day.dateStr]!.is_blocked"
                   class="blocked-day d-flex align-center justify-center"
                 >
                   <v-chip color="error" size="x-small">Blocked</v-chip>
                 </div>
                 <template v-else>
                   <div
-                    v-for="(slot, slotIndex) in dayAvailability[day.dateStr].available_slots"
+                    v-for="(slot, slotIndex) in dayAvailability[day.dateStr]!.available_slots"
                     :key="slotIndex"
                     class="time-slot"
                     :class="{ 'preferred-slot': slot.is_preferred }"
@@ -128,7 +128,7 @@
                     </span>
                   </div>
                   <div
-                    v-if="!dayAvailability[day.dateStr].available_slots?.length"
+                    v-if="!dayAvailability[day.dateStr]!.available_slots?.length"
                     class="no-availability text-center text-medium-emphasis"
                   >
                     <v-icon size="x-small">mdi-calendar-blank-outline</v-icon>
@@ -144,16 +144,16 @@
       </div>
 
       <!-- Legend -->
-      <div class="d-flex gap-4 mt-4 justify-center text-caption">
-        <div class="d-flex align-center gap-1">
+      <div class="d-flex ga-4 mt-4 justify-center text-caption">
+        <div class="d-flex align-center ga-1">
           <v-icon size="small" color="primary">mdi-star</v-icon>
           <span>Preferred</span>
         </div>
-        <div class="d-flex align-center gap-1">
+        <div class="d-flex align-center ga-1">
           <v-icon size="small" color="grey">mdi-clock-outline</v-icon>
           <span>Available</span>
         </div>
-        <div class="d-flex align-center gap-1">
+        <div class="d-flex align-center ga-1">
           <v-icon size="small" color="error">mdi-calendar-remove</v-icon>
           <span>Blocked</span>
         </div>
@@ -191,7 +191,7 @@ function createDayInfo(date: Date) {
   return {
     dayName: DAY_NAMES_SHORT[dayOfWeek],
     date: date.getDate(),
-    dateStr: date.toISOString().split('T')[0],
+    dateStr: date.toISOString().split('T')[0]!,
     isToday: date.toDateString() === today.toDateString(),
     fullDate: new Date(date),
   }
@@ -220,8 +220,8 @@ const week2Days = computed(() => {
 const allDays = computed(() => [...week1Days.value, ...week2Days.value])
 
 const periodRangeLabel = computed(() => {
-  const start = week1Days.value[0].fullDate
-  const end = week2Days.value[6].fullDate
+  const start = week1Days.value[0]!.fullDate
+  const end = week2Days.value[6]!.fullDate
   const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
   if (start.getFullYear() !== end.getFullYear()) {
     return `${start.toLocaleDateString(undefined, { ...options, year: 'numeric' })} - ${end.toLocaleDateString(undefined, { ...options, year: 'numeric' })}`

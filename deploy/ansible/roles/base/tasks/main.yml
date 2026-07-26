@@ -1,0 +1,103 @@
+---
+# Host-level hardening. Run once, re-run safely.
+#
+# Targets Ubuntu LTS (24.04/26.04) and Debian 12 — everything here is plain
+# apt + systemd; package names below exist in both distros' repos.
+
+- name: Apt — cache & baseline packages
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    name:
+      - ufw
+      - fail2ban
+      - unattended-upgrades
+      - curl
+      - jq
+      - zstd
+      - awscli          # used by the backup script to push to Linode Object Storage
+      - python3-psycopg2  # required by Ansible's postgresql_* modules
+      - acl             # lets Ansible become an unprivileged user (become_user: postgres)
+      - gnupg           # apt key handling for third-party repos (PGDG, Caddy)
+    state: present
+
+- name: Enable unattended security upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+
+# -----------------------------------------------------------------------------
+# ufw: default deny inbound; allow SSH, HTTP, HTTPS. Everything else (the
+# API on :3000, Postgres on :5432) stays on loopback and is also blocked
+# at the firewall — defense in depth.
+# -----------------------------------------------------------------------------
+- name: ufw — default policies
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+    - { direction: routed, policy: deny }
+
+- name: ufw — allow SSH, HTTP, HTTPS
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: ["22", "80", "443"]
+
+# Group-specific extra allows (e.g. game + GOTV ports on the gameservers
+# group — see group_vars/gameservers.yml). Applied BEFORE enable so a live
+# host never has a window where its traffic is dropped.
+- name: ufw — group-specific extra allows
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto | default('tcp') }}"
+  loop: "{{ ufw_extra_allow | default([]) }}"
+
+- name: ufw — enable
+  community.general.ufw:
+    state: enabled
+    logging: "low"
+
+# -----------------------------------------------------------------------------
+# An unprivileged 'ops' user for operators. Real deploy work goes through
+# this user via sudo; root SSH is disabled elsewhere (you should also set
+# PermitRootLogin=no in /etc/ssh/sshd_config — not templated here to avoid
+# locking ourselves out if the playbook is run against a fresh box).
+# -----------------------------------------------------------------------------
+- name: ops — group
+  ansible.builtin.group:
+    name: ops
+    state: present
+
+- name: ops — user
+  ansible.builtin.user:
+    name: ops
+    group: ops
+    groups: [sudo]
+    shell: /bin/bash
+    state: present
+
+# On a freshly provisioned Linode only root has the operator's key (the
+# provisioner injects it into root's authorized_keys). Copy it to ops so
+# the inventory's ansible_user: ops works from the second run onwards —
+# the FIRST converge against a fresh box runs with `-e ansible_user=root`.
+- name: ops — authorized SSH key
+  ansible.posix.authorized_key:
+    user: ops
+    key: "{{ lookup('file', ops_ssh_pubkey_file) }}"
+  when: ops_ssh_pubkey_file is defined and ops_ssh_pubkey_file | length > 0
+
+- name: ops — passwordless sudo
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/ops
+    mode: "0440"
+    content: "ops ALL=(ALL) NOPASSWD:ALL\n"
+    validate: /usr/sbin/visudo -cf %s

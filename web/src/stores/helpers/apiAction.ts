@@ -1,0 +1,162 @@
+import { computed, reactive, ref, type Ref, type WritableComputedRef } from 'vue'
+import { ApiError } from '@/api'
+import type { components } from '@/api/types'
+
+type ApiErrorResponse = components['schemas']['ApiError']
+
+/**
+ * Like unwrapApi, but returns null instead of throwing on 404.
+ * Useful for endpoints where "not found" is a valid state (e.g. no active proposal).
+ */
+export async function unwrapApiOptional<T>(
+  apiCall: Promise<{ data?: T; error?: unknown }>
+): Promise<T | null> {
+  const { data, error: apiError } = await apiCall
+
+  if (apiError) {
+    const err = apiError as ApiErrorResponse
+    if (err.status === 404) return null
+    throw new ApiError(
+      err.status || 500,
+      err.detail || 'An unknown error occurred',
+      err.errors ?? undefined
+    )
+  }
+
+  return (data as T) ?? null
+}
+
+/**
+ * Unwraps an openapi-fetch response, returning the data on success
+ * or throwing an ApiError on failure.
+ *
+ * Replaces the repeated pattern:
+ *   const { data, error: apiError } = await api.GET(...)
+ *   if (apiError) { ... throw new ApiError(...) }
+ */
+export async function unwrapApi<T>(
+  apiCall: Promise<{ data?: T; error?: unknown }>
+): Promise<T> {
+  const { data, error: apiError } = await apiCall
+
+  if (apiError) {
+    const err = apiError as ApiErrorResponse
+    throw new ApiError(
+      err.status || 500,
+      err.detail || 'An unknown error occurred',
+      err.errors ?? undefined
+    )
+  }
+
+  return data as T
+}
+
+export interface ActionState {
+  loading: boolean
+  error: string | null
+}
+
+/**
+ * Latest-wins guard for fetch→assign store actions. Without it every
+ * "fetch → write `currentX`" action is last-write-wins: a slow response for
+ * entity A can overwrite the already-rendered entity B after a rapid route
+ * change.
+ *
+ * Usage — one guard per piece of state, `begin()` per fetch:
+ *   const beginCurrentFetch = createLatestGuard()
+ *   async function fetchThing(id: string) {
+ *     const isCurrent = beginCurrentFetch()
+ *     const result = await unwrapApi(...)
+ *     if (isCurrent()) current.value = result.data
+ *     return result.data
+ *   }
+ */
+export function createLatestGuard(): () => () => boolean {
+  let generation = 0
+  return function begin() {
+    const id = ++generation
+    return () => id === generation
+  }
+}
+
+/**
+ * Creates a per-action loading/error state pair.
+ *
+ * Returns a `reactive({...})` so consumers read `state.loading` / `state.error`
+ * without `.value` ceremony, both in script and template. Pinia already wraps
+ * nested state in reactive at runtime; this aligns the TypeScript shape with
+ * that reality and lets Vuetify's `:loading` prop receive a real boolean.
+ */
+export function createActionState(): ActionState {
+  return reactive({
+    loading: false,
+    error: null as string | null,
+  })
+}
+
+/**
+ * Aggregates loading/error signals over a set of per-action states.
+ *
+ * `loading` is true if any action is in flight. `error` returns the first
+ * non-null action error; writing `error = null` clears every action's error
+ * so snackbar dismiss logic keeps working. Writing a non-null string sets an
+ * override (displayed until any action runs or the override is cleared).
+ *
+ * Replaces the older pattern of a dead `loading = ref(false)` / `error = ref(null)`
+ * that stores never assigned but that consumers read anyway.
+ */
+export function aggregateActionStates(states: ActionState[]): {
+  loading: Ref<boolean>
+  error: WritableComputedRef<string | null>
+} {
+  const override = ref<string | null>(null)
+  const loading = computed(() => states.some((s) => s.loading))
+  const error = computed<string | null>({
+    get() {
+      if (override.value !== null) return override.value
+      for (const s of states) if (s.error) return s.error
+      return null
+    },
+    set(val) {
+      override.value = val
+      if (val === null) {
+        for (const s of states) s.error = null
+      }
+    },
+  })
+  return { loading, error }
+}
+
+// Overlap bookkeeping: the same action can be invoked concurrently (a poll
+// tick racing a user-triggered refetch). `loading` is reference-counted so
+// the first completion doesn't clear the spinner while the second is still
+// in flight, and only the latest invocation is allowed to write `error`.
+const inflightCounts = new WeakMap<ActionState, number>()
+const latestInvocation = new WeakMap<ActionState, number>()
+
+/**
+ * Executes a store action with automatic loading/error state management.
+ */
+export async function withActionState<T>(
+  state: ActionState,
+  action: () => Promise<T>,
+  fallbackMessage: string
+): Promise<T> {
+  inflightCounts.set(state, (inflightCounts.get(state) ?? 0) + 1)
+  const invocationId = (latestInvocation.get(state) ?? 0) + 1
+  latestInvocation.set(state, invocationId)
+  state.loading = true
+  state.error = null
+  try {
+    return await action()
+  } catch (e: unknown) {
+    if (latestInvocation.get(state) === invocationId) {
+      state.error = e instanceof ApiError ? e.detail : fallbackMessage
+    }
+    throw e
+  } finally {
+    const remaining = (inflightCounts.get(state) ?? 1) - 1
+    inflightCounts.set(state, remaining)
+    if (remaining <= 0) state.loading = false
+  }
+}

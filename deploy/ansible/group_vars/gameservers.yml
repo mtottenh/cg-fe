@@ -1,0 +1,43 @@
+---
+# Defaults for every host in the `gameservers` group (per-host overrides go
+# in inventory/prod.yml). The portal box never loads these.
+
+# Path to the portal-server-agent .deb to install (set by
+# `just deploy-agent`, or point at a locally built file).
+gameserver_agent_deb_path: ""
+
+# Game port (also the RCON port MatchZy answers on) and optional GOTV port.
+# These are what the portal registry stores and what ufw opens.
+gameserver_game_port: 27015
+gameserver_gotv_port: 27020
+
+# Region label the portal's server allocation matches on.
+gameserver_region: eu
+
+# RCON endpoint the agent drives (loopback on the game host itself). The
+# password comes from vault_gameserver_rcon_passwords[inventory_hostname].
+gameserver_rcon_addr: "127.0.0.1:{{ gameserver_game_port }}"
+
+# MatchZy config.cfg that receives the managed demo-upload block. "" skips
+# the MatchZy wiring entirely (you paste /etc/portal/agent/matchzy_portal.cfg
+# by hand instead). Set per host in the inventory — install paths differ.
+gameserver_matchzy_config_path: ""
+
+# Unix owner of the MatchZy config file (the user the CS2 server runs as).
+gameserver_matchzy_config_owner: steam
+
+# Heartbeat cadence. The portal marks servers offline after 90s of
+# silence — do not raise this above 60.
+gameserver_heartbeat_secs: 30
+
+# Optional loopback Prometheus /metrics for THIS host's operator
+# (observability-design.md §4.6 — the portal never scrapes game hosts).
+# "" = disabled.
+gameserver_metrics_addr: ""
+
+# Consumed by roles/base so the firewall opens the game ports in the same
+# batch that enables ufw — no window where players are dropped.
+ufw_extra_allow:
+  - { port: "{{ gameserver_game_port }}", proto: tcp }   # game + RCON
+  - { port: "{{ gameserver_game_port }}", proto: udp }   # game traffic
+  - { port: "{{ gameserver_gotv_port }}", proto: udp }   # GOTV/CSTV

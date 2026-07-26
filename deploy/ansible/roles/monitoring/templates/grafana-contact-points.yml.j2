@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+# Alert delivery: everything routes to the operator webhook
+# (vault_alert_webhook_url — healthchecks.io / ntfy / any POST endpoint,
+# the same provider family as backup_healthcheck_url). This file is only
+# rendered when the URL is set.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: portal-ops
+    receivers:
+      - uid: portal-ops-webhook
+        type: webhook
+        settings:
+          url: {{ vault_alert_webhook_url }}
+          httpMethod: POST
+
+policies:
+  - orgId: 1
+    receiver: portal-ops
+    group_by: ["alertname"]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h

@@ -1,0 +1,544 @@
+# Managed by Ansible (roles/monitoring) — do not edit in the Grafana UI;
+# provisioned rules are read-only there by design.
+#
+# The starter alert set from docs/observability-design.md §6. Conventions:
+#   - every query is written so that "value > 0" (after the threshold
+#     expression B) means BAD, using `== bool` where the raw value of a
+#     bad series would otherwise be 0;
+#   - rules on metrics that only exist once their phase is deployed (bot
+#     metrics, api metrics) use noDataState: OK so they stay quiet until
+#     the metric appears;
+#   - rules where SILENCE IS THE FAILURE (backups, cert probe) use
+#     noDataState: Alerting — a missing metric must page, that is the whole
+#     point of the staleness design.
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: portal
+    folder: Portal
+    interval: 1m
+    rules:
+      # --- infrastructure ---
+      - uid: portal-service-down
+        title: ServiceDown
+        condition: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "Scrape target {{ $labels.job }} is down"
+          description: "Prometheus cannot scrape {{ $labels.job }} ({{ $labels.instance }}). Check `systemctl status` for the unit and its journal."
+        labels:
+          severity: critical
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: up == bool 0
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      - uid: portal-unit-failed
+        title: UnitFailed
+        condition: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "systemd unit {{ $labels.name }} is in failed state"
+          description: "journalctl -u {{ $labels.name }} for the reason. Covers the backup services and timers too."
+        labels:
+          severity: critical
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: node_systemd_unit_state{state="failed"} == 1
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      - uid: portal-disk-full
+        title: DiskFull
+        condition: B
+        for: 15m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} has <15% free"
+          description: "Demo cache and local backup dumps are the usual growers — check /var/lib/portal-demo-stats and /var/lib/portal/backups."
+        labels:
+          severity: warning
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs|btrfs"}) < bool 0.15
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      - uid: portal-cert-expiry
+        title: CertExpiry
+        condition: B
+        for: 1h
+        noDataState: Alerting
+        execErrState: Error
+        annotations:
+          summary: "TLS certificate for {{ $labels.domain }} expires in <14 days"
+          description: "ACME renewal is failing (or the cert-expiry probe can't reach the vhost — no-data fires this too). Check `journalctl -u caddy` and `systemctl status cert-expiry-metrics.timer`."
+        labels:
+          severity: critical
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (portal_tls_cert_not_after_timestamp_seconds - time()) < bool 1209600
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      # --- backups (silence must page) ---
+      - uid: portal-backup-stale
+        title: BackupStale
+        condition: B
+        for: 0s
+        noDataState: Alerting
+        execErrState: Alerting
+        annotations:
+          summary: "Nightly pg-backup has not succeeded in >26h"
+          description: "THE alert that must never be silent. `journalctl -u pg-backup` on the box; `just backup-now` to retry by hand. No-data also fires this (textfile metric missing = no successful backup since monitoring was installed)."
+        labels:
+          severity: critical
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (time() - portal_backup_last_success_timestamp_seconds{job="pg-backup"}) > bool 93600
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      - uid: portal-config-backup-stale
+        title: ConfigBackupStale
+        condition: B
+        for: 0s
+        noDataState: Alerting
+        execErrState: Alerting
+        annotations:
+          summary: "Weekly config-backup has not succeeded in >8 days"
+          description: "The /etc/portal archive (including the gameserver agent-ca) is stale. `journalctl -u config-backup`."
+        labels:
+          severity: warning
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (time() - portal_backup_last_success_timestamp_seconds{job="config-backup"}) > bool 691200
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      - uid: portal-restore-rehearsal
+        title: RestoreRehearsalFailed
+        condition: B
+        for: 0s
+        noDataState: Alerting
+        execErrState: Alerting
+        annotations:
+          summary: "Monthly restore rehearsal missed or failed (>32 days)"
+          description: "A backup you've never restored is a hope, not a backup. `just restore-verify` runs it on demand; `journalctl -u pg-restore-verify` for the failure."
+        labels:
+          severity: warning
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (time() - portal_backup_last_success_timestamp_seconds{job="restore-verify"}) > bool 2764800
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      # --- services (phase 2/3 metrics; quiet until deployed) ---
+      - uid: portal-api-unready
+        title: ApiUnready
+        condition: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "portal-api reports not-ready"
+          description: "The same probe the deploy health gate checks (/health/ready: DB + demo-service), continuously. Check portal-api logs and Postgres."
+        labels:
+          severity: critical
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: portal_api_ready == bool 0
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      - uid: portal-stale-loop
+        title: StaleLoop
+        condition: B
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "{{ $labels.__name__ }} is stale (>15m since last success)"
+          description: "A long-running loop (scanner / demo-stats / poller / enricher) is 'running' but not succeeding — the silent-failure class the design exists for. Check the unit's journal for repeated errors."
+        labels:
+          severity: critical
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (time() - {__name__=~"(portal_scanner|portal_demo_stats|cs2_poller|cs2_enricher)_last_success_timestamp_seconds"}) > bool 900
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      - uid: portal-db-pool-saturated
+        title: DbPoolSaturated
+        condition: B
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "portal-api DB pool >80% in use for 10m"
+          description: "Capacity floor. Look for slow queries / lock contention (postgres dashboard, pg_locks during deploys) before raising the pool size."
+        labels:
+          severity: warning
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: ((portal_api_db_pool_connections - portal_api_db_pool_connections_idle) / portal_api_db_pool_max_connections) > bool 0.8
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      - uid: portal-gc-session-down
+        title: GcSessionDown
+        condition: B
+        for: 15m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "cs2-enricher Game Coordinator session down >15m"
+          description: "Usually needs a human: bad creds vs Steam Guard vs rate-limit — cs2_enricher_logon_failures_total{reason} says which. Reconnect attempts are in cs2_enricher_gc_reconnects_total."
+        labels:
+          severity: critical
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: cs2_enricher_gc_session_up == bool 0
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      - uid: portal-agent-offline
+        title: AgentOffline
+        condition: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "Game-server agent {{ $labels.server }} heartbeat stale (>90s)"
+          description: "Matches the portal's own 90s offline rule. The agent connects outbound — check the game host's portal-server-agent unit, or the agents.<domain> vhost."
+        labels:
+          severity: warning
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (time() - portal_api_gameserver_agent_last_heartbeat_timestamp_seconds) > bool 90
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      - uid: portal-parse-concurrency
+        title: DemoParseConcurrency
+        condition: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "demo-stats parse jobs in flight >1"
+          description: "The 4 GB box assumes ONE parse at a time; a second concurrent parse is the memory hazard the design calls out. The sequential-loop assumption in the scanner has broken — investigate before OOM."
+        labels:
+          severity: warning
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: portal_demo_stats_jobs_in_flight > bool 1
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+  # --- log-derived signals (Loki datasource, observability-design.md §5) ---
+  - orgId: 1
+    name: portal-logs
+    folder: Portal
+    interval: 5m
+    rules:
+      - uid: portal-error-spam
+        title: ErrorLogSpam
+        condition: B
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "{{ $labels.unit }} logged >30 error-level lines in 10m"
+          description: "Error spam that never trips a metric — the second signal class Loki exists for. `journalctl -u <unit> -p err` or the Logs dashboard."
+        labels:
+          severity: warning
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              expr: sum by (unit) (count_over_time({level=~"err|error|crit|alert|emerg"}[10m]))
+              queryType: instant
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [30], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
+      # Redundant with BackupStale ON PURPOSE (belt and braces): if the
+      # textfile pipeline itself breaks, the absence of pg-backup journal
+      # lines across 26h still fires via noDataState: Alerting. The
+      # threshold (< 0 lines) can never match on real data.
+      - uid: portal-backup-log-silence
+        title: PgBackupLogSilence
+        condition: B
+        for: 0s
+        noDataState: Alerting
+        execErrState: Alerting
+        annotations:
+          summary: "No pg-backup journal lines for 26h"
+          description: "The nightly backup left no trace in the journal at all — timer dead, unit masked, or journald broken. Independent of the textfile metric path."
+        labels:
+          severity: critical
+        data:
+          - refId: A
+            relativeTimeRange: { from: 93600, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              expr: sum(count_over_time({unit="pg-backup.service"}[26h]))
+              queryType: instant
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: lt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query

@@ -1,0 +1,62 @@
+{
+  "uid": "portal-agents",
+  "title": "Portal — Game-server agents",
+  "description": "Portal-side aggregation over agent heartbeats (agents are never scraped directly — observability-design.md §4.6). Managed by Ansible (roles/monitoring).",
+  "tags": ["portal"],
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Agents connected",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none", "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "portal_api_gameserver_agents_connected", "instant": true } ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Heartbeat age (by server) — offline >90s",
+      "gridPos": { "h": 8, "w": 18, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 90 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "time() - portal_api_gameserver_agent_last_heartbeat_timestamp_seconds", "legendFormat": "{{server}}" } ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Agent WS connections + message rates",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "portal_api_ws_connections{kind=\"gameserver-agent\"}", "legendFormat": "connections" },
+        { "refId": "B", "expr": "sum by (direction) (rate(portal_api_ws_messages_total{kind=\"gameserver-agent\"}[5m]))", "legendFormat": "msgs {{direction}}" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Agent vhost edge (Caddy)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "sum by (code) (rate(caddy_http_request_duration_seconds_count{handler=\"reverse_proxy\"}[5m]))", "legendFormat": "{{code}}" } ]
+    }
+  ]
+}

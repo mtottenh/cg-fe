@@ -24,8 +24,11 @@
             <div class="step-title" :class="{ 'font-weight-bold': isStepCurrent(step) }">
               {{ step.label }}
             </div>
-            <div v-if="getStepTimestamp(step)" class="text-caption text-grey">
+            <div v-if="getStepTimestamp(step)" class="text-caption text-medium-emphasis">
               {{ formatDateTime(getStepTimestamp(step)!) }}
+            </div>
+            <div v-if="getStepNote(step)" class="text-caption text-medium-emphasis font-italic">
+              {{ getStepNote(step) }}
             </div>
           </div>
         </div>
@@ -37,9 +40,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { TournamentMatchResponse } from '@/stores/tournaments'
+import type { components } from '@/api/types'
+import { formatDateTime } from '@/utils/formatters'
+
+type MatchStatusLogResponse = components['schemas']['MatchStatusLogResponse']
 
 const props = defineProps<{
   match: TournamentMatchResponse
+  schedulingMode?: 'live' | 'self_scheduled' | 'hybrid'
+  /**
+   * P-66: the real transition log. When present, steps show the moment the
+   * match actually entered them (and flag admin overrides) instead of the
+   * three-timestamp inference below; absent, the old static rendering holds.
+   */
+  history?: MatchStatusLogResponse[]
 }>()
 
 interface Step {
@@ -48,30 +62,64 @@ interface Step {
   icon: string
 }
 
-const steps = computed<Step[]>(() => {
-  const baseSteps: Step[] = [
-    { status: 'pending', label: 'Awaiting Participants', icon: 'mdi-account-clock' },
-    { status: 'scheduling', label: 'Scheduling', icon: 'mdi-calendar-clock' },
-    { status: 'scheduled', label: 'Scheduled', icon: 'mdi-calendar-check' },
-    { status: 'checking_in', label: 'Check-in', icon: 'mdi-checkbox-marked-circle-outline' },
-    { status: 'pick_ban', label: 'Pick/Ban', icon: 'mdi-sword-cross' },
-    { status: 'in_progress', label: 'In Progress', icon: 'mdi-play-circle' },
-    { status: 'awaiting_result', label: 'Awaiting Result', icon: 'mdi-clock-check' },
-    { status: 'completed', label: 'Completed', icon: 'mdi-trophy' },
-  ]
+const allSteps: Step[] = [
+  { status: 'pending', label: 'Awaiting Participants', icon: 'mdi-account-clock' },
+  { status: 'ready', label: 'Ready', icon: 'mdi-account-check' },
+  { status: 'scheduled', label: 'Scheduled', icon: 'mdi-calendar-check' },
+  { status: 'checking_in', label: 'Check-in', icon: 'mdi-checkbox-marked-circle-outline' },
+  { status: 'pick_ban', label: 'Pick/Ban', icon: 'mdi-sword-cross' },
+  { status: 'in_progress', label: 'In Progress', icon: 'mdi-play-circle' },
+  { status: 'awaiting_result', label: 'Awaiting Result', icon: 'mdi-clock-check' },
+  { status: 'completed', label: 'Completed', icon: 'mdi-trophy' },
+]
 
-  // Filter steps based on match flow
-  // If match is cancelled, show just that
+const liveSteps = new Set(['pending', 'ready', 'pick_ban', 'in_progress', 'awaiting_result', 'completed'])
+const selfScheduledSteps = new Set(['pending', 'ready', 'scheduled', 'checking_in', 'pick_ban', 'in_progress', 'awaiting_result', 'completed'])
+
+/**
+ * Terminal outcomes other than `completed`. `forfeit` and `disputed` are real
+ * backend statuses (`TournamentMatchStatus`,
+ * api/crates/portal-core/src/types/tournament.rs:231) that appeared in NO step
+ * and in no `statusOrder` entry, so a forfeited or disputed match highlighted
+ * no current step and marked nothing complete — the whole timeline rendered
+ * greyed out. They replace the final `Completed` step, which is the slot they
+ * actually occupy in the lifecycle. See COVERAGE-PLAN.md §9c.
+ */
+const terminalOutcomeSteps: Record<string, Step> = {
+  forfeit: { status: 'forfeit', label: 'Forfeit', icon: 'mdi-flag-off' },
+  disputed: { status: 'disputed', label: 'Disputed', icon: 'mdi-alert-octagon' },
+}
+
+const steps = computed<Step[]>(() => {
   if (props.match.status === 'cancelled') {
     return [{ status: 'cancelled', label: 'Cancelled', icon: 'mdi-close-circle' }]
   }
 
-  return baseSteps
+  let filtered: Step[]
+  if (props.schedulingMode === 'live') {
+    filtered = allSteps.filter(s => liveSteps.has(s.status))
+  } else if (props.schedulingMode === 'self_scheduled') {
+    filtered = allSteps.filter(s => selfScheduledSteps.has(s.status))
+  } else {
+    filtered = [...allSteps]
+  }
+
+  // Only show pick_ban step if this match requires veto
+  if (!props.match.veto_required) {
+    filtered = filtered.filter(s => s.status !== 'pick_ban')
+  }
+
+  const outcome = terminalOutcomeSteps[props.match.status]
+  if (outcome) {
+    filtered = filtered.map(s => (s.status === 'completed' ? outcome : s))
+  }
+
+  return filtered
 })
 
 const statusOrder = [
   'pending',
-  'scheduling',
+  'ready',
   'scheduled',
   'checking_in',
   'pick_ban',
@@ -81,6 +129,9 @@ const statusOrder = [
 ]
 
 function getStepIndex(status: string): number {
+  // `forfeit` / `disputed` end the match where `completed` would, so they rank
+  // at the same position — everything before them is done.
+  if (status in terminalOutcomeSteps) return statusOrder.indexOf('completed')
   return statusOrder.indexOf(status)
 }
 
@@ -94,7 +145,7 @@ function isStepCurrent(step: Step): boolean {
   return step.status === props.match.status
 }
 
-function getStepClass(step: Step, index: number): string {
+function getStepClass(step: Step, _index: number): string {
   if (isStepComplete(step)) return 'complete'
   if (isStepCurrent(step)) return 'current'
   return 'pending'
@@ -107,23 +158,41 @@ function getStepColor(step: Step): string {
     case 'checking_in':
     case 'awaiting_result':
       return 'warning'
+    case 'ready':
+      return 'info'
     case 'completed':
       return 'success'
     case 'cancelled':
+    case 'forfeit':
+    case 'disputed':
       return 'error'
     default:
       return 'primary'
   }
 }
 
+/**
+ * P-66: the latest log row that put the match INTO this step's status. The
+ * log is the authority — it records every transition with when and by what —
+ * where the match row only carries three timestamp columns.
+ */
+function logEntryFor(step: Step): MatchStatusLogResponse | null {
+  const rows = props.history?.filter((h) => h.to_status === step.status)
+  return rows && rows.length > 0 ? rows[rows.length - 1]! : null
+}
+
 function getStepTimestamp(step: Step): string | null {
   if (isStepComplete(step) || isStepCurrent(step)) {
+    const logged = logEntryFor(step)
+    if (logged) return logged.transitioned_at
     switch (step.status) {
       case 'scheduled':
         return props.match.scheduled_at || null
       case 'in_progress':
         return props.match.started_at || null
       case 'completed':
+      case 'forfeit':
+      case 'disputed':
         return props.match.completed_at || null
       default:
         return null
@@ -132,9 +201,19 @@ function getStepTimestamp(step: Step): string | null {
   return null
 }
 
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString()
+/**
+ * A short provenance note for a step, from the log: an admin override is the
+ * one actor worth flagging (it is the audited case — P-84's lesson), and a
+ * recorded reason beats inference. System transitions stay unlabelled.
+ */
+function getStepNote(step: Step): string | null {
+  if (!isStepComplete(step) && !isStepCurrent(step)) return null
+  const logged = logEntryFor(step)
+  if (!logged) return null
+  if (logged.is_admin_override) return 'admin override'
+  return logged.transition_reason ?? null
 }
+
 </script>
 
 <style scoped>

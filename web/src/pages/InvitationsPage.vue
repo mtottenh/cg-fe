@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-row align="center" class="mb-6">
       <v-col>
         <h1 class="text-h3">My Invitations</h1>
@@ -15,11 +15,89 @@
       </v-col>
     </v-row>
 
-    <v-alert v-if="leagueTeamsStore.error" type="error" class="mb-4" closable>
-      {{ leagueTeamsStore.error }}
-    </v-alert>
+    <ErrorAlert
+      :error="loadError"
+      retryable
+      @clear="clearErrors"
+      @retry="fetchData"
+    />
 
-    <v-progress-linear v-if="leagueTeamsStore.loading" indeterminate class="mb-4" />
+    <v-progress-linear v-if="loadingData" indeterminate class="mb-4" />
+
+    <!-- League Invitations Section -->
+    <template v-if="leaguesStore.myLeagueInvitations.length > 0">
+      <h2 class="text-h5 mb-4">
+        <v-icon start>mdi-trophy</v-icon>
+        League Invitations
+        <v-chip size="small" color="info" class="ml-2">{{ leaguesStore.myLeagueInvitations.length }}</v-chip>
+      </h2>
+      <v-row class="mb-8">
+        <v-col v-for="invitation in leaguesStore.myLeagueInvitations" :key="invitation.id" cols="12" md="6">
+          <v-card class="h-100">
+            <v-card-item>
+              <template v-slot:prepend>
+                <v-avatar color="warning" size="48">
+                  <v-icon>mdi-trophy</v-icon>
+                </v-avatar>
+              </template>
+              <!-- P-38: the card previously said only "League Invitation" — with two
+                   pending invites they were indistinguishable and accept/decline was a
+                   blind choice. The DTO now carries league_name. -->
+              <v-card-title>{{ invitation.league_name || 'League Invitation' }}</v-card-title>
+              <v-card-subtitle>
+                <span v-if="invitation.league_name" class="text-caption d-block">League Invitation</span>
+                <span class="text-caption">Received {{ formatRelativeTime(invitation.created_at) }}</span>
+              </v-card-subtitle>
+            </v-card-item>
+
+            <v-card-text v-if="invitation.message">
+              <v-alert type="info" variant="tonal" density="compact">
+                <span class="text-body-2">"{{ invitation.message }}"</span>
+              </v-alert>
+            </v-card-text>
+
+            <v-card-text v-if="invitation.expires_at">
+              <div class="d-flex align-center text-caption text-medium-emphasis">
+                <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
+                Expires {{ formatRelativeTime(invitation.expires_at) }}
+              </div>
+            </v-card-text>
+
+            <v-divider />
+
+            <v-card-actions>
+              <v-btn
+                color="success"
+                variant="elevated"
+                :loading="acceptingLeague === invitation.id"
+                :disabled="processing"
+                @click="handleAcceptLeague(invitation.id)"
+              >
+                <v-icon start>mdi-check</v-icon>
+                Accept
+              </v-btn>
+              <v-btn
+                color="error"
+                variant="outlined"
+                :loading="decliningLeague === invitation.id"
+                :disabled="processing"
+                @click="confirmDeclineLeague(invitation)"
+              >
+                <v-icon start>mdi-close</v-icon>
+                Decline
+              </v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-col>
+      </v-row>
+    </template>
+
+    <!-- Team Invitations Section -->
+    <h2 v-if="leaguesStore.myLeagueInvitations.length > 0 || leagueTeamsStore.myInvitations.length > 0" class="text-h5 mb-4">
+      <v-icon start>mdi-shield-account</v-icon>
+      Team Invitations
+      <v-chip size="small" color="info" class="ml-2">{{ leagueTeamsStore.myInvitations.length }}</v-chip>
+    </h2>
 
     <v-row v-if="leagueTeamsStore.myInvitations.length > 0">
       <v-col v-for="invitation in leagueTeamsStore.myInvitations" :key="invitation.id" cols="12" md="6">
@@ -27,7 +105,7 @@
           <v-card-item>
             <template v-slot:prepend>
               <v-avatar color="primary" size="48">
-                <v-img v-if="invitation.team_logo_url" :src="invitation.team_logo_url" />
+                <v-img alt="" v-if="invitation.team_logo_url" :src="invitation.team_logo_url" />
                 <span v-else class="text-h6">{{ (invitation.team_tag || invitation.team_name || '??').substring(0, 2).toUpperCase() }}</span>
               </v-avatar>
             </template>
@@ -92,51 +170,20 @@
       </v-col>
     </v-row>
 
-    <v-row v-else-if="!leagueTeamsStore.loading">
-      <v-col cols="12" class="text-center py-12">
-        <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-email-outline</v-icon>
-        <h3 class="text-h5 text-medium-emphasis mb-2">No Pending Invitations</h3>
-        <p class="text-body-2 text-medium-emphasis mb-4">
-          You don't have any team invitations at the moment.
-        </p>
-        <v-btn color="primary" to="/leagues">Browse Leagues</v-btn>
-      </v-col>
-    </v-row>
+    <EmptyState
+      v-else-if="!loadingData && !loadError && leaguesStore.myLeagueInvitations.length === 0"
+      icon="mdi-email-outline"
+      title="No Pending Invitations"
+      subtitle="You don't have any invitations at the moment."
+    >
+      <template #action>
+        <v-btn color="primary" class="mt-4" to="/leagues">Browse Leagues</v-btn>
+      </template>
+    </EmptyState>
 
-    <!-- Decline dialog with optional message -->
-    <v-dialog v-model="declineDialog" max-width="400">
-      <v-card>
-        <v-card-title>Decline Invitation?</v-card-title>
-        <v-card-text>
-          <p class="mb-4">Are you sure you want to decline the invitation to join <strong>{{ selectedInvitation?.team_name }}</strong>?</p>
-          <v-textarea
-            v-model="declineMessage"
-            label="Message (optional)"
-            rows="2"
-            variant="outlined"
-            hint="Let them know why you're declining"
-            persistent-hint
-          />
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="declineDialog = false">Cancel</v-btn>
-          <v-btn
-            color="error"
-            variant="flat"
-            :loading="declining === selectedInvitation?.id"
-            @click="handleDecline"
-          >
-            Decline
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <!-- Decline Confirm Dialog -->
+    <ConfirmDialogHost :dialog="confirmDialog" />
 
-    <!-- Success Snackbar -->
-    <v-snackbar v-model="showSuccess" :color="snackbarColor" :timeout="3000">
-      {{ successMessage }}
-    </v-snackbar>
   </v-container>
 </template>
 
@@ -144,71 +191,166 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useLeagueTeamsStore, type LeagueTeamInvitationWithTeamResponse } from '@/stores/leagueTeams'
+import { useLeaguesStore } from '@/stores/leagues'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import { teamRoleMap, getStatusColor, formatRole } from '@/utils/statusMaps'
 
 const router = useRouter()
 const leagueTeamsStore = useLeagueTeamsStore()
+const leaguesStore = useLeaguesStore()
 
 const accepting = ref<string | null>(null)
 const declining = ref<string | null>(null)
-const showSuccess = ref(false)
-const successMessage = ref('')
-const snackbarColor = ref('success')
+const acceptingLeague = ref<string | null>(null)
+const decliningLeague = ref<string | null>(null)
+const snackbar = useSnackbar()
+const confirmDialog = useConfirmDialog()
 
-// Decline dialog
-const declineDialog = ref(false)
-const declineMessage = ref('')
-const selectedInvitation = ref<LeagueTeamInvitationWithTeamResponse | null>(null)
+const processing = computed(() =>
+  accepting.value !== null || declining.value !== null ||
+  acceptingLeague.value !== null || decliningLeague.value !== null
+)
 
-const processing = computed(() => accepting.value !== null || declining.value !== null)
+/**
+ * P-124 — the page-level alert used to bind `leagueTeamsStore.error ||
+ * leaguesStore.error`. Both are computed aliases over a single unrelated
+ * action (`fetchMyTeamsState` and `fetchLeaguesState` respectively), and this
+ * page calls NEITHER — so the alert was not merely generic, it was dead: a
+ * failed load of either invitation list rendered nothing at all and the user
+ * saw an empty page with no explanation. These are the two actions `fetchData`
+ * actually runs. (The progress bar below already read the right state.)
+ */
+const loadError = computed(
+  () =>
+    leagueTeamsStore.fetchMyInvitationsState.error ||
+    leaguesStore.fetchMyLeagueInvitationsState.error,
+)
 
-onMounted(async () => {
-  await leagueTeamsStore.fetchMyInvitations()
-})
+/**
+ * Same alias defect, on the LOADING side — and it is the reason the fix above
+ * is not enough on its own. The spinner and the "No Pending Invitations" empty
+ * state were both gated on `leagueTeamsStore.loading`, an alias over
+ * `fetchMyTeamsState`, which this page never sets. So the empty state rendered
+ * during the load AND after a failure: a user whose invitations could not be
+ * fetched was told, confidently, that they had none. An empty state is an
+ * assertion about the data, so it must not render while the data is unknown.
+ */
+const loadingData = computed(
+  () =>
+    leagueTeamsStore.fetchMyInvitationsState.loading ||
+    leaguesStore.fetchMyLeagueInvitationsState.loading,
+)
+
+async function fetchData() {
+  try {
+    await Promise.all([
+      leagueTeamsStore.fetchMyInvitations(),
+      leaguesStore.fetchMyLeagueInvitations(),
+    ])
+  } catch {
+    // Errors are captured in stores
+  }
+}
+
+function clearErrors() {
+  leagueTeamsStore.fetchMyInvitationsState.error = null
+  leaguesStore.fetchMyLeagueInvitationsState.error = null
+}
+
+onMounted(() => { fetchData() })
+
+// League invitation handlers
+async function handleAcceptLeague(invitationId: string) {
+  acceptingLeague.value = invitationId
+  try {
+    await leaguesStore.acceptLeagueInvitation(invitationId)
+    snackbar.show('You have joined the league!', 'success')
+  } catch {
+    // P-124, adjacent instance: this one read no store state at all, so the
+    // reason was discarded rather than mis-sourced. Same remedy.
+    snackbar.show(
+      leaguesStore.acceptLeagueInvitationState.error || 'Failed to accept league invitation',
+      'error',
+    )
+  } finally {
+    acceptingLeague.value = null
+  }
+}
+
+function confirmDeclineLeague(invitation: { id: string; league_name?: string | null }) {
+  // P-40: the TEAM decline had a confirm dialog while the LEAGUE decline fired
+  // immediately — inverted, since declining a league invite is the less
+  // recoverable action (only an admin can re-invite to an invite-only league).
+  confirmDialog.confirm({
+    title: 'Decline League Invitation?',
+    message: `Are you sure you want to decline the invitation to join ${invitation.league_name || 'this league'}? Only a league admin can re-invite you.`,
+    action: 'Decline',
+    color: 'error',
+    handler: () => handleDeclineLeague(invitation.id),
+  })
+}
+
+async function handleDeclineLeague(invitationId: string) {
+  decliningLeague.value = invitationId
+  try {
+    await leaguesStore.declineLeagueInvitation(invitationId)
+    snackbar.show('League invitation declined', 'success')
+  } catch {
+    // P-124, adjacent instance — see handleAcceptLeague.
+    snackbar.show(
+      leaguesStore.declineLeagueInvitationState.error || 'Failed to decline league invitation',
+      'error',
+    )
+  } finally {
+    decliningLeague.value = null
+  }
+}
 
 async function handleAccept(invitationId: string) {
   accepting.value = invitationId
   try {
     await leagueTeamsStore.acceptInvitation(invitationId)
-    successMessage.value = 'You have joined the team!'
-    snackbarColor.value = 'success'
-    showSuccess.value = true
+    snackbar.show('You have joined the team!', 'success')
 
     // Redirect to my teams after a short delay
     setTimeout(() => {
       router.push('/my-teams')
     }, 1500)
   } catch {
-    successMessage.value = leagueTeamsStore.error || 'Failed to accept invitation'
-    snackbarColor.value = 'error'
-    showSuccess.value = true
+    // P-124: `leagueTeamsStore.error` aliases `fetchMyTeamsState`, an action
+    // this page never calls, so it is permanently null and the invitee always
+    // got the fallback. `acceptInvitationState` carries the reason they need —
+    // "Invitation is invalid or already used", a roster-full refusal, or the
+    // one-team-per-season rule.
+    snackbar.show(
+      leagueTeamsStore.acceptInvitationState.error || 'Failed to accept invitation',
+      'error',
+    )
   } finally {
     accepting.value = null
   }
 }
 
 function openDeclineDialog(invitation: LeagueTeamInvitationWithTeamResponse) {
-  selectedInvitation.value = invitation
-  declineMessage.value = ''
-  declineDialog.value = true
-}
-
-async function handleDecline() {
-  if (!selectedInvitation.value) return
-
-  declining.value = selectedInvitation.value.id
-  try {
-    await leagueTeamsStore.declineInvitation(selectedInvitation.value.id, declineMessage.value || undefined)
-    successMessage.value = 'Invitation declined'
-    snackbarColor.value = 'success'
-    showSuccess.value = true
-    declineDialog.value = false
-  } catch {
-    successMessage.value = leagueTeamsStore.error || 'Failed to decline invitation'
-    snackbarColor.value = 'error'
-    showSuccess.value = true
-  } finally {
-    declining.value = null
-  }
+  confirmDialog.confirm({
+    title: 'Decline Invitation?',
+    message: `Are you sure you want to decline the invitation to join ${invitation.team_name}?`,
+    action: 'Decline',
+    color: 'error',
+    handler: async () => {
+      declining.value = invitation.id
+      try {
+        await leagueTeamsStore.declineInvitation(invitation.id)
+        snackbar.show('Invitation declined', 'success')
+      } finally {
+        declining.value = null
+      }
+    },
+  })
 }
 
 function formatRelativeTime(dateStr: string): string {
@@ -231,17 +373,5 @@ function formatRelativeTime(dateStr: string): string {
   }
 }
 
-function formatRole(role: string): string {
-  return role.charAt(0).toUpperCase() + role.slice(1)
-}
-
-function getRoleColor(role: string): string {
-  const colors: Record<string, string> = {
-    captain: 'primary',
-    founder: 'purple',
-    player: 'success',
-    substitute: 'info',
-  }
-  return colors[role] || 'grey'
-}
+const getRoleColor = (role: string) => getStatusColor(teamRoleMap, role)
 </script>

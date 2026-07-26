@@ -1,7 +1,6 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="1100"
     persistent
   >
@@ -9,12 +8,12 @@
       <v-card-title class="d-flex justify-space-between align-center">
         <div class="d-flex align-center">
           <v-avatar size="32" rounded="sm" class="mr-3">
-            <v-img v-if="league?.league_logo_url" :src="league.league_logo_url" />
+            <v-img alt="" v-if="league?.league_logo_url" :src="league.league_logo_url" />
             <v-icon v-else>mdi-trophy</v-icon>
           </v-avatar>
           <span>{{ league?.league_name }}</span>
         </div>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -77,9 +76,6 @@
         {{ error }}
       </v-alert>
 
-      <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
-        {{ snackbarText }}
-      </v-snackbar>
     </v-card>
 
     <!-- Season Create Modal -->
@@ -114,9 +110,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { ApiError } from '@/api'
+import { computed, ref, watch } from 'vue'
+import { useSnackbar } from '@/composables/useSnackbar'
 import { type UserLeagueMembership } from '@/stores/leagues'
+import {
+  useLeagueSeasonsStore,
+  type LeagueSeasonResponse,
+} from '@/stores/leagueSeasons'
+import {
+  useLeagueTeamsStore,
+  type LeagueTeamSummaryResponse,
+} from '@/stores/leagueTeams'
 import LeagueSeasonsPanel from './LeagueSeasonsPanel.vue'
 import LeagueTeamsPanel from './LeagueTeamsPanel.vue'
 import LeagueSeasonCreateModal from './LeagueSeasonCreateModal.vue'
@@ -124,85 +128,44 @@ import LeagueSeasonEditModal from './LeagueSeasonEditModal.vue'
 import LeagueTeamCreateModal from './LeagueTeamCreateModal.vue'
 import LeagueTeamDetailModal from './LeagueTeamDetailModal.vue'
 
-interface LeagueSeason {
-  id: string
-  league_id: string
-  name: string
-  slug: string
-  description: string | null
-  status: string
-  registration_start: string | null
-  registration_end: string | null
-  season_start: string | null
-  season_end: string | null
-  team_size_min: number | null
-  team_size_max: number | null
-  max_substitutes: number | null
-  max_teams: number | null
-  roster_lock_status: string
-  created_by: string
-  created_at: string
-  updated_at: string
-}
+type LeagueSeason = LeagueSeasonResponse
+type LeagueTeamSummary = LeagueTeamSummaryResponse
 
-interface LeagueTeamSummary {
-  team_id: string
-  team_name: string
-  team_tag: string
-  team_logo_url: string | null
-  team_status: string
-  league_id: string
-  owner_player_id: string
-  season_id: string | null
-  team_season_id: string | null
-  season_status: string | null
-  roster_lock_status: string | null
-  team_size_min: number | null
-  team_size_max: number | null
-  active_member_count: number
-  captain_count: number
-  player_count: number
-  substitute_count: number
-}
-
-const props = defineProps<{
-  modelValue: boolean
-  league: UserLeagueMembership | null
+const props = defineProps<{  league: UserLeagueMembership | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  updated: []
+const emit = defineEmits<{  updated: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
+
+// Stores drive the data now; local refs previously mirrored raw-fetch results.
+const leagueSeasonsStore = useLeagueSeasonsStore()
+const leagueTeamsStore = useLeagueTeamsStore()
 
 // State
 const activeTab = ref('seasons')
 const error = ref<string | null>(null)
 
-// Seasons
-const seasons = ref<LeagueSeason[]>([])
-const loadingSeasons = ref(false)
+// Seasons + teams come from store collections
+const seasons = computed<LeagueSeason[]>(() => leagueSeasonsStore.seasons)
+const loadingSeasons = computed(() => leagueSeasonsStore.fetchSeasonsState.loading)
 const selectedSeason = ref<LeagueSeason | null>(null)
 const createSeasonModalOpen = ref(false)
 const editSeasonModalOpen = ref(false)
 
-// Teams
-const teams = ref<LeagueTeamSummary[]>([])
-const loadingTeams = ref(false)
+const teams = computed<LeagueTeamSummary[]>(() => leagueTeamsStore.teams)
+const loadingTeams = computed(() => leagueTeamsStore.fetchTeamsInSeasonState.loading)
 const selectedSeasonId = ref<string | null>(null)
 const selectedTeam = ref<LeagueTeamSummary | null>(null)
 const createTeamModalOpen = ref(false)
 const teamDetailModalOpen = ref(false)
 
 // Snackbar
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref('success')
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const snackbar = useSnackbar()
 
 // Watch for dialog opening
-watch(() => props.modelValue, async (isOpen) => {
+watch(open, async (isOpen) => {
   if (isOpen && props.league) {
     activeTab.value = 'seasons'
     selectedSeasonId.value = null
@@ -215,71 +178,30 @@ watch(selectedSeasonId, () => {
   if (selectedSeasonId.value) {
     fetchTeams()
   } else {
-    teams.value = []
+    leagueTeamsStore.clearTeams()
   }
 })
 
-// API calls
 async function fetchSeasons() {
   if (!props.league) return
-
-  loadingSeasons.value = true
   try {
-    const response = await fetch(`${API_URL}/v1/league-seasons?league_id=${props.league.league_id}`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to fetch seasons')
-    }
-
-    const result = await response.json()
-    seasons.value = result.data
-
+    await leagueSeasonsStore.fetchSeasons(props.league.league_id)
     // Auto-select first season if available
-    if (seasons.value.length > 0 && !selectedSeasonId.value && seasons.value[0]) {
-      selectedSeasonId.value = seasons.value[0].id
+    const list = leagueSeasonsStore.seasons
+    if (list.length > 0 && !selectedSeasonId.value && list[0]) {
+      selectedSeasonId.value = list[0].id
     }
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to load seasons'
-    }
-  } finally {
-    loadingSeasons.value = false
+  } catch {
+    error.value = leagueSeasonsStore.fetchSeasonsState.error ?? 'Failed to load seasons'
   }
 }
 
 async function fetchTeams() {
   if (!selectedSeasonId.value) return
-
-  loadingTeams.value = true
   try {
-    const response = await fetch(`${API_URL}/v1/league-seasons/${selectedSeasonId.value}/teams`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to fetch teams')
-    }
-
-    const result = await response.json()
-    teams.value = result.data
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to load teams'
-    }
-  } finally {
-    loadingTeams.value = false
+    await leagueTeamsStore.fetchTeamsInSeason(selectedSeasonId.value)
+  } catch {
+    error.value = leagueTeamsStore.fetchTeamsInSeasonState.error ?? 'Failed to load teams'
   }
 }
 
@@ -299,13 +221,13 @@ function viewSeasonTeams(season: LeagueSeason) {
 }
 
 function onSeasonCreated() {
-  showSnackbar('Season created successfully', 'success')
+  snackbar.show('Season created successfully', 'success')
   fetchSeasons()
   emit('updated')
 }
 
 function onSeasonSaved() {
-  showSnackbar('Season updated successfully', 'success')
+  snackbar.show('Season updated successfully', 'success')
   fetchSeasons()
   emit('updated')
 }
@@ -321,26 +243,20 @@ function openTeamDetailModal(team: LeagueTeamSummary) {
 }
 
 function onTeamCreated() {
-  showSnackbar('Team created successfully', 'success')
+  snackbar.show('Team created successfully', 'success')
   fetchTeams()
   emit('updated')
 }
 
 function onTeamUpdated() {
-  showSnackbar('Team updated successfully', 'success')
+  snackbar.show('Team updated successfully', 'success')
   fetchTeams()
   emit('updated')
 }
 
 // Helpers
-function showSnackbar(text: string, color: string) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbar.value = true
-}
-
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 </script>

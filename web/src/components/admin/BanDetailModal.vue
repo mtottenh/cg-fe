@@ -1,9 +1,9 @@
 <template>
-  <v-dialog v-model="dialogOpen" max-width="700">
+  <v-dialog v-model="open" max-width="700">
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Ban Details</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -42,12 +42,26 @@
 
           <!-- Ban Information -->
           <v-list density="compact" class="mb-4">
+            <!--
+              P-123: the modal led with the raw `user_id`. The full UUID is at
+              least unambiguous (unlike the truncation on the table), but it
+              still names nobody, so the operator had to leave the moderation
+              surface to find out whose ban they were reading. Name first, id
+              kept underneath because it is what an operator quotes into a
+              support ticket or a SQL console.
+            -->
             <v-list-item>
               <template v-slot:prepend>
                 <v-icon>mdi-account</v-icon>
               </template>
-              <v-list-item-title>User ID</v-list-item-title>
-              <v-list-item-subtitle class="text-body-2">{{ ban.user_id }}</v-list-item-subtitle>
+              <v-list-item-title>User</v-list-item-title>
+              <v-list-item-subtitle class="text-body-2" data-testid="ban-detail-user">
+                {{ ban.display_name || ban.username }}
+                <span v-if="ban.display_name" class="text-medium-emphasis">({{ ban.username }})</span>
+              </v-list-item-subtitle>
+              <v-list-item-subtitle class="text-caption text-medium-emphasis">
+                {{ ban.user_id }}
+              </v-list-item-subtitle>
             </v-list-item>
 
             <v-list-item>
@@ -133,7 +147,7 @@
                   <v-list-item
                     v-for="historyBan in banHistory"
                     :key="historyBan.id"
-                    :class="{ 'bg-grey-lighten-4': historyBan.id === ban.id }"
+                    :class="{ 'bg-surface-variant': historyBan.id === ban.id }"
                   >
                     <template v-slot:prepend>
                       <v-icon
@@ -159,13 +173,13 @@
                       <span v-if="historyBan.lifted_at" class="text-success">
                         - Lifted {{ formatRelativeTime(historyBan.lifted_at) }}
                       </span>
-                      <span v-else-if="!historyBan.is_active && historyBan.ends_at" class="text-grey">
+                      <span v-else-if="!historyBan.is_active && historyBan.ends_at" class="text-medium-emphasis">
                         - Expired
                       </span>
                     </v-list-item-subtitle>
                   </v-list-item>
                 </v-list>
-                <p v-else class="text-grey text-center pa-4">No other bans on record</p>
+                <p v-else class="text-medium-emphasis text-center pa-4">No other bans on record</p>
               </v-expansion-panel-text>
             </v-expansion-panel>
           </v-expansion-panels>
@@ -219,32 +233,28 @@
 
       <v-card-text v-else class="text-center pa-8">
         <v-icon size="64" color="grey-lighten-1">mdi-alert-circle-outline</v-icon>
-        <p class="text-grey mt-2">Failed to load ban details</p>
+        <p class="text-medium-emphasis mt-2">Failed to load ban details</p>
       </v-card-text>
     </v-card>
   </v-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useBansStore, type BanResponse } from '@/stores/bans'
+import { formatDateTime } from '@/utils/formatters'
+import { banTypeMap, banStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
-const props = defineProps<{
-  modelValue: boolean
-  banId: string | null
+const props = defineProps<{  banId: string | null
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: boolean): void
   (e: 'updated'): void
 }>()
 
-const bansStore = useBansStore()
+const open = defineModel<boolean>({ required: true })
 
-const dialogOpen = computed({
-  get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value),
-})
+const bansStore = useBansStore()
 
 const loading = ref(false)
 const loadingHistory = ref(false)
@@ -254,10 +264,9 @@ const showLiftForm = ref(false)
 const liftReason = ref('')
 const lifting = ref(false)
 
-watch(
-  () => props.modelValue,
-  async (open) => {
-    if (open && props.banId) {
+watch(open,
+  async (isOpen) => {
+    if (isOpen && props.banId) {
       await loadBan()
     } else {
       ban.value = null
@@ -310,14 +319,14 @@ async function liftBan() {
 }
 
 function close() {
-  dialogOpen.value = false
+  open.value = false
 }
 
 function getStatusText(): string {
   if (!ban.value) return ''
-  if (ban.value.lifted_at) return 'Lifted'
-  if (!ban.value.is_active && ban.value.ends_at) return 'Expired'
-  if (ban.value.is_active) return 'Active'
+  if (ban.value.lifted_at) return getStatusLabel(banStatusMap, 'lifted')
+  if (!ban.value.is_active && ban.value.ends_at) return getStatusLabel(banStatusMap, 'expired')
+  if (ban.value.is_active) return getStatusLabel(banStatusMap, 'active')
   return 'Unknown'
 }
 
@@ -328,31 +337,8 @@ function getStatusAlertType(): 'error' | 'warning' | 'success' | 'info' {
   return 'warning' // expired
 }
 
-function formatBanType(type: string): string {
-  const labels: Record<string, string> = {
-    platform: 'Platform',
-    matchmaking: 'Matchmaking',
-    chat: 'Chat',
-    league: 'League',
-    tournament: 'Tournament',
-  }
-  return labels[type] || type
-}
-
-function getBanTypeColor(type: string): string {
-  const colors: Record<string, string> = {
-    platform: 'error',
-    matchmaking: 'warning',
-    chat: 'info',
-    league: 'purple',
-    tournament: 'orange',
-  }
-  return colors[type] || 'grey'
-}
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString()
-}
+const formatBanType = (type: string) => getStatusLabel(banTypeMap, type)
+const getBanTypeColor = (type: string) => getStatusColor(banTypeMap, type)
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr)

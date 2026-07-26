@@ -1,0 +1,12 @@
+# yamllint config for deploy/ansible (used locally and by the deploy-lint
+# CI workflow in .github/workflows/deploy-lint.yml).
+#
+# Galaxy-installed third-party roles land inside this tree (ansible.cfg
+# pins roles_path = roles, and CI runs `ansible-galaxy install` before
+# linting), so exclude them — their style is not ours to fix, and
+# geerlingguy.postgresql ships files that fail even relaxed rules.
+extends: relaxed
+
+ignore:
+  - roles/geerlingguy.postgresql/
+  - .ansible/

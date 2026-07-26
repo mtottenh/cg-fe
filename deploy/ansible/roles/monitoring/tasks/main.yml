@@ -1,0 +1,501 @@
+---
+# Monitoring stack (docs/observability-design.md): Prometheus + Grafana +
+# Loki + Alloy + node_exporter + postgres_exporter, ALL bound to loopback.
+# Grafana is the only ingress, via the grafana.<domain> Caddy vhost (gated
+# on monitoring_enabled inside Caddyfile.j2 — the caddy role renders it).
+#
+#   Prometheus         :9090   15s scrape, 30d retention; the scrape config
+#                              is generated from monitoring_metrics_ports
+#   Grafana            :3001   auth: admin / vault_grafana_admin_password
+#   Loki               :3110   (NOT 3100 — portal-demo-stats owns that)
+#   Alloy              :12345  journald → Loki with {unit, level, hostname}
+#   node_exporter      :9100   + systemd collector (unit/timer states) and
+#                              textfile collector (backup job metrics)
+#   postgres_exporter  :9187   local socket, peer auth (runs as postgres)
+#   Caddy admin        :2019   scraped as-is (per-vhost RED, enabled via
+#                              the `metrics` global option in Caddyfile.j2)
+#
+# Grafana/Loki/Alloy install from the Grafana apt repo (same keyring
+# pattern as Caddy/PGDG); the Prometheus pieces come from the Ubuntu
+# archive. versions.yml and the deb pipeline are untouched.
+#
+# Alert delivery: Grafana-managed alerts → webhook (vault_alert_webhook_url,
+# optional — leave "" to keep alerts in the UI only). The rules themselves
+# are provisioned from files/grafana-alerting-portal.yml.
+
+# --- Preconditions -----------------------------------------------------------
+
+- name: Monitoring vault values are set
+  ansible.builtin.assert:
+    that:
+      - vault_grafana_admin_password is defined
+      - "'CHANGE_ME' not in vault_grafana_admin_password"
+      - vault_grafana_admin_password | length >= 12
+    fail_msg: >-
+      monitoring_enabled=true needs vault_grafana_admin_password (>=12 chars)
+      in the vault — it becomes the Grafana admin login exposed at
+      grafana.{{ portal_domain }}. Add it with `just edit-vault`
+      (vault.example.yml documents the key).
+
+# --- Packages ----------------------------------------------------------------
+
+- name: Grafana apt repo
+  block:
+    - name: Keyrings directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Grafana signing key
+      ansible.builtin.get_url:
+        url: https://apt.grafana.com/gpg.key
+        dest: /etc/apt/keyrings/grafana.asc
+        mode: "0644"
+
+    - name: Grafana apt source
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/grafana.list
+        mode: "0644"
+        content: |
+          deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main
+
+- name: Monitoring packages
+  ansible.builtin.apt:
+    name:
+      # Ubuntu archive
+      - prometheus
+      - prometheus-node-exporter
+      - prometheus-postgres-exporter
+      # Grafana apt repo
+      - grafana
+      - loki
+      - alloy
+      # cert-expiry textfile probe
+      - openssl
+    state: present
+    update_cache: true
+
+# --- node_exporter -----------------------------------------------------------
+
+# Written to by pg-backup/restore-verify (postgres) and config-backup + the
+# cert probe (root); read by node_exporter. Group-writable, setgid so files
+# created by root keep the postgres group.
+- name: Textfile collector directory
+  ansible.builtin.file:
+    path: /var/lib/node_exporter/textfile
+    state: directory
+    owner: root
+    group: postgres
+    mode: "2775"
+
+- name: node_exporter arguments
+  ansible.builtin.template:
+    src: node-exporter-default.j2
+    dest: /etc/default/prometheus-node-exporter
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart node exporter
+
+- name: node_exporter enabled and started
+  ansible.builtin.systemd:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started
+
+# --- postgres_exporter -------------------------------------------------------
+
+# Run as the postgres system user so the local-socket connection uses peer
+# auth — same pattern as pg-backup. No TCP, no password.
+- name: postgres_exporter drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/prometheus-postgres-exporter.service.d
+    state: directory
+    mode: "0755"
+
+- name: postgres_exporter runs as postgres (socket peer auth)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/prometheus-postgres-exporter.service.d/10-user.conf
+    mode: "0644"
+    content: |
+      [Service]
+      User=postgres
+      Group=postgres
+  notify:
+    - daemon-reload
+    - restart postgres exporter
+
+- name: postgres_exporter configuration
+  ansible.builtin.template:
+    src: postgres-exporter-default.j2
+    dest: /etc/default/prometheus-postgres-exporter
+    owner: root
+    group: postgres
+    mode: "0640"
+  notify: restart postgres exporter
+
+- name: postgres_exporter enabled and started
+  ansible.builtin.systemd:
+    name: prometheus-postgres-exporter
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# --- Prometheus --------------------------------------------------------------
+
+- name: Prometheus arguments (loopback bind + retention)
+  ansible.builtin.template:
+    src: prometheus-default.j2
+    dest: /etc/default/prometheus
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart prometheus
+
+- name: Prometheus scrape configuration
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart prometheus
+
+- name: Prometheus enabled and started
+  ansible.builtin.systemd:
+    name: prometheus
+    enabled: true
+    state: started
+
+# --- Loki --------------------------------------------------------------------
+
+- name: Loki data directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: loki
+    group: loki
+    mode: "0750"
+  loop:
+    - /var/lib/loki
+    - /var/lib/loki/chunks
+    - /var/lib/loki/rules
+    - /var/lib/loki/compactor
+
+- name: Loki configuration
+  ansible.builtin.template:
+    src: loki-config.yml.j2
+    dest: /etc/loki/config.yml
+    owner: root
+    group: loki
+    mode: "0640"
+  notify: restart loki
+
+- name: Loki enabled and started
+  ansible.builtin.systemd:
+    name: loki
+    enabled: true
+    state: started
+
+# --- Alloy (journald → Loki) -------------------------------------------------
+
+- name: Alloy user can read the journal
+  ansible.builtin.user:
+    name: alloy
+    groups: [systemd-journal, adm]
+    append: true
+  notify: restart alloy
+
+- name: Alloy configuration
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: /etc/alloy/config.alloy
+    owner: root
+    group: alloy
+    mode: "0640"
+  notify: restart alloy
+
+- name: Alloy arguments (loopback bind)
+  ansible.builtin.template:
+    src: alloy-default.j2
+    dest: /etc/default/alloy
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart alloy
+
+- name: Alloy enabled and started
+  ansible.builtin.systemd:
+    name: alloy
+    enabled: true
+    state: started
+
+# --- Tailnet ingress (monitoring_ingress: tailnet) ---------------------------
+
+# Tailscale Serve terminates HTTPS on the machine's ts.net name and proxies
+# to loopback Grafana — no public vhost, no DNS record, no ACME cert in CT
+# logs, and Grafana never leaves 127.0.0.1. Serve is tailnet-only by
+# design; Funnel (public exposure) is never enabled here. Break-glass when
+# the tailnet is down: ssh -L 3001:127.0.0.1:3001.
+- name: Tailnet ingress (Tailscale Serve → loopback Grafana)
+  when: monitoring_ingress | default('public') == 'tailnet'
+  block:
+    - name: Tailscale signing key
+      ansible.builtin.get_url:
+        url: "https://pkgs.tailscale.com/stable/ubuntu/{{ ansible_distribution_release }}.noarmor.gpg"
+        dest: /etc/apt/keyrings/tailscale.asc
+        mode: "0644"
+
+    - name: Tailscale apt source
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/tailscale.list
+        mode: "0644"
+        content: |
+          deb [signed-by=/etc/apt/keyrings/tailscale.asc] https://pkgs.tailscale.com/stable/ubuntu {{ ansible_distribution_release }} main
+
+    - name: Tailscale package
+      ansible.builtin.apt:
+        name: tailscale
+        state: present
+        update_cache: true
+
+    - name: tailscaled enabled and started
+      ansible.builtin.systemd:
+        name: tailscaled
+        enabled: true
+        state: started
+
+    - name: Read tailscale backend state
+      ansible.builtin.command: tailscale status --json  # noqa: command-instead-of-module
+      register: monitoring_ts_status
+      changed_when: false
+      failed_when: false
+
+    - name: First join needs a pre-authorized auth key
+      ansible.builtin.assert:
+        that:
+          - vault_tailscale_auth_key is defined
+          - "'CHANGE_ME' not in vault_tailscale_auth_key"
+        fail_msg: >-
+          monitoring_ingress=tailnet and this box has not joined the tailnet
+          yet — set vault_tailscale_auth_key (a pre-authorized key from the
+          Tailscale admin console) with `just edit-vault`. Single-use is
+          fine; once joined, later converges skip `tailscale up` entirely.
+      when: (monitoring_ts_status.stdout | from_json).BackendState | default('') != 'Running'
+
+    - name: Join the tailnet (first converge only)
+      ansible.builtin.command: tailscale up --auth-key={{ vault_tailscale_auth_key }}  # noqa: command-instead-of-module
+      no_log: true
+      changed_when: true
+      when: (monitoring_ts_status.stdout | from_json).BackendState | default('') != 'Running'
+
+    - name: Read tailnet identity
+      ansible.builtin.command: tailscale status --json  # noqa: command-instead-of-module
+      register: monitoring_ts_identity
+      changed_when: false
+
+    - name: Tailnet is up
+      ansible.builtin.assert:
+        that: (monitoring_ts_identity.stdout | from_json).BackendState == 'Running'
+        fail_msg: >-
+          tailscale is installed but the backend is not Running — check
+          `tailscale status` on the box (expired auth key? MagicDNS off?).
+
+    # Grafana's domain/root_url below need the machine's MagicDNS name
+    # (Self.DNSName carries a trailing dot).
+    - name: Record the machine's ts.net name
+      ansible.builtin.set_fact:
+        monitoring_tailnet_dnsname: >-
+          {{ (monitoring_ts_identity.stdout | from_json).Self.DNSName | regex_replace('[.]$', '') }}
+
+    - name: Read tailscale serve config
+      ansible.builtin.command: tailscale serve status --json  # noqa: command-instead-of-module
+      register: monitoring_ts_serve_status
+      changed_when: false
+      failed_when: false
+
+    - name: Serve Grafana on the tailnet (HTTPS ts.net → loopback)
+      ansible.builtin.command: >-
+        tailscale serve --bg --https=443
+        http://127.0.0.1:{{ monitoring_grafana_port }}
+      changed_when: true
+      when: "('127.0.0.1:' ~ monitoring_grafana_port) not in (monitoring_ts_serve_status.stdout | default(''))"
+
+    # tailscaled inserts its own netfilter accept rules for tailscale0, but
+    # be explicit so the posture survives netfilter-mode changes.
+    - name: Allow inbound traffic on the tailscale interface
+      community.general.ufw:
+        rule: allow
+        direction: in
+        interface: tailscale0
+
+# --- Grafana -----------------------------------------------------------------
+
+- name: Grafana configuration
+  ansible.builtin.template:
+    src: grafana.ini.j2
+    dest: /etc/grafana/grafana.ini
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Grafana provisioning — datasources
+  ansible.builtin.template:
+    src: grafana-datasources.yml.j2
+    dest: /etc/grafana/provisioning/datasources/portal.yml
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Grafana provisioning — dashboard provider
+  ansible.builtin.template:
+    src: grafana-dashboards.yml.j2
+    dest: /etc/grafana/provisioning/dashboards/portal.yml
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Grafana dashboards directory
+  ansible.builtin.file:
+    path: /var/lib/grafana/dashboards
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: "0750"
+
+# Static JSON (no Jinja): Grafana legend templates use {{route}}-style
+# placeholders that must reach Grafana verbatim.
+- name: Grafana dashboards
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /var/lib/grafana/dashboards/
+    owner: grafana
+    group: grafana
+    mode: "0640"
+  with_fileglob:
+    - dashboards/*.json
+  notify: restart grafana
+
+# Static file for the same reason: alert annotations use {{ $labels.x }}.
+- name: Grafana provisioning — alert rules
+  ansible.builtin.copy:
+    src: grafana-alerting-portal.yml
+    dest: /etc/grafana/provisioning/alerting/portal-rules.yml
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Grafana provisioning — alert delivery (webhook contact point)
+  ansible.builtin.template:
+    src: grafana-contact-points.yml.j2
+    dest: /etc/grafana/provisioning/alerting/portal-delivery.yml
+    owner: root
+    group: grafana
+    mode: "0640"
+  when: vault_alert_webhook_url | default('') | length > 0
+  notify: restart grafana
+
+- name: Grafana provisioning — alert delivery removed when webhook unset
+  ansible.builtin.file:
+    path: /etc/grafana/provisioning/alerting/portal-delivery.yml
+    state: absent
+  when: vault_alert_webhook_url | default('') | length == 0
+  notify: restart grafana
+
+- name: Grafana enabled and started
+  ansible.builtin.systemd:
+    name: grafana-server
+    enabled: true
+    state: started
+
+# --- TLS cert expiry probe (textfile) ----------------------------------------
+
+# Caddy's admin endpoint doesn't reliably export certificate not_after, so a
+# daily openssl probe against the local vhosts writes
+# portal_tls_cert_not_after_timestamp_seconds{domain} for the CertExpiry
+# alert (observability-design.md §6) — ACME renewal failures surface with
+# 14 days to spare.
+- name: Cert-expiry probe script
+  ansible.builtin.template:
+    src: cert-expiry-metrics.sh.j2
+    dest: /usr/local/bin/cert-expiry-metrics.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: cert-expiry-metrics.service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/cert-expiry-metrics.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Export TLS certificate expiry timestamps for Prometheus
+      After=caddy.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/cert-expiry-metrics.sh
+  notify: daemon-reload
+
+- name: cert-expiry-metrics.timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/cert-expiry-metrics.timer
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Daily TLS certificate expiry probe
+
+      [Timer]
+      OnCalendar=*-*-* 06:00:00
+      # First run shortly after install/boot so the metric exists before the
+      # first daily tick (the CertExpiry alert treats "no data" as firing).
+      OnActiveSec=15min
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+  notify: daemon-reload
+
+- name: Cert-expiry timer enabled
+  ansible.builtin.systemd:
+    name: cert-expiry-metrics.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# --- Verification ------------------------------------------------------------
+
+- name: Flush handlers before the health gate
+  ansible.builtin.meta: flush_handlers
+
+- name: Prometheus is ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ monitoring_prometheus_port }}/-/ready"
+    status_code: 200
+  register: monitoring_prom_ready
+  retries: 12
+  delay: 5
+  until: monitoring_prom_ready is succeeded
+
+- name: Grafana is healthy
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ monitoring_grafana_port }}/api/health"
+    status_code: 200
+  register: monitoring_grafana_ready
+  retries: 12
+  delay: 5
+  until: monitoring_grafana_ready is succeeded
+
+- name: Loki is ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ monitoring_loki_port }}/ready"
+    status_code: 200
+  register: monitoring_loki_ready
+  retries: 24
+  delay: 5
+  until: monitoring_loki_ready is succeeded

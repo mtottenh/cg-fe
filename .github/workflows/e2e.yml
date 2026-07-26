@@ -1,0 +1,129 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      api_version:
+        description: "API release tag to test against (default: latest release)"
+        required: false
+        default: ""
+
+env:
+  RUST_BACKTRACE: 1
+  # Ephemeral per-run database. The API applies migrations on boot (which
+  # also seed the games catalog), so no separate migrate step is needed.
+  DATABASE_URL: postgres://portal:portal@localhost:5433/portal_e2e
+  VITE_API_URL: http://localhost:3000
+  E2E_ADMIN_EMAIL: admin@example.com
+  E2E_ADMIN_PASSWORD: AdminPassword123!
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-24.04
+    # The suite outgrew 30 minutes during the 2026-07 audit-fix waves (every
+    # run since 07-26 died mid-suite with a healthy stack). 60 buys headroom;
+    # sharding (playwright --shard across a matrix) is the real fix when this
+    # creeps again.
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: portal
+          POSTGRES_PASSWORD: portal
+          POSTGRES_DB: portal_e2e
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U portal -d portal_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout frontend
+        uses: actions/checkout@v4
+
+      # Use the SHIPPED artifact rather than a from-source build: this tests the
+      # frontend against the actual released backend (higher fidelity for a
+      # release gate) and skips the ~5-min Rust compile. The migrations are
+      # compiled into the binary (sqlx::migrate!), so it self-migrates on boot
+      # with no migrations/ dir. Defaults to the latest mtottenh/cg release;
+      # override via the api_version workflow_dispatch input. For a private
+      # backend repo set the API_REPO_TOKEN secret (PAT with repo read).
+      - name: Download released API (portal-api deb)
+        env:
+          GH_TOKEN: ${{ secrets.API_REPO_TOKEN || github.token }}
+          API_VERSION: ${{ inputs.api_version }}
+        run: |
+          mkdir -p api-pkg
+          gh release download $API_VERSION --repo mtottenh/cg \
+            --pattern 'portal-api_*_amd64.deb' --dir api-pkg
+          dpkg-deb -x api-pkg/portal-api_*_amd64.deb api-pkg/root
+          echo "API_BIN=$PWD/api-pkg/root/usr/bin/portal-api" >> "$GITHUB_ENV"
+          echo "CLI_BIN=$PWD/api-pkg/root/usr/bin/portal-cli" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd web && npm ci
+
+      - name: Install Playwright browsers
+        run: cd web && npx playwright install chromium --with-deps
+
+      - name: Start API server (migrations run on boot)
+        run: |
+          # Release builds (the deb) require PORTAL_CORS_ORIGINS to be set —
+          # debug builds default it, which is why the from-source e2e never
+          # needed it. "*" is fine for an ephemeral CI run (bearer-token auth).
+          JWT_SECRET=e2e-ci-jwt-secret-that-is-long-enough-123 \
+          PORTAL_CORS_ORIGINS='*' \
+          PORTAL_AUTH_RATE_BURST=10000 \
+          PORTAL_AUTH_RATE_PER_SECOND=1000 \
+          "$API_BIN" > /tmp/api.log 2>&1 &
+          timeout 120 bash -c 'until curl -sf http://localhost:3000/health > /dev/null; do sleep 2; done'
+
+      # global-setup.ts logs in as this admin before seeding anything.
+      - name: Bootstrap e2e admin
+        run: |
+          "$CLI_BIN" bootstrap admin \
+            --username e2e_admin \
+            --email "$E2E_ADMIN_EMAIL" \
+            --password "$E2E_ADMIN_PASSWORD" \
+            --display-name "E2E Admin" \
+            --force
+
+      # The internal (X-API-Key) demo-pipeline routes are key-authenticated;
+      # the admin-pipeline spec drives them through the well-known seeded key
+      # (P-143, e2e/fixtures/internal-api.fixture.ts). This subcommand exists
+      # precisely because this stack seeds over HTTP and never runs `seed
+      # full` — without it those specs 401.
+      - name: Seed the internal API key
+        run: '"$CLI_BIN" seed internal-api-key'
+
+      # Playwright's webServer config starts the Vite dev server itself.
+      - name: Run E2E tests
+        run: cd web && npx playwright test
+        env:
+          CI: "true"
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+            /tmp/api.log
+          retention-days: 7

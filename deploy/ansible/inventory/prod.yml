@@ -1,0 +1,57 @@
+---
+# Prod inventory: the portal box under `portal`, CS2 hosts under
+# `gameservers` (empty by default — the group's play just skips until you
+# add hosts).
+#
+# EVERY value below marked CHANGE_ME / example.com must be set before the
+# playbook will run — site.yml's validation play rejects placeholders.
+# `just provision` creates a fresh Ubuntu 26.04 LTS Linode and fills in
+# ansible_host for you; the domain + ACME email are yours to set (plus DNS
+# A records for <portal_domain> AND demos.<portal_domain> → ansible_host).
+#
+# ansible_user is the unprivileged account you SSH as (created by
+# roles/base). The FIRST converge against a fresh box must run as root:
+#   ansible-playbook ... -e ansible_user=root
+#
+# Game-server hosts: one entry per CS2 box; the inventory hostname doubles
+# as the server's name in the portal registry. Per host you supply an SSH
+# login and (in the vault) its RCON password — base + gameserver_agent do
+# the rest: deb install, portal registration, agent enrollment, MatchZy
+# demo-upload wiring. Example:
+#
+#   gameservers:
+#     hosts:
+#       cs2-lon-1:
+#         ansible_host: 203.0.113.7
+#         ansible_user: ops
+#         ansible_python_interpreter: /usr/bin/python3
+#         # MatchZy config that receives the demo-upload block ("" = skip):
+#         gameserver_matchzy_config_path: /home/steam/cs2/game/csgo/cfg/MatchZy/config.cfg
+#         # Optional overrides (defaults in group_vars/gameservers.yml):
+#         # gameserver_game_port: 27015
+#         # gameserver_gotv_port: 27020
+#         # gameserver_region: eu
+#
+# and in the vault:
+#   vault_gameserver_rcon_passwords:
+#     cs2-lon-1: "..."
+
+all:
+  children:
+    portal:
+      hosts:
+        portal-prod:
+          ansible_host: CHANGE_ME            # e.g. 45.33.x.x — set by `just provision`
+          ansible_user: ops
+          ansible_python_interpreter: /usr/bin/python3
+
+    gameservers:
+      hosts: {}
+
+  vars:
+    # The domain Caddy terminates TLS for. Pointed at ansible_host via
+    # an A record elsewhere (plus one for demos.<domain>).
+    portal_domain: portal.example.com
+
+    # Let's Encrypt contact. Caddy nags if this is empty.
+    caddy_acme_email: ops@example.com

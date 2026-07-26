@@ -1,14 +1,14 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    :fullscreen="smAndDown"
+    v-model="open"
     max-width="600"
     persistent
   >
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Edit League: {{ league?.league_name }}</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -19,7 +19,7 @@
         <!-- Loading state while fetching full league details -->
         <div v-if="loadingDetails" class="text-center pa-8">
           <v-progress-circular indeterminate color="primary" />
-          <p class="text-grey mt-4">Loading league details...</p>
+          <p class="text-medium-emphasis mt-4">Loading league details...</p>
         </div>
 
         <v-form v-else ref="formRef" v-model="formValid">
@@ -70,6 +70,7 @@
 
             <v-col cols="12">
               <v-select
+          aria-label="Access Type"
                 v-model="form.access_type"
                 :items="accessTypes"
                 item-title="label"
@@ -79,8 +80,8 @@
                 variant="outlined"
                 density="comfortable"
               >
-                <template v-slot:item="{ item, props }">
-                  <v-list-item v-bind="props">
+                <template v-slot:item="{ item, props: itemProps }">
+                  <v-list-item v-bind="itemProps">
                     <v-list-item-subtitle>{{ item.raw.description }}</v-list-item-subtitle>
                   </v-list-item>
                 </template>
@@ -98,6 +99,58 @@
                 hint="Status can only be changed through specific actions"
                 persistent-hint
               />
+            </v-col>
+
+            <!-- Entry Requirements -->
+            <v-col cols="12">
+              <v-expansion-panels variant="accordion">
+                <v-expansion-panel title="Entry Requirements">
+                  <v-expansion-panel-text>
+                    <v-row dense>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="form.min_rating"
+                          label="Minimum Rating"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          clearable
+                        />
+                      </v-col>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="form.max_rating"
+                          label="Maximum Rating"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          clearable
+                        />
+                      </v-col>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="form.max_peak_rating"
+                          label="Max Peak Rating"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          clearable
+                        />
+                      </v-col>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="form.min_matches"
+                          label="Min Matches Played"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          clearable
+                        />
+                      </v-col>
+                    </v-row>
+                  </v-expansion-panel-text>
+                </v-expansion-panel>
+              </v-expansion-panels>
             </v-col>
           </v-row>
         </v-form>
@@ -127,21 +180,30 @@
 </template>
 
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import { ref, watch } from 'vue'
 import { useLeaguesStore, type UserLeagueMembership, type LeagueResponse } from '@/stores/leagues'
+import { useFormRules } from '@/composables/useFormRules'
+import {
+  LEAGUE_ACCESS_TYPES,
+  extractEligibilityForm,
+  buildEligibilitySettings,
+  type LeagueAccessType,
+} from '@/composables/useLeagueEligibility'
+
+// Long scrolling forms in a small floating dialog are unusable on phones.
+const { smAndDown } = useDisplay()
 
 // Store
 const leaguesStore = useLeaguesStore()
 
-const props = defineProps<{
-  modelValue: boolean
-  league: UserLeagueMembership | null
+const props = defineProps<{  league: UserLeagueMembership | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  saved: []
+const emit = defineEmits<{  saved: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const formRef = ref()
 const formValid = ref(false)
@@ -156,38 +218,18 @@ const form = ref({
   description: '',
   logo_url: '',
   access_type: 'open',
+  min_rating: null as number | null,
+  max_rating: null as number | null,
+  max_peak_rating: null as number | null,
+  min_matches: null as number | null,
 })
 
-const accessTypes = [
-  { value: 'open', label: 'Open', description: 'Anyone can join immediately' },
-  { value: 'invite_only', label: 'Invite Only', description: 'Members can only join via invitation' },
-  { value: 'application', label: 'Application', description: 'Users apply, admins approve/reject' },
-]
+const accessTypes = LEAGUE_ACCESS_TYPES
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => !v || v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
-  slug: (v: string) => {
-    if (!v) return true
-    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(v)) {
-      return 'Must be lowercase letters, numbers, and hyphens. Must start and end with letter or number.'
-    }
-    return true
-  },
-  url: (v: string) => {
-    if (!v) return true
-    try {
-      new URL(v)
-      return true
-    } catch {
-      return 'Must be a valid URL'
-    }
-  },
-}
+const rules = useFormRules()
 
 // Fetch full league details when dialog opens
-watch(() => props.modelValue, async (isOpen) => {
+watch(open, async (isOpen) => {
   if (isOpen && props.league) {
     await fetchLeagueDetails()
   }
@@ -203,13 +245,16 @@ async function fetchLeagueDetails() {
     const league = await leaguesStore.fetchLeague(props.league.league_id)
     leagueDetails.value = league
 
-    // Populate form with league details
+    // Populate form with league details. Eligibility fields are pulled out of
+    // `settings.eligibility` by the shared extractor so the shape stays in
+    // lockstep with the Create modal.
     form.value = {
       name: league.name,
       slug: league.slug,
       description: league.description || '',
       logo_url: league.logo_url || '',
       access_type: league.access_type,
+      ...extractEligibilityForm(league.settings),
     }
   } catch {
     error.value = leaguesStore.error || 'Failed to load league details'
@@ -221,7 +266,7 @@ async function fetchLeagueDetails() {
 function close() {
   error.value = null
   leagueDetails.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function save() {
@@ -247,7 +292,15 @@ async function save() {
       updateData.logo_url = form.value.logo_url || null
     }
     if (form.value.access_type !== leagueDetails.value.access_type) {
-      updateData.access_type = form.value.access_type as 'open' | 'invite_only' | 'application'
+      updateData.access_type = form.value.access_type as LeagueAccessType
+    }
+
+    // Build settings via shared helper — shape stays identical to the Create
+    // modal. Send even when empty so callers can clear eligibility rules.
+    const newSettings = buildEligibilitySettings(form.value)
+    const currentSettings = leagueDetails.value.settings as Record<string, unknown> ?? {}
+    if (JSON.stringify(newSettings) !== JSON.stringify(currentSettings)) {
+      updateData.settings = newSettings
     }
 
     // Skip if nothing changed

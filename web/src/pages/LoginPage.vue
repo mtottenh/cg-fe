@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-row justify="center">
       <v-col cols="12" sm="8" md="6" lg="4">
         <v-card class="pa-6">
@@ -43,8 +43,21 @@
 
           <v-divider class="my-4" />
 
+          <v-btn
+            :href="steamUrl"
+            color="blue-grey-darken-3"
+            size="large"
+            block
+            prepend-icon="mdi-steam"
+            data-testid="steam-login-button"
+          >
+            Sign in through Steam
+          </v-btn>
+
+          <v-divider class="my-4" />
+
           <div class="text-center">
-            <span class="text-body-2 text-grey">Don't have an account?</span>
+            <span class="text-body-2 text-medium-emphasis">Don't have an account?</span>
             <router-link to="/register" class="ml-1 text-primary">Register</router-link>
           </div>
         </v-card>
@@ -57,9 +70,13 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useFormRules } from '@/composables/useFormRules'
+import { steamLoginUrl } from '@/utils/steamAuth'
 
 const authStore = useAuthStore()
 const router = useRouter()
+
+const steamUrl = steamLoginUrl()
 
 const form = reactive({
   username_or_email: '',
@@ -70,9 +87,7 @@ const showPassword = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-}
+const rules = useFormRules()
 
 async function handleSubmit() {
   loading.value = true
@@ -85,7 +100,7 @@ async function handleSubmit() {
     // Redirect to home or intended destination after login
     const redirect = router.currentRoute.value.query.redirect as string
     router.push(redirect || '/')
-  } catch (e) {
+  } catch {
     error.value = authStore.error || 'Login failed. Please check your credentials.'
   } finally {
     loading.value = false

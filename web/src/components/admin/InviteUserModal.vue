@@ -1,14 +1,13 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
+    v-model="open"
     max-width="500"
     persistent
   >
-    <v-card>
+    <v-card data-testid="invite-user-modal">
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Invite User to League</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -19,14 +18,22 @@
         <v-form ref="formRef" v-model="formValid">
           <v-row>
             <v-col cols="12">
-              <v-text-field
-                v-model="form.user_id"
-                label="User ID"
-                :rules="[rules.required, rules.uuid]"
-                variant="outlined"
+              <!--
+                P-95: this was a bare UUID text field ("Enter the UUID of the
+                user to invite"). No surface in the product ever displays a
+                user's UUID — the members table shows username/email, the
+                invitations and applications tables truncate the id to 8
+                characters — so an invite-only league could not actually be
+                invited to by a human. `BanCreateModal` on the same admin
+                surface already searched players by name; this now does the
+                same.
+              -->
+              <UserSearchAutocomplete
+                v-model="selectedPlayer"
+                label="User to Invite"
+                placeholder="Search by display name..."
+                :rules="[rules.required]"
                 density="comfortable"
-                hint="Enter the UUID of the user to invite"
-                persistent-hint
               />
             </v-col>
 
@@ -71,94 +78,77 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { ApiError } from '@/api'
+import { useLeaguesStore } from '@/stores/leagues'
+import { useFormRules } from '@/composables/useFormRules'
+import UserSearchAutocomplete from '@/components/admin/UserSearchAutocomplete.vue'
+import { api } from '@/api'
+import { unwrapApi } from '@/stores/helpers'
+import type { components } from '@/api/types'
 
-const props = defineProps<{
-  modelValue: boolean
-  leagueId: string
+type PlayerSearchResponse = components['schemas']['PlayerSearchResponse']
+
+const props = defineProps<{  leagueId: string
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  invited: []
+const emit = defineEmits<{  invited: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
+
+const leaguesStore = useLeaguesStore()
 
 const formRef = ref()
 const formValid = ref(false)
 const sending = ref(false)
 const error = ref<string | null>(null)
 
+const selectedPlayer = ref<PlayerSearchResponse | null>(null)
+
 const form = ref({
-  user_id: '',
   message: '',
 })
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const rules = useFormRules()
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
-  uuid: (v: string) => {
-    if (!v) return true
-    // Basic UUID v4/v7 format check
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    return uuidRegex.test(v) || 'Must be a valid UUID'
-  },
-}
-
-// Reset form when dialog opens
-watch(() => props.modelValue, (isOpen) => {
+watch(open, (isOpen) => {
   if (isOpen) {
-    form.value = {
-      user_id: '',
-      message: '',
-    }
+    selectedPlayer.value = null
+    form.value = { message: '' }
     error.value = null
   }
 })
 
+/**
+ * League invitations are keyed by `user_id`, but player search returns PLAYER
+ * ids — the same asymmetry `TournamentInvitationsModal.resolveUserId` handles.
+ * Resolve it here rather than making an organiser paste a UUID (P-95).
+ */
+async function resolveUserId(player: PlayerSearchResponse): Promise<string> {
+  const result = await unwrapApi(api.GET('/v1/players/{player_id}', {
+    params: { path: { player_id: player.id } },
+  }))
+  return result.data.user_id
+}
+
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function sendInvitation() {
-  if (!formValid.value || !props.leagueId) return
+  if (!formValid.value || !props.leagueId || !selectedPlayer.value) return
 
   sending.value = true
   error.value = null
 
   try {
-    const body: Record<string, unknown> = {
-      user_id: form.value.user_id,
-    }
-
-    if (form.value.message) {
-      body.message = form.value.message
-    }
-
-    const response = await fetch(`${API_URL}/v1/leagues/${props.leagueId}/invitations`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new ApiError(response.status, errorData.detail || 'Failed to send invitation')
-    }
-
+    const userId = await resolveUserId(selectedPlayer.value)
+    // P-94: the message is now forwarded instead of being validated and dropped.
+    await leaguesStore.sendInvitation(props.leagueId, userId, form.value.message)
     emit('invited')
     close()
-  } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail
-    } else {
-      error.value = 'Failed to send invitation'
-    }
+  } catch {
+    error.value = leaguesStore.sendInvitationState.error || 'Failed to send invitation'
   } finally {
     sending.value = false
   }

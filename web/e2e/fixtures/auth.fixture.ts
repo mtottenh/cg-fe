@@ -113,6 +113,14 @@ export async function loginAsAdmin(page: Page): Promise<void> {
 }
 
 /**
+ * Login as the seeded second test player.
+ * Player 2 is registered by global-setup.ts for multi-player E2E flows.
+ */
+export async function loginAsPlayer2(page: Page): Promise<void> {
+  await login(page, testUsers.player2Login)
+}
+
+/**
  * Get a real JWT token for the admin user via API call.
  * Useful for global-setup.ts to seed data with authenticated API calls.
  */
@@ -134,12 +142,6 @@ export async function getAdminToken(): Promise<string> {
 /**
  * Check if user is currently logged in.
  */
-export async function isLoggedIn(page: Page): Promise<boolean> {
-  // Check for presence of authenticated user elements
-  // Adjust based on actual UI indicators
-  const userIndicator = page.locator('[data-testid="user-indicator"]')
-  return userIndicator.isVisible().catch(() => false)
-}
 
 // Extended test fixture with authentication helpers
 interface AuthFixtures {

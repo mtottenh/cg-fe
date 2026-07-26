@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-btn variant="text" :to="`/teams/${teamId}`" class="mb-4">
       <v-icon start>mdi-arrow-left</v-icon>
       Back to Team
@@ -15,7 +15,20 @@
       Team created! Now you can add a logo, banner, and customize your team's appearance.
     </v-alert>
 
-    <template v-if="team">
+    <!--
+      Non-owners get this notice INSTEAD of the form (COVERAGE-PLAN §9b P-13).
+      `onMounted` bails before populating `form` for a non-owner, so gating the
+      form on `team` alone rendered a full, blank, editable form next to the
+      "not the owner" message. Ownership is the render gate, and it is a
+      computed rather than a one-shot flag so it stays correct if the store's
+      `currentTeam` changes underneath us (e.g. ownership transferred in
+      another tab, or a route change reusing this component).
+    -->
+    <v-alert v-if="!loading && team && !isOwner" type="warning" class="mb-4">
+      Only the team owner can edit team settings
+    </v-alert>
+
+    <template v-if="team && isOwner">
       <v-row>
         <v-col cols="12" md="8">
           <v-card class="mb-4">
@@ -25,7 +38,12 @@
             </v-card-title>
             <v-divider />
             <v-card-text>
-              <v-form @submit.prevent="handleSubmit">
+              <!-- P-128: the form had no validity gate at all — field rules
+                   (the colour pickers' hex rule, the URL rules) painted
+                   errors while Save submitted the invalid value anyway and
+                   the backend 400'd. `formValid` is null until first
+                   validation, so the disable below checks `=== false`. -->
+              <v-form v-model="formValid" @submit.prevent="handleSubmit">
                 <!-- Basic Info Section -->
                 <div class="text-subtitle-1 font-weight-bold mb-4">Basic Information</div>
 
@@ -69,7 +87,9 @@
                       placeholder-icon="mdi-image"
                       shape="square"
                       :aspect-ratio="1"
-                      :upload-endpoint="`${apiUrl}/v1/teams/${teamId}/logo`"
+                      path="/v1/league-teams/{team_id}/logo"
+                      :path-params="{ team_id: teamId }"
+                      response-field="logo_url"
                       @upload-complete="onLogoUploaded"
                       @upload-error="onUploadError"
                     />
@@ -82,7 +102,9 @@
                       placeholder-icon="mdi-panorama-wide-angle"
                       shape="banner"
                       :aspect-ratio="3"
-                      :upload-endpoint="`${apiUrl}/v1/teams/${teamId}/banner`"
+                      path="/v1/league-teams/{team_id}/banner"
+                      :path-params="{ team_id: teamId }"
+                      response-field="banner_url"
                       @upload-complete="onBannerUploaded"
                       @upload-error="onUploadError"
                     />
@@ -128,13 +150,13 @@
 
                 <v-divider class="my-6" />
 
-                <div class="d-flex gap-3">
+                <div class="d-flex ga-3">
                   <v-btn
                     type="submit"
                     color="primary"
                     size="large"
                     :loading="saving"
-                    :disabled="!hasChanges"
+                    :disabled="!hasChanges || formValid === false"
                   >
                     <v-icon start>mdi-content-save</v-icon>
                     Save Changes
@@ -171,7 +193,7 @@
                   :color="form.primary_color || 'primary'"
                   size="56"
                 >
-                  <v-img v-if="form.logo_url" :src="form.logo_url" />
+                  <v-img alt="Team logo preview" v-if="form.logo_url" :src="form.logo_url" />
                   <span v-else class="text-h6">{{ (form.tag || 'TM').substring(0, 2) }}</span>
                 </v-avatar>
               </template>
@@ -182,7 +204,7 @@
               {{ form.description }}
             </v-card-text>
             <v-card-text v-if="form.primary_color || form.secondary_color">
-              <div class="d-flex gap-2 align-center">
+              <div class="d-flex ga-2 align-center">
                 <span class="text-caption text-medium-emphasis">Colors:</span>
                 <div
                   v-if="form.primary_color"
@@ -210,9 +232,12 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { useAuthStore } from '@/stores/auth'
+import { useFormRules } from '@/composables/useFormRules'
+import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
 import ImageUpload from '@/components/ImageUpload.vue'
 import ColorPicker from '@/components/ColorPicker.vue'
 
@@ -220,20 +245,22 @@ const route = useRoute()
 const leagueTeamsStore = useLeagueTeamsStore()
 const authStore = useAuthStore()
 
-const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 const teamId = computed(() => route.params.id as string)
 const isNewTeam = computed(() => route.query.newTeam === 'true')
 
 const loading = ref(true)
 const saving = ref(false)
+// P-128: v-form validity (null until first validation) — gates Save so a
+// field rule that fails actually blocks the submit instead of decorating it.
+const formValid = ref<boolean | null>(null)
 const error = ref<string | null>(null)
 const showSuccess = ref(false)
 const successMessage = ref('')
 
-const team = computed(() => leagueTeamsStore.currentTeam)
+const { currentTeam: team } = storeToRefs(leagueTeamsStore)
 
 // Check if current user is the team owner
-const currentPlayerId = computed(() => authStore.playerId)
+const { playerId: currentPlayerId } = storeToRefs(authStore)
 const isOwner = computed(() => team.value?.owner_player_id === currentPlayerId.value)
 
 const form = reactive({
@@ -263,20 +290,19 @@ const hasChanges = computed(() => {
   )
 })
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => v.length <= max || `Maximum ${max} characters`,
-  url: (v: string) => !v || /^https?:\/\/.+/.test(v) || 'Invalid URL',
-}
+const rules = useFormRules()
+
+useUnsavedChanges(hasChanges)
 
 onMounted(async () => {
   try {
     await leagueTeamsStore.fetchTeam(teamId.value)
 
-    // Check if user is the team owner
+    // Non-owner: leave `form` unpopulated and let the template render the
+    // ownership notice instead of the form. `error` is reserved for genuine
+    // load failures — using it here produced two competing messages once the
+    // notice became its own alert.
     if (!isOwner.value) {
-      error.value = 'Only the team owner can edit team settings'
       return
     }
 
@@ -295,8 +321,12 @@ onMounted(async () => {
       // Store original for change detection
       originalForm.value = { ...form }
     }
-  } catch (e) {
-    error.value = leagueTeamsStore.error || 'Failed to load team'
+  } catch {
+    // P-124 (P-116 recurrence): `leagueTeamsStore.error` is a computed alias
+    // over `fetchMyTeamsState` (stores/leagueTeams.ts:55) — an action this
+    // page never calls — so it is always null here and the user only ever saw
+    // the fallback. The failing call is `fetchTeam`; read its state.
+    error.value = leagueTeamsStore.fetchTeamState.error || 'Failed to load team'
   } finally {
     loading.value = false
   }
@@ -328,8 +358,13 @@ async function handleSubmit() {
 
     successMessage.value = 'Team settings saved'
     showSuccess.value = true
-  } catch (e) {
-    error.value = leagueTeamsStore.error || 'Failed to save team settings'
+  } catch {
+    // P-124: same alias, and this is the site where it costs the most — the
+    // backend's refusals here are the only thing that explains a rejected
+    // save ("team name 'X' is already taken in this league", or, since P-126,
+    // "team is disbanded and can no longer be modified"). Reading
+    // `updateTeamState` puts the reason in front of the person retyping.
+    error.value = leagueTeamsStore.updateTeamState.error || 'Failed to save team settings'
   } finally {
     saving.value = false
   }

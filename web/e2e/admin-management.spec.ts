@@ -1,6 +1,101 @@
-import { test, expect } from '@playwright/test'
-import { loginAsAdmin, register } from './fixtures/auth.fixture'
-import { testUsers } from './fixtures/test-data'
+import { test, expect, type Page } from '@playwright/test'
+import { getAdminToken, loginAsAdmin, register } from './fixtures/auth.fixture'
+import { createLeague, createSeason } from './fixtures/league-season-extra.fixture'
+import { testUsers, uniqueEmail, uniqueId, uniqueUsername } from './fixtures/test-data'
+
+const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
+
+interface BanRecord {
+  id: string
+  user_id: string
+  ban_type: string
+  reason: string
+  is_active: boolean
+  is_permanent: boolean
+  lifted_at: string | null
+}
+
+interface BanTarget {
+  userId: string
+  displayName: string
+}
+
+/**
+ * Register a throwaway account for the ban tests and return its user id.
+ *
+ * Note: `user_id` and `player_id` are deliberately the SAME uuid for every
+ * account (`make_shared_account_ids`, portal-domain/src/services/user.rs:73-77),
+ * which is what lets `BanCreateModal` hand a player-search result straight to
+ * `POST /v1/admin/bans` as `user_id`.
+ */
+async function registerBanTarget(): Promise<BanTarget> {
+  const displayName = `BanTarget${uniqueId()}`
+  const response = await fetch(`${API_URL}/v1/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: uniqueUsername(),
+      email: uniqueEmail(),
+      password: 'TestPassword123!',
+      display_name: displayName,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to register ban target (${response.status}): ${await response.text()}`)
+  }
+  const body = await response.json()
+  return { userId: body.data.user.id, displayName }
+}
+
+/** GET /v1/admin/bans?user_id=… — backend handler `bans::list_bans`. */
+async function listBansForUser(adminToken: string, userId: string): Promise<BanRecord[]> {
+  const response = await fetch(`${API_URL}/v1/admin/bans?user_id=${userId}&per_page=50`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  })
+  if (!response.ok) {
+    throw new Error(`GET /v1/admin/bans failed (${response.status}): ${await response.text()}`)
+  }
+  return (await response.json()).data.items
+}
+
+/**
+ * POST /v1/admin/bans — used ONLY to seed the precondition of the lift test.
+ * The creation flow itself is covered through the UI in the test above.
+ */
+async function createBanViaApi(
+  adminToken: string,
+  userId: string,
+  reason: string
+): Promise<BanRecord> {
+  const response = await fetch(`${API_URL}/v1/admin/bans`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
+    body: JSON.stringify({ user_id: userId, ban_type: 'chat', reason }),
+  })
+  if (!response.ok) {
+    throw new Error(`POST /v1/admin/bans failed (${response.status}): ${await response.text()}`)
+  }
+  return (await response.json()).data
+}
+
+/** GET /v1/league-seasons/{id} — backend handler `league_teams::get_season`. */
+async function getSeason(
+  adminToken: string,
+  seasonId: string
+): Promise<{ status: string; roster_lock_status: string }> {
+  const response = await fetch(`${API_URL}/v1/league-seasons/${seasonId}`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  })
+  if (!response.ok) {
+    throw new Error(
+      `GET /v1/league-seasons/${seasonId} failed (${response.status}): ${await response.text()}`
+    )
+  }
+  return (await response.json()).data
+}
 
 test.describe('Admin Management', () => {
   test.describe('Admin Dashboard', () => {
@@ -198,20 +293,27 @@ test.describe('Admin Management', () => {
       await expect(page.getByRole('option', { name: 'Expired' })).toBeVisible()
     })
 
-    test('should display empty state when no bans exist', async ({ page }) => {
+    test('should display empty state when no bans match the filters', async ({ page }) => {
       await loginAsAdmin(page)
 
       await page.goto('/admin/bans')
 
-      // Wait for loading to complete
-      await expect(page.locator('.v-progress-circular')).not.toBeVisible({ timeout: 10000 })
+      // Wait for the table itself to render. This used to wait on
+      // `.v-progress-circular`, which now resolves to TWO elements on this
+      // page, so the wait died on a Playwright strict-mode violation before
+      // the test's real assertion ever ran.
+      await expect(page.locator('.v-data-table')).toBeVisible({ timeout: 10_000 })
 
-      // Either shows data table or empty state
-      const hasBans = await page.locator('.v-data-table tbody tr').count() > 0
-      if (!hasBans) {
-        // Should show empty state - "No bans recorded yet" or "No bans found matching your filters"
-        await expect(page.getByText(/No bans (recorded|found)/i)).toBeVisible()
-      }
+      // Build the empty state instead of hoping for it: filter to a ban type
+      // no test in this suite ever creates. (This test previously wrapped its
+      // only assertion in `if (!hasBans)`, so it asserted nothing as soon as
+      // any ban existed — which the two mutation tests below now guarantee.)
+      await page.locator('.v-select').filter({ hasText: 'Ban Type' }).click()
+      await page.getByRole('option', { name: 'League' }).click()
+
+      // AdminBansPage.vue:199-215 — the `no-data` slot switches text once a
+      // filter is active.
+      await expect(page.getByText('No bans found matching your filters')).toBeVisible()
     })
 
     test('should show create ban validation errors', async ({ page }) => {
@@ -235,6 +337,137 @@ test.describe('Admin Management', () => {
       await reasonField.blur()
       await expect(page.getByText('Must be at least 10 characters')).toBeVisible()
     })
+
+    test('should create a ban through the create ban modal', async ({ page }) => {
+      // Exercises BanCreateModal.submit (src/components/admin/BanCreateModal.vue:227-260)
+      // → bansStore.createBan → POST /v1/admin/bans, and
+      // AdminBansPage.onBanCreated (:394-397). Until now every ban test in this
+      // file opened the modal and cancelled, so `submit` was never reached.
+      const adminToken = await getAdminToken()
+      const target = await registerBanTarget()
+      expect(
+        await listBansForUser(adminToken, target.userId),
+        'a freshly registered account starts with no bans'
+      ).toHaveLength(0)
+
+      await loginAsAdmin(page)
+      await page.goto('/admin/bans')
+
+      await page.getByRole('button', { name: 'Create Ban' }).click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible()
+
+      // Player: UserSearchAutocomplete → GET /v1/players?q=… which is a
+      // display-name PREFIX match (portal-db/src/adapters/user.rs:436-441),
+      // so typing the full generated name resolves to exactly this account.
+      const playerInput = dialog.getByPlaceholder(/search by display name/i)
+      await playerInput.click()
+      await playerInput.fill(target.displayName)
+      const playerOption = page.getByRole('option', { name: target.displayName })
+      await expect(playerOption).toBeVisible({ timeout: 15_000 })
+      await playerOption.click()
+
+      // Ban type: 'chat' keeps the blast radius small — a 'platform' ban also
+      // flips the account status and revokes refresh tokens.
+      await dialog.locator('.v-select').filter({ hasText: 'Ban Type' }).click()
+      await page.getByRole('option', { name: 'Chat Ban' }).click()
+
+      // Keep the reason free of the words rendered by the other columns
+      // ("Chat", "Active", "Permanent") — getByText is a case-insensitive
+      // substring match, so a colliding reason would break strict mode.
+      const reason = `E2E automated ban ${Date.now()}`
+      await dialog.getByPlaceholder(/why this player is being banned/i).fill(reason)
+
+      // Duration is left on the default "Permanent" radio (:82-85).
+      const submitButton = dialog.getByRole('button', { name: 'Create Ban' })
+      await expect(submitButton).toBeEnabled()
+
+      const createPromise = page.waitForResponse(
+        (resp) =>
+          resp.url().includes('/v1/admin/bans') && resp.request().method() === 'POST'
+      )
+      await submitButton.click()
+      const createResponse = await createPromise
+      expect(createResponse.status(), 'POST /v1/admin/bans must return 201').toBe(201)
+
+      // UI assertions: success toast, modal closed, row rendered in the table.
+      await expect(page.locator('.v-snackbar').getByText('Ban created successfully')).toBeVisible()
+      await expect(dialog).toBeHidden()
+
+      const row = page.locator('.v-data-table tbody tr').filter({ hasText: reason })
+      await expect(row).toBeVisible({ timeout: 15_000 })
+      await expect(row.getByText('Chat')).toBeVisible()
+      await expect(row.getByText('Active')).toBeVisible()
+      await expect(row.getByText('Permanent')).toBeVisible()
+
+      // Backend assertion.
+      const bans = await listBansForUser(adminToken, target.userId)
+      expect(bans).toHaveLength(1)
+      expect(bans[0]!.reason).toBe(reason)
+      expect(bans[0]!.ban_type).toBe('chat')
+      expect(bans[0]!.is_permanent).toBe(true)
+      expect(bans[0]!.is_active).toBe(true)
+    })
+
+    test('should lift an active ban from the bans table', async ({ page }) => {
+      // Exercises AdminBansPage.confirmLiftBan (:380-392) → bansStore.liftBan →
+      // POST /v1/admin/bans/{id}/lift. The ban itself is seeded over the API:
+      // the action under test here is the lift, not the create.
+      const adminToken = await getAdminToken()
+      const target = await registerBanTarget()
+      // Reason avoids "Active"/"Lifted" so the status-chip assertions below
+      // stay unambiguous (getByText matches substrings, case-insensitively).
+      const reason = `E2E seeded ban ${Date.now()}`
+      const seeded = await createBanViaApi(adminToken, target.userId, reason)
+      expect(seeded.is_active, 'seeded ban must start active').toBe(true)
+
+      await loginAsAdmin(page)
+      await page.goto('/admin/bans')
+
+      const row = page.locator('.v-data-table tbody tr').filter({ hasText: reason })
+      await expect(row).toBeVisible({ timeout: 15_000 })
+      await expect(row.getByText('Active')).toBeVisible()
+
+      // The lift action only renders for active bans (AdminBansPage.vue:186-196).
+      await row.getByRole('button', { name: 'Lift ban' }).click()
+
+      // P-123 changed this copy deliberately: the dialog used to read "…for
+      // user 019f993f…?", eight characters of a UUID v7 whose leading digits
+      // are a timestamp — so two bans created minutes apart were confirmed
+      // against the same string. Ground rule 9, spec-changed case: the locator
+      // follows the new copy, and the assertion below is STRONGER than the one
+      // it replaces, pinning that the dialog names the person and the ban type
+      // rather than merely that some dialog appeared.
+      const confirmDialog = page
+        .getByRole('dialog')
+        .filter({ hasText: 'Are you sure you want to lift this' })
+      await expect(confirmDialog).toBeVisible()
+      await expect(confirmDialog).toContainText(target.displayName)
+      await expect(confirmDialog.getByText(`${target.userId.substring(0, 8)}...`)).toHaveCount(0)
+
+      const liftPromise = page.waitForResponse(
+        (resp) =>
+          /\/v1\/admin\/bans\/[^/]+\/lift/.test(resp.url()) &&
+          resp.request().method() === 'POST'
+      )
+      // ConfirmDialog renders `action: 'Lift Ban'` as the confirm button.
+      await confirmDialog.getByRole('button', { name: 'Lift Ban' }).click()
+      const liftResponse = await liftPromise
+      expect(liftResponse.ok(), 'POST /v1/admin/bans/{id}/lift must succeed').toBe(true)
+
+      // UI assertions: toast, status chip flips to Lifted, lift action gone.
+      await expect(page.locator('.v-snackbar').getByText('Ban lifted successfully')).toBeVisible()
+      const liftedRow = page.locator('.v-data-table tbody tr').filter({ hasText: reason })
+      await expect(liftedRow.getByText('Lifted')).toBeVisible({ timeout: 15_000 })
+      await expect(liftedRow.getByRole('button', { name: 'Lift ban' })).toBeHidden()
+
+      // Backend assertion.
+      const bans = await listBansForUser(adminToken, target.userId)
+      expect(bans).toHaveLength(1)
+      expect(bans[0]!.id).toBe(seeded.id)
+      expect(bans[0]!.is_active).toBe(false)
+      expect(bans[0]!.lifted_at).not.toBeNull()
+    })
   })
 
   test.describe('Admin Games Management', () => {
@@ -249,12 +482,11 @@ test.describe('Admin Management', () => {
       // Should see search field using label
       await expect(page.getByLabel('Search games...')).toBeVisible()
 
-      // Should see refresh button (may be icon-only) - look for any refresh icon or text
-      const refreshButton = page.getByRole('button', { name: /refresh/i })
-      const hasRefresh = await refreshButton.isVisible().catch(() => false)
-
-      // If no explicit refresh button, just verify page loaded
-      expect(hasRefresh || true).toBe(true)
+      // The Refresh button is unconditional in the template
+      // (src/pages/admin/AdminGamesPage.vue:23-31), so assert it outright.
+      // This replaces a soft visibility probe feeding a tautological
+      // assertion, which passed whether or not the button rendered.
+      await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible()
     })
 
     test('should display games table with columns', async ({ page }) => {
@@ -278,13 +510,24 @@ test.describe('Admin Management', () => {
       await page.goto('/admin/games')
 
       // Wait for table to be present (loading complete)
-      await expect(page.getByRole('table')).toBeVisible({ timeout: 10000 })
+      const table = page.getByRole('table')
+      await expect(table).toBeVisible({ timeout: 10000 })
+
+      // Both games are seeded by migration 0003_create_games.sql:68-70
+      // ('cs2' / "Counter-Strike 2" and 'aoe4' / "Age of Empires IV"), so this
+      // precondition holds on any migrated database.
+      await expect(table.getByText('Counter-Strike 2')).toBeVisible()
+      await expect(table.getByText('Age of Empires IV')).toBeVisible()
 
       // Type in search field using label
-      await page.getByLabel('Search games...').fill('cs')
+      await page.getByLabel('Search games...').fill('counter')
 
-      // Search is client-side, results should filter immediately
-      // This is a smoke test - actual filtering depends on game data
+      // `filteredGames` matches id / display_name / short_name client-side
+      // (src/pages/admin/AdminGamesPage.vue:169-177), so the matching row must
+      // survive and the non-matching one must disappear. The old test typed
+      // 'cs' and then asserted nothing at all.
+      await expect(table.getByText('Counter-Strike 2')).toBeVisible()
+      await expect(table.getByText('Age of Empires IV')).toBeHidden()
     })
 
     test('should show empty state when no games match search', async ({ page }) => {
@@ -319,19 +562,203 @@ test.describe('Admin Management', () => {
     })
   })
 
+  test.describe('Admin League Seasons', () => {
+    /**
+     * Open /admin/leagues, reveal the league's row (the page groups leagues into
+     * collapsed per-game expansion panels) and open the Seasons & Teams modal.
+     * Returns the LeagueDetailModal dialog.
+     */
+    async function openSeasonsPanel(page: Page, leagueName: string) {
+      await page.goto('/admin/leagues')
+
+      // Search narrows `filteredGroups` to the groups that still contain a
+      // match (AdminLeaguesPage.vue:287-300), leaving exactly one game panel.
+      await page.getByLabel('Search leagues...').fill(leagueName)
+      const gamePanel = page.locator('.v-expansion-panel-title')
+      await expect(gamePanel).toHaveCount(1)
+      await gamePanel.click()
+
+      const leagueRow = page.locator('tbody tr').filter({ hasText: leagueName })
+      await expect(leagueRow).toBeVisible({ timeout: 15_000 })
+      await leagueRow.getByRole('button', { name: 'Manage seasons and teams' }).click()
+
+      const detailDialog = page.getByRole('dialog').filter({ hasText: 'Seasons' })
+      await expect(detailDialog).toBeVisible()
+      return detailDialog
+    }
+
+    test('should label season status and roster lock instead of printing the enum', async ({
+      page,
+    }) => {
+      // COVERAGE-PLAN §9b P-22. The Roster column compared against `'locked'`,
+      // a value the CHECK constraint cannot produce
+      // (api/migrations/0025_league_teams_and_seasons.sql:69 permits only
+      // open / soft_lock / hard_lock), so it read "Open" for every season.
+      //
+      // Only the `open` state is reachable end-to-end: `roster_lock_status` is
+      // validated by the update DTO but never forwarded to the repository, and
+      // `update_roster_lock` has no HTTP route (§9b P-14). The soft_lock /
+      // hard_lock / unknown-value rendering is covered where it can be driven
+      // honestly — src/components/admin/__tests__/LeagueSeasonsPanel.spec.ts.
+      const adminToken = await getAdminToken()
+      const league = await createLeague(adminToken, { namePrefix: 'E2E Admin Seasons' })
+      const season = await createSeason(adminToken, league.leagueId)
+
+      await loginAsAdmin(page)
+      const detailDialog = await openSeasonsPanel(page, league.leagueName)
+
+      const seasonRow = detailDialog.locator('tbody tr').filter({ hasText: season.seasonName })
+      await expect(seasonRow).toBeVisible({ timeout: 15_000 })
+      // A newly created season is `draft` / `open`.
+      await expect(seasonRow.getByText('Draft', { exact: true })).toBeVisible()
+      await expect(seasonRow.getByText('Open', { exact: true })).toBeVisible()
+    })
+
+    test('should offer only real season statuses in the edit modal and persist the change', async ({
+      page,
+    }) => {
+      // COVERAGE-PLAN §9b P-17. `statusOptions` offered `registration_open`,
+      // `registration_closed` and `in_progress` — none of which parse into
+      // `SeasonStatus`, so saving any of them returned
+      // 400 "Invalid season status" (portal-api/src/dto/requests/league_team.rs:205-210).
+      const adminToken = await getAdminToken()
+      const league = await createLeague(adminToken, { namePrefix: 'E2E Admin Seasons' })
+      const season = await createSeason(adminToken, league.leagueId)
+      expect(season.status, 'a new season starts in draft').toBe('draft')
+
+      await loginAsAdmin(page)
+      const detailDialog = await openSeasonsPanel(page, league.leagueName)
+
+      const seasonRow = detailDialog.locator('tbody tr').filter({ hasText: season.seasonName })
+      await expect(seasonRow).toBeVisible({ timeout: 15_000 })
+      await seasonRow.getByRole('button', { name: 'Edit season' }).click()
+
+      const editDialog = page
+        .getByRole('dialog')
+        .filter({ hasText: `Edit Season: ${season.seasonName}` })
+      await expect(editDialog).toBeVisible()
+
+      // A freshly created season has `max_teams = null` (unlimited). The modal's
+      // "Max Teams" field uses the `positiveNumber` rule, which — unlike the
+      // sibling `nonNegativeNumber` / `maxGreaterThanMin` rules — does not
+      // tolerate an empty value, so the form is invalid and Save is disabled
+      // until this field holds a positive number. That is a SEPARATE product
+      // bug (reported alongside this work), not the P-17 behaviour under test;
+      // supply a valid value so we can exercise the status-persist path.
+      await editDialog.getByLabel('Max Teams').fill('16')
+
+      await editDialog.locator('.v-select').filter({ hasText: 'Status' }).click()
+      // P-207: exactly the current status plus its LEGAL transitions
+      // (`allowed_status_transitions`, served by the API — the same chain the
+      // PATCH enforces since P-199). A draft season may only open
+      // registration or be cancelled; the other three values are no longer
+      // offered, because picking one could only ever produce a 400.
+      await expect(page.getByRole('listbox').getByRole('option')).toHaveText([
+        'Draft',
+        'Registration Open',
+        'Cancelled',
+      ])
+
+      // P-199 (spec change, ground rule 9): the PATCH now enforces the same
+      // transition chain as the dedicated status endpoint, so a draft season
+      // can only move to Registration Open (or Cancelled) — the old pick here
+      // (draft → Active) exercised exactly the bypass P-199 closed. The modal
+      // still offers all six values; an illegal pick now 400s with an error
+      // snackbar rather than silently corrupting the lifecycle (filed P-207:
+      // derive the options from the legal transitions).
+      await page.getByRole('option', { name: 'Registration Open', exact: true }).click()
+
+      const patchPromise = page.waitForResponse(
+        (resp) =>
+          /\/v1\/league-seasons\/[^/]+$/.test(resp.url()) && resp.request().method() === 'PATCH'
+      )
+      await editDialog.getByRole('button', { name: 'Save Changes' }).click()
+      const patchResponse = await patchPromise
+      expect(patchResponse.status(), 'PATCH /v1/league-seasons/{id} must succeed').toBe(200)
+
+      // UI: modal closed and the table re-read the season.
+      await expect(editDialog).toBeHidden()
+      await expect(seasonRow.getByText('Registration Open', { exact: true })).toBeVisible({
+        timeout: 15_000,
+      })
+
+      // Backend.
+      const persisted = await getSeason(adminToken, season.seasonId)
+      expect(persisted.status).toBe('registration')
+
+      // And the enforcement itself: a chain-illegal jump is refused. This is
+      // the P-199 fix observable on the wire — before it, this PATCH wrote
+      // `completed` straight onto a registration-phase season.
+      const illegal = await page.request.patch(`${API_URL}/v1/league-seasons/${season.seasonId}`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        data: { status: 'completed' },
+      })
+      expect(illegal.status(), 'a chain-illegal status PATCH must be refused').toBe(400)
+    })
+
+    test('should offer the three real roster-lock states in the edit modal', async ({ page }) => {
+      // COVERAGE-PLAN §9b P-17, second half: the list was [open, locked], and
+      // `'locked'` fails `RosterLockStatus::from_str` → 400 "Invalid roster lock
+      // status" (portal-api/src/dto/requests/league_team.rs:211-217).
+      //
+      // Only the option list is asserted: per §9b P-14 the API drops
+      // `roster_lock_status` on update, so saving a lock here is a silent no-op
+      // and there is nothing honest to assert about persistence yet.
+      const adminToken = await getAdminToken()
+      const league = await createLeague(adminToken, { namePrefix: 'E2E Admin Seasons' })
+      const season = await createSeason(adminToken, league.leagueId)
+
+      await loginAsAdmin(page)
+      const detailDialog = await openSeasonsPanel(page, league.leagueName)
+
+      const seasonRow = detailDialog.locator('tbody tr').filter({ hasText: season.seasonName })
+      await expect(seasonRow).toBeVisible({ timeout: 15_000 })
+      await seasonRow.getByRole('button', { name: 'Edit season' }).click()
+
+      const editDialog = page
+        .getByRole('dialog')
+        .filter({ hasText: `Edit Season: ${season.seasonName}` })
+      await expect(editDialog).toBeVisible()
+
+      await editDialog.locator('.v-select').filter({ hasText: 'Roster Lock' }).click()
+      await expect(page.getByRole('listbox').getByRole('option')).toHaveText([
+        'Open',
+        'Roster Soft-Locked',
+        'Roster Locked',
+      ])
+    })
+  })
+
   test.describe('Admin Access Control', () => {
     test('should redirect non-admin users from admin pages', async ({ page }) => {
-      // Register a standard user (not admin)
+      // Register a standard user (not admin). `isAdmin` is derived from the
+      // RBAC role assignments fetched from the server (src/stores/auth.ts:109-111),
+      // and a fresh account holds none.
       const userData = testUsers.standard()
       await register(page, userData)
 
-      // Try to access admin page
+      // The admin section is mounted at `/admin` with `meta.requiresAdmin`
+      // (src/router/index.ts:142-146); the dashboard is its child with
+      // `path: ''` (:147-151). The guard at src/router/index.ts:246-249 sends
+      // non-admins to the `home` route.
+      //
+      // The old assertion was `expect(currentUrl).not.toContain('/admin/dashboard')`
+      // — a URL this app never produces — so it passed no matter what the
+      // guard did, including doing nothing at all.
       await page.goto('/admin')
 
-      // Should not be on admin page - either redirected or access denied
-      // The exact behavior depends on router guards
-      const currentUrl = page.url()
-      expect(currentUrl).not.toContain('/admin/dashboard')
+      await expect(page).not.toHaveURL(/\/admin/)
+      await expect(page).toHaveURL('/')
+      // …and the admin shell must not have rendered.
+      await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeHidden()
+
+      // A deep link to a child admin route is blocked the same way — the guard
+      // is on the parent, so this is the case a naive per-page check misses.
+      await page.goto('/admin/bans')
+
+      await expect(page).not.toHaveURL(/\/admin/)
+      await expect(page).toHaveURL('/')
+      await expect(page.getByRole('heading', { name: 'Bans Management' })).toBeHidden()
     })
 
     test('should redirect unauthenticated users from admin pages', async ({ page }) => {

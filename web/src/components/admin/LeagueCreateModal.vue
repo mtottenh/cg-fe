@@ -1,14 +1,10 @@
 <template>
   <v-dialog
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
-    max-width="600"
-    persistent
-  >
+    :fullscreen="smAndDown" v-model="open" max-width="600" persistent>
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Create New League</span>
-        <v-btn icon variant="text" @click="close">
+        <v-btn aria-label="Close" icon variant="text" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-card-title>
@@ -20,6 +16,7 @@
           <v-row>
             <v-col cols="12">
               <v-select
+          aria-label="Game"
                 v-model="form.game_id"
                 :items="activeGames"
                 item-title="display_name"
@@ -30,11 +27,11 @@
                 density="comfortable"
                 prepend-inner-icon="mdi-gamepad-variant"
               >
-                <template v-slot:item="{ item, props }">
-                  <v-list-item v-bind="props">
+                <template v-slot:item="{ item, props: itemProps }">
+                  <v-list-item v-bind="itemProps">
                     <template v-slot:prepend>
                       <v-avatar size="24" rounded="sm">
-                        <v-img v-if="item.raw.icon_url" :src="item.raw.icon_url" />
+                        <v-img alt="" v-if="item.raw.icon_url" :src="item.raw.icon_url" />
                         <v-icon v-else size="16">mdi-gamepad-variant</v-icon>
                       </v-avatar>
                     </template>
@@ -90,6 +87,7 @@
 
             <v-col cols="12">
               <v-select
+          aria-label="Access Type"
                 v-model="form.access_type"
                 :items="accessTypes"
                 item-title="label"
@@ -99,12 +97,98 @@
                 variant="outlined"
                 density="comfortable"
               >
-                <template v-slot:item="{ item, props }">
-                  <v-list-item v-bind="props">
+                <template v-slot:item="{ item, props: itemProps }">
+                  <v-list-item v-bind="itemProps">
                     <v-list-item-subtitle>{{ item.raw.description }}</v-list-item-subtitle>
                   </v-list-item>
                 </template>
               </v-select>
+            </v-col>
+
+            <!-- Entry Requirements (optional) -->
+            <v-col cols="12">
+              <v-expansion-panels variant="accordion">
+                <v-expansion-panel title="Entry Requirements (Optional)">
+                  <v-expansion-panel-text>
+                    <v-row dense>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="form.min_rating"
+                          label="Minimum Rating"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          hint="Players below this rating cannot join"
+                          persistent-hint
+                          clearable
+                        />
+                      </v-col>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="form.max_rating"
+                          label="Maximum Rating"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          hint="Players above this rating cannot join"
+                          persistent-hint
+                          clearable
+                        />
+                      </v-col>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="form.max_peak_rating"
+                          label="Max Peak Rating"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          hint="Anti-smurf: max all-time peak rating"
+                          persistent-hint
+                          clearable
+                        />
+                      </v-col>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="form.min_matches"
+                          label="Minimum Matches Played"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          hint="Require players to have played N matches"
+                          persistent-hint
+                          clearable
+                        />
+                      </v-col>
+                    </v-row>
+                  </v-expansion-panel-text>
+                </v-expansion-panel>
+              </v-expansion-panels>
+            </v-col>
+
+            <!--
+              P-97: creating a league also creates a season, and nothing said
+              so. `trg_leagues_create_default_season`
+              (api/migrations/0028_fix_league_season_trigger.sql:49-53, AFTER
+              INSERT ON leagues) inserts "Season 1" in status `registration`
+              with the league's default team sizes — so the admin who clicks
+              Create League immediately owns an OPEN-REGISTRATION season they
+              never configured and had no way to know existed. Surfaced rather
+              than removed: see the note in the fix report.
+            -->
+            <v-col cols="12">
+              <v-alert
+                type="info"
+                variant="tonal"
+                density="compact"
+                data-testid="default-season-notice"
+              >
+                <div class="text-body-2">
+                  A first season, <strong>Season 1</strong>, is created with the league and is
+                  <strong>open for registration immediately</strong> — teams can sign up as soon as
+                  the league exists. Rename it, set its dates or close registration from
+                  <strong>Manage Seasons &amp; Teams</strong> on the league's row.
+                </div>
+              </v-alert>
             </v-col>
           </v-row>
         </v-form>
@@ -134,22 +218,32 @@
 </template>
 
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import { ref, computed, watch } from 'vue'
 import { useLeaguesStore } from '@/stores/leagues'
 import type { GameSummary } from '@/stores/games'
+import { useFormRules } from '@/composables/useFormRules'
+import {
+  LEAGUE_ACCESS_TYPES,
+  buildEligibilitySettings,
+  type LeagueAccessType,
+} from '@/composables/useLeagueEligibility'
+
+// Long scrolling forms in a small floating dialog are unusable on phones.
+const { smAndDown } = useDisplay()
 
 // Store for creating leagues
 const leaguesStore = useLeaguesStore()
 
 const props = defineProps<{
-  modelValue: boolean
   games: GameSummary[]
 }>()
 
 const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
   created: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const formRef = ref()
 const formValid = ref(false)
@@ -163,42 +257,20 @@ const form = ref({
   description: '',
   logo_url: '',
   access_type: 'open',
+  min_rating: null as number | null,
+  max_rating: null as number | null,
+  max_peak_rating: null as number | null,
+  min_matches: null as number | null,
 })
 
-const accessTypes = [
-  { value: 'open', label: 'Open', description: 'Anyone can join immediately' },
-  { value: 'invite_only', label: 'Invite Only', description: 'Members can only join via invitation' },
-  { value: 'application', label: 'Application', description: 'Users apply, admins approve/reject' },
-]
+const accessTypes = LEAGUE_ACCESS_TYPES
 
 // Filter to active games only
 const activeGames = computed(() => {
   return props.games.filter(g => g.status === 'active')
 })
 
-const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => !v || v.length >= min || `Minimum ${min} characters`,
-  maxLength: (max: number) => (v: string) => !v || v.length <= max || `Maximum ${max} characters`,
-  slug: (v: string) => {
-    if (!v) return true
-    // Must be lowercase letters, numbers, and hyphens
-    // Must start and end with alphanumeric
-    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(v)) {
-      return 'Must be lowercase letters, numbers, and hyphens. Must start and end with letter or number.'
-    }
-    return true
-  },
-  url: (v: string) => {
-    if (!v) return true
-    try {
-      new URL(v)
-      return true
-    } catch {
-      return 'Must be a valid URL'
-    }
-  },
-}
+const rules = useFormRules()
 
 // Auto-generate slug from name
 function generateSlug() {
@@ -213,7 +285,7 @@ function generateSlug() {
 }
 
 // Reset form when dialog opens
-watch(() => props.modelValue, (isOpen) => {
+watch(open, (isOpen) => {
   if (isOpen) {
     form.value = {
       game_id: '',
@@ -222,6 +294,10 @@ watch(() => props.modelValue, (isOpen) => {
       description: '',
       logo_url: '',
       access_type: 'open',
+      min_rating: null,
+      max_rating: null,
+      max_peak_rating: null,
+      min_matches: null,
     }
     error.value = null
   }
@@ -229,7 +305,7 @@ watch(() => props.modelValue, (isOpen) => {
 
 function close() {
   error.value = null
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function save() {
@@ -239,13 +315,19 @@ async function save() {
   error.value = null
 
   try {
+    const settingsPayload = buildEligibilitySettings(form.value)
+    // Create endpoint treats missing `settings` the same as empty — drop the
+    // key when there are no rules to avoid sending `{ settings: {} }`.
+    const settings = Object.keys(settingsPayload).length > 0 ? settingsPayload : undefined
+
     await leaguesStore.createLeague({
       game_id: form.value.game_id,
       name: form.value.name,
       slug: form.value.slug,
-      access_type: form.value.access_type as 'open' | 'invite_only' | 'application',
+      access_type: form.value.access_type as LeagueAccessType,
       description: form.value.description || undefined,
       logo_url: form.value.logo_url || undefined,
+      settings,
     })
 
     emit('created')

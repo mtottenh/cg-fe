@@ -1,10 +1,12 @@
 <template>
   <div class="bracket-container">
-    <div v-if="!hasMatches" class="text-center pa-8">
-      <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-tournament</v-icon>
-      <h3 class="text-h6 mb-2">No Bracket Available</h3>
-      <p class="text-grey">The bracket will be displayed once matches are generated.</p>
-    </div>
+    <EmptyState
+      v-if="!hasMatches"
+      icon="mdi-tournament"
+      title="No Bracket Available"
+      subtitle="The bracket will be displayed once matches are generated."
+      variant="text"
+    />
 
     <div v-else class="bracket-wrapper">
       <!-- Single Elimination Bracket -->
@@ -23,6 +25,7 @@
                 v-for="match in round"
                 :key="match.id"
                 class="match-wrapper"
+                :class="{ 'my-match': isMyMatch(match) }"
               >
                 <TournamentMatchCard
                   :match="match"
@@ -53,6 +56,7 @@
                   v-for="match in round"
                   :key="match.id"
                   class="match-wrapper"
+                  :class="{ 'my-match': isMyMatch(match) }"
                 >
                   <TournamentMatchCard
                     :match="match"
@@ -81,6 +85,7 @@
                   v-for="match in round"
                   :key="match.id"
                   class="match-wrapper"
+                  :class="{ 'my-match': isMyMatch(match) }"
                 >
                   <TournamentMatchCard
                     :match="match"
@@ -94,18 +99,100 @@
         </div>
       </template>
     </div>
+
+    <!-- Standings Table (for Swiss/Round Robin) -->
+    <v-card v-if="standings.length > 0" class="mt-6" variant="outlined">
+      <v-card-title class="text-subtitle-1">
+        <v-icon start size="small">mdi-podium</v-icon>
+        Standings
+      </v-card-title>
+      <v-data-table
+        :headers="standingsHeaders"
+        :items="standings"
+        :items-per-page="-1"
+        :sort-by="[{ key: 'position', order: 'asc' }]"
+        density="compact"
+        class="elevation-0"
+      >
+        <template v-slot:item.position="{ item }">
+          <strong>#{{ item.position }}</strong>
+        </template>
+        <template v-slot:item.matches_won="{ item }">
+          {{ item.matches_won }}-{{ item.matches_lost }}<span v-if="item.matches_drawn">-{{ item.matches_drawn }}</span>
+        </template>
+        <template v-slot:item.buchholz_score="{ item }">
+          {{ item.buchholz_score != null ? item.buchholz_score.toFixed(1) : '—' }}
+        </template>
+        <template v-slot:item.game_differential="{ item }">
+          {{ item.game_differential > 0 ? '+' : '' }}{{ item.game_differential }}
+        </template>
+      </v-data-table>
+      <div class="text-caption text-medium-emphasis px-4 pb-2">
+        Ordered by points; ties broken by Buchholz (Swiss) and game differential.
+      </div>
+    </v-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { TournamentBracketResponse, TournamentMatchResponse } from '@/stores/tournaments'
+import type { BracketStandingsRow } from '@/api/overrides'
+import { useTournamentsStore } from '@/stores/tournaments'
 import TournamentMatchCard from './TournamentMatchCard.vue'
+import EmptyState from '@/components/EmptyState.vue'
+
+const tournamentsStore = useTournamentsStore()
 
 const props = defineProps<{
   brackets: TournamentBracketResponse[]
   matches: TournamentMatchResponse[]
+  /** Registration id of the viewer's own entry — their path through the
+   * bracket gets a highlight outline. */
+  highlightRegistrationId?: string | null
 }>()
+
+function isMyMatch(match: TournamentMatchResponse): boolean {
+  const reg = props.highlightRegistrationId
+  if (!reg) return false
+  return match.participant1_registration_id === reg || match.participant2_registration_id === reg
+}
+
+const standings = ref<BracketStandingsRow[]>([])
+
+// Every key maps to a REAL row field — a header keyed to a non-existent
+// field silently sorts on `undefined` and scrambles the perceived ranking.
+const standingsHeaders = [
+  { title: '#', key: 'position', width: '56px' },
+  { title: 'Participant', key: 'participant_name' },
+  { title: 'Record', key: 'matches_won', width: '100px' },
+  { title: 'Game Diff', key: 'game_differential', width: '100px', align: 'end' as const },
+  { title: 'Buchholz', key: 'buchholz_score', width: '100px', align: 'end' as const },
+  { title: 'Points', key: 'points', width: '80px', align: 'end' as const },
+]
+
+// Fetch standings when brackets are loaded (for Swiss/Round Robin)
+let standingsSeq = 0
+watch(() => props.brackets, async (brackets) => {
+  const seq = ++standingsSeq
+  // Always reset first: navigating from a Swiss tournament to one without
+  // standings must not keep rendering the previous tournament's table.
+  standings.value = []
+  // Find the Swiss/RR bracket wherever it sits — it is not always brackets[0]
+  // in multi-bracket tournaments.
+  const bracket = brackets.find(
+    (b) => b.bracket_type === 'swiss' || b.bracket_type === 'round_robin',
+  )
+  if (!bracket) return
+  const tournament = tournamentsStore.currentTournament
+  if (!tournament) return
+  try {
+    const data = await tournamentsStore.fetchBracketStandings(tournament.id, bracket.id)
+    if (seq === standingsSeq) standings.value = data ?? []
+  } catch {
+    if (seq === standingsSeq) standings.value = []
+  }
+}, { immediate: true })
 
 defineEmits<{
   'match-click': [match: TournamentMatchResponse]
@@ -117,7 +204,12 @@ const bracketType = computed(() => {
   if (props.brackets.length === 0) return 'single_elimination'
   const types = props.brackets.map((b) => b.bracket_type)
   if (types.includes('losers')) return 'double_elimination'
-  return props.brackets[0]?.bracket_type || 'single_elimination'
+  // The backend serializes BracketType::SingleElim as 'single_elim'
+  // (portal-core Display impl); the single-elimination template matches
+  // 'single_elimination'. Normalize so the round grid actually renders.
+  const first = props.brackets[0]?.bracket_type
+  if (first === 'single_elim') return 'single_elimination'
+  return first || 'single_elimination'
 })
 
 const totalRounds = computed(() => {
@@ -188,6 +280,15 @@ function getRoundName(round: number, total: number): string {
 .bracket-container {
   overflow-x: auto;
   padding: 16px 0;
+  /* Scroll affordance: edge shadows appear only while content extends
+     beyond the visible area (classic local/scroll attachment trick). */
+  background:
+    linear-gradient(to right, rgb(var(--v-theme-background)) 30%, transparent) left / 40px 100%,
+    linear-gradient(to left, rgb(var(--v-theme-background)) 30%, transparent) right / 40px 100%,
+    linear-gradient(to right, rgba(0, 0, 0, 0.45), transparent) left / 20px 100%,
+    linear-gradient(to left, rgba(0, 0, 0, 0.45), transparent) right / 20px 100%;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
 }
 
 .bracket-wrapper {
@@ -223,5 +324,33 @@ function getRoundName(round: number, total: number): string {
 .match-wrapper {
   display: flex;
   align-items: center;
+  position: relative;
+}
+
+/* Progression cues: stubs out of each feeder match and into each next-round
+   match make the left-to-right flow legible without a full connector tree. */
+.round:not(:last-child) .match-wrapper::after {
+  content: '';
+  position: absolute;
+  right: -18px;
+  width: 18px;
+  height: 2px;
+  background: rgba(var(--v-theme-primary), 0.35);
+}
+
+.round:not(:first-child) .match-wrapper::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  width: 16px;
+  height: 2px;
+  background: rgba(var(--v-theme-primary), 0.35);
+}
+
+/* The viewer's own path through the bracket. */
+.match-wrapper.my-match {
+  outline: 2px solid rgba(var(--v-theme-primary), 0.7);
+  outline-offset: 2px;
+  border-radius: 8px;
 }
 </style>

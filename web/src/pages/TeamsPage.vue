@@ -1,69 +1,45 @@
 <template>
-  <v-container class="py-8">
+  <v-container>
     <v-row align="center" class="mb-6">
       <v-col>
         <h1 class="text-h3">Teams</h1>
-      </v-col>
-      <v-col cols="auto">
-        <v-btn color="primary" to="/teams/new">
-          <v-icon start>mdi-plus</v-icon>
-          Create Team
-        </v-btn>
+        <p class="text-body-1 text-medium-emphasis mt-2">
+          Teams are managed within leagues. Browse leagues to find and join teams.
+        </p>
       </v-col>
     </v-row>
 
-    <v-alert v-if="teamsStore.error" type="error" class="mb-4" closable>
-      {{ teamsStore.error }}
+    <v-alert type="info" variant="tonal" class="mb-6">
+      <v-alert-title>Teams Live in Leagues</v-alert-title>
+      Teams are created and managed within league seasons. Visit the
+      <router-link to="/leagues" class="text-primary">Leagues</router-link>
+      page to browse teams, or go to
+      <router-link to="/my-teams" class="text-primary">My Teams</router-link>
+      to see teams you belong to.
     </v-alert>
 
-    <v-progress-linear v-if="teamsStore.loading" indeterminate class="mb-4" />
-
-    <v-row v-if="teamsStore.teams.length > 0">
-      <v-col v-for="team in teamsStore.teams" :key="team.id" cols="12" sm="6" md="4">
-        <v-card :to="`/teams/${team.id}`" class="h-100">
-          <v-card-item>
-            <template v-slot:prepend>
-              <v-avatar color="primary" size="48">
-                <v-img v-if="team.logo_url" :src="team.logo_url" />
-                <span v-else class="text-h6">{{ team.tag.substring(0, 2) }}</span>
-              </v-avatar>
-            </template>
-            <v-card-title>{{ team.name }}</v-card-title>
-            <v-card-subtitle class="team-tag">[{{ team.tag }}]</v-card-subtitle>
-          </v-card-item>
-          <v-card-text v-if="team.description">
-            <p class="text-body-2 text-medium-emphasis text-truncate">
-              {{ team.description }}
-            </p>
+    <v-row>
+      <v-col cols="12" sm="6" md="4">
+        <v-card to="/leagues" class="text-center pa-6">
+          <v-icon size="48" color="primary" class="mb-4">mdi-trophy-outline</v-icon>
+          <v-card-title>Browse Leagues</v-card-title>
+          <v-card-text class="text-medium-emphasis">
+            Find leagues and their teams
           </v-card-text>
-          <v-card-actions>
-            <v-spacer />
-            <v-icon size="small" class="mr-1">mdi-chevron-right</v-icon>
-          </v-card-actions>
         </v-card>
       </v-col>
-    </v-row>
-
-    <v-row v-else-if="!teamsStore.loading">
-      <v-col cols="12" class="text-center py-12">
-        <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-account-group-outline</v-icon>
-        <h3 class="text-h5 text-medium-emphasis mb-2">No Teams Yet</h3>
-        <p class="text-body-2 text-medium-emphasis mb-4">
-          Be the first to create a team!
-        </p>
-        <v-btn color="primary" to="/teams/new">Create Team</v-btn>
+      <v-col cols="12" sm="6" md="4">
+        <v-card to="/my-teams" class="text-center pa-6">
+          <v-icon size="48" color="secondary" class="mb-4">mdi-account-group</v-icon>
+          <v-card-title>My Teams</v-card-title>
+          <v-card-text class="text-medium-emphasis">
+            View teams you belong to
+          </v-card-text>
+        </v-card>
       </v-col>
     </v-row>
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useTeamsStore } from '@/stores/teams'
-
-const teamsStore = useTeamsStore()
-
-onMounted(async () => {
-  await teamsStore.fetchTeams()
-})
 </script>

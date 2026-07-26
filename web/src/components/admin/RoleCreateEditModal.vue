@@ -38,6 +38,7 @@
             <!-- Category (only for create) -->
             <v-col v-if="!isEditMode" cols="12" md="6">
               <v-select
+          aria-label="Category"
                 v-model="form.category"
                 label="Category"
                 :items="categoryOptions"
@@ -120,16 +121,15 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRbacStore, type RoleResponse, type CreateRoleRequest, type UpdateRoleRequest } from '@/stores/rbac'
+import { useFormRules } from '@/composables/useFormRules'
 
-const props = defineProps<{
-  modelValue: boolean
-  role: RoleResponse | null
+const props = defineProps<{  role: RoleResponse | null
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  saved: []
+const emit = defineEmits<{  saved: []
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const rbacStore = useRbacStore()
 const formRef = ref()
@@ -152,8 +152,8 @@ const form = ref<{
 })
 
 const dialogOpen = computed({
-  get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value),
+  get: () => open.value,
+  set: (value) => open.value = value,
 })
 
 const isEditMode = computed(() => !!props.role)
@@ -166,9 +166,7 @@ const categoryOptions = [
 ]
 
 const rules = {
-  required: (v: string) => !!v || 'Required',
-  minLength: (min: number) => (v: string) => (v && v.length >= min) || `Must be at least ${min} characters`,
-  maxLength: (max: number) => (v: string) => (!v || v.length <= max) || `Must be at most ${max} characters`,
+  ...useFormRules(),
   machineName: (v: string) => /^[a-z][a-z0-9_]*$/.test(v) || 'Must start with letter, use only lowercase letters, numbers, underscores',
   hexColor: (v: string) => !v || /^#[0-9A-Fa-f]{6}$/.test(v) || 'Must be a valid hex color (e.g., #4CAF50)',
 }

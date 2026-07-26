@@ -1,9 +1,11 @@
 <template>
+  <!-- Permanent rail on desktop; temporary overlay on phones so the
+       app-bar toggle actually works and content isn't crushed. -->
   <v-navigation-drawer
-    :model-value="modelValue"
-    @update:model-value="$emit('update:modelValue', $event)"
-    :rail="rail"
-    permanent
+    v-model="open"
+    :rail="rail && mdAndUp"
+    :permanent="mdAndUp"
+    :temporary="!mdAndUp"
     color="surface"
   >
     <v-list density="compact" nav>
@@ -13,7 +15,12 @@
         title="Dashboard"
         :to="{ name: 'home' }"
         :active="route.name === 'home'"
-      />
+      >
+        <!-- Action-items badge lives here: the widget is on the dashboard. -->
+        <template v-slot:append v-if="actionCount > 0">
+          <v-badge :content="actionCount" :color="hasCriticalAction ? 'error' : 'warning'" inline />
+        </template>
+      </v-list-item>
 
       <v-list-subheader v-if="!rail">Browse</v-list-subheader>
 
@@ -83,27 +90,40 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useDisplay } from 'vuetify'
+import { storeToRefs } from 'pinia'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
+import { useLeaguesStore } from '@/stores/leagues'
+import { useCaptainActionsStore } from '@/stores/captainActions'
 
 const route = useRoute()
+const { mdAndUp } = useDisplay()
 const leagueTeamsStore = useLeagueTeamsStore()
+const leaguesStore = useLeaguesStore()
+const captainActionsStore = useCaptainActionsStore()
+const { actionCount, hasCritical: hasCriticalAction } = storeToRefs(captainActionsStore)
 
 defineProps<{
-  modelValue: boolean
   rail: boolean
 }>()
 
 defineEmits<{
-  'update:modelValue': [value: boolean]
   'update:rail': [value: boolean]
 }>()
 
-const pendingInvitationsCount = computed(() => leagueTeamsStore.myInvitations.length)
+const open = defineModel<boolean>({ required: true })
+
+const pendingInvitationsCount = computed(() =>
+  leagueTeamsStore.myInvitations.length + leaguesStore.myLeagueInvitations.length
+)
 
 onMounted(async () => {
   // Fetch invitations for the badge count
   try {
-    await leagueTeamsStore.fetchMyInvitations()
+    await Promise.all([
+      leagueTeamsStore.fetchMyInvitations(),
+      leaguesStore.fetchMyLeagueInvitations(),
+    ])
   } catch {
     // Silently fail - badge just won't show
   }

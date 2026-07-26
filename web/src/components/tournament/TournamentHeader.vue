@@ -2,7 +2,7 @@
   <v-card variant="outlined">
     <!-- Banner -->
     <div class="tournament-banner">
-      <v-img
+      <v-img :alt="`${tournament.name} banner`"
         v-if="tournament.banner_url"
         :src="tournament.banner_url"
         height="200"
@@ -30,7 +30,7 @@
         <v-col cols="auto">
           <!-- Logo -->
           <v-avatar size="80" rounded="lg">
-            <v-img v-if="tournament.logo_url" :src="tournament.logo_url" />
+            <v-img :alt="`${tournament.name} logo`" v-if="tournament.logo_url" :src="tournament.logo_url" />
             <v-icon v-else size="48">mdi-tournament</v-icon>
           </v-avatar>
         </v-col>
@@ -39,17 +39,17 @@
           <!-- Game Badge -->
           <div v-if="game" class="d-flex align-center mb-2">
             <v-avatar size="24" rounded="sm" class="mr-2">
-              <v-img v-if="game.icon_url" :src="game.icon_url" />
+              <v-img alt="" v-if="game.icon_url" :src="game.icon_url" />
               <v-icon v-else size="16">mdi-gamepad-variant</v-icon>
             </v-avatar>
-            <span class="text-subtitle-2 text-grey">{{ game.display_name }}</span>
+            <span class="text-subtitle-2 text-medium-emphasis">{{ game.display_name }}</span>
           </div>
 
           <!-- Title -->
           <h1 class="text-h4 font-weight-bold mb-2">{{ tournament.name }}</h1>
 
           <!-- Quick Info -->
-          <div class="d-flex flex-wrap gap-3 align-center">
+          <div class="d-flex flex-wrap ga-3 align-center">
             <v-chip variant="tonal">
               <v-icon start size="small">mdi-tournament</v-icon>
               {{ formatLabel }}
@@ -74,7 +74,7 @@
 
         <v-col cols="auto" class="d-none d-md-flex">
           <!-- Share Button -->
-          <v-btn icon variant="tonal" @click="share">
+          <v-btn aria-label="Share tournament" icon variant="tonal" @click="share">
             <v-icon>mdi-share-variant</v-icon>
           </v-btn>
         </v-col>
@@ -85,6 +85,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { tournamentPublicStatusMap, tournamentStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import type { TournamentResponse } from '@/stores/tournaments'
 import type { GameSummary } from '@/stores/games'
 
@@ -93,55 +94,25 @@ const props = defineProps<{
   game?: GameSummary
 }>()
 
-const statusColor = computed(() => {
-  switch (props.tournament.status) {
-    case 'draft':
-      return 'grey'
-    case 'published':
-      return 'info'
-    case 'registration_open':
-      return 'success'
-    case 'registration_closed':
-      return 'warning'
-    case 'check_in_open':
-      return 'primary'
-    case 'ready':
-      return 'secondary'
-    case 'in_progress':
-      return 'primary'
-    case 'completed':
-      return 'success'
-    case 'cancelled':
-      return 'error'
-    default:
-      return 'grey'
-  }
-})
-
-const statusLabel = computed(() => {
-  switch (props.tournament.status) {
-    case 'draft':
-      return 'Coming Soon'
-    case 'published':
-      return 'Announced'
-    case 'registration_open':
-      return 'Registration Open'
-    case 'registration_closed':
-      return 'Registration Closed'
-    case 'check_in_open':
-      return 'Check-in Open'
-    case 'ready':
-      return 'Starting Soon'
-    case 'in_progress':
-      return 'Live Now'
-    case 'completed':
-      return 'Completed'
-    case 'cancelled':
-      return 'Cancelled'
-    default:
-      return props.tournament.status
-  }
-})
+// Status presentation comes from utils/statusMaps.ts. This used to be two
+// hand-rolled `switch` statements whose cases had drifted from the backend enum
+// (`registration_open`, `check_in_open`, `ready` — none of which the API emits),
+// so a tournament in `registration` fell through to `default` and the RAW status
+// string was shown to users. See COVERAGE-PLAN.md §9b P-4.
+//
+// The public map keeps this page's warmer voice ("Live Now", not "In Progress").
+// Falling back to the admin map means a status we forget to add still renders a
+// real label instead of leaking the enum.
+const statusColor = computed(
+  () =>
+    tournamentPublicStatusMap[props.tournament.status]?.color ??
+    getStatusColor(tournamentStatusMap, props.tournament.status),
+)
+const statusLabel = computed(
+  () =>
+    tournamentPublicStatusMap[props.tournament.status]?.label ??
+    getStatusLabel(tournamentStatusMap, props.tournament.status),
+)
 
 const formatLabel = computed(() => {
   switch (props.tournament.format) {

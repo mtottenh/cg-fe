@@ -1,19 +1,109 @@
-import { test, expect } from '@playwright/test'
-import { loginAsAdmin } from './fixtures/auth.fixture'
+import { test, expect, type Page } from '@playwright/test'
+import { loginAsAdmin, getAdminToken } from './fixtures/auth.fixture'
+import {
+  createDraftTournament,
+  createOpenRegistrationTournament,
+} from './fixtures/tournament-lifecycle.fixture'
+import {
+  approveRegistration,
+  autoSeedViaApi,
+  createTournamentWithApprovedPlayers,
+  fetchSeeding,
+  listRegistrations,
+  registerPendingPlayers,
+} from './fixtures/tournament-seeding.fixture'
+import type { StageStatus } from './fixtures/api-status'
 
 /**
  * Tournament Admin Flows E2E Tests
  *
- * These tests cover admin tournament management functionality.
+ * Covers the admin tournament list, the create modal, the detail page's tabs
+ * and action set, participant management (admin check-in + disqualify) and the
+ * edit modal.
  *
- * Prerequisites (seeded by global-setup.ts):
- * - E2E Test Tournament (individual)
- * - E2E Team Tournament (team-based)
- * - Admin user with appropriate permissions
+ * WHY MOST TESTS BUILD THEIR OWN TOURNAMENT
+ * -----------------------------------------
+ * This file used to navigate to `table tbody tr` first — an ARBITRARY row of a
+ * shared dev database — and then wrap the whole body in
+ * `if (await x.isVisible().catch(() => false))`. The row was almost never in
+ * the state the test needed, so eight bodies silently skipped and reported
+ * green (COVERAGE-PLAN.md §2 / §6.3). Those eight tests are gone; the state
+ * transitions they claimed to cover are genuinely covered, through the UI,
+ * with backend cross-checks, in:
  *
- * IMPORTANT: Tests use hard assertions. If seeded data doesn't exist,
- * tests WILL FAIL - this is intentional to surface seeding issues.
+ *   - approve / reject-with-modal → `tournament-seeding.spec.ts:44`
+ *   - publish / open-registration / close-registration / start / complete /
+ *     finalize → `tournament-lifecycle.spec.ts:49` (and `:141` for a second
+ *     close-registration through the same button)
+ *
+ * What was NOT covered anywhere is admin check-in (`handleAdminCheckIn`) and
+ * the disqualify branch of `handleReasonConfirm` — that is the one new test in
+ * "Registration Management" below, driven entirely through the UI.
+ *
+ * Only the three list-level smoke tests still lean on globally seeded data;
+ * everything state-sensitive seeds itself. No visibility guards remain.
  */
+
+const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
+
+/** Public tournament fetch by slug — the cross-check for "create succeeded".
+ *  Route mirrors `stores/tournament/_lifecycle.ts:87` (`/v1/tournaments/by-slug/{slug}`). */
+async function fetchTournamentBySlug(slug: string): Promise<{
+  id: string
+  name: string
+  slug: string
+  status: string
+  description: string | null
+}> {
+  const resp = await fetch(`${API_URL}/v1/tournaments/by-slug/${slug}`)
+  if (!resp.ok) {
+    throw new Error(`Fetch tournament by slug failed (${resp.status}): ${await resp.text()}`)
+  }
+  const body = (await resp.json()) as {
+    data: { id: string; name: string; slug: string; status: string; description: string | null }
+  }
+  return body.data
+}
+
+interface StageRow {
+  id: string
+  name: string
+  stage_order: number
+  format: string
+  match_format: string | null
+  status: StageStatus
+}
+
+/** List a tournament's stages — the cross-check for `StagesTab.handleCreateStage`.
+ *  Public GET, mirrors `stores/tournament/_stages.ts:20`. */
+async function fetchStages(tournamentId: string): Promise<StageRow[]> {
+  const resp = await fetch(`${API_URL}/v1/tournaments/${tournamentId}/stages`)
+  if (!resp.ok) {
+    throw new Error(`Fetch stages failed (${resp.status}): ${await resp.text()}`)
+  }
+  const body = (await resp.json()) as { data: StageRow[] }
+  return body.data ?? []
+}
+
+/** A registrations-table row, located by the participant name it renders
+ *  (`RegistrationsTab.vue:16-18`). Same helper shape as
+ *  `tournament-seeding.spec.ts:39`. */
+function registrationRow(page: Page, participantName: string) {
+  return page.locator('tr').filter({ hasText: participantName })
+}
+
+/**
+ * The value rendered inside one of the four overview stat cards
+ * (`AdminTournamentDetailPage.vue:38-71`): each card is
+ * `<v-card><v-card-text><div class="text-h4">VALUE</div>
+ * <div class="text-medium-emphasis">LABEL</div></v-card-text></v-card>`.
+ */
+function statValue(page: Page, label: string) {
+  return page
+    .locator('.v-card')
+    .filter({ has: page.locator('div.text-medium-emphasis', { hasText: new RegExp(`^${label}$`) }) })
+    .locator('.text-h4')
+}
 
 test.describe('Tournament Admin Flows', () => {
   // Login as admin before each test
@@ -74,9 +164,13 @@ test.describe('Tournament Admin Flows', () => {
       const submitButton = modal.getByRole('button', { name: 'Create Tournament' })
       await expect(submitButton).toBeDisabled()
 
-      // Select a game first (required)
-      await modal.locator('.v-select').filter({ hasText: 'Game' }).click()
-      await page.getByRole('option').first().click()
+      // Select a game first (required). Multiple selects contain "Game"
+      // (the Game select itself + the Map Veto Format select's hint
+      // "Select a game first..."), so pick the first to disambiguate.
+      // Choose CS2 explicitly: a tournament needs a map pool, and CS2 is the
+      // seeded game that has a map catalog (AoE4 has none and sorts first).
+      await modal.locator('.v-select').filter({ hasText: 'Game' }).first().click()
+      await page.getByRole('option', { name: /Counter-Strike 2/i }).click()
 
       // Button should still be disabled - name is still required
       await expect(submitButton).toBeDisabled()
@@ -102,9 +196,12 @@ test.describe('Tournament Admin Flows', () => {
       const tournamentName = `Test Tournament ${timestamp}`
       const tournamentSlug = `test-tournament-${timestamp}`
 
-      // Select game (required)
-      await modal.locator('.v-select').filter({ hasText: 'Game' }).click()
-      await page.getByRole('option').first().click()
+      // Select game (required). Use .first() to disambiguate from the
+      // Map Veto Format select that also mentions "Game" in its hint.
+      // CS2 specifically: it is the seeded game with a map catalog, and a
+      // tournament cannot be created without a map pool.
+      await modal.locator('.v-select').filter({ hasText: 'Game' }).first().click()
+      await page.getByRole('option', { name: /Counter-Strike 2/i }).click()
 
       // Fill required fields
       await modal.getByRole('textbox', { name: /Tournament Name/i }).fill(tournamentName)
@@ -113,17 +210,29 @@ test.describe('Tournament Admin Flows', () => {
       // Submit - button MUST be enabled
       const submitButton = modal.getByRole('button', { name: 'Create Tournament' })
       await expect(submitButton).toBeEnabled()
+
+      // Arm the snackbar assertion BEFORE clicking: the success toast
+      // auto-dismisses after 3s (AppSnackbar.vue:25), so anything that waits
+      // first (networkidle, a fixed delay) can miss it entirely.
+      // Creating does NOT navigate — AdminTournamentsPage.onTournamentCreated
+      // (`:528-531`) only shows the snackbar and refetches the list — so the
+      // old "navigated to detail" half of this assertion was dead code.
+      const snackbarPromise = expect(
+        page.locator('.v-snackbar').getByText('Tournament created successfully'),
+      ).toBeVisible({ timeout: 15_000 })
       await submitButton.click()
+      await snackbarPromise
 
-      // Wait for response
-      await page.waitForLoadState('networkidle')
+      // UI: the modal closes on success (TournamentCreateModal.vue:120-121).
+      await expect(modal).not.toBeVisible({ timeout: 10_000 })
 
-      // MUST either navigate to detail or show success snackbar
-      const snackbar = page.locator('.v-snackbar')
-      const hasSuccess = await snackbar.getByText(/created|success/i).isVisible().catch(() => false)
-      const navigatedToDetail = page.url().includes('/admin/tournaments/')
-
-      expect(hasSuccess || navigatedToDetail).toBe(true)
+      // Backend: the tournament really exists, in `draft`, with our name.
+      // (It is NOT asserted in the list: the list is page 1 of
+      // `ORDER BY starts_at DESC NULLS LAST` and a brand-new tournament has
+      // no start date, so it sorts last and is off-page on a shared DB.)
+      const created = await fetchTournamentBySlug(tournamentSlug)
+      expect(created.name).toBe(tournamentName)
+      expect(created.status).toBe('draft')
     })
   })
 
@@ -140,335 +249,199 @@ test.describe('Tournament Admin Flows', () => {
       await firstRow.click()
       await page.waitForLoadState('networkidle')
 
-      // MUST show tournament detail tabs
+      // MUST land on a detail route and show the tournament detail tabs
+      await expect(page).toHaveURL(/\/admin\/tournaments\/[a-f0-9-]+/)
       await expect(page.getByRole('tab', { name: 'Overview' })).toBeVisible()
     })
 
     test('should show admin action buttons', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
+      const adminToken = await getAdminToken()
+      // Own the state: the action set is entirely status-driven
+      // (`useTournamentLifecycleGuards`, useTournamentAdminActions.ts:13-29),
+      // so a `draft` tournament pins the expected buttons exactly.
+      const tournament = await createDraftTournament(adminToken)
 
-      // Table MUST have at least one row
-      const firstRow = page.locator('table tbody tr').first()
-      await expect(firstRow).toBeVisible({ timeout: 10000 })
+      await page.goto(`/admin/tournaments/${tournament.id}`)
+      await expect(page.getByRole('heading', { name: tournament.name })).toBeVisible({
+        timeout: 10_000,
+      })
 
-      // Click the name cell to navigate
-      await firstRow.locator('td').nth(1).click()
-      await page.waitForLoadState('networkidle')
+      // Draft ⇒ Publish (canPublish) + the two always-on affordances
+      // (TournamentStatusActions.vue:3-8, AdminTournamentDetailPage.vue:157-159).
+      await expect(page.getByRole('button', { name: 'Publish' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'View Public' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Edit Tournament' })).toBeVisible()
 
-      // MUST navigate to tournament detail page
-      await expect(page).toHaveURL(/\/admin\/tournaments\/[a-f0-9-]+/)
-
-      // Check for action buttons based on status - at least one MUST exist
-      const publishBtn = page.getByRole('button', { name: 'Publish' })
-      const openRegBtn = page.getByRole('button', { name: /Open Registration/i })
-      const startBtn = page.getByRole('button', { name: /Start Tournament/i })
-      const viewPublicBtn = page.getByRole('button', { name: /View Public/i })
-      const editBtn = page.getByRole('button', { name: /Edit Tournament/i })
-
-      const hasActions =
-        (await publishBtn.isVisible().catch(() => false)) ||
-        (await openRegBtn.isVisible().catch(() => false)) ||
-        (await startBtn.isVisible().catch(() => false)) ||
-        (await viewPublicBtn.isVisible().catch(() => false)) ||
-        (await editBtn.isVisible().catch(() => false))
-
-      expect(hasActions).toBe(true)
+      // ...and nothing from a later lifecycle stage leaks in.
+      await expect(page.getByRole('button', { name: 'Open Registration' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Start Tournament' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Close Registration' })).toHaveCount(0)
     })
 
     test('should display overview stats cards', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
+      const adminToken = await getAdminToken()
+      const tournament = await createDraftTournament(adminToken, { maxParticipants: 4 })
 
-      // Navigate to first tournament
-      const firstRow = page.locator('table tbody tr').first()
-      await expect(firstRow).toBeVisible({ timeout: 10000 })
-      await firstRow.click()
-      await page.waitForLoadState('networkidle')
+      await page.goto(`/admin/tournaments/${tournament.id}`)
+      await expect(page.getByRole('heading', { name: tournament.name })).toBeVisible({
+        timeout: 10_000,
+      })
 
-      // Stats cards MUST be visible
-      await expect(page.locator('div').filter({ hasText: /^Registrations$/ })).toBeVisible()
-      await expect(page.locator('div').filter({ hasText: /^Max Participants$/ })).toBeVisible()
-      await expect(page.locator('div').filter({ hasText: /^Matches$/ })).toBeVisible()
+      // Stats cards MUST render their labels AND the right numbers for a
+      // freshly created 4-slot tournament (AdminTournamentDetailPage.vue:38-71).
+      await expect(statValue(page, 'Registrations')).toHaveText('0')
+      await expect(statValue(page, 'Max Participants')).toHaveText('4')
+      await expect(statValue(page, 'Matches')).toHaveText('0')
     })
 
     test('should navigate between tabs', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
+      const adminToken = await getAdminToken()
+      // A fresh tournament has no registrations and no bracket, so both
+      // empty states are deterministic — no need to guess what an arbitrary
+      // shared row happens to contain.
+      const tournament = await createDraftTournament(adminToken)
 
-      // Navigate to first tournament
-      const firstRow = page.locator('table tbody tr').first()
-      await expect(firstRow).toBeVisible({ timeout: 10000 })
-      await firstRow.click()
-      await page.waitForLoadState('networkidle')
+      await page.goto(`/admin/tournaments/${tournament.id}`)
+      await expect(page.getByRole('heading', { name: tournament.name })).toBeVisible({
+        timeout: 10_000,
+      })
 
-      // Click Registrations tab
+      // Registrations tab → the table's own empty state
+      // (RegistrationsTab.vue:106-110).
       await page.getByRole('tab', { name: 'Registrations' }).click()
-      await page.waitForLoadState('networkidle')
+      await expect(page.getByText('No registrations yet')).toBeVisible()
 
-      // MUST show registrations content (table headers or empty state)
-      const hasParticipantColumn = await page
-        .getByRole('columnheader', { name: 'Participant' })
-        .isVisible()
-        .catch(() => false)
-      const hasEmpty = await page.getByText(/No registrations yet/i).isVisible().catch(() => false)
-      expect(hasParticipantColumn || hasEmpty).toBe(true)
-
-      // Click Bracket tab
+      // Bracket tab → the "not generated yet" empty state (BracketTab.vue:22-28).
       await page.getByRole('tab', { name: 'Bracket' }).click()
-
-      // MUST show bracket or empty state
-      const hasBracket =
-        (await page.locator('.tournament-bracket').isVisible().catch(() => false)) ||
-        (await page.getByText(/No Bracket Generated/i).isVisible().catch(() => false))
-      expect(hasBracket).toBe(true)
+      await expect(page.getByRole('heading', { name: 'No Bracket Generated' })).toBeVisible()
+      await expect(
+        page.getByText('The bracket will be generated when the tournament starts.'),
+      ).toBeVisible()
     })
   })
 
   test.describe('Registration Management', () => {
     test('should show registrations tab with table', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
+      test.setTimeout(60_000)
+      const adminToken = await getAdminToken()
+      // `approval`, not `open`: since P-2 an open tournament auto-approves on
+      // signup, so `registerPendingPlayers` would produce APPROVED rows and the
+      // pending-only actions asserted below would not render.
+      const tournament = await createOpenRegistrationTournament(adminToken, {
+        registrationType: 'approval',
+      })
+      const [player] = await registerPendingPlayers(tournament.id, 1)
+      const participantName = player.participantName
 
-      // Navigate to first tournament
-      const firstRow = page.locator('table tbody tr').first()
-      await expect(firstRow).toBeVisible({ timeout: 10000 })
-      await firstRow.click()
-      await page.waitForLoadState('networkidle')
-
-      // Go to registrations tab
+      await page.goto(`/admin/tournaments/${tournament.id}`)
       await page.getByRole('tab', { name: 'Registrations' }).click()
 
-      // Table headers MUST be visible
+      // Table headers MUST be visible (RegistrationsTab.vue:134-142)
       await expect(page.getByRole('columnheader', { name: 'Participant' })).toBeVisible()
       await expect(page.getByRole('columnheader', { name: 'Status' })).toBeVisible()
       await expect(page.getByRole('columnheader', { name: 'Actions' })).toBeVisible()
+
+      // ...and the seeded registration MUST be a row in it, in `pending`,
+      // offering the pending-only actions (RegistrationsTab.vue:42-62).
+      const row = registrationRow(page, participantName)
+      await expect(row).toBeVisible({ timeout: 10_000 })
+      // The status chip carries the human label, not the raw enum (§9b P-10).
+      await expect(row.getByText('Pending', { exact: true })).toBeVisible()
+      await expect(row.getByRole('button', { name: 'Approve' })).toBeVisible()
+      await expect(row.getByRole('button', { name: 'Reject' })).toBeVisible()
+      await expect(page.getByText('No registrations yet')).toHaveCount(0)
+
+      // Backend agrees there is exactly one, still awaiting approval.
+      const regs = await listRegistrations(adminToken, tournament.id)
+      expect(regs).toHaveLength(1)
+      expect(regs[0]?.status).toBe('pending')
     })
 
-    test('should show approve/reject buttons for pending registrations', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
+    test('should check in one approved participant and disqualify another', async ({ page }) => {
+      test.setTimeout(90_000)
+      const adminToken = await getAdminToken()
 
-      // Navigate to first tournament
-      const firstRow = page.locator('table tbody tr').first()
-      await expect(firstRow).toBeVisible({ timeout: 10000 })
-      await firstRow.click()
-      await page.waitForLoadState('networkidle')
+      // `check_in_required` is what makes the admin "Check In" button render
+      // at all (RegistrationsTab.vue:66-76, fed by
+      // AdminTournamentDetailPage.vue:182). Both actions are only offered on
+      // an `approved` row, so approve both up front via API — the approval UI
+      // has its own coverage in tournament-seeding.spec.ts:44.
+      const tournament = await createOpenRegistrationTournament(adminToken, {
+        checkInRequired: true,
+        maxParticipants: 4,
+      })
+      const [checkInTarget, dqTarget] = await registerPendingPlayers(tournament.id, 2)
+      const checkInName = checkInTarget.participantName
+      const dqName = dqTarget.participantName
+      await approveRegistration(adminToken, tournament.id, checkInTarget.registrationId)
+      await approveRegistration(adminToken, tournament.id, dqTarget.registrationId)
 
-      // Go to registrations tab
+      await page.goto(`/admin/tournaments/${tournament.id}`)
       await page.getByRole('tab', { name: 'Registrations' }).click()
-      await page.waitForLoadState('networkidle')
 
-      // Look for pending registrations (state-dependent)
-      const pendingRow = page.locator('tr').filter({ hasText: 'pending' }).first()
-      if (await pendingRow.isVisible().catch(() => false)) {
-        // If pending exists, MUST show approve and reject buttons
-        await expect(pendingRow.getByRole('button', { name: 'Approve' })).toBeVisible()
-        await expect(pendingRow.getByRole('button', { name: 'Reject' })).toBeVisible()
-      }
-      // If no pending registrations, test is valid (just nothing to approve/reject)
-    })
+      const checkInRow = registrationRow(page, checkInName)
+      const dqRow = registrationRow(page, dqName)
+      await expect(checkInRow).toBeVisible({ timeout: 10_000 })
+      await expect(dqRow).toBeVisible()
 
-    test('should approve registration when pending exists', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
+      // ---------------------------------------------------------------
+      // 1. Admin check-in → AdminTournamentDetailPage.handleAdminCheckIn
+      // ---------------------------------------------------------------
+      const checkInSnackbar = expect(
+        page.locator('.v-snackbar').getByText(`${checkInName} checked in`),
+      ).toBeVisible({ timeout: 15_000 })
+      await checkInRow.getByRole('button', { name: 'Check In' }).click()
+      await checkInSnackbar
 
-      // Navigate to first tournament
-      const firstRow = page.locator('table tbody tr').first()
-      await expect(firstRow).toBeVisible({ timeout: 10000 })
-      await firstRow.click()
-      await page.waitForLoadState('networkidle')
+      // The row moves to the `checked_in` branch: Check In disappears,
+      // Disqualify remains (RegistrationsTab.vue:88-99) and the "Checked In"
+      // column ticks (`:26-29`).
+      await expect(checkInRow.getByRole('button', { name: 'Check In' })).toHaveCount(0)
+      await expect(checkInRow.locator('.mdi-check-circle')).toBeVisible()
+      // The status chip shows the HUMAN LABEL, not the raw enum. This used to
+      // print `checked_in`: the table imported registrationStatusMap for the
+      // chip COLOUR only and never applied the label (COVERAGE-PLAN.md §9b
+      // P-10). exact:true, so a regression to the enum fails here.
+      await expect(checkInRow.getByText('Checked In', { exact: true })).toBeVisible()
 
-      // Go to registrations tab
-      await page.getByRole('tab', { name: 'Registrations' }).click()
-      await page.waitForLoadState('networkidle')
+      // ---------------------------------------------------------------
+      // 2. Disqualify → handleDisqualify → handleReasonConfirm (dq branch)
+      // ---------------------------------------------------------------
+      await dqRow.getByRole('button', { name: 'Disqualify' }).click()
 
-      // Find pending registration and approve (state-dependent)
-      const pendingRow = page.locator('tr').filter({ hasText: 'pending' }).first()
-      if (await pendingRow.isVisible().catch(() => false)) {
-        await pendingRow.getByRole('button', { name: 'Approve' }).click()
+      const modal = page.getByRole('dialog')
+      await expect(modal).toBeVisible()
+      await expect(modal.getByText('Disqualify Participant')).toBeVisible()
+      await expect(modal.getByText(dqName)).toBeVisible()
 
-        // Wait for update
-        await page.waitForLoadState('networkidle')
+      // A reason is mandatory for disqualify (RegistrationReasonModal.vue:69).
+      const confirmButton = modal.getByRole('button', { name: 'Disqualify' })
+      await expect(confirmButton).toBeDisabled()
+      await modal.getByRole('textbox').fill('E2E: cheating detected')
+      await expect(confirmButton).toBeEnabled()
 
-        // MUST show success message
-        await expect(page.getByText(/approved/i)).toBeVisible()
-      }
-    })
+      const dqSnackbar = expect(
+        page.locator('.v-snackbar').getByText(`${dqName} disqualified`),
+      ).toBeVisible({ timeout: 15_000 })
+      await confirmButton.click()
+      await dqSnackbar
 
-    test('should reject registration with modal when pending exists', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
+      await expect(modal).not.toBeVisible({ timeout: 10_000 })
+      // Human label again (was the raw `disqualified` enum — §9b P-10).
+      await expect(dqRow.getByText('Disqualified', { exact: true })).toBeVisible()
+      // Terminal state ⇒ no actions left (RegistrationsTab.vue:101-102).
+      await expect(dqRow.getByRole('button', { name: 'Disqualify' })).toHaveCount(0)
 
-      // Navigate to first tournament
-      const firstRow = page.locator('table tbody tr').first()
-      await expect(firstRow).toBeVisible({ timeout: 10000 })
-      await firstRow.click()
-      await page.waitForLoadState('networkidle')
+      // ---------------------------------------------------------------
+      // 3. Backend cross-check
+      // ---------------------------------------------------------------
+      const regs = await listRegistrations(adminToken, tournament.id)
+      const checkedIn = regs.find((r) => r.id === checkInTarget.registrationId)
+      expect(checkedIn?.checked_in).toBe(true)
+      expect(checkedIn?.status).toBe('checked_in')
 
-      // Go to registrations tab
-      await page.getByRole('tab', { name: 'Registrations' }).click()
-      await page.waitForLoadState('networkidle')
-
-      // Find pending registration and reject (state-dependent)
-      const pendingRow = page.locator('tr').filter({ hasText: 'pending' }).first()
-      if (await pendingRow.isVisible().catch(() => false)) {
-        await pendingRow.getByRole('button', { name: 'Reject' }).click()
-
-        // Modal MUST open
-        const modal = page.getByRole('dialog')
-        await expect(modal).toBeVisible()
-        await expect(modal.getByText('Reject Registration')).toBeVisible()
-
-        // Enter reason
-        await modal.getByRole('textbox').fill('Not meeting requirements')
-
-        // Confirm rejection
-        await modal.getByRole('button', { name: 'Reject' }).click()
-
-        // Modal MUST close
-        await expect(modal).not.toBeVisible({ timeout: 5000 })
-
-        // Success snackbar MUST appear
-        const snackbar = page.locator('.v-snackbar')
-        await expect(snackbar.getByText(/rejected/i)).toBeVisible({ timeout: 5000 })
-      }
-    })
-
-    test('should show disqualify button for approved registrations', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
-
-      // Navigate to first tournament
-      const firstRow = page.locator('table tbody tr').first()
-      await expect(firstRow).toBeVisible({ timeout: 10000 })
-      await firstRow.click()
-      await page.waitForLoadState('networkidle')
-
-      // Go to registrations tab
-      await page.getByRole('tab', { name: 'Registrations' }).click()
-      await page.waitForLoadState('networkidle')
-
-      // Look for approved registrations (state-dependent)
-      const approvedRow = page.locator('tr').filter({ hasText: 'approved' }).first()
-      if (await approvedRow.isVisible().catch(() => false)) {
-        // If approved exists, MUST show disqualify button
-        await expect(approvedRow.getByRole('button', { name: 'Disqualify' })).toBeVisible()
-      }
-    })
-
-    test('should disqualify participant with reason when approved exists', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
-
-      // Navigate to first tournament
-      const firstRow = page.locator('table tbody tr').first()
-      await expect(firstRow).toBeVisible({ timeout: 10000 })
-      await firstRow.click()
-      await page.waitForLoadState('networkidle')
-
-      // Go to registrations tab
-      await page.getByRole('tab', { name: 'Registrations' }).click()
-      await page.waitForLoadState('networkidle')
-
-      // Find approved registration and disqualify (state-dependent)
-      const approvedRow = page.locator('tr').filter({ hasText: 'approved' }).first()
-      if (await approvedRow.isVisible().catch(() => false)) {
-        await approvedRow.getByRole('button', { name: 'Disqualify' }).click()
-
-        // Modal MUST open
-        const modal = page.getByRole('dialog')
-        await expect(modal).toBeVisible()
-        await expect(modal.getByText('Disqualify Participant')).toBeVisible()
-
-        // Fill required reason
-        await modal.getByRole('textbox').fill('Cheating detected')
-
-        // Confirm disqualification
-        await modal.getByRole('button', { name: 'Disqualify' }).click()
-
-        // Wait for update
-        await page.waitForLoadState('networkidle')
-
-        // MUST show success message or status change
-        const hasSuccess =
-          (await page.getByText(/disqualified/i).isVisible().catch(() => false)) ||
-          (await page.getByText(/success/i).isVisible().catch(() => false))
-        expect(hasSuccess).toBe(true)
-      }
-    })
-  })
-
-  test.describe('Tournament Lifecycle', () => {
-    test('should publish draft tournament when available', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
-
-      // Look for draft tournament (state-dependent)
-      const draftRow = page.locator('tr').filter({ hasText: 'draft' }).first()
-      if (await draftRow.isVisible().catch(() => false)) {
-        await draftRow.click()
-        await page.waitForLoadState('networkidle')
-
-        // Click publish button
-        const publishBtn = page.getByRole('button', { name: 'Publish' })
-        if (await publishBtn.isVisible().catch(() => false)) {
-          await publishBtn.click()
-
-          // Wait for update
-          await page.waitForLoadState('networkidle')
-
-          // MUST show success
-          await expect(page.getByText(/published/i)).toBeVisible()
-        }
-      }
-    })
-
-    test('should open registration when tournament is published', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
-
-      // Look for published tournament (state-dependent)
-      const publishedRow = page.locator('tr').filter({ hasText: 'published' }).first()
-      if (await publishedRow.isVisible().catch(() => false)) {
-        await publishedRow.click()
-        await page.waitForLoadState('networkidle')
-
-        // Click open registration button
-        const openRegBtn = page.getByRole('button', { name: /Open Registration/i })
-        if (await openRegBtn.isVisible().catch(() => false)) {
-          await openRegBtn.click()
-
-          // Wait for update
-          await page.waitForLoadState('networkidle')
-
-          // MUST show success
-          await expect(page.getByText(/registration.*open/i)).toBeVisible()
-        }
-      }
-    })
-
-    test('should close registration when available', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
-
-      // Navigate to any tournament
-      const firstRow = page.locator('table tbody tr').first()
-      await expect(firstRow).toBeVisible({ timeout: 10000 })
-      await firstRow.click()
-      await page.waitForLoadState('networkidle')
-
-      // Click close registration button if available (state-dependent)
-      const closeRegBtn = page.getByRole('button', { name: /Close Registration/i })
-      if (await closeRegBtn.isVisible().catch(() => false)) {
-        await closeRegBtn.click()
-
-        // Wait for update
-        await page.waitForLoadState('networkidle')
-
-        // MUST show success
-        await expect(page.getByText(/registration.*closed/i)).toBeVisible()
-      }
+      const disqualified = regs.find((r) => r.id === dqTarget.registrationId)
+      expect(disqualified?.status).toBe('disqualified')
     })
   })
 
@@ -491,13 +464,16 @@ test.describe('Tournament Admin Flows', () => {
     })
 
     test('should save tournament changes', async ({ page }) => {
-      await page.goto('/admin/tournaments')
-      await page.waitForLoadState('networkidle')
+      // Create a fresh DRAFT tournament and edit that one. Picking the first
+      // row is order-dependent and used to grab an already-started
+      // tournament, whose participant settings are locked ("Tournament has
+      // already started") so the save legitimately fails.
+      const adminToken = await getAdminToken()
+      const tournament = await createDraftTournament(adminToken, {
+        name: `E2E Edit Test ${Date.now()}`,
+      })
 
-      // Navigate to first tournament
-      const firstRow = page.locator('table tbody tr').first()
-      await expect(firstRow).toBeVisible({ timeout: 10000 })
-      await firstRow.click()
+      await page.goto(`/admin/tournaments/${tournament.id}`)
       await page.waitForLoadState('networkidle')
 
       // Click edit button
@@ -506,21 +482,185 @@ test.describe('Tournament Admin Flows', () => {
       const modal = page.getByRole('dialog')
       await expect(modal).toBeVisible()
 
-      // Modify description
+      // Modify description. In `edit` mode the field's label is exactly
+      // "Description" (TournamentForm.vue:106), so it is unconditional —
+      // the old `if (visible)` wrapper made a failed render invisible.
+      const newDescription = `Updated description ${Date.now()}`
       const descField = modal.getByLabel('Description')
-      if (await descField.isVisible().catch(() => false)) {
-        await descField.fill('Updated description ' + Date.now())
-      }
+      await expect(descField).toBeVisible()
+      await descField.fill(newDescription)
 
-      // Save changes
-      await modal.getByRole('button', { name: /Save|Update/i }).click()
+      // Set up the snackbar assertion BEFORE clicking save. The success
+      // snackbar has a 3s Vuetify auto-dismiss, and waiting on networkidle
+      // after the click often pushes the check past that window, so the
+      // test fails with "not found" even though the snackbar flashed.
+      const snackbarPromise = expect(
+        page.locator('.v-snackbar').getByText('Tournament updated successfully'),
+      ).toBeVisible({ timeout: 10_000 })
 
-      // Wait for update
-      await page.waitForLoadState('networkidle')
+      // Save changes ("Save Changes" — TournamentEditModal.vue:42)
+      await modal.getByRole('button', { name: 'Save Changes' }).click()
 
-      // Success snackbar MUST appear
-      const snackbar = page.locator('.v-snackbar')
-      await expect(snackbar.getByText(/updated|saved|success/i)).toBeVisible({ timeout: 5000 })
+      await snackbarPromise
+      await expect(modal).not.toBeVisible({ timeout: 10_000 })
+
+      // Backend: the edit really persisted.
+      const refetched = await fetchTournamentBySlug(tournament.slug)
+      expect(refetched.id).toBe(tournament.id)
+      expect(refetched.description).toBe(newDescription)
+    })
+  })
+
+  test.describe('Stages', () => {
+    test('should create a stage from the Stages tab', async ({ page }) => {
+      test.setTimeout(60_000)
+      const adminToken = await getAdminToken()
+      // "Add Stage" is gated on an early lifecycle status
+      // (StagesTab.vue:7) — `draft` qualifies and needs no participants.
+      const tournament = await createDraftTournament(adminToken)
+
+      await page.goto(`/admin/tournaments/${tournament.id}?tab=stages`)
+      // A fresh tournament has no stages: the tab's empty state
+      // (StagesTab.vue:28-32) is what MUST be on screen first.
+      await expect(page.getByRole('heading', { name: 'No Stages' })).toBeVisible({
+        timeout: 15_000,
+      })
+
+      await page.getByRole('button', { name: 'Add Stage' }).click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible()
+
+      // Create is disabled until the stage has a name (StagesTab.vue:62).
+      const createButton = dialog.getByRole('button', { name: 'Create', exact: true })
+      await expect(createButton).toBeDisabled()
+      await dialog.getByLabel('Stage Name').fill('Group Phase')
+      await expect(createButton).toBeEnabled()
+
+      // The two selects are addressed BY POSITION (StagesTab.vue:42 =
+      // "Format (optional)", :49 = "Match Format (optional)"). Neither
+      // `getByLabel` nor `hasText` works here: Vuetify renders a v-select's
+      // label as a plain node that is not associated with the control, so the
+      // combobox has no accessible name at all (accessibility snapshot in
+      // test-results-2/.../error-context.md), and `hasText: 'Format
+      // (optional)'` matches both because Playwright text matching is
+      // substring-based. Same `.v-select` + option-menu pattern as
+      // `admin-match-overrides.spec.ts:93-98`.
+      //
+      // A format MUST be picked here even though the field says "(optional)":
+      // `handleCreateStage` sends `format: newStage.format ?? ''`
+      // (StagesTab.vue:109) and the backend parses `format` into `StageFormat`
+      // (`dto/requests/tournament.rs:525-528`), so `''` is a 400. Leaving it
+      // blank is therefore not a path this test can take — that is a reported
+      // finding, not a gap in the coverage. `round_robin` is one of the five
+      // formats the enum actually accepts (`portal-core/src/types/
+      // tournament.rs:669-678`); the picker's `groups_and_playoffs` is not.
+      const stageSelects = dialog.locator('.v-select')
+      await stageSelects.nth(0).click()
+      await page.locator('.v-select__content .v-list-item')
+        .filter({ hasText: /^Round Robin$/ })
+        .click()
+      await expect(page.locator('.v-select__content')).toHaveCount(0)
+      await stageSelects.nth(1).click()
+      await page.locator('.v-select__content .v-list-item')
+        .filter({ hasText: /^bo3$/ })
+        .click()
+      await expect(page.locator('.v-select__content')).toHaveCount(0)
+
+      const snackbarPromise = expect(
+        page.locator('.v-snackbar').getByText('Stage created'),
+      ).toBeVisible({ timeout: 15_000 })
+      await createButton.click()
+      await snackbarPromise
+      await expect(dialog).not.toBeVisible({ timeout: 10_000 })
+
+      // UI: the stage list replaces the empty state and renders the stage's
+      // order avatar, name and formatted subtitle (StagesTab.vue:14-26).
+      await expect(page.getByRole('heading', { name: 'No Stages' })).toHaveCount(0)
+      const stageItem = page.locator('.v-window-item .v-list-item').filter({ hasText: 'Group Phase' })
+      await expect(stageItem).toBeVisible()
+      // P-117: the list renders the mapped label now, not the wire value. The
+      // API cross-check below still pins the wire value, so this asserts the
+      // PRESENTATION while that asserts the CONTRACT — the pair is what makes a
+      // raw-enum regression visible instead of silently passing.
+      await expect(stageItem).toContainText('Format: Round Robin')
+      // The match format is HUMANISED by formatMatchFormat, not printed raw.
+      await expect(stageItem).toContainText('Match: Best of 3')
+
+      // Backend: the stage really persisted with the values chosen above.
+      const stages = await fetchStages(tournament.id)
+      expect(stages).toHaveLength(1)
+      expect(stages[0]?.name).toBe('Group Phase')
+      expect(stages[0]?.stage_order).toBe(1)
+      expect(stages[0]?.format).toBe('round_robin')
+      expect(stages[0]?.match_format).toBe('bo3')
+    })
+  })
+
+  test.describe('Seeding', () => {
+    test('should clear an existing seeding from the Seeding tab', async ({ page }) => {
+      test.setTimeout(90_000)
+      const adminToken = await getAdminToken()
+      // The Seeding tab is only reachable in `registration`/`scheduled`
+      // (AdminTournamentDetailPage.vue:341-343), which is exactly where
+      // `createTournamentWithApprovedPlayers` leaves the tournament.
+      // Auto-seeding is seeded via the API — the auto-seed BUTTON has its own
+      // coverage in tournament-seeding.spec.ts:131; what is under test here is
+      // the Clear button.
+      const { tournament, players } = await createTournamentWithApprovedPlayers(adminToken, 4)
+      const seeded = await autoSeedViaApi(adminToken, tournament.id)
+      expect(seeded).toHaveLength(4)
+      // Positive control for the post-clear assertion at the end: every
+      // registration carries a seed BEFORE the button is pressed, so
+      // "all seeds absent" afterwards cannot pass for the wrong reason.
+      const seedsBefore = await listRegistrations(adminToken, tournament.id)
+      expect(seedsBefore.map((r) => r.seed ?? null).sort()).toEqual([1, 2, 3, 4])
+
+      await page.goto(`/admin/tournaments/${tournament.id}?tab=seeding`)
+
+      // The seeding list MUST be on screen before we clear it, otherwise
+      // "cleared" is indistinguishable from "never rendered".
+      // Scoped to the tab window: the admin layout's nav drawer is also a
+      // `.v-list-item` list, and an unscoped count silently absorbs it.
+      const seedList = page.locator('.v-window-item .v-list-item')
+      await expect(seedList).toHaveCount(4, { timeout: 15_000 })
+      await expect(page.getByText(players[0]!.participantName)).toBeVisible()
+
+      const clearButton = page.getByRole('button', { name: 'Clear Seeding' })
+      await expect(clearButton).toBeEnabled()
+
+      const snackbarPromise = expect(
+        page.locator('.v-snackbar').getByText('Seeding cleared'),
+      ).toBeVisible({ timeout: 15_000 })
+      await clearButton.click()
+      await snackbarPromise
+
+      // UI: back to the empty state, and the Clear button disables itself
+      // (SeedingTab.vue:26 — nothing left to clear).
+      await expect(page.getByRole('heading', { name: 'No Seeding' })).toBeVisible()
+      await expect(seedList).toHaveCount(0)
+      await expect(clearButton).toBeDisabled()
+
+      // Backend: `get_current_seeding` filters to registrations that HAVE a
+      // seed, so a cleared tournament returns nothing.
+      expect(await fetchSeeding(adminToken, tournament.id)).toHaveLength(0)
+
+      // ...and a reload proves the clear was persisted, not just applied to
+      // the local store (`_seeding.ts:65` empties `seeding` client-side too).
+      await page.reload()
+      await expect(page.getByRole('heading', { name: 'No Seeding' })).toBeVisible({
+        timeout: 15_000,
+      })
+
+      // The registrations themselves are untouched — clearing seeds must not
+      // unregister anybody.
+      const regs = await listRegistrations(adminToken, tournament.id)
+      expect(regs.filter((r) => r.status === 'approved')).toHaveLength(4)
+      // ...but their seeds are gone. `seed` is
+      // `skip_serializing_if = "Option::is_none"` on the DTO
+      // (`api/crates/portal-api/src/dto/responses/tournament.rs:393`), so a
+      // cleared seed comes back as an ABSENT key, not `null` — normalise
+      // before comparing, or `=== null` fails on `undefined`.
+      expect(regs.map((r) => r.seed ?? null)).toEqual([null, null, null, null])
     })
   })
 

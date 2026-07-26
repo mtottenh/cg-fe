@@ -1,5 +1,5 @@
 <template>
-  <v-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" max-width="500">
+  <v-dialog v-model="open" max-width="500">
     <v-card>
       <v-card-title class="d-flex align-center">
         <v-icon class="mr-2">mdi-account-plus-outline</v-icon>
@@ -9,7 +9,7 @@
       <v-divider />
 
       <v-card-text>
-        <p class="text-body-2 text-grey mb-4">
+        <p class="text-body-2 text-medium-emphasis mb-4">
           You're registering for <strong>{{ tournament.name }}</strong>
         </p>
 
@@ -58,16 +58,15 @@
 import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import type { TournamentResponse } from '@/stores/tournaments'
+import { useFormRules } from '@/composables/useFormRules'
 
-const props = defineProps<{
-  modelValue: boolean
-  tournament: TournamentResponse
+defineProps<{  tournament: TournamentResponse
 }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  register: [participantName: string]
+const emit = defineEmits<{  register: [participantName: string]
 }>()
+
+const open = defineModel<boolean>({ required: true })
 
 const authStore = useAuthStore()
 
@@ -76,7 +75,9 @@ const loading = ref(false)
 const participantName = ref('')
 
 // Validation rules
+const { maxLength: _maxLength, ...baseRules } = useFormRules()
 const rules = {
+  ...baseRules,
   required: (v: string) => !!v?.trim() || 'Required',
   maxLength: (v: string) => !v || v.length <= 100 || 'Max 100 characters',
 }
@@ -87,7 +88,7 @@ const canRegister = computed(() => {
 
 // Methods
 function close() {
-  emit('update:modelValue', false)
+  open.value = false
 }
 
 async function handleRegister() {
@@ -102,8 +103,7 @@ async function handleRegister() {
 }
 
 // Watch for dialog open
-watch(
-  () => props.modelValue,
+watch(open,
   (isOpen) => {
     if (isOpen) {
       // Pre-fill with player's display name

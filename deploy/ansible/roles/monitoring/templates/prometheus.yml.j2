@@ -1,0 +1,56 @@
+# {{ ansible_managed }}
+#
+# Single static scrape config — group_vars monitoring_metrics_ports IS the
+# service registry (observability-design.md §2). Everything is loopback;
+# remote game hosts are never scraped (§4.6 — agent visibility comes from
+# portal-api's aggregation gauges).
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # --- the stack itself ---
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:{{ monitoring_prometheus_port }}"]
+
+  - job_name: grafana
+    static_configs:
+      - targets: ["127.0.0.1:{{ monitoring_grafana_port }}"]
+
+  - job_name: loki
+    static_configs:
+      - targets: ["127.0.0.1:{{ monitoring_loki_port }}"]
+
+  - job_name: alloy
+    static_configs:
+      - targets: ["127.0.0.1:{{ monitoring_alloy_port }}"]
+
+  # --- host + db + edge ---
+  # honor_labels: the textfile backup metrics carry their own job="pg-backup"
+  # style labels (observability-design.md §4.7) — don't rename them to
+  # exported_job.
+  - job_name: node
+    honor_labels: true
+    static_configs:
+      - targets: ["127.0.0.1:{{ monitoring_node_exporter_port }}"]
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["127.0.0.1:{{ monitoring_postgres_exporter_port }}"]
+
+  # Caddy admin endpoint (default localhost:2019); per-vhost metrics are
+  # enabled by the `metrics { per_host }` global option in Caddyfile.j2.
+  - job_name: caddy
+    static_configs:
+      - targets: ["127.0.0.1:2019"]
+
+  # --- portal services (loopback METRICS_ADDR listeners) ---
+{% for service, port in monitoring_metrics_ports.items() %}
+{% if service not in ['cs2-poller', 'cs2-enricher'] or portal_steam_bot_enabled | default(false) %}
+  - job_name: {{ service }}
+    static_configs:
+      - targets: ["127.0.0.1:{{ port }}"]
+{% endif %}
+{% endfor %}

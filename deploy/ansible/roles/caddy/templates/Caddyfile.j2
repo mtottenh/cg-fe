@@ -1,0 +1,207 @@
+# {{ ansible_managed }}
+
+{
+    email {{ caddy_acme_email }}
+    # Structured logs to journald — no separate log files to rotate.
+    log {
+        output stderr
+        format json
+    }
+{% if monitoring_enabled | default(false) %}
+    # Per-vhost request metrics on the admin endpoint
+    # (localhost:2019/metrics), scraped by the loopback Prometheus.
+    metrics {
+        per_host
+    }
+{% endif %}
+}
+
+{{ portal_domain }} {
+    encode zstd gzip
+
+    # MatchZy demo/backup uploads: 100-300 MB .dem files need far more
+    # than the default 60s (§8 / review M5).
+    @gameserver_uploads {
+        path /v1/gameserver/demos /v1/gameserver/backups
+    }
+    handle @gameserver_uploads {
+        reverse_proxy 127.0.0.1:3000 {
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+            # Agent identity headers are trusted ONLY from the agents
+            # vhost (§5.4 / review C1) — never from the public site.
+            header_up -X-Client-Cert-Serial
+            header_up -X-Client-Cert-Fingerprint
+            header_up -X-Portal-Agent-Vhost
+            transport http {
+                read_timeout 600s
+                write_timeout 600s
+            }
+        }
+    }
+
+    # API routes — everything the backend owns.
+    @api {
+        path /v1/* /uploads/* /swagger-ui/* /api-docs/* /health
+    }
+    handle @api {
+        reverse_proxy 127.0.0.1:3000 {
+            # Pass client identity through.
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Real-IP {remote}
+            # Agent identity headers are trusted ONLY from the agents
+            # vhost (§5.4 / review C1) — never from the public site.
+            header_up -X-Client-Cert-Serial
+            header_up -X-Client-Cert-Fingerprint
+            header_up -X-Portal-Agent-Vhost
+            # 60s is plenty; bump if you add long-polling routes.
+            transport http {
+                read_timeout 60s
+                write_timeout 60s
+            }
+        }
+    }
+
+    # Frontend SPA. Fallback to index.html for client-side routing.
+    handle {
+        root * /var/www/portal
+        try_files {path} /index.html
+        file_server
+    }
+
+    # HSTS + sensible defaults.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+
+        # Content-Security-Policy for the Vite-built Vue/Vuetify SPA served
+        # same-origin with its API. Access and refresh tokens live in
+        # localStorage, so any injected script can exfiltrate a 7-day session
+        # — this is the main mitigation until the refresh token moves to an
+        # HttpOnly cookie.
+        #
+        #   default-src 'self'      deny-by-default for anything not listed
+        #   script-src 'self'       strict: Vite emits hashed external JS only,
+        #                           no inline <script> and no eval, so no
+        #                           'unsafe-inline'/'unsafe-eval' is needed.
+        #                           If this ever breaks, fix the build — do not
+        #                           relax it.
+        #   style-src 'unsafe-inline'  Vuetify injects runtime <style> blocks
+        #                           and inline style attributes for its theme
+        #                           and layout; CSS injection is far lower risk
+        #                           than script injection.
+        #   img-src data: blob:     inlined small assets + client-generated
+        #                           object URLs (avatar/banner previews); the
+        #                           object-storage origin is where uploaded
+        #                           avatars/banners/screenshots actually live
+        #                           (S3_EVIDENCE_PUBLIC_URL in api.env).
+        #   font-src data:          MDI/webfont files, some inlined by Vite.
+        #   connect-src wss:        API calls are same-origin; wss: covers the
+        #                           lobby/veto WebSocket. Object storage is
+        #                           listed too for direct presigned PUT/GET.
+        #   frame-ancestors 'none'  clickjacking, mirrors X-Frame-Options DENY
+        #   base-uri/form-action 'self'  block <base> hijacking and off-site
+        #                           form posts.
+        #   object-src 'none'       no Flash/applet/plugin surface.
+        #
+        # NOTE: this also applies to /swagger-ui/*, which Caddy proxies from
+        # the API under this same domain. Swagger UI bootstraps from an inline
+        # <script>, so 'script-src self' breaks it — intentional in prod. If
+        # you need Swagger UI on the public host, move it to its own site
+        # block rather than weakening script-src here.
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: {{ portal_evidence_public_url }}; font-src 'self' data:; connect-src 'self' wss: {{ portal_evidence_public_url }}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    }
+}
+
+{% if gameserver_integration_enabled | default(false) %}
+# Game-server agent channel (docs/matchzy-integration.md §5.4). Agents on
+# CS2 hosts connect OUTBOUND here with client certificates signed by the
+# portal CA (`portal-cli gameserver ca-init`). Caddy verifies the chain and
+# validity window; the API resolves the forwarded serial against its
+# revocation registry. Needs a DNS A record for agents.{{ portal_domain }}.
+agents.{{ portal_domain }} {
+    tls {
+        client_auth {
+            mode require_and_verify
+            trusted_ca_cert_file {{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}/ca.pem
+        }
+    }
+
+    reverse_proxy 127.0.0.1:3000 {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        # Identity for the API: hex serial of the verified client cert.
+        header_up X-Client-Cert-Serial {tls_client_serial}
+        header_up X-Client-Cert-Fingerprint {tls_client_fingerprint}
+        # Trust marker: the API honors the serial only when this is set
+        # (§5.4 / review C1). The public site strips it.
+        header_up X-Portal-Agent-Vhost 1
+        # Long-lived agent WebSocket.
+        transport http {
+            read_timeout 300s
+            write_timeout 300s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+}
+{% endif %}
+
+{% if monitoring_enabled | default(false) and monitoring_ingress | default('public') == 'public' %}
+# Grafana (docs/observability-design.md §2). The ONLY public ingress into the
+# monitoring stack — Prometheus/Loki/exporters are loopback-only. Grafana
+# handles its own auth (vault_grafana_admin_password). Needs a DNS A record
+# for grafana.{{ portal_domain }} pointing at this box.
+# (monitoring_ingress=tailnet drops this vhost entirely: Grafana is then
+# reached over the operator tailnet via Tailscale Serve.)
+grafana.{{ portal_domain }} {
+    encode zstd gzip
+
+    reverse_proxy 127.0.0.1:{{ monitoring_grafana_port | default(3001) }} {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        # Grafana Live (dashboard streaming) runs over a WebSocket.
+        transport http {
+            read_timeout 300s
+            write_timeout 300s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
+}
+{% endif %}
+
+# Demo-stats service (CS2 demo parser). The portal API's SSRF guard requires
+# CS2_DEMO_SERVICE_URL to be https + non-private, so the loopback service is
+# fronted here. Needs a DNS A record for demos.{{ portal_domain }} pointing
+# at this box.
+demos.{{ portal_domain }} {
+    encode zstd gzip
+
+    reverse_proxy 127.0.0.1:{{ demo_stats_port | default(3100) }} {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        # Demo parsing of a large .dem can take a while.
+        transport http {
+            read_timeout 300s
+            write_timeout 300s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
+}

@@ -11,7 +11,7 @@
             <div class="text-subtitle-2">
               {{ isProposer ? 'Your Proposal' : 'Proposal from opponent' }}
             </div>
-            <div class="text-caption text-grey">
+            <div class="text-caption text-medium-emphasis">
               Sent {{ formatDateTime(proposal.created_at) }}
             </div>
           </div>
@@ -65,7 +65,7 @@
             class="mb-1"
           />
         </v-radio-group>
-        <div v-else class="d-flex flex-wrap gap-2">
+        <div v-else class="d-flex flex-wrap ga-2">
           <v-chip
             v-for="time in proposal.proposed_times"
             :key="time"
@@ -78,10 +78,21 @@
         </div>
       </div>
 
+      <!-- Rejection reason (why the opponent declined) -->
+      <v-alert
+        v-if="proposal.status === 'rejected' && proposal.rejection_reason"
+        type="error"
+        variant="tonal"
+        density="compact"
+        class="mb-4"
+      >
+        <strong>Rejected:</strong> {{ proposal.rejection_reason }}
+      </v-alert>
+
       <!-- Notes -->
       <div v-if="proposal.notes" class="mb-4">
         <div class="text-subtitle-2 mb-1">Notes</div>
-        <div class="text-body-2 text-grey-darken-1 pa-2 bg-grey-lighten-4 rounded">
+        <div class="text-body-2 text-medium-emphasis pa-2 bg-surface-variant rounded">
           {{ proposal.notes }}
         </div>
       </div>
@@ -91,7 +102,7 @@
         <!-- Responder Actions -->
         <template v-if="!isProposer">
           <v-divider class="mb-4" />
-          <div class="d-flex gap-2 flex-wrap">
+          <div class="d-flex ga-2 flex-wrap">
             <v-btn
               color="success"
               :loading="loading"
@@ -122,20 +133,34 @@
           </div>
         </template>
 
-        <!-- Proposer Actions -->
+        <!-- Proposer Actions. The proposer has no accept/reject/counter — the
+             one thing they can do is withdraw their own pending proposal
+             (POST /schedule/cancel), which reopens scheduling immediately
+             instead of leaving a mistyped time to block it for the full TTL. -->
         <template v-else>
           <v-divider class="mb-4" />
-          <v-alert type="info" variant="tonal" density="compact">
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
             <template v-slot:prepend>
               <v-icon>mdi-clock-outline</v-icon>
             </template>
             Waiting for your opponent to respond...
           </v-alert>
+          <div class="d-flex ga-2 flex-wrap">
+            <v-btn
+              variant="outlined"
+              color="error"
+              :loading="loading"
+              @click="openWithdrawDialog"
+            >
+              <v-icon start>mdi-undo</v-icon>
+              Withdraw Proposal
+            </v-btn>
+          </div>
         </template>
       </template>
 
       <!-- Accepted Time Display -->
-      <template v-if="proposal.status === 'accepted' && proposal.accepted_time">
+      <template v-if="proposal.status === 'accepted' && proposal.selected_time">
         <v-divider class="mb-4" />
         <v-alert type="success" variant="tonal">
           <template v-slot:prepend>
@@ -143,48 +168,66 @@
           </template>
           <div>
             <strong>Scheduled for:</strong>
-            <div class="mt-1">{{ formatProposedTime(proposal.accepted_time) }}</div>
-          </div>
-        </v-alert>
-      </template>
-
-      <!-- Rejected Reason Display -->
-      <template v-if="proposal.status === 'rejected' && proposal.rejection_reason">
-        <v-divider class="mb-4" />
-        <v-alert type="error" variant="tonal">
-          <template v-slot:prepend>
-            <v-icon>mdi-close-circle</v-icon>
-          </template>
-          <div>
-            <strong>Rejection reason:</strong>
-            <div class="mt-1">{{ proposal.rejection_reason }}</div>
+            <div class="mt-1">{{ formatProposedTime(proposal.selected_time) }}</div>
           </div>
         </v-alert>
       </template>
     </v-card-text>
 
-    <!-- Reject Dialog -->
-    <v-dialog v-model="rejectDialogOpen" max-width="400" persistent>
+    <!-- Reject Dialog: collects an optional reason so the opponent gets
+         context instead of a bare rejection restarting the negotiation. -->
+    <v-dialog v-model="rejectDialogOpen" max-width="480">
       <v-card>
         <v-card-title>Reject Proposal</v-card-title>
-        <v-divider />
         <v-card-text>
-          <p class="mb-4">Are you sure you want to reject this proposal?</p>
+          <p class="mb-3">Are you sure you want to reject this proposal?</p>
           <v-textarea
             v-model="rejectReason"
             label="Reason (optional)"
+            placeholder="e.g. None of these times work for us — weekday evenings are better"
             rows="2"
             variant="outlined"
             density="comfortable"
-            hint="Let them know why these times don't work"
+            hide-details
           />
         </v-card-text>
-        <v-divider />
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="rejectDialogOpen = false">Cancel</v-btn>
-          <v-btn color="error" :loading="loading" @click="handleReject">
+          <v-btn
+            color="error"
+            variant="flat"
+            :loading="loading"
+            @click="confirmReject"
+          >
             Reject
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Withdraw Dialog: withdrawing is destructive (the opponent loses the
+         times they were about to answer), so it is confirmed rather than
+         one-click. -->
+    <v-dialog v-model="withdrawDialogOpen" max-width="480">
+      <v-card>
+        <v-card-title>Withdraw Proposal</v-card-title>
+        <v-card-text>
+          <p class="mb-0">
+            Withdraw these proposed times? Your opponent will no longer be able to
+            respond to them, and you can propose a new time straight away.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="withdrawDialogOpen = false">Keep Proposal</v-btn>
+          <v-btn
+            color="error"
+            variant="flat"
+            :loading="loading"
+            @click="confirmWithdraw"
+          >
+            Withdraw
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -195,6 +238,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { ScheduleProposalResponse } from '@/stores/matchScheduling'
+import { formatDateTime } from '@/utils/formatters'
 import {
   getProposalStatusColor,
   getProposalStatusLabel,
@@ -213,11 +257,13 @@ const emit = defineEmits<{
   accept: [time: string]
   reject: [reason?: string]
   counter: []
+  withdraw: []
 }>()
 
 const selectedTime = ref<string | null>(null)
 const rejectDialogOpen = ref(false)
 const rejectReason = ref('')
+const withdrawDialogOpen = ref(false)
 
 const isExpired = computed(() => isProposalExpired(props.proposal))
 const timeUntilExpiration = computed(() => getTimeUntilExpiration(props.proposal))
@@ -227,13 +273,10 @@ const statusLabel = computed(() => getProposalStatusLabel(props.proposal.status)
 const cardColor = computed(() => {
   if (props.proposal.status === 'accepted') return 'success'
   if (props.proposal.status === 'rejected') return 'error'
+  if (props.proposal.status === 'cancelled') return 'grey'
   if (isExpired.value) return 'grey'
   return 'warning'
 })
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString()
-}
 
 function handleAccept() {
   if (selectedTime.value) {
@@ -246,8 +289,17 @@ function openRejectDialog() {
   rejectDialogOpen.value = true
 }
 
-function handleReject() {
-  emit('reject', rejectReason.value || undefined)
+function confirmReject() {
+  emit('reject', rejectReason.value.trim() || undefined)
   rejectDialogOpen.value = false
+}
+
+function openWithdrawDialog() {
+  withdrawDialogOpen.value = true
+}
+
+function confirmWithdraw() {
+  emit('withdraw')
+  withdrawDialogOpen.value = false
 }
 </script>

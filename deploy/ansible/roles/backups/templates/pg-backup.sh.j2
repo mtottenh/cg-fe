@@ -1,0 +1,78 @@
+#!/bin/bash
+# {{ ansible_managed }}
+#
+# Nightly portal_prod dump. Local copy first (so an S3 outage never loses
+# the dump), validated before anything else trusts it, then an
+# age-ENCRYPTED copy is uploaded — leaked bucket keys must never expose
+# player data (the API holds the same key pair this script uploads with).
+# The local copy stays plaintext-zstd: the box already holds the live DB,
+# so it adds no exposure, and it keeps local restores key-free.
+#
+# All config comes from /etc/portal/backup.env (see roles/backups).
+
+set -euo pipefail
+
+BACKUP_DIR=/var/lib/portal/backups
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+NAME="${POSTGRES_DB}_${STAMP}.sql.zst"
+OUT="$BACKUP_DIR/$NAME"
+
+# node_exporter textfile collector (observability-design.md §4.7). The dir
+# only exists once roles/monitoring has run — skip silently otherwise so
+# backups never depend on the monitoring stack.
+TEXTFILE_DIR=/var/lib/node_exporter/textfile
+START_TS=$(date +%s)
+emit_backup_metrics() { # <job> <size-bytes>
+    [ -d "$TEXTFILE_DIR" ] || return 0
+    local now
+    now=$(date +%s)
+    {
+        echo "portal_backup_last_success_timestamp_seconds{job=\"$1\"} $now"
+        echo "portal_backup_last_size_bytes{job=\"$1\"} $2"
+        echo "portal_backup_last_duration_seconds{job=\"$1\"} $((now - START_TS))"
+    } > "$TEXTFILE_DIR/portal-backup-$1.prom.tmp"
+    # Atomic rename — node_exporter reads the directory concurrently.
+    mv "$TEXTFILE_DIR/portal-backup-$1.prom.tmp" "$TEXTFILE_DIR/portal-backup-$1.prom"
+}
+
+mkdir -p "$BACKUP_DIR"
+
+echo "→ pg_dump ${POSTGRES_DB} → $OUT"
+# lock_timeout bounds lock WAITS only (not the dump itself): blocking >30s
+# behind DDL means something is wrong — fail loudly instead of wedging the
+# timer until TimeoutStartSec.
+PGOPTIONS='-c lock_timeout=30s' pg_dump --format=custom --compress=0 "$POSTGRES_DB" \
+    | zstd -T0 -q "-${BACKUP_ZSTD_LEVEL:-12}" -o "$OUT"
+
+echo "→ validating dump"
+zstd -t -q "$OUT"                              # archive integrity
+zstd -dc "$OUT" | pg_restore --list >/dev/null # pg_restore can read the catalog
+(cd "$BACKUP_DIR" && sha256sum "$NAME" > "$NAME.sha256")
+SIZE=$(stat -c%s "$OUT")
+echo "→ validated: $OUT ($SIZE bytes)"
+
+echo "→ encrypting for upload"
+age -r "$BACKUP_AGE_PUBLIC_KEY" -o "$OUT.age" "$OUT"
+
+echo "→ uploading to s3://${BACKUP_BUCKET}/"
+aws --endpoint-url="$AWS_ENDPOINT_URL" \
+    s3 cp "$OUT.age" "s3://${BACKUP_BUCKET}/${NAME}.age" --only-show-errors
+# Checksum of the PLAINTEXT .zst — verifies both the download and the
+# decryption when restoring.
+aws --endpoint-url="$AWS_ENDPOINT_URL" \
+    s3 cp "$OUT.sha256" "s3://${BACKUP_BUCKET}/${NAME}.sha256" --only-show-errors
+rm -f "$OUT.age"   # transient upload artifact; local retention keeps the .zst
+
+echo "→ pruning local dumps older than ${BACKUP_LOCAL_RETENTION_DAYS} days"
+find "$BACKUP_DIR" -maxdepth 1 -type f \
+    \( -name "${POSTGRES_DB}_*.sql.zst" -o -name "${POSTGRES_DB}_*.sql.zst.sha256" \) \
+    -mtime "+${BACKUP_LOCAL_RETENTION_DAYS}" -delete
+
+emit_backup_metrics pg-backup "$SIZE"
+
+if [ -n "${BACKUP_HEALTHCHECK_URL:-}" ]; then
+    curl -fsS -m 10 --retry 3 "$BACKUP_HEALTHCHECK_URL" >/dev/null \
+        || echo "warning: healthcheck ping failed (backup itself succeeded)"
+fi
+
+echo "✓ backup complete"

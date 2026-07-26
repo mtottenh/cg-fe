@@ -197,7 +197,7 @@
                      has; the id stays as a title so it is still copyable for
                      support. -->
                 <td>
-                  <span data-testid="claim-submitter" :title="currentResult.submitted_by_user_id">
+                  <span data-testid="claim-submitter" :title="currentResult.submitted_by_user_id ?? undefined">
                     {{ submitterName }}
                   </span>
                 </td>

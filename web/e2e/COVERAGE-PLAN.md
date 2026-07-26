@@ -470,9 +470,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 207 found · 193 fixed · 13 open** · 1 wontfix (P-53 mitigated).
+**Status (derived): 207 found · 194 fixed · 12 open** · 1 wontfix (P-53 mitigated).
 
-Open: P-66, P-120, P-128, P-129, P-143, P-149, P-154, P-155, P-156, P-173, P-183, P-189, P-207.
+Open: P-66, P-120, P-128, P-129, P-143, P-149, P-154, P-155, P-156, P-173, P-183, P-189.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -688,7 +688,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-198 | `update_season` writes the generic field update and THEN calls `update_roster_lock` — two non-transactional writes, so a DB error between them half-applies the PATCH | integrity | **fixed** `9960a9a` |
 | P-199 | **`update_status` enforces a transition chain (Draft→Registration→Active→…) but `update_season` writes `status` as a plain field with NO validation, so `PATCH {status}` bypasses the chain entirely** — two mechanisms disagreeing about the same rule | enforcement | **fixed** `9960a9a` |
 | P-200 | `LeagueTeamSeasonResponse` carries no `roster_lock_status`, so `TeamDetailPage` makes a second round-trip to learn its own roster's lock (field on an already-registered DTO; no `openapi.rs` change needed) | user-facing | **fixed** `9960a9a`+web |
-| P-207 | The season edit modal offers all six statuses while the PATCH now enforces the transition chain (P-199) — an illegal pick 400s with a generic snackbar instead of never being offered; derive `statusOptions` from the legal transitions of the current status | user-facing | open |
+| P-207 | The season edit modal offers all six statuses while the PATCH now enforces the transition chain (P-199) — an illegal pick 400s with a generic snackbar instead of never being offered; derive `statusOptions` from the legal transitions of the current status | user-facing | **fixed** `fb45f8e`+web |
 | P-170 | After an override the claimed (wrong) score showed beside the corrected one with nothing saying which governs. **Owner ruling: show the corrected score.** Claim row kept (it is evidence); the UI now marks it superseded | user-facing | **fixed** `97f4ae7+64f83a4` |
 | P-171 | `MatchResultsTab` printed `submitted_by_user_id` as a raw UUID while `submitted_by_display_name` sat unused on the same DTO — P-95/P-115/P-123 class | user-facing | **fixed** `97f4ae7` |
 | P-172 | Evidence/demo chips read `id.slice(0, 8)`; v7 prefixes are timestamps, so files attached seconds apart rendered as identical chips | user-facing | **fixed** `97f4ae7` |

@@ -204,19 +204,21 @@ const form = ref({
 // Labels are pulled from the shared maps rather than re-typed, so this control
 // and the Seasons table speak with one voice.
 // ---------------------------------------------------------------------------
-const SEASON_STATUSES = [
-  'draft',
-  'registration',
-  'active',
-  'playoffs',
-  'completed',
-  'cancelled',
-] as const
-
-const statusOptions = SEASON_STATUSES.map((value) => ({
-  value,
-  label: getStatusLabel(seasonStatusMap, value),
-}))
+// P-207: the options are the season's CURRENT status plus the transitions the
+// server says are legal (`allowed_status_transitions`, computed from
+// `SeasonStatus::allowed_transitions` — the same list the PATCH enforces since
+// P-199). Offering all six values made every chain-illegal pick a control
+// that 400s (the P-82 shape); deriving them client-side would hand-copy the
+// lifecycle rule (the P-15 shape). The server's answer is the option list.
+const statusOptions = computed(() => {
+  const current = props.season?.status
+  const allowed = props.season?.allowed_status_transitions ?? []
+  const values = current ? [current, ...allowed] : allowed
+  return values.map((value) => ({
+    value,
+    label: getStatusLabel(seasonStatusMap, value),
+  }))
+})
 
 // P-14 is FIXED: `LeagueSeasonService::update_season` now forwards
 // `roster_lock_status` (by delegating to `update_roster_lock`, which also

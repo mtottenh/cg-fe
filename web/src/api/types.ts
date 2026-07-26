@@ -6616,6 +6616,13 @@ export interface components {
         DataResponse_LeagueSeasonResponse: {
             /** @description Response DTO for a league season. */
             data: {
+                /**
+                 * @description The statuses this season may legally move to next (P-207). The edit
+                 *     modal derives its Status options from this, so the client holds no
+                 *     copy of the lifecycle chain and cannot offer a move the PATCH will
+                 *     refuse (P-199 enforces the same list server-side).
+                 */
+                allowed_status_transitions: components["schemas"]["SeasonStatus"][];
                 /** Format: date-time */
                 created_at: string;
                 created_by: string;
@@ -8825,6 +8832,13 @@ export interface components {
         /** @description Wrapper for single-item responses. */
         DataResponse_Vec_LeagueSeasonResponse: {
             data: {
+                /**
+                 * @description The statuses this season may legally move to next (P-207). The edit
+                 *     modal derives its Status options from this, so the client holds no
+                 *     copy of the lifecycle chain and cannot offer a move the PATCH will
+                 *     refuse (P-199 enforces the same list server-side).
+                 */
+                allowed_status_transitions: components["schemas"]["SeasonStatus"][];
                 /** Format: date-time */
                 created_at: string;
                 created_by: string;
@@ -11562,6 +11576,13 @@ export interface components {
         };
         /** @description Response DTO for a league season. */
         LeagueSeasonResponse: {
+            /**
+             * @description The statuses this season may legally move to next (P-207). The edit
+             *     modal derives its Status options from this, so the client holds no
+             *     copy of the lifecycle chain and cannot offer a move the PATCH will
+             *     refuse (P-199 enforces the same list server-side).
+             */
+            allowed_status_transitions: components["schemas"]["SeasonStatus"][];
             /** Format: date-time */
             created_at: string;
             created_by: string;

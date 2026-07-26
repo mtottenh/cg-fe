@@ -648,14 +648,14 @@ test.describe('Admin Management', () => {
       await editDialog.getByLabel('Max Teams').fill('16')
 
       await editDialog.locator('.v-select').filter({ hasText: 'Status' }).click()
-      // Exactly the six values of `SeasonStatus` / the CHECK constraint
-      // (api/migrations/0025_league_teams_and_seasons.sql:61), in order.
+      // P-207: exactly the current status plus its LEGAL transitions
+      // (`allowed_status_transitions`, served by the API — the same chain the
+      // PATCH enforces since P-199). A draft season may only open
+      // registration or be cancelled; the other three values are no longer
+      // offered, because picking one could only ever produce a 400.
       await expect(page.getByRole('listbox').getByRole('option')).toHaveText([
         'Draft',
         'Registration Open',
-        'Active',
-        'Playoffs',
-        'Completed',
         'Cancelled',
       ])
 

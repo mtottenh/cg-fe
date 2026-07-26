@@ -47,8 +47,6 @@
           - "'CHANGE_ME' not in vault_linode_access_key"
           - vault_linode_secret_key is defined
           - "'CHANGE_ME' not in vault_linode_secret_key"
-          - vault_portal_scanner_api_key is defined
-          - "'CHANGE_ME' not in vault_portal_scanner_api_key"
           - vault_steam_api_key is defined
           - "'CHANGE_ME' not in vault_steam_api_key"
         fail_msg: >-
@@ -57,6 +55,23 @@
           `ansible-vault create ansible/group_vars/all/vault.yml`
           using vault.example.yml as the key list ("Operator checklist" in
           deploy/README.md documents every key).
+
+    # The scanner's API key can only be minted AFTER the first converge
+    # (portal-cli api-key create needs a migrated DB), so it is required
+    # only when the scanner is part of this run — asserting it
+    # unconditionally would deadlock the tagged first converge. (This play
+    # is tags:[always], so task tags can't scope it — gate on the selected
+    # run tags instead.)
+    - name: Scanner API key is set (when deploying the scanner)
+      ansible.builtin.assert:
+        that:
+          - vault_portal_scanner_api_key is defined
+          - "'CHANGE_ME' not in vault_portal_scanner_api_key"
+        fail_msg: >-
+          vault_portal_scanner_api_key still holds a placeholder. Mint it on
+          the box (runbook step 7: portal-cli api-key create --service
+          portal-scanner ...) and set it via `just edit-vault`.
+      when: "'portal_scanner' in ansible_run_tags or 'all' in ansible_run_tags"
 
     - name: Backup encryption key is configured
       ansible.builtin.assert:

@@ -116,7 +116,7 @@ backup_schedule: "OnCalendar=*-*-* 03:15:00"    # 03:15 server local
 # Put the PUBLIC key here; the private key goes in your password manager
 # and must NEVER land on the box — an attacker with the box (or the bucket
 # keys, which the API also holds) can then read no historical backups.
-backup_age_public_key: ""
+backup_age_public_key: "age1mrcfatcyuhjeh9aukp2ew8s8dwt4wws8zssmaz3qjzhqs53yccxsk5spfl"
 
 # Remote retention: dumps in the bucket expire after this many days via an
 # S3 lifecycle rule the backups role applies (idempotently) from the box.

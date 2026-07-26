@@ -1,5 +1,6 @@
 <template>
   <v-autocomplete
+    ref="autocompleteRef"
     v-model="selected"
     v-model:search="searchQuery"
     :items="items"
@@ -42,7 +43,7 @@
 </template>
 
 <script setup lang="ts" generic="T extends { id: string }">
-import { ref, onMounted, type Ref } from 'vue'
+import { ref, onMounted, nextTick, type Ref, type ComponentPublicInstance } from 'vue'
 import { watchDebounced } from '@vueuse/core'
 
 interface Props {
@@ -136,8 +137,25 @@ onMounted(() => {
   }
 })
 
+const autocompleteRef = ref<ComponentPublicInstance | null>(null)
+
 function onSelect(value: T | null) {
   selected.value = value
   emit('select', value)
+
+  // P-154: after picking an option, Vuetify's v-autocomplete puts focus back
+  // on its <input> (VAutocomplete's onAfterLeave), and with focus held there
+  // the operator's FIRST click anywhere else was measured to be swallowed —
+  // app-wide, since every autocomplete surface shares this component. The
+  // e2e workaround was an explicit blur before the next click; doing it here
+  // gives every surface the released-focus resting state instead of each
+  // spec (and each operator's first click) re-creating it. Only on a real
+  // selection — clearing means "type a new query", so it keeps focus.
+  if (value !== null) {
+    nextTick(() => {
+      const root = autocompleteRef.value?.$el as HTMLElement | undefined
+      root?.querySelector('input')?.blur()
+    })
+  }
 }
 </script>

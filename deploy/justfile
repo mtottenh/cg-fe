@@ -13,10 +13,12 @@ HOST := `yq -r '.all.children.portal.hosts[].ansible_host' ansible/inventory/pro
 DOMAIN := `yq -r '.all.vars.portal_domain' ansible/inventory/prod.yml 2>/dev/null || echo portal.example.com`
 USER := "ops"
 
-# Vault password: prompt interactively, OR read from the gitignored
-# ansible/.vault_pass when it exists (chmod 600 it) — the latter makes every
-# recipe non-interactive, so a deploy can be driven unattended.
-VAULT_ARGS := `[ -f ansible/.vault_pass ] && echo "--vault-password-file ansible/.vault_pass" || echo "--ask-vault-pass"`
+# Vault password: prompt interactively, OR read from a password file —
+# checked in order: ~/.config/cg-portal/vault_pass (preferred on WSL, where
+# /mnt/c forces the executable bit and ansible would then try to EXECUTE the
+# file as a password script), then the gitignored ansible/.vault_pass.
+# Either makes every recipe non-interactive for unattended deploys.
+VAULT_ARGS := `for f in "$HOME/.config/cg-portal/vault_pass" ansible/.vault_pass; do if [ -f "$f" ]; then echo "--vault-password-file $f"; exit; fi; done; echo "--ask-vault-pass"`
 
 # On WSL (/mnt/c is world-writable) ansible REFUSES to load ansible.cfg, so
 # the settings that matter for driving deploys land here as env instead.

@@ -92,10 +92,13 @@ cp ansible/group_vars/all/vault.example.yml ansible/group_vars/all/vault.yml
 $EDITOR ansible/group_vars/all/vault.yml     # set the keys from step 1
 ansible-vault encrypt ansible/group_vars/all/vault.yml   # pick a vault password; store it in your password manager
 
-# OPTIONAL — unattended runs: drop the vault password in the gitignored
-# ansible/.vault_pass (chmod 600). Every `just` recipe then skips the
-# interactive prompt, so deploys can be driven end-to-end by tooling.
-printf '%s' 'your-vault-password' > ansible/.vault_pass && chmod 600 ansible/.vault_pass
+# OPTIONAL — unattended runs: drop the vault password in a password file;
+# every `just` recipe then skips the interactive prompt. On WSL use the
+# home-dir location — /mnt/c forces the executable bit and ansible would
+# try to EXECUTE the file as a password script:
+mkdir -p ~/.config/cg-portal
+printf '%s' 'your-vault-password' > ~/.config/cg-portal/vault_pass && chmod 600 ~/.config/cg-portal/vault_pass
+# (non-WSL alternative: the gitignored ansible/.vault_pass, chmod 600)
 ```
 
 **Required vault keys for the base deploy:** `vault_postgres_password`,

@@ -138,7 +138,7 @@ site.yml:
 | `vault_steam_api_key` | Steam Web API key (also the poller's `STEAM_WEB_API_KEY`). **Rotate** — the old box leaked it in `.env` |
 | `vault_scanner_s3_*`, `vault_demo_stats_s3_*` (optional) | Per-service S3 overrides; default to the `vault_linode_*` pair |
 | `vault_steam_bot_api_key` (only if bots enabled) | Portal API key (`cgp_…`) the poller + enricher authenticate with |
-| `vault_steam_bot_username` / `_password` / `_shared_secret` (only if bots enabled) | Dedicated Steam bot account for the enricher's Game Coordinator login (Prime + CS2), and its Guard TOTP secret |
+| `vault_steam_bot_username` / `_password` / `_shared_secret` (only if bots enabled) | Dedicated Steam bot account for the enricher's Game Coordinator login (Prime + CS2). Shared secret `""` = no authenticator: 2FA challenges park on the enricher's guard code-entry page (ts.net:8443 in tailnet mode; `steam-guard-link` can mint a TOTP secret on-box) |
 | `vault_grafana_admin_password` (only if monitoring enabled) | Grafana admin login (≥12 chars; applied on Grafana's first start) |
 | `vault_tailscale_auth_key` (only if `monitoring_ingress: tailnet`) | Pre-authorized Tailscale key for the box's first `tailscale up`; unused after joining |
 | `vault_gameserver_rcon_passwords` (only if gameservers exist) | Dict of RCON passwords keyed by inventory hostname (CS2 runs with `-usercon`) |

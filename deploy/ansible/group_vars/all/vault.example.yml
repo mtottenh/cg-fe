@@ -36,7 +36,14 @@ vault_steam_bot_api_key: "cgp_CHANGE_ME"
 vault_steam_bot_username: "CHANGE_ME"
 vault_steam_bot_password: "CHANGE_ME"
 # Steam Guard TOTP shared secret (base64) for unattended 2FA login.
-vault_steam_bot_shared_secret: "CHANGE_ME"
+# Leave "" if the account has no mobile authenticator yet: 2FA challenges
+# then park on the enricher's code-entry page (ts.net:8443 in tailnet
+# mode) and the stored machine token skips the challenge on later logins.
+# To mint a secret without SSH or desktop tools, run the on-box linker
+# (`systemctl start steam-guard-link`, then follow the same ts.net:8443
+# page; needs a phone number on the account) and paste the secret it
+# prints here.
+vault_steam_bot_shared_secret: ""
 # (The poller's STEAM_WEB_API_KEY reuses vault_steam_api_key above.)
 
 # --- Monitoring (only required when monitoring_enabled=true) ----------------

@@ -189,3 +189,13 @@ monitoring_metrics_ports:
   portal-demo-stats: 9466
   cs2-poller: 9467
   cs2-enricher: 9468
+
+# Loopback Steam Guard code-entry page for cs2-enricher: when the bot's
+# Steam login is challenged for a 2FA code (no shared secret, machine
+# token invalidated), it parks and this page accepts the code. Same
+# ingress pattern as Grafana: the daemon binds loopback only; with
+# monitoring_ingress == tailnet, Tailscale Serve terminates HTTPS on the
+# box's ts.net name at :8443 (443 is Grafana's) and proxies in.
+# Break-glass without the tailnet: ssh -L 9478:127.0.0.1:9478.
+steam_bot_guard_port: 9478
+steam_bot_guard_serve_port: 8443

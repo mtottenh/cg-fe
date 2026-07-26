@@ -27,7 +27,7 @@
     fail_msg: >-
       portal-steam-bot is not installed and no deb was provided. Build it in
       the sibling steam_bot workspace:
-      cargo build --release -p cs2-poller -p cs2-enricher &&
+      cargo build --release -p cs2-poller -p cs2-enricher -p steam-guard-link &&
       cargo deb -p cs2-enricher --no-build
       then pass -e portal_steam_bot_deb_path=/path/to/portal-steam-bot_X.Y.Z_amd64.deb
       (or use `just deploy-steam-bot <deb>`).
@@ -39,12 +39,15 @@
       - "vault_steam_api_key | default('CHANGE_ME') != 'CHANGE_ME'"
       - "vault_steam_bot_username | default('CHANGE_ME') != 'CHANGE_ME'"
       - "vault_steam_bot_password | default('CHANGE_ME') != 'CHANGE_ME'"
+      # "" is a valid shared secret: no authenticator on the account —
+      # 2FA challenges go to the enricher's guard code-entry page instead.
       - "vault_steam_bot_shared_secret | default('CHANGE_ME') != 'CHANGE_ME'"
     fail_msg: >-
       portal_steam_bot_enabled is true but the Steam bot vault keys are not
       all set: vault_steam_bot_api_key, vault_steam_api_key (poller Web API
       key), vault_steam_bot_username/password/shared_secret (enricher bot
-      account). See deploy/README.md.
+      account; set shared_secret to "" to use the Steam Guard code-entry
+      page instead of a TOTP secret). See deploy/README.md.
 
 - name: Copy portal-steam-bot deb to target
   ansible.builtin.copy:
@@ -136,3 +139,40 @@
   until: portal_steam_bot_healthz is succeeded
   loop: "{{ monitoring_metrics_ports | default({}) | dict2items | selectattr('key', 'in', ['cs2-poller', 'cs2-enricher']) | list }}"
   when: monitoring_enabled | default(false)
+
+# -----------------------------------------------------------------------------
+# Steam Guard code-entry page over the tailnet. Same pattern as Grafana
+# (roles/monitoring, which also owns installing/joining tailscale): the
+# enricher binds GUARD_ADDR on loopback only; Tailscale Serve terminates
+# HTTPS on the box's ts.net name at :{{ steam_bot_guard_serve_port }} and
+# proxies in. No public vhost, no DNS record, no CT-logged cert.
+#
+# Gated on tailscale actually being installed so a tag-scoped run
+# (--tags portal_steam_bot) on a box the monitoring role hasn't converged
+# yet skips cleanly instead of failing; the full site play orders
+# monitoring first, so a normal converge sets this up in one pass.
+# -----------------------------------------------------------------------------
+- name: Check for tailscale
+  ansible.builtin.stat:
+    path: /usr/bin/tailscale
+  register: portal_steam_bot_tailscale
+  when: monitoring_ingress | default('public') == 'tailnet'
+
+- name: Read tailscale serve config
+  ansible.builtin.command: tailscale serve status --json  # noqa: command-instead-of-module
+  register: portal_steam_bot_ts_serve
+  changed_when: false
+  failed_when: false
+  when:
+    - monitoring_ingress | default('public') == 'tailnet'
+    - portal_steam_bot_tailscale.stat.exists
+
+- name: Serve the Steam Guard page on the tailnet (HTTPS ts.net → loopback)
+  ansible.builtin.command: >-
+    tailscale serve --bg --https={{ steam_bot_guard_serve_port }}
+    http://127.0.0.1:{{ steam_bot_guard_port }}
+  changed_when: true
+  when:
+    - monitoring_ingress | default('public') == 'tailnet'
+    - portal_steam_bot_tailscale.stat.exists
+    - "('127.0.0.1:' ~ steam_bot_guard_port) not in (portal_steam_bot_ts_serve.stdout | default(''))"

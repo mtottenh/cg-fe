@@ -397,6 +397,40 @@ groups:
                   reducer: { params: [], type: last }
                   type: query
 
+      - uid: portal-guard-code-wait
+        title: EnricherAwaitingGuardCode
+        condition: B
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "cs2-enricher is parked waiting for a Steam Guard code"
+          description: "The bot's Steam login was 2FA-challenged (machine token invalid, no shared secret). Open the guard page — ts.net name of the box, port 8443 — and enter the current code. The login retries every ~5m until a code arrives, so a missed window just re-prompts."
+        labels:
+          severity: critical
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: cs2_enricher_awaiting_guard_code == bool 1
+              instant: true
+              editorMode: code
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [] }
+                  reducer: { params: [], type: last }
+                  type: query
+
       - uid: portal-agent-offline
         title: AgentOffline
         condition: B

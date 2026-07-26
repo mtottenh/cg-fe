@@ -133,20 +133,23 @@
     - role: portal_demo_stats
       tags: [portal_demo_stats]
 
-    # Opt-in: the enricher needs a dedicated Steam bot account. Enable with
-    # portal_steam_bot_enabled=true once the vault_steam_bot_* creds are set
-    # (or use `just deploy-steam-bot <deb>`, which sets it for that run).
-    - role: portal_steam_bot
-      tags: [portal_steam_bot]
-      when: portal_steam_bot_enabled | default(false)
-
     # Opt-in: Prometheus + Grafana + Loki + Alloy + exporters, all loopback
     # (docs/observability-design.md). Ordered before caddy so the grafana.<domain>
     # vhost (gated on the same flag inside Caddyfile.j2) renders in the same
-    # converge. Requires vault_grafana_admin_password.
+    # converge, and before portal_steam_bot so the enricher's Steam Guard
+    # page can be tailscale-served in the same converge that installs
+    # tailscale (tailnet ingress). Requires vault_grafana_admin_password.
     - role: monitoring
       tags: [monitoring]
       when: monitoring_enabled | default(false)
+
+    # Opt-in: the enricher needs a dedicated Steam bot account. Enable with
+    # portal_steam_bot_enabled=true once the vault_steam_bot_* creds are set
+    # (or use `just deploy-steam-bot <deb>`, which sets it for that run).
+    # After monitoring: the guard-page tailscale-serve tasks need tailscaled.
+    - role: portal_steam_bot
+      tags: [portal_steam_bot]
+      when: portal_steam_bot_enabled | default(false)
 
     - role: caddy
       tags: [caddy]

@@ -1,0 +1,151 @@
+{
+  "uid": "portal-pipeline",
+  "title": "Portal — Demo pipeline",
+  "description": "portal-demo-stats parse pipeline + portal-scanner S3→API loop. Managed by Ansible (roles/monitoring).",
+  "tags": ["portal"],
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "browser",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Parse jobs (by outcome)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "sum by (outcome, source) (rate(portal_demo_stats_parse_jobs_total[10m]))", "legendFormat": "{{outcome}} ({{source}})" } ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Parse duration p95 / max",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(portal_demo_stats_parse_duration_seconds_bucket[30m])))", "legendFormat": "p95" },
+        { "refId": "B", "expr": "histogram_quantile(1, sum by (le) (rate(portal_demo_stats_parse_duration_seconds_bucket[30m])))", "legendFormat": "max bucket" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Demo size p95",
+      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(portal_demo_stats_parse_bytes_bucket[30m])))", "legendFormat": "p95" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "In flight",
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 2 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "portal_demo_stats_jobs_in_flight", "instant": true } ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Stats-dir cache",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(portal_demo_stats_cache_hits_total[10m])", "legendFormat": "hits" },
+        { "refId": "B", "expr": "rate(portal_demo_stats_cache_misses_total[10m])", "legendFormat": "misses" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "demo-stats S3 fetches (by outcome)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "sum by (outcome) (rate(portal_demo_stats_s3_fetches_total[10m]))", "legendFormat": "{{outcome}}" } ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "demo-stats loop age",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 900 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "time() - portal_demo_stats_last_success_timestamp_seconds", "instant": true } ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Scanner cycles (by outcome)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome) (rate(portal_scanner_scan_cycles_total[15m]))", "legendFormat": "{{outcome}}" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(portal_scanner_scan_duration_seconds_bucket[30m])))", "legendFormat": "duration p95 (s)" }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Objects seen / new / registered",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(portal_scanner_objects_seen_total[15m])", "legendFormat": "seen" },
+        { "refId": "B", "expr": "rate(portal_scanner_objects_new_total[15m])", "legendFormat": "new" },
+        { "refId": "C", "expr": "sum by (outcome) (rate(portal_scanner_registered_total[15m]))", "legendFormat": "registered {{outcome}}" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Scanner errors + pending",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (status_class) (rate(portal_scanner_api_errors_total[15m]))", "legendFormat": "api {{status_class}}" },
+        { "refId": "B", "expr": "rate(portal_scanner_s3_errors_total[15m])", "legendFormat": "s3 errors" },
+        { "refId": "C", "expr": "portal_scanner_pending_demos", "legendFormat": "pending demos" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Scanner loop staleness (by loop)",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "time() - portal_scanner_last_success_timestamp_seconds", "legendFormat": "{{loop}}" } ]
+    }
+  ]
+}

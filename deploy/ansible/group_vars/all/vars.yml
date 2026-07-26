@@ -142,3 +142,38 @@ backup_config_schedule: "OnCalendar=Mon *-*-* 03:45:00"
 # sanity counts → drop. A backup you've never restored is a hope, not a
 # backup — this turns the quarterly-rehearsal advice into a mechanism.
 backup_restore_verify_schedule: "OnCalendar=*-*-01 04:30:00"
+
+# --- Monitoring (docs/observability-design.md) -------------------------------
+# Opt-in: Prometheus + Grafana + Loki + Alloy + node/postgres exporters, all
+# loopback-only; Grafana is the single ingress via the grafana.<domain>
+# Caddy vhost (needs a DNS A record). Set vault_grafana_admin_password (and
+# optionally vault_alert_webhook_url) before enabling. Enabling also turns
+# on the METRICS_ADDR loopback exporters in the service env files, so re-run
+# the service roles (a full `just bootstrap` covers everything).
+monitoring_enabled: false
+
+# Loopback listen ports for the stack. 3110 for Loki because
+# portal-demo-stats owns the Loki default 3100.
+monitoring_prometheus_port: 9090
+monitoring_grafana_port: 3001
+monitoring_loki_port: 3110
+monitoring_loki_grpc_port: 9096
+monitoring_alloy_port: 12345
+monitoring_node_exporter_port: 9100
+monitoring_postgres_exporter_port: 9187
+
+# Retention: Prometheus ~50 MB/day at the <2k series/service budget → 30d
+# fits the 80 GB disk easily; Loki is a query index over journald (14d),
+# journald itself remains the archive.
+monitoring_prometheus_retention: 30d
+monitoring_loki_retention_hours: 336
+
+# The design doc's §3 port table — this dict IS the service registry.
+# Prometheus scrape jobs and each role's METRICS_ADDR line derive from it.
+# cs2-poller / cs2-enricher are only scraped when portal_steam_bot_enabled.
+monitoring_metrics_ports:
+  portal-api: 9464
+  portal-scanner: 9465
+  portal-demo-stats: 9466
+  cs2-poller: 9467
+  cs2-enricher: 9468

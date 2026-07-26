@@ -1,6 +1,7 @@
 # Observability design — metrics, logs, dashboards
 
-**Status:** design (2026-07-26) — nothing here is implemented yet.
+**Status:** implemented (2026-07-26) — all four rollout phases landed; see
+"Implementation notes" at the end for the deliberate deviations.
 **Scope:** every deployed service (portal-api, portal-scanner,
 portal-demo-stats, cs2-poller, cs2-enricher, portal-server-agent), the
 backup jobs, the host, and the Grafana/Loki/Prometheus stack that reads
@@ -289,3 +290,45 @@ phase 1 is pure `deploy/` work and can land alongside any of the others.
 - Does `metrics-exporter-prometheus`'s tiny HTTP listener satisfy the
   poller's `/healthz` too, or does the poller grow a 20-line hyper
   service for both? (Lean: one listener serving both paths.)
+
+
+## 9. Implementation notes (2026-07-26)
+
+All four phases are implemented. Deviations from the design above, each
+deliberate:
+
+- **CertExpiry**: Caddy's admin endpoint does not reliably export
+  certificate `not_after`, so a daily `cert-expiry-metrics.timer` probes
+  each vhost through the local listener with openssl and writes
+  `portal_tls_cert_not_after_timestamp_seconds{domain}` via the textfile
+  collector. The alert treats no-data as firing.
+- **§8 listener question**: resolved with a shared `crates/portal-daemon`
+  (steam_bot workspace) serving BOTH `/metrics` and `/healthz` from one
+  hand-rolled hyper listener — the exporter's bundled listener answers any
+  path with metrics, which would make `/healthz` a lie. `/healthz` is
+  200 iff the last successful cycle is younger than 3×interval.
+- **Label spelling**: Prometheus labels cannot contain `-`, so
+  `bucket-role` → `bucket_role`, `route-class` → `route_class`.
+- **DB pool wait**: sqlx exposes no acquire-time hook;
+  `portal_api_db_pool_wait_seconds` is sampled by timing a real acquire
+  every 15s in the metrics sampler (accurate under saturation, which is
+  when it matters). Pool/WS gauges are sampled from the managers rather
+  than counted at connect/disconnect sites so they can never drift.
+- **Rate limiting**: counted in the RED middleware (any 429 leaving the
+  router), labelled with the route template as the route class.
+- **StaleLoop**: one generic rule over
+  `{__name__=~".*_last_success_timestamp_seconds"}` at 15m (3× the slowest
+  loop) instead of per-loop thresholds; per-service `/healthz` staleness
+  stays at 3× each bot's own interval.
+- **agent_demo_uploads_total**: not implemented — the agent never touches
+  demo files (MatchZy uploads directly to the portal), so uploads are
+  visible as `portal_api_s3_ops_total{bucket_role="demos"}` instead.
+- **Enricher structural fix** (found during §4.5 work): the enricher used
+  to connect to the GC once and exit on failure; a session that died
+  mid-run marked every pending match failed at batch_size/cycle. It now
+  reconnects with backoff, classifies logon failures
+  (bad-creds/steam-guard/rate-limit), and treats a closed GC stream as
+  session death rather than per-match failure.
+- **Alerting**: Grafana-managed provisioned rules (files under
+  `roles/monitoring`), delivery via the optional vault_alert_webhook_url
+  contact point; rules are read-only in the UI by design.

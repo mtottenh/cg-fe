@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# node_exporter: loopback bind + the two collectors the portal relies on:
+#   systemd  — unit/timer active/failed states (scoped to portal-relevant
+#              units to keep series cardinality down)
+#   textfile — backup-job + cert-expiry metrics written by the scripts in
+#              /var/lib/node_exporter/textfile (observability-design.md §4.7)
+ARGS="--web.listen-address=127.0.0.1:{{ monitoring_node_exporter_port }} --collector.systemd --collector.systemd.unit-include='^(portal-.*|cs2-.*|caddy|postgresql.*|prometheus.*|grafana-server|loki|alloy|pg-backup|config-backup|pg-restore-verify|cert-expiry-metrics|backup-failure@.*)\.(service|timer)$' --collector.textfile.directory=/var/lib/node_exporter/textfile"

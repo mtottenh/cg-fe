@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+CONFIG_FILE="/etc/alloy/config.alloy"
+# Loopback bind for Alloy's own HTTP server (its /metrics is scraped too).
+CUSTOM_ARGS="--server.http.listen-addr=127.0.0.1:{{ monitoring_alloy_port }} --disable-reporting"
+RESTART_ON_UPGRADE=true

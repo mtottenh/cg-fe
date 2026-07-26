@@ -1,0 +1,54 @@
+# {{ ansible_managed }}
+#
+# Loki: single-binary, filesystem store, loopback only. It is the QUERY
+# INDEX over journald, not the archive — journald keeps being the log
+# destination of record, hence the short 14d retention.
+# Port {{ monitoring_loki_port }}, NOT the Loki default 3100: portal-demo-stats owns 3100.
+
+auth_enabled: false
+
+server:
+  http_listen_address: 127.0.0.1
+  http_listen_port: {{ monitoring_loki_port }}
+  grpc_listen_address: 127.0.0.1
+  grpc_listen_port: {{ monitoring_loki_grpc_port }}
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /var/lib/loki
+  storage:
+    filesystem:
+      chunks_directory: /var/lib/loki/chunks
+      rules_directory: /var/lib/loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: "2024-01-01"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  retention_period: {{ monitoring_loki_retention_hours }}h
+
+compactor:
+  working_directory: /var/lib/loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100
+
+analytics:
+  reporting_enabled: false

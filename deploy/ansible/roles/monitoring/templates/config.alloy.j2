@@ -1,0 +1,36 @@
+// {{ ansible_managed }}
+//
+// Alloy: tail journald → Loki with exactly the three labels the design
+// allows ({unit, level, hostname} — observability-design.md §5). Message
+// content stays unindexed; that is Loki's model and what keeps it tiny.
+
+loki.relabel "journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+
+  rule {
+    source_labels = ["__journal__hostname"]
+    target_label  = "hostname"
+  }
+}
+
+loki.source.journal "all_units" {
+  forward_to    = [loki.write.local.receiver]
+  relabel_rules = loki.relabel.journal.rules
+  max_age       = "12h"
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://127.0.0.1:{{ monitoring_loki_port }}/loki/api/v1/push"
+  }
+}

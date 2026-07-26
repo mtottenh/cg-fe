@@ -125,6 +125,14 @@
       tags: [portal_steam_bot]
       when: portal_steam_bot_enabled | default(false)
 
+    # Opt-in: Prometheus + Grafana + Loki + Alloy + exporters, all loopback
+    # (docs/observability-design.md). Ordered before caddy so the grafana.<domain>
+    # vhost (gated on the same flag inside Caddyfile.j2) renders in the same
+    # converge. Requires vault_grafana_admin_password.
+    - role: monitoring
+      tags: [monitoring]
+      when: monitoring_enabled | default(false)
+
     - role: caddy
       tags: [caddy]
 

@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# postgres_exporter over the local Unix socket. The unit runs as the
+# postgres user (systemd drop-in), so this is peer auth — no password, no
+# TCP, same pattern as pg-backup.
+DATA_SOURCE_NAME="user=postgres host=/var/run/postgresql dbname={{ postgres_db }} sslmode=disable"
+ARGS="--web.listen-address=127.0.0.1:{{ monitoring_postgres_exporter_port }}"

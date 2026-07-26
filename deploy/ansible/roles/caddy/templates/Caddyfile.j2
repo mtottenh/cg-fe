@@ -7,6 +7,13 @@
         output stderr
         format json
     }
+{% if monitoring_enabled | default(false) %}
+    # Per-vhost request metrics on the admin endpoint
+    # (localhost:2019/metrics), scraped by the loopback Prometheus.
+    metrics {
+        per_host
+    }
+{% endif %}
 }
 
 {{ portal_domain }} {
@@ -142,6 +149,32 @@ agents.{{ portal_domain }} {
 
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+}
+{% endif %}
+
+{% if monitoring_enabled | default(false) %}
+# Grafana (docs/observability-design.md §2). The ONLY public ingress into the
+# monitoring stack — Prometheus/Loki/exporters are loopback-only. Grafana
+# handles its own auth (vault_grafana_admin_password). Needs a DNS A record
+# for grafana.{{ portal_domain }} pointing at this box.
+grafana.{{ portal_domain }} {
+    encode zstd gzip
+
+    reverse_proxy 127.0.0.1:{{ monitoring_grafana_port | default(3001) }} {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        # Grafana Live (dashboard streaming) runs over a WebSocket.
+        transport http {
+            read_timeout 300s
+            write_timeout 300s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
         -Server
     }
 }

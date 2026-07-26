@@ -14,6 +14,24 @@ set -euo pipefail
 BACKUP_DIR=/var/lib/portal/backups
 TESTDB=portal_restore_test
 
+# node_exporter textfile collector (observability-design.md §4.7). The dir
+# only exists once roles/monitoring has run — skip silently otherwise so
+# the rehearsal never depends on the monitoring stack.
+TEXTFILE_DIR=/var/lib/node_exporter/textfile
+START_TS=$(date +%s)
+emit_backup_metrics() { # <job> <size-bytes>
+    [ -d "$TEXTFILE_DIR" ] || return 0
+    local now
+    now=$(date +%s)
+    {
+        echo "portal_backup_last_success_timestamp_seconds{job=\"$1\"} $now"
+        echo "portal_backup_last_size_bytes{job=\"$1\"} $2"
+        echo "portal_backup_last_duration_seconds{job=\"$1\"} $((now - START_TS))"
+    } > "$TEXTFILE_DIR/portal-backup-$1.prom.tmp"
+    # Atomic rename — node_exporter reads the directory concurrently.
+    mv "$TEXTFILE_DIR/portal-backup-$1.prom.tmp" "$TEXTFILE_DIR/portal-backup-$1.prom"
+}
+
 LATEST=$(find "$BACKUP_DIR" -maxdepth 1 -name "${POSTGRES_DB}_*.sql.zst" -type f \
     -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
 if [ -z "$LATEST" ]; then
@@ -39,5 +57,7 @@ if [ "$GAMES" -lt 1 ]; then
     echo "✗ sanity counts failed — dump restores but looks empty"
     exit 1
 fi
+
+emit_backup_metrics restore-verify "$(stat -c%s "$LATEST")"
 
 echo "✓ restore rehearsal passed ($(basename "$LATEST"))"

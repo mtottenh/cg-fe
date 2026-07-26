@@ -48,7 +48,8 @@ deploy/
 │       ├── portal_scanner/     # Installs the portal-scanner.deb; renders scanner.env
 │       ├── portal_demo_stats/  # Installs the portal-demo-stats.deb; renders demo-stats.env
 │       ├── portal_steam_bot/   # Installs portal-steam-bot.deb (cs2-poller + cs2-enricher); opt-in
-│       ├── caddy/              # Caddy auto-HTTPS; proxies API + demos.<domain>
+│       ├── monitoring/         # Prometheus + Grafana + Loki + Alloy + exporters; opt-in
+│       ├── caddy/              # Caddy auto-HTTPS; proxies API + demos.<domain> (+ grafana.)
 │       └── portal_web/         # Builds the SPA locally, ships dist → /var/www/portal
 ├── justfile                    # provision, bootstrap, deploy, deploy-web, logs, ...
 └── README.md
@@ -137,6 +138,8 @@ site.yml:
 | `vault_scanner_s3_*`, `vault_demo_stats_s3_*` (optional) | Per-service S3 overrides; default to the `vault_linode_*` pair |
 | `vault_steam_bot_api_key` (only if bots enabled) | Portal API key (`cgp_…`) the poller + enricher authenticate with |
 | `vault_steam_bot_username` / `_password` / `_shared_secret` (only if bots enabled) | Dedicated Steam bot account for the enricher's Game Coordinator login (Prime + CS2), and its Guard TOTP secret |
+| `vault_grafana_admin_password` (only if monitoring enabled) | Grafana admin login at `grafana.<domain>` (≥12 chars; applied on Grafana's first start) |
+| `vault_alert_webhook_url` (optional) | Webhook Grafana alerts POST to (healthchecks.io / ntfy); `""` keeps alerts UI-only |
 
 **Non-secret config (`ansible/group_vars/all/vars.yml`)**:
 
@@ -148,6 +151,7 @@ site.yml:
 | `backup_remote_retention_days` | Bucket lifecycle expiry the backups role applies (default 180) |
 | `linode_object_storage_region` etc. | Defaults match the London bucket; adjust if you move |
 | `ops_ssh_pubkey_file` | Your public key, installed for the `ops` user |
+| `monitoring_enabled` | Opt-in monitoring stack (needs a `grafana.<domain>` A record + the vault key above); see "Monitoring" below |
 
 `vault.yml` is **gitignored** — it never enters the repo, encrypted or not.
 Keep it on the control machine only, encrypt it with `ansible-vault` for
@@ -340,10 +344,44 @@ include the bots in every `site.yml` converge, set it in `group_vars`. The
 poller and enricher, like the scanner, also need `SCANNER_GAME_ID`-equivalent
 config baked in via `steam_bot_game_slug` (default `cs2`).
 
-## What's not here yet
+## Monitoring
 
-- Monitoring: no Prometheus/Grafana/Loki yet, and only the API and
-  demo-stats expose health endpoints — none of the services export
-  metrics. A comprehensive per-service metrics design (including
-  promoting cs2-poller to a proper daemon with a `/metrics` endpoint) and
-  a `roles/monitoring/` stack are the next planned piece of work.
+Opt-in via `monitoring_enabled: true` (docs/observability-design.md is the
+full design). One role (`roles/monitoring`) installs, all loopback-bound:
+
+- **Prometheus** :9090 — 15s scrape, 30d retention. The scrape config is
+  generated from `monitoring_metrics_ports` in `group_vars/all/vars.yml`;
+  that dict is the §3 port registry (portal-api 9464, scanner 9465,
+  demo-stats 9466, poller 9467, enricher 9468).
+- **Grafana** :3001 — the only public ingress, via the `grafana.<domain>`
+  Caddy vhost (fourth DNS A record). Login `admin` /
+  `vault_grafana_admin_password` (seeded on first start; rotate later with
+  `grafana-cli admin reset-admin-password`). Dashboards (home / API /
+  pipeline / bots / agents / logs) and the alert rules are provisioned
+  from the role — edits in the UI don't survive a converge.
+- **Loki** :3110 (3100 belongs to portal-demo-stats) + **Alloy** tailing
+  journald with labels `{unit, level, hostname}`, 14d retention. journald
+  stays the archive; Loki is the query index.
+- **node_exporter** :9100 with the systemd collector (unit/timer states)
+  and the textfile collector — the backup scripts drop
+  `portal_backup_last_{success_timestamp,size_bytes,duration}_seconds`
+  into `/var/lib/node_exporter/textfile/`, and a daily probe exports TLS
+  cert expiry per vhost.
+- **postgres_exporter** :9187 over the local socket (peer auth, runs as
+  postgres), **Caddy** admin :2019 scraped for per-vhost edge RED.
+
+Alerts (Grafana-managed, provisioned): ServiceDown, UnitFailed, ApiUnready,
+StaleLoop, BackupStale (26h — no-data also fires), ConfigBackupStale,
+RestoreRehearsalFailed (32d), GcSessionDown, AgentOffline, DiskFull,
+CertExpiry (14d), DbPoolSaturated, DemoParseConcurrency, plus two
+Loki-derived rules (error-spam per unit, pg-backup journal silence).
+Delivery: `vault_alert_webhook_url` (optional webhook contact point).
+
+Enabling the stack also renders `METRICS_ADDR=127.0.0.1:<port>` into each
+service's `/etc/portal/*.env` — re-run the service roles (or a full
+`just bootstrap`) after flipping the flag so the services start their
+loopback exporters. A deb on a box without the stack keeps `METRICS_ADDR`
+unset and starts no listener. `just monitoring-status` checks the stack
+end-to-end.
+
+## What's not here yet

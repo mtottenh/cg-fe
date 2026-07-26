@@ -103,8 +103,10 @@ demos.portal.yourdomain.com.  A   <ipv4>
 (The `demos.` host fronts the demo-stats service; the API's SSRF guard
 requires it to be a real https host.) A third record —
 `agents.portal.yourdomain.com` — is only needed when you enable the
-game-server integration (see "Game-server agents" below). Wait for
-propagation before step 6 so Caddy can get certificates.
+game-server integration (see "Game-server agents" below), and a fourth —
+`grafana.portal.yourdomain.com` — only when you enable the monitoring
+stack (`monitoring_enabled=true`; see deploy/README.md "Monitoring"). Wait
+for propagation before step 6 so Caddy can get certificates.
 
 ## 5. Get the artifacts
 

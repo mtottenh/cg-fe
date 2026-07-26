@@ -17,6 +17,24 @@ STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 NAME="${POSTGRES_DB}_${STAMP}.sql.zst"
 OUT="$BACKUP_DIR/$NAME"
 
+# node_exporter textfile collector (observability-design.md §4.7). The dir
+# only exists once roles/monitoring has run — skip silently otherwise so
+# backups never depend on the monitoring stack.
+TEXTFILE_DIR=/var/lib/node_exporter/textfile
+START_TS=$(date +%s)
+emit_backup_metrics() { # <job> <size-bytes>
+    [ -d "$TEXTFILE_DIR" ] || return 0
+    local now
+    now=$(date +%s)
+    {
+        echo "portal_backup_last_success_timestamp_seconds{job=\"$1\"} $now"
+        echo "portal_backup_last_size_bytes{job=\"$1\"} $2"
+        echo "portal_backup_last_duration_seconds{job=\"$1\"} $((now - START_TS))"
+    } > "$TEXTFILE_DIR/portal-backup-$1.prom.tmp"
+    # Atomic rename — node_exporter reads the directory concurrently.
+    mv "$TEXTFILE_DIR/portal-backup-$1.prom.tmp" "$TEXTFILE_DIR/portal-backup-$1.prom"
+}
+
 mkdir -p "$BACKUP_DIR"
 
 echo "→ pg_dump ${POSTGRES_DB} → $OUT"
@@ -49,6 +67,8 @@ echo "→ pruning local dumps older than ${BACKUP_LOCAL_RETENTION_DAYS} days"
 find "$BACKUP_DIR" -maxdepth 1 -type f \
     \( -name "${POSTGRES_DB}_*.sql.zst" -o -name "${POSTGRES_DB}_*.sql.zst.sha256" \) \
     -mtime "+${BACKUP_LOCAL_RETENTION_DAYS}" -delete
+
+emit_backup_metrics pg-backup "$SIZE"
 
 if [ -n "${BACKUP_HEALTHCHECK_URL:-}" ]; then
     curl -fsS -m 10 --retry 3 "$BACKUP_HEALTHCHECK_URL" >/dev/null \

@@ -104,8 +104,10 @@
     daemon_reload: true
 
 # -----------------------------------------------------------------------------
-# Health gate — no HTTP endpoints (pollers), so "active after a few seconds"
-# is the proxy for "didn't crash-loop on the new binary/config".
+# Health gate. With monitoring enabled the bots serve /healthz on their
+# loopback METRICS_ADDR (200 iff the last cycle succeeded recently);
+# otherwise "active after a few seconds" remains the proxy for "didn't
+# crash-loop on the new binary/config".
 # -----------------------------------------------------------------------------
 - name: Flush pending restarts before probing
   ansible.builtin.meta: flush_handlers
@@ -120,3 +122,17 @@
   loop:
     - cs2-poller
     - cs2-enricher
+
+- name: Bot /healthz answers — {{ item.key }}
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ item.value }}/healthz"
+    # 503 (stale) is accepted here: right after a deploy the first cycle
+    # may not have completed yet — the gate checks the listener is up; the
+    # StaleLoop alert owns ongoing freshness.
+    status_code: [200, 503]
+  register: portal_steam_bot_healthz
+  retries: 6
+  delay: 5
+  until: portal_steam_bot_healthz is succeeded
+  loop: "{{ monitoring_metrics_ports | default({}) | dict2items | selectattr('key', 'in', ['cs2-poller', 'cs2-enricher']) | list }}"
+  when: monitoring_enabled | default(false)

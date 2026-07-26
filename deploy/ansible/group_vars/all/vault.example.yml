@@ -39,6 +39,16 @@ vault_steam_bot_password: "CHANGE_ME"
 vault_steam_bot_shared_secret: "CHANGE_ME"
 # (The poller's STEAM_WEB_API_KEY reuses vault_steam_api_key above.)
 
+# --- Monitoring (only required when monitoring_enabled=true) ----------------
+# Grafana admin login at https://grafana.<domain>. Applied on Grafana's
+# FIRST start only (it seeds the admin user in grafana.db); to change it
+# later run `grafana-cli admin reset-admin-password` on the box.
+vault_grafana_admin_password: "CHANGE_ME"
+# Optional webhook Grafana alerts POST to (healthchecks.io / ntfy / any
+# URL that accepts a POST — same provider family as backup_healthcheck_url).
+# Leave "" to keep alerts visible in the Grafana UI only.
+vault_alert_webhook_url: ""
+
 # --- Optional per-service S3 credential overrides ---------------------------
 # The scanner and the demo-stats service default to the vault_linode_* pair
 # above. Uncomment to give them their own keys (tighter blast radius).

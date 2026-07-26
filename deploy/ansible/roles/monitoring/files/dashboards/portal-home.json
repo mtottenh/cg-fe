@@ -1,0 +1,245 @@
+{
+  "uid": "portal-home",
+  "title": "Portal — Home",
+  "description": "Is it broken? Every service, timer, and the host on one page. Managed by Ansible (roles/monitoring).",
+  "tags": ["portal"],
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Scrape targets down",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "count(up == 0) OR on() vector(0)", "instant": true } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Failed systemd units",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "count(node_systemd_unit_state{state=\"failed\"} == 1) OR on() vector(0)", "instant": true } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "API ready",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "READY", "color": "green" }, "0": { "text": "NOT READY", "color": "red" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "portal_api_ready", "instant": true } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Game-server agents connected",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "none", "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] } },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "portal_api_gameserver_agents_connected", "instant": true } ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "DB pool in use",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.6 }, { "color": "red", "value": 0.8 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "(portal_api_db_pool_connections - portal_api_db_pool_connections_idle) / portal_api_db_pool_max_connections", "instant": true } ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Demo parses in flight",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 2 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "portal_demo_stats_jobs_in_flight", "instant": true } ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "pg-backup age",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 93600 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "time() - portal_backup_last_success_timestamp_seconds{job=\"pg-backup\"}", "instant": true } ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "config-backup age",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 691200 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "time() - portal_backup_last_success_timestamp_seconds{job=\"config-backup\"}", "instant": true } ]
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Restore rehearsal age",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 2764800 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "time() - portal_backup_last_success_timestamp_seconds{job=\"restore-verify\"}", "instant": true } ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "TLS cert days left (min)",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 14 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "min((portal_tls_cert_not_after_timestamp_seconds - time()) / 86400)", "instant": true } ]
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Scrape targets",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } }
+          ],
+          "custom": { "cellOptions": { "type": "color-text" } }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "transformations": [
+        { "id": "labelsToFields", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "instance": true }, "indexByName": {}, "renameByName": {} } }
+      ],
+      "targets": [ { "refId": "A", "expr": "up", "instant": true, "format": "table" } ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Loop staleness (s since last success)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "time() - {__name__=~\"(portal_scanner|portal_demo_stats|cs2_poller|cs2_enricher)_last_success_timestamp_seconds\"}", "legendFormat": "{{__name__}}" }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Error-level log lines / 5m (by unit)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (unit) (count_over_time({level=~\"err|error|crit|alert|emerg\"}[5m]))", "legendFormat": "{{unit}}" }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "CPU utilisation",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))", "legendFormat": "cpu" } ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Memory",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "node_memory_MemAvailable_bytes", "legendFormat": "available" },
+        { "refId": "B", "expr": "node_memory_MemTotal_bytes", "legendFormat": "total" }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Disk free (by mount)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "node_filesystem_avail_bytes{fstype=~\"ext4|xfs|btrfs\"} / node_filesystem_size_bytes{fstype=~\"ext4|xfs|btrfs\"}", "legendFormat": "{{mountpoint}}" }
+      ]
+    }
+  ]
+}

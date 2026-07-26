@@ -1,0 +1,66 @@
+{
+  "uid": "portal-logs",
+  "title": "Portal — Logs",
+  "description": "Loki over journald: {unit, level, hostname}. journald remains the archive; this is the query index. Managed by Ansible (roles/monitoring).",
+  "tags": ["portal"],
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "templating": {
+    "list": [
+      {
+        "name": "unit",
+        "label": "Unit",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "loki" },
+        "query": "label_values(unit)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Log volume by level",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "sum by (level) (count_over_time({unit=~\"$unit\"}[5m]))", "legendFormat": "{{level}}" } ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Error-level lines by unit",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "sum by (unit) (count_over_time({unit=~\"$unit\", level=~\"err|error|crit|alert|emerg\"}[5m]))", "legendFormat": "{{unit}}" } ]
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Log stream",
+      "gridPos": { "h": 18, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [ { "refId": "A", "expr": "{unit=~\"$unit\"}" } ]
+    }
+  ]
+}

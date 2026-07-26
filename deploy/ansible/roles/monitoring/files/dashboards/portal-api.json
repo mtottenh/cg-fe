@@ -1,0 +1,186 @@
+{
+  "uid": "portal-api",
+  "title": "Portal — API",
+  "description": "RED on every route + the subsystems that fail independently. Managed by Ansible (roles/monitoring).",
+  "tags": ["portal"],
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Request rate (by route)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "sum by (route) (rate(portal_api_http_requests_total[5m]))", "legendFormat": "{{route}}" } ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Error rate",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(portal_api_http_requests_total{status=~\"5..\"}[5m])) OR on() vector(0)", "legendFormat": "5xx" },
+        { "refId": "B", "expr": "sum(rate(portal_api_http_requests_total{status=~\"4..\"}[5m])) OR on() vector(0)", "legendFormat": "4xx" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Latency p95 / p50 (all routes)",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(portal_api_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95" },
+        { "refId": "B", "expr": "histogram_quantile(0.50, sum by (le) (rate(portal_api_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p50" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Latency p95 (by route)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, route) (rate(portal_api_http_request_duration_seconds_bucket[5m])))", "legendFormat": "{{route}}" } ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "WebSocket connections",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "portal_api_ws_connections", "legendFormat": "{{kind}}" } ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "WebSocket messages",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "mps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "sum by (kind, direction) (rate(portal_api_ws_messages_total[5m]))", "legendFormat": "{{kind}} {{direction}}" } ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "DB pool",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "portal_api_db_pool_connections", "legendFormat": "open" },
+        { "refId": "B", "expr": "portal_api_db_pool_connections_idle", "legendFormat": "idle" },
+        { "refId": "C", "expr": "portal_api_db_pool_max_connections", "legendFormat": "max" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "DB pool acquire wait p95",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(portal_api_db_pool_wait_seconds_bucket[5m])))", "legendFormat": "p95" } ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Auth failures (by reason)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (reason) (rate(portal_api_auth_failures_total[5m]))", "legendFormat": "{{reason}}" },
+        { "refId": "B", "expr": "sum by (route_class) (rate(portal_api_rate_limited_total[5m]))", "legendFormat": "rate-limited {{route_class}}" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "S3 operations",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "sum by (bucket_role, op, outcome) (rate(portal_api_s3_ops_total[5m]))", "legendFormat": "{{bucket_role}} {{op}} {{outcome}}" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "S3 op duration p95 (by bucket role)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, bucket_role) (rate(portal_api_s3_op_duration_seconds_bucket[5m])))", "legendFormat": "{{bucket_role}}" } ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Sagas + evidence",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (saga, outcome) (rate(portal_api_saga_executions_total[5m]))", "legendFormat": "saga {{saga}} {{outcome}}" },
+        { "refId": "B", "expr": "sum by (type, outcome) (rate(portal_api_evidence_processed_total[5m]))", "legendFormat": "evidence {{type}} {{outcome}}" }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Deployed version",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none", "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] } }, "overrides": [] },
+      "options": { "textMode": "name", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [ { "refId": "A", "expr": "portal_api_build_info", "legendFormat": "{{version}}", "instant": true } ]
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Ready",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [ { "type": "value", "options": { "1": { "text": "READY", "color": "green" }, "0": { "text": "NOT READY", "color": "red" } } } ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [ { "refId": "A", "expr": "portal_api_ready", "instant": true } ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Migrations applied (boot-time counter)",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [ { "refId": "A", "expr": "portal_api_migrations_applied_total", "legendFormat": "applied" } ]
+    }
+  ]
+}

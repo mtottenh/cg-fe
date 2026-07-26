@@ -201,13 +201,21 @@ verify:
     just status
 
 # systemctl status for every portal unit, plus postgres and the backup jobs.
+# The monitoring units only exist when monitoring_enabled=true — absent
+# units just print "could not be found" noise, which head keeps bounded.
 status:
-    ssh {{USER}}@{{HOST}} "systemctl status --no-pager portal-api postgresql caddy portal-scanner portal-demo-stats cs2-poller cs2-enricher 2>&1 | head -240; systemctl list-timers --no-pager 'pg-backup*' 'config-backup*' 'pg-restore-verify*'"
+    ssh {{USER}}@{{HOST}} "systemctl status --no-pager portal-api postgresql caddy portal-scanner portal-demo-stats cs2-poller cs2-enricher prometheus grafana-server loki alloy 2>&1 | head -320; systemctl list-timers --no-pager 'pg-backup*' 'config-backup*' 'pg-restore-verify*' 'cert-expiry-metrics*'"
 
 # Last 200 warn/error lines across portal units AND the backup jobs (which
 # don't match the portal-* glob — a silently failing backup hides there).
 tail-errors:
-    ssh {{USER}}@{{HOST}} "journalctl -u 'portal-*' -u pg-backup -u config-backup -u pg-restore-verify -u 'backup-failure@*' -p warning -n 200 --no-pager"
+    ssh {{USER}}@{{HOST}} "journalctl -u 'portal-*' -u 'cs2-*' -u pg-backup -u config-backup -u pg-restore-verify -u 'backup-failure@*' -u prometheus -u grafana-server -u loki -u alloy -p warning -n 200 --no-pager"
+
+# Quick reachability check of the monitoring stack (loopback services over
+# SSH, Grafana through Caddy).
+monitoring-status:
+    ssh {{USER}}@{{HOST}} 'curl -fsS localhost:9090/-/ready && echo " prometheus OK"; curl -fsS localhost:3110/ready >/dev/null && echo "loki OK"; curl -fsS localhost:3001/api/health >/dev/null && echo "grafana OK"'
+    curl -fsS "https://grafana.{{DOMAIN}}/api/health" >/dev/null && echo "grafana via caddy OK"
 
 # Convenience: follow the live API log.
 logs:

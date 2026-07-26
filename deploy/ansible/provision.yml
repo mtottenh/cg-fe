@@ -18,7 +18,7 @@
 #
 # Afterwards (see deploy/README.md "Operator checklist"):
 #   1. point DNS A records for <portal_domain> and demos.<portal_domain>
-#      at the printed IPv4
+#      at the printed IPv4 (+ agents./grafana. if those features are enabled)
 #   2. set portal_domain + caddy_acme_email in inventory/prod.yml
 #   3. ansible-vault create group_vars/all/vault.yml
 #   4. first converge as root: just bootstrap-fresh
@@ -101,6 +101,7 @@
           - ""
           - "Next steps:"
           - "  1. DNS A records: <portal_domain> and demos.<portal_domain> → {{ portal_instance.instance.ipv4 | first }}"
+          - "     (+ agents.<portal_domain> if gameserver_integration_enabled, grafana.<portal_domain> if monitoring_enabled)"
           - "  2. Edit inventory/prod.yml: portal_domain, caddy_acme_email"
           - "  3. ansible-vault create group_vars/all/vault.yml   (keys: see vault.example.yml)"
           - "  4. First converge (fresh box, as root): just bootstrap-fresh"

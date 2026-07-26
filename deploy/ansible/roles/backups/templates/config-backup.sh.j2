@@ -18,6 +18,24 @@ STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 NAME="etc-portal_${STAMP}.tar.zst"
 OUT="$BACKUP_DIR/$NAME"
 
+# node_exporter textfile collector (observability-design.md §4.7). The dir
+# only exists once roles/monitoring has run — skip silently otherwise so
+# backups never depend on the monitoring stack.
+TEXTFILE_DIR=/var/lib/node_exporter/textfile
+START_TS=$(date +%s)
+emit_backup_metrics() { # <job> <size-bytes>
+    [ -d "$TEXTFILE_DIR" ] || return 0
+    local now
+    now=$(date +%s)
+    {
+        echo "portal_backup_last_success_timestamp_seconds{job=\"$1\"} $now"
+        echo "portal_backup_last_size_bytes{job=\"$1\"} $2"
+        echo "portal_backup_last_duration_seconds{job=\"$1\"} $((now - START_TS))"
+    } > "$TEXTFILE_DIR/portal-backup-$1.prom.tmp"
+    # Atomic rename — node_exporter reads the directory concurrently.
+    mv "$TEXTFILE_DIR/portal-backup-$1.prom.tmp" "$TEXTFILE_DIR/portal-backup-$1.prom"
+}
+
 mkdir -p "$BACKUP_DIR"
 
 echo "→ archiving /etc/portal → $OUT"
@@ -42,5 +60,7 @@ echo "→ pruning local config archives older than ${BACKUP_LOCAL_RETENTION_DAYS
 find "$BACKUP_DIR" -maxdepth 1 -type f \
     \( -name 'etc-portal_*.tar.zst' -o -name 'etc-portal_*.tar.zst.sha256' \) \
     -mtime "+${BACKUP_LOCAL_RETENTION_DAYS}" -delete
+
+emit_backup_metrics config-backup "$(stat -c%s "$OUT")"
 
 echo "✓ config backup complete"

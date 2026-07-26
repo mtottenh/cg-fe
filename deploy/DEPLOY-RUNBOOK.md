@@ -221,7 +221,7 @@ ssh ops@<ipv4> "sudo -u portal psql -d portal_prod -Atc \
 # mint the scanner's service API key
 ssh ops@<ipv4> "sudo -u portal DATABASE_URL='$SOCK' \
   portal-cli api-key create --service portal-scanner \
-  --permissions demos.write,discovered_matches.write"
+  --permissions demos.catalog,demos.read,demos.stats,discovered_matches.write"
 #   copy the printed cgp_… key
 ```
 

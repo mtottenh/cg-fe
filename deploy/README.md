@@ -230,7 +230,7 @@ Three timers (`roles/backups`), all reporting failures through
 
 | Timer | When | What |
 |---|---|---|
-| `pg-backup` | nightly 03:15 | `pg_dump \| zstd` → **validated** (`zstd -t`, `pg_restore --list`, sha256 sidecar) → local copy in `/var/lib/portal/backups/` → **age-encrypted** upload to `portal-backups` |
+| `pg-backup` | nightly 03:15 | `pg_dump \| zstd` → **validated** (`zstd -t`, `pg_restore --list`, sha256 sidecar) → local copy in `/var/lib/portal-backups/` → **age-encrypted** upload to `portal-backups` |
 | `config-backup` | weekly | `/etc/portal` archive (env files + the gameserver **agent-ca**, the one thing not re-renderable from vault) → encrypted → `s3://…/config/` |
 | `pg-restore-verify` | monthly | newest local dump → `portal_restore_test` → sanity counts → drop. Rehearsal as a mechanism — a backup you've never restored is a hope, not a backup |
 
@@ -250,7 +250,7 @@ Restore — all confirm-gated, health-checked recipes:
 
 ```bash
 just backup-list          # local dumps + encrypted bucket copies
-just restore /var/lib/portal/backups/portal_prod_<STAMP>.sql.zst
+just restore /var/lib/portal-backups/portal_prod_<STAMP>.sql.zst
                           # local dump: stop writers → drop/create → pg_restore → restart → /health
 just restore-remote portal_prod_<STAMP>.sql.zst ~/path/to/portal-backup.key
                           # bucket copy: fetch .age → decrypt ON the box (key

@@ -41,7 +41,7 @@ all:
     portal:
       hosts:
         portal-prod:
-          ansible_host: CHANGE_ME            # e.g. 45.33.x.x — set by `just provision`
+          ansible_host: 172.239.103.230
           ansible_user: ops
           ansible_python_interpreter: /usr/bin/python3
 

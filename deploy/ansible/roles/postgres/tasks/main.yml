@@ -48,7 +48,6 @@
     path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
     regexp: '^\s*#?\s*listen_addresses\s*='
     line: "listen_addresses = '{{ postgres_listen_addresses }}'"
-    validate: /bin/true
   notify: restart postgres
 
 - name: pg_hba — local socket + loopback only

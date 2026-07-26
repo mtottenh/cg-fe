@@ -43,7 +43,7 @@ portal_scanner_deb_path: ""
 #   sudo -u portal psql -d portal_prod -c 'SELECT id, name FROM games;'
 # then set this (group_vars or -e). The portal_scanner role refuses to run
 # while it's empty.
-scanner_game_id: ""
+scanner_game_id: "c905260f-d71c-496c-a027-2e5145ac9918"
 
 # Only scan keys under this prefix in the demos bucket ("" = whole bucket).
 scanner_s3_prefix: ""
@@ -65,7 +65,7 @@ demo_stats_port: 3100
 # NOTE: the CA dir is NOT covered by the pg_dump backups — copy it into your
 # backup routine; losing the key means re-enrolling every agent. Requires a
 # DNS A record for agents.{{ portal_domain }}.
-gameserver_integration_enabled: false
+gameserver_integration_enabled: true
 portal_agent_ca_dir: /etc/portal/agent-ca
 
 # Public https front for the demo parser. The API's SSRF guard requires an

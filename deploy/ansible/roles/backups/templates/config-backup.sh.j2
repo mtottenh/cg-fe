@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-BACKUP_DIR=/var/lib/portal/backups
+BACKUP_DIR=/var/lib/portal-backups
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 NAME="etc-portal_${STAMP}.tar.zst"
 OUT="$BACKUP_DIR/$NAME"

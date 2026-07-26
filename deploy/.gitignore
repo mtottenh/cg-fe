@@ -23,3 +23,6 @@ tmp/
 # Backup age keys — the private key must never live in the repo (or on /mnt/c
 # at all: drvfs cannot hold real 600 perms). Keep it in the password manager.
 *.key
+
+# Provisioning secrets loaded by the justfile (LINODE_TOKEN=...).
+.env

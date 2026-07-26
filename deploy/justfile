@@ -3,7 +3,9 @@
 # Convention: anything that touches the live box goes through SSH or
 # ansible-playbook so everything is auditable in shell history.
 
-set dotenv-load := false
+# Load deploy/.env (gitignored) when present — the place for LINODE_TOKEN
+# so `just provision` can run unattended.
+set dotenv-load := true
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # --- config pulled from the Ansible inventory so we don't repeat ourselves

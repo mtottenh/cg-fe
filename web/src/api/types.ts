@@ -6254,6 +6254,12 @@ export interface components {
             /** @description Response DTO for a dispute. */
             data: {
                 /**
+                 * @description Admin who took the dispute for review (P-80); absent until assigned.
+                 *     Clients compare against their own user id for "assigned to me" —
+                 *     ownership is the signal the queue needs, so no name join here.
+                 */
+                assigned_to_user_id?: string | null;
+                /**
                  * Format: date-time
                  * @description Creation timestamp.
                  */
@@ -10788,6 +10794,12 @@ export interface components {
         };
         /** @description Response DTO for a dispute. */
         DisputeResponse: {
+            /**
+             * @description Admin who took the dispute for review (P-80); absent until assigned.
+             *     Clients compare against their own user id for "assigned to me" —
+             *     ownership is the signal the queue needs, so no name join here.
+             */
+            assigned_to_user_id?: string | null;
             /**
              * Format: date-time
              * @description Creation timestamp.

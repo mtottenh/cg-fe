@@ -26,6 +26,17 @@
             <v-chip :color="getDisputePriorityColor(dispute.priority)" size="small" variant="outlined">
               {{ getDisputePriorityLabel(dispute.priority) }} priority
             </v-chip>
+            <!-- P-80: assignment is recorded now, so show who has it. -->
+            <v-chip
+              v-if="dispute.assigned_to_user_id"
+              size="small"
+              variant="outlined"
+              prepend-icon="mdi-account-check"
+              data-testid="dispute-assignee"
+              :title="dispute.assigned_to_user_id"
+            >
+              {{ assignedToMe ? 'Assigned to you' : 'Assigned to another admin' }}
+            </v-chip>
             <v-spacer />
             <v-btn
               v-if="dispute.status === 'pending'"
@@ -387,6 +398,7 @@
 import { useDisplay } from 'vuetify'
 import { ref, watch, computed } from 'vue'
 import { useDisputesStore, getDisputeStatusColor, getDisputeStatusLabel, getDisputePriorityColor, getDisputePriorityLabel, getDisputeReasonColor, getDisputeReasonLabel } from '@/stores/disputes'
+import { useAuthStore } from '@/stores/auth'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatDateTime } from '@/utils/formatters'
 
@@ -402,6 +414,7 @@ const emit = defineEmits<{  resolved: []
 const open = defineModel<boolean>({ required: true })
 
 const store = useDisputesStore()
+const authStore = useAuthStore()
 const snackbar = useSnackbar()
 
 // Form state
@@ -414,6 +427,18 @@ const newP2Score = ref<number>(0)
 const newWinnerRegistrationId = ref('')
 
 const dispute = computed(() => store.currentDispute)
+
+/**
+ * P-80: ownership is now recorded (`assigned_to_user_id`), so the banner can
+ * say who has the dispute instead of two admins silently double-taking it.
+ * The id is compared to the viewer's own — "you" vs "another admin" is the
+ * signal the queue needs; no name join.
+ */
+const assignedToMe = computed(
+  () =>
+    !!dispute.value?.assigned_to_user_id &&
+    dispute.value.assigned_to_user_id === authStore.user?.id
+)
 const messages = computed(() => store.currentThread)
 
 // ---------------------------------------------------------------------------

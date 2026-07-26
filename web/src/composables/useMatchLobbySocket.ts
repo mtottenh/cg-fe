@@ -100,10 +100,12 @@ export interface SpectatorCountMessage {
   count: number
 }
 
+// P-182: `current_team` removed from the wire — the server only ever
+// fabricated the literal "Current Team", and no consumer read it; the name
+// is resolved from session state via the registration id.
 export interface TimeoutWarningMessage {
   type: 'timeout_warning'
   seconds_remaining: number
-  current_team: string
   current_team_registration_id: string
 }
 

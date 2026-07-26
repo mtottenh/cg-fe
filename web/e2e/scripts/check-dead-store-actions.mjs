@@ -157,7 +157,7 @@ for (const rel of GUARDED_STORES) {
   // back into the product.
   for (let grew = true; grew; ) {
     grew = false
-    for (const [name, body] of bodies) {
+    for (const name of bodies.keys()) {
       if (reachable.has(name)) continue
       for (const caller of reachable) {
         if (caller !== name && new RegExp(`\\b${name}\\s*\\(`).test(bodies.get(caller) ?? '')) {

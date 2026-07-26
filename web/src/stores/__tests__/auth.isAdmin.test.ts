@@ -29,9 +29,9 @@ import { useAuthStore } from '../auth'
  * has ever created**. Nothing compared the two sides, so the mismatch was
  * invisible for the life of the guard.
  */
-const SEEDED_ROLES = ['super_admin', 'platform_admin', 'moderator', 'user'] as const
+type SeededRole = 'super_admin' | 'platform_admin' | 'moderator' | 'user'
 
-function roleAssignment(name: (typeof SEEDED_ROLES)[number]) {
+function roleAssignment(name: SeededRole) {
   return {
     id: `assignment-${name}`,
     user_id: 'user-1',
@@ -43,7 +43,7 @@ function roleAssignment(name: (typeof SEEDED_ROLES)[number]) {
 }
 
 /** Drive `isAdmin` by loading a single role assignment through the store. */
-async function isAdminWithRole(name: (typeof SEEDED_ROLES)[number]): Promise<boolean> {
+async function isAdminWithRole(name: SeededRole): Promise<boolean> {
   const store = useAuthStore()
   apiGet.mockResolvedValueOnce({ data: { data: [roleAssignment(name)] }, error: undefined })
   await store.fetchMyRoles()

@@ -132,7 +132,7 @@ test.describe('Match detail refresh after a result submission (P-127)', () => {
     // 4. The submitter's own panel is now the waiting state (this half always
     //    worked — it is driven by the store write, not by the event — and is
     //    kept so a regression that broke it would not hide behind the fix).
-    await expect(page.getByText('Awaiting Opponent Confirmation')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('Awaiting Opponent Confirmation', { exact: true })).toBeVisible({ timeout: 5000 })
 
     // Backend cross-check (ground rule 4): the page is not merely showing what
     // it was told, the match really moved.

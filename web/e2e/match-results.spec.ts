@@ -328,7 +328,7 @@ test.describe('Result Confirmation and Dispute UI', () => {
     await page.goto(`/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`)
     await page.waitForLoadState('networkidle')
 
-    await expect(page.getByText('Awaiting Opponent Confirmation')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Awaiting Opponent Confirmation', { exact: true })).toBeVisible({ timeout: 10000 })
     await expect(page.getByText('Submitted Result:')).toBeVisible()
   })
 })
@@ -381,7 +381,7 @@ test.describe('Result Submission E2E', () => {
       expect((await submitResponse).ok()).toBe(true)
 
       // Submitter now sees the waiting panel.
-      await expect(pageP1.getByText('Awaiting Opponent Confirmation')).toBeVisible({
+      await expect(pageP1.getByText('Awaiting Opponent Confirmation', { exact: true })).toBeVisible({
         timeout: 10000,
       })
 
@@ -442,7 +442,7 @@ test.describe('Result Submission E2E', () => {
       const p1Header = pageP1.locator('.v-card').filter({ hasText: /Match #\d+/ }).first()
       await expect(p1Header.getByText('Final').first()).toBeVisible({ timeout: 10000 })
       await expect(p1Header.getByText(/1\s*-\s*0/).first()).toBeVisible()
-      await expect(pageP1.getByText('Awaiting Opponent Confirmation')).toHaveCount(0)
+      await expect(pageP1.getByText('Awaiting Opponent Confirmation', { exact: true })).toHaveCount(0)
 
       // ...and on a cold load of the completed match, not just the page that
       // happened to be open when it finished.

@@ -36,8 +36,17 @@
   ansible.builtin.apt:
     deb: "/tmp/{{ portal_api_deb_path | basename }}"
     state: present
+    # Rollback IS a deploy: `just deploy vPREV` hands us an older deb and
+    # apt must not refuse it ("a later version is already installed").
+    allow_downgrade: true
   when: portal_api_deb_path | default('') | length > 0
   notify: restart portal-api
+
+- name: Remove the copied deb from /tmp
+  ansible.builtin.file:
+    path: "/tmp/{{ portal_api_deb_path | basename }}"
+    state: absent
+  when: portal_api_deb_path | default('') | length > 0
 
 - name: Render /etc/portal/api.env from vault
   ansible.builtin.template:
@@ -83,3 +92,28 @@
     enabled: true
     state: started
     daemon_reload: true
+
+# -----------------------------------------------------------------------------
+# Health gate — a deploy that leaves a dead or crash-looping API must fail
+# the play, not exit green. Restart handlers are flushed first so we probe
+# the NEW binary, not the old one.
+# -----------------------------------------------------------------------------
+- name: Flush pending restarts before probing
+  ansible.builtin.meta: flush_handlers
+
+# Startup runs DB migrations BEFORE binding the port, so a generous timeout
+# doubles as the migration budget.
+- name: Wait for portal-api to bind :3000
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 3000
+    timeout: 180
+
+- name: portal-api /health answers 200
+  ansible.builtin.uri:
+    url: http://127.0.0.1:3000/health
+    status_code: 200
+  register: portal_api_health
+  retries: 12
+  delay: 5
+  until: portal_api_health.status == 200

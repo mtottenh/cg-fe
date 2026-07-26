@@ -1,0 +1,49 @@
+name: deploy-lint
+
+# The deploy/ tooling had no CI at all — a broken role or playbook was only
+# discovered mid-converge against the prod box. Lint + syntax-check every
+# change that touches it.
+
+on:
+  push:
+    branches: [main, master]
+    paths: ["deploy/**", ".github/workflows/deploy-lint.yml"]
+  pull_request:
+    paths: ["deploy/**", ".github/workflows/deploy-lint.yml"]
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: deploy/ansible
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible + linters
+        run: pip install ansible-core ansible-lint yamllint
+
+      # linode.cloud etc. — syntax check resolves module FQCNs.
+      - name: Install Galaxy requirements
+        run: |
+          ansible-galaxy install -r requirements.yml
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: yamllint
+        run: yamllint -d relaxed .
+
+      - name: ansible-lint
+        run: ansible-lint
+
+      # Placeholder inventory values are fine here: --syntax-check parses
+      # plays and resolves modules but evaluates nothing at runtime (the
+      # validate play's asserts, vault vars, etc. stay untouched).
+      - name: Playbook syntax check
+        run: |
+          ansible-playbook --syntax-check -i inventory/prod.yml site.yml
+          ansible-playbook --syntax-check provision.yml

@@ -4,15 +4,17 @@ Exact, ordered steps to stand up the portal on a new Ubuntu 26.04 LTS Linode.
 All commands run from the **control machine** (your dev box) unless prefixed
 `ssh …`. Paths are relative to `deploy/` unless noted.
 
-The one-line shape: **provision → configure secrets → DNS → build debs →
-converge the site → bootstrap admin → wire the scanner/demo-stats → verify.**
+The one-line shape: **provision → configure secrets → DNS → converge the
+site → bootstrap admin → wire the scanner/demo-stats → deploy releases →
+verify.**
 
 ---
 
 ## 0. Control-machine prerequisites (once)
 
-Install: `ansible-core` (≥2.16), `just`, `gh`, `yq`, Node ≥20 + npm, Rust +
-`cargo install cargo-deb`, and an SSH keypair.
+Install: `ansible-core` (≥2.16), `just`, `gh` (authenticated: `gh auth login`),
+`yq`, `age` (for `age-keygen`), and an SSH keypair. Node ≥20 + npm and Rust +
+`cargo install cargo-deb` are only needed for the local-build fallbacks.
 
 ```bash
 # SSH key used for the box (provisioning injects its .pub)
@@ -20,7 +22,11 @@ ls ~/.ssh/id_ed25519.pub || ssh-keygen -t ed25519
 
 cd deploy
 just galaxy          # installs linode.cloud, community.postgresql, ansible.posix, geerlingguy.postgresql
+just doctor          # checks every tool above and tells you what's missing
 ```
+
+**Expect:** `just doctor` all-ok except `vault.yml present` (created in
+step 3).
 
 ## 1. Accounts & keys to capture
 
@@ -34,6 +40,7 @@ Collect these before touching Ansible.
 | **Steam Web API key** | steamcommunity.com/dev/apikey (any domain) | `vault_steam_api_key` |
 | **JWT secret** | `openssl rand -hex 32` | `vault_jwt_secret` |
 | **Postgres password** | `openssl rand -hex 24` | `vault_postgres_password` |
+| **Backup age keypair** | `age-keygen -o portal-backup.key` (control machine) | public key → `backup_age_public_key` in `vars.yml`; **private key → password manager, then delete the file. It must NEVER land on the box** — off-box backups are encrypted to it, and it is the only way to read them |
 | **A domain** you control | your registrar | `portal_domain` in inventory |
 
 The scanner API key and CS2 game id are minted **after** the first converge
@@ -46,9 +53,16 @@ export LINODE_TOKEN=…            # from step 1
 just provision                  # creates linode/ubuntu26.04, g6-standard-2, eu-west,
                                 # injects ~/.ssh/id_ed25519.pub, writes ansible_host into inventory
 ```
+
+**Checkpoint:** the image slug `linode/ubuntu26.04` follows Linode's naming
+convention but was never verified against a live account. If provisioning
+fails on the image, list what actually exists and override:
+`linode-cli images list | grep ubuntu`, then
+`ansible-playbook ansible/provision.yml -e linode_image=…`.
+
 Note the IPv4 it prints (also now in `ansible/inventory/prod.yml`).
-Override region/type/image with e.g. `-e linode_type=g6-standard-4` if you
-want more RAM for demo parsing (`ansible-playbook ansible/provision.yml -e …`).
+Override region/type with e.g. `-e linode_type=g6-standard-4` for more
+demo-parsing RAM.
 
 ## 3. Configure inventory + vault
 
@@ -57,6 +71,10 @@ want more RAM for demo parsing (`ansible-playbook ansible/provision.yml -e …`)
 $EDITOR ansible/inventory/prod.yml
 #   portal_domain:   portal.yourdomain.com
 #   caddy_acme_email: you@yourdomain.com
+
+# non-secret config: the backup encryption key from step 1
+$EDITOR ansible/group_vars/all/vars.yml
+#   backup_age_public_key: "age1..."
 
 # create the encrypted vault from the example and fill the required keys
 cp ansible/group_vars/all/vault.example.yml ansible/group_vars/all/vault.yml
@@ -71,7 +89,8 @@ ansible-vault encrypt ansible/group_vars/all/vault.yml   # pick a vault password
 the bots (step 10). `vault.yml` is gitignored and never committed.
 
 `site.yml`'s validation play refuses to run while any `CHANGE_ME` /
-`example.com` placeholder remains, so it will tell you if you missed one.
+`example.com` placeholder remains (or `backup_age_public_key` is empty), so
+it will tell you if you missed one.
 
 ## 4. DNS
 
@@ -82,14 +101,33 @@ portal.yourdomain.com.        A   <ipv4>
 demos.portal.yourdomain.com.  A   <ipv4>
 ```
 (The `demos.` host fronts the demo-stats service; the API's SSRF guard
-requires it to be a real https host.) Wait for propagation before step 6 so
-Caddy can get certificates.
+requires it to be a real https host.) A third record —
+`agents.portal.yourdomain.com` — is only needed when you enable the
+game-server integration (see "Game-server agents" below). Wait for
+propagation before step 6 so Caddy can get certificates.
 
-## 5. Build the artifacts (control machine)
+## 5. Get the artifacts
 
-The `portal-api`, `portal-scanner`, and `portal-demo-stats` debs are built
-locally and shipped by Ansible (built for amd64; your dev box and the Linode
-are both x86_64). The SPA builds during the converge.
+**Preferred: tagged GitHub releases.** Each repo's `build-deb` /
+`release-web` workflow runs the test suite, builds the deb, smoke-installs
+it on a clean runner, and attaches it with `SHA256SUMS` to the release —
+the `just deploy*` recipes download and verify them for you in steps 6–8.
+If releases already exist (check `gh release list --repo mtottenh/cg`),
+**skip to step 6.**
+
+To cut a release: bump the Cargo version to match, tag, push —
+
+```bash
+cd ../api && git tag v0.2.1 && git push --tags        # portal-api + portal-scanner
+cd ../demo-stats-service && git tag v0.1.0 && git push --tags
+cd ../community_gaming && git tag v0.1.0 && git push --tags   # cg-fe → portal-web
+```
+(The workflow **refuses a tag that doesn't match the package version** —
+`[workspace.package]` in api/Cargo.toml, `version` in the others — so bump
+first, tag second.)
+
+<details>
+<summary><b>Fallback: build the debs locally</b> (no releases yet, or offline)</summary>
 
 ```bash
 # in the api repo
@@ -103,8 +141,11 @@ cd ../demo-stats-service
 cargo build --release && cargo deb --no-build   # → target/debian/portal-demo-stats_<ver>_amd64.deb
 cd ../deploy
 ```
-(Once you publish tagged GitHub releases with these debs via the `build-deb`
-workflow, `just deploy vX.Y.Z` fetches them for you instead — see step 11.)
+Then pass the paths by hand where steps 6–8 use the release recipes:
+`-e portal_api_deb_path=…` on the step-6 play, and the local-path recipes
+`just deploy-demo-stats <deb>` / `just deploy-steam-bot <deb>`. Don't build
+on the 2 GB Linode itself.
+</details>
 
 ## 6. First converge — bring the site up
 
@@ -114,21 +155,30 @@ demo-stats. Run it as **root** (only root has an SSH key until `roles/base`
 creates the `ops` user):
 
 ```bash
-API_DEB=$(ls ../api/target/debian/portal-api_*_amd64.deb)
+tmp=$(mktemp -d)
+gh release download vX.Y.Z --repo mtottenh/cg \
+    --pattern 'portal-api_*_amd64.deb' --pattern 'SHA256SUMS' --dir "$tmp"
+(cd "$tmp" && sha256sum -c --ignore-missing SHA256SUMS)
 
 ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
   --ask-vault-pass -e ansible_user=root \
   --tags base,postgres,portal_api,portal_web,caddy,backups \
-  -e portal_api_deb_path="$API_DEB"
+  -e portal_api_deb_path="$tmp"/portal-api_*_amd64.deb
 ```
 This installs base hardening, Postgres 16 (socket-only), the API (migrations
 run on boot → seeds the `games` table), the SPA into `/var/www/portal`, Caddy
-(auto-HTTPS), and the backup timer. After it finishes, `https://portal.yourdomain.com`
-serves the app (login won't work yet — no users).
+(auto-HTTPS), and the three backup timers (nightly dump, weekly config
+archive, monthly restore rehearsal).
+
+**Expect:** ~5–10 min. The portal_api role now ends with a health gate
+(waits for `:3000` then `/health`), so a converge that exits green means
+the API is actually up. After it finishes, `https://portal.yourdomain.com`
+serves the app (login won't work yet — no users). If the play fails at the
+health gate, `just logs` shows why the new binary won't start.
 
 ## 7. Bootstrap the admin + gather scanner config
 
-`portal-cli` now ships in the deb. Connect over the DB's unix socket:
+`portal-cli` ships in the portal-api deb. Connect over the DB's unix socket:
 
 ```bash
 SOCK='postgres:///portal_prod?host=/var/run/postgresql&user=portal'
@@ -160,32 +210,39 @@ $EDITOR ansible/group_vars/all/vars.yml
 ## 8. Deploy the scanner + demo-stats
 
 ```bash
-SCAN_DEB=$(ls ../api/target/debian/portal-scanner_*_amd64.deb)
+# scanner (now that scanner_game_id is set) — re-uses the api release debs
+just deploy vX.Y.Z
 
-# scanner (now that scanner_game_id is set)
-ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
-  --ask-vault-pass --tags portal_scanner -e portal_scanner_deb_path="$SCAN_DEB"
-
-# demo-stats
-just deploy-demo-stats ../demo-stats-service/target/debian/portal-demo-stats_*_amd64.deb
+# demo-stats from its release
+just deploy-demo-stats-release vX.Y.Z
 ```
+
+**Expect:** each recipe downloads the debs, verifies `SHA256SUMS`,
+converges, and ends with the role's health gate (scanner: unit active;
+demo-stats: `/health` on :3100). `just deploy` also snapshots the DB first
+— every deploy does.
 
 ## 9. Verify
 
 ```bash
-just status                                   # all units active
-curl -fsS https://portal.yourdomain.com/health && echo OK
-curl -fsS https://portal.yourdomain.com/health/ready   # db + demo-service reachability
+just verify        # /health + /health/ready through Caddy, then unit status
 ```
 Then in a browser: open the site, click **Sign in through Steam**, confirm
 the round-trip lands you signed in (this exercises PORTAL_PUBLIC_URL /
-STEAM_API_KEY end to end).
+STEAM_API_KEY end to end). Finally pin what you deployed:
+
+```bash
+$EDITOR versions.yml        # api/web/demo_stats pins = the tags you shipped
+```
 
 ## 10. Optional
 
 **Import the legacy players** (89 accounts from the old cs210mans DB). Copy
-the export to the box and run the importer:
+the export to the box and run the importer (`$SOCK` as defined in step 7 —
+re-export it if this is a new shell):
 ```bash
+SOCK='postgres:///portal_prod?host=/var/run/postgresql&user=portal'
+
 scp ~/tenmans_players.json ops@<ipv4>:/tmp/
 ssh ops@<ipv4> "sudo -u portal DATABASE_URL='$SOCK' \
   portal-cli user import-steam --file /tmp/tenmans_players.json"
@@ -193,34 +250,82 @@ ssh ops@<ipv4> "sudo -u portal DATABASE_URL='$SOCK' \
 Everyone then signs in through Steam and lands on their imported account.
 
 **Steam match-tracking bots** (cs2-poller + cs2-enricher). Set the
-`vault_steam_bot_*` keys (dedicated Steam bot account for the enricher), build
-and ship:
+`vault_steam_bot_*` keys (dedicated Steam bot account for the enricher),
+then:
 ```bash
-cd ../steam_bot && cargo build --release -p cs2-poller -p cs2-enricher && cargo deb -p cs2-enricher --no-build && cd ../deploy
-just deploy-steam-bot ../steam_bot/target/debian/portal-steam-bot_*_amd64.deb
+just deploy-steam-bot-release vX.Y.Z     # from the cg-steam-bot release
 ```
 
 ## 11. Day-2 operations
 
 ```bash
-just deploy vX.Y.Z     # once CI publishes a release with the debs (fetches + converges portal_api+scanner)
-just deploy-web        # rebuild + ship the SPA after a frontend change
-just backup-now        # on-demand pg backup (also nightly at 03:15 + pre-deploy)
-just status | logs | tail-errors | installed
+just deploy-all        # deploy every pin in versions.yml, then verify
+just deploy vX.Y.Z     # api + scanner only
+just deploy-web-release vX.Y.Z
+just backup-now        # on-demand dump + config archive (also nightly/weekly + pre-deploy)
+just backup-list       # local restore points + encrypted bucket copies
+just restore-verify    # restore rehearsal on demand (also monthly by timer)
+just status | logs | tail-errors | installed | verify
 just db-shell          # psql over ssh (socket auth, no network password)
 ```
 
 Full converge later (e.g. after editing roles): `just bootstrap`. Every
-`site.yml` run snapshots the DB before migrations, so upgrades are safe to
-roll back from the `portal-backups` bucket (restore runbook in `README.md`).
+`site.yml` run snapshots the DB before migrations.
+
+## Rollback
+
+Application rollback is just deploying the previous release — the roles
+pass `allow_downgrade`, so apt accepts the older deb:
+
+```bash
+just deploy vPREV                  # api + scanner binaries roll back
+just deploy-web-release vPREV      # SPA rolls back (deb removes newer assets)
+```
+
+The **database does not roll back with the binaries** — migrations are
+forward-only:
+
+- If the newer version added **no** migration: the plain rollback above is
+  complete.
+- If it **did**: the older binary will usually run fine against the newer
+  schema (columns it doesn't know about), but for a true rollback restore
+  the pre-deploy snapshot that every `just deploy` takes:
+  `just backup-list`, then `just restore <file>` (local dump) or
+  `just restore-remote <name> <age-key-file>` (bucket copy). Both are
+  confirm-gated and health-check on completion.
+
+Keep the schema backwards-compatible with the previous release for one
+version (expand/contract migrations) so the plain rollback path is always
+available.
+
+## Game-server agents (optional, MatchZy integration)
+
+Off by default. To enable match automation on CS2 hosts
+(docs/matchzy-integration.md):
+
+1. **DNS**: add `agents.portal.yourdomain.com. A <ipv4>` (third record).
+2. **CA init** (once, on the box):
+   `ssh ops@<ipv4> "sudo -u portal portal-cli gameserver ca-init --dir /etc/portal/agent-ca"`.
+   The CA private key now exists ONLY there — it's covered by the weekly
+   `config-backup` timer, and losing it means re-enrolling every agent.
+3. **Enable**: set `gameserver_integration_enabled: true` in
+   `ansible/group_vars/all/vars.yml`, then `just bootstrap`. This adds the
+   `agents.<domain>` Caddy site (mTLS client certs) and the API env.
+4. **Each game host**: install `portal-server-agent_*.deb` from the
+   `mtottenh/cg-server-agent` release, mint a one-time enrollment token
+   (admin UI → Game Servers, or `portal-cli gameserver enroll-token`), then
+   on the host: `sudo portal-server-agent enroll --url https://portal.… --token cgs_…`
+   and `sudo systemctl start portal-server-agent`. Full prerequisites
+   (MatchZy, `-usercon`, GOTV) are in that repo's README.
+
+**Expect:** the server flips `offline → available` in the admin UI on the
+first heartbeat (~30 s).
 
 ## Notes / rough edges
 
-- **`just deploy` repo slug**: the recipe downloads from
-  `community-gaming/gaming-portal`; the actual remote is `mtottenh/cg`. Fix the
-  `--repo` in the justfile (or publish under that org) before using the
-  release path.
 - **Rotate the leaked keys** from the old box (the Object Storage pair and the
   Steam API key were exposed — see `../api/docs/deployment-cs210mans-audit.md`).
-- Building the debs on the 2 GB Linode itself is not recommended; build on the
-  control machine as above (or in CI).
+- Building the debs on the 2 GB Linode itself is not recommended; use the
+  releases, or build on the control machine (step 5 fallback).
+- The backup **age private key** is the single credential that can read
+  off-box backups. Password manager only; never the box, never the repo.

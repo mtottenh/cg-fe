@@ -57,10 +57,19 @@
   ansible.builtin.apt:
     deb: "/tmp/{{ portal_steam_bot_deb_path | basename }}"
     state: present
+    # Rollback IS a deploy: an older deb must not be refused
+    # ("a later version is already installed").
+    allow_downgrade: true
   when: portal_steam_bot_deb_path | default('') | length > 0
   notify:
     - restart cs2-poller
     - restart cs2-enricher
+
+- name: Remove the copied deb from /tmp
+  ansible.builtin.file:
+    path: "/tmp/{{ portal_steam_bot_deb_path | basename }}"
+    state: absent
+  when: portal_steam_bot_deb_path | default('') | length > 0
 
 - name: Render /etc/portal/cs2-poller.env from vault
   ansible.builtin.template:
@@ -93,3 +102,21 @@
     enabled: true
     state: started
     daemon_reload: true
+
+# -----------------------------------------------------------------------------
+# Health gate — no HTTP endpoints (pollers), so "active after a few seconds"
+# is the proxy for "didn't crash-loop on the new binary/config".
+# -----------------------------------------------------------------------------
+- name: Flush pending restarts before probing
+  ansible.builtin.meta: flush_handlers
+
+- name: Bot unit is active (not crash-looping) — {{ item }}
+  ansible.builtin.command: systemctl is-active --quiet {{ item }}  # noqa: command-instead-of-module
+  register: portal_steam_bot_active
+  changed_when: false
+  retries: 3
+  delay: 5
+  until: portal_steam_bot_active.rc == 0
+  loop:
+    - cs2-poller
+    - cs2-enricher

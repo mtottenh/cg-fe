@@ -37,8 +37,17 @@
   ansible.builtin.apt:
     deb: "/tmp/{{ portal_demo_stats_deb_path | basename }}"
     state: present
+    # Rollback IS a deploy: an older deb must not be refused
+    # ("a later version is already installed").
+    allow_downgrade: true
   when: portal_demo_stats_deb_path | default('') | length > 0
   notify: restart portal-demo-stats
+
+- name: Remove the copied deb from /tmp
+  ansible.builtin.file:
+    path: "/tmp/{{ portal_demo_stats_deb_path | basename }}"
+    state: absent
+  when: portal_demo_stats_deb_path | default('') | length > 0
 
 - name: Render /etc/portal/demo-stats.env from vault
   ansible.builtin.template:
@@ -55,3 +64,25 @@
     enabled: true
     state: started
     daemon_reload: true
+
+# -----------------------------------------------------------------------------
+# Health gate — a deploy that leaves the parser dead must fail the play.
+# Handlers are flushed first so we probe the NEW binary.
+# -----------------------------------------------------------------------------
+- name: Flush pending restarts before probing
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for portal-demo-stats to bind :{{ demo_stats_port | default(3100) }}
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ demo_stats_port | default(3100) }}"
+    timeout: 60
+
+- name: portal-demo-stats /health answers 200
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ demo_stats_port | default(3100) }}/health"
+    status_code: 200
+  register: portal_demo_stats_health
+  retries: 6
+  delay: 5
+  until: portal_demo_stats_health.status == 200

@@ -1,6 +1,13 @@
 ---
+# Preferred mode: a portal-web deb from the cg-fe release (built by
+# .github/workflows/release-web.yml, fetched by `just deploy-web-release`).
+# dpkg tracks every file, so upgrades remove stale hashed assets and
+# rollback is just installing the older deb. When set, the tarball and
+# local-build modes below are skipped entirely.
+portal_web_deb_path: ""
+
 # Where the frontend source lives relative to this repo checkout (used by
-# the default local-build mode).
+# the fallback local-build mode).
 portal_web_src_dir: "{{ playbook_dir }}/../../web"
 
 # Prebuilt dist tarball (e.g. a CI artifact: `tar -czf dist.tar.gz -C web/dist .`).

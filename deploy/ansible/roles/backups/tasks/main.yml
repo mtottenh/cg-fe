@@ -1,17 +1,71 @@
 ---
-# Nightly pg_dump → zstd → Linode Object Storage.
+# Backups: three timers + a shared failure path.
 #
-# The service runs as the `postgres` user so the pg_dump is socket-auth
-# (no password on the wire) and has CONNECT on everything. The AWS
-# credentials are read from an env file, same pattern as the API.
+#   pg-backup          nightly   pg_dump → zstd (local, validated) → age
+#                                encrypt → Object Storage
+#   config-backup      weekly    /etc/portal archive (env files + the
+#                                gameserver agent-ca — the one thing on the
+#                                box that can't be re-rendered from vault)
+#   pg-restore-verify  monthly   newest local dump → portal_restore_test →
+#                                sanity counts → drop. Rehearsal as a
+#                                mechanism, not advice.
+#   backup-failure@    OnFailure journal tail + optional healthcheck /fail
+#                                ping — a silently-failing backup looks
+#                                identical to a working one otherwise.
+#
+# Local dumps stay plaintext-zstd (the box holds the live DB anyway);
+# everything leaving the box is encrypted to backup_age_public_key. The
+# private key lives in the operator's password manager, never here.
+#
+# The dump runs as `postgres` for socket peer-auth; config-backup runs as
+# root (agent-ca and env files are root-owned).
 
-- name: /usr/local/bin/pg-backup.sh
-  ansible.builtin.template:
-    src: pg-backup.sh.j2
-    dest: /usr/local/bin/pg-backup.sh
+# --- Prerequisites -----------------------------------------------------------
+
+# Self-contained: `--tags backups` on a bare box installs its own tooling.
+# (Overlap with roles/base is fine — apt is idempotent.)
+- name: Backup tooling packages
+  ansible.builtin.apt:
+    name:
+      - zstd
+      - age
+      - awscli
+      - curl
+    state: present
+
+# What belongs to another role is asserted, not installed: pg_dump and the
+# postgres system user come from roles/postgres (ordered first in site.yml).
+- name: Check for pg_dump
+  ansible.builtin.command: pg_dump --version
+  register: backups_pg_dump
+  changed_when: false
+  failed_when: false
+
+- name: Check for the postgres system user
+  ansible.builtin.command: getent passwd postgres
+  register: backups_pg_user
+  changed_when: false
+  failed_when: false
+
+- name: Assert the postgres role has run
+  ansible.builtin.assert:
+    that:
+      - backups_pg_dump.rc == 0
+      - backups_pg_user.rc == 0
+    fail_msg: >-
+      pg_dump and/or the postgres user are missing — the backups role needs
+      the postgres role first. Run the full site play, or
+      `--tags postgres,backups`.
+
+# --- Config + scripts --------------------------------------------------------
+
+- name: /etc/portal exists
+  ansible.builtin.file:
+    path: /etc/portal
+    state: directory
     owner: root
-    group: root
-    mode: "0755"
+    group: portal
+    mode: "0750"
 
 - name: /etc/portal/backup.env
   ansible.builtin.copy:
@@ -25,7 +79,24 @@
       AWS_ENDPOINT_URL={{ linode_object_storage_endpoint }}
       BACKUP_BUCKET={{ backup_bucket }}
       BACKUP_LOCAL_RETENTION_DAYS={{ backup_local_retention_days }}
+      BACKUP_ZSTD_LEVEL={{ backup_zstd_level }}
+      BACKUP_AGE_PUBLIC_KEY={{ backup_age_public_key }}
+      BACKUP_HEALTHCHECK_URL={{ backup_healthcheck_url }}
       POSTGRES_DB={{ postgres_db }}
+      POSTGRES_USER={{ postgres_user }}
+
+- name: Backup scripts
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/usr/local/bin/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - pg-backup.sh
+    - config-backup.sh
+    - restore-verify.sh
+    - backup-failure.sh
 
 - name: /var/lib/portal/backups
   ansible.builtin.file:
@@ -35,15 +106,32 @@
     group: postgres
     mode: "0750"
 
+# --- Units -------------------------------------------------------------------
+
+- name: backup-failure@.service (OnFailure target)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/backup-failure@.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Backup failure report for %i
+
+      [Service]
+      Type=oneshot
+      EnvironmentFile=/etc/portal/backup.env
+      ExecStart=/usr/local/bin/backup-failure.sh %i
+  notify: daemon-reload
+
 - name: pg-backup.service
   ansible.builtin.copy:
     dest: /etc/systemd/system/pg-backup.service
     mode: "0644"
     content: |
       [Unit]
-      Description=Nightly portal_prod dump → Linode Object Storage
+      Description=Nightly portal_prod dump → Linode Object Storage (age-encrypted)
       After=postgresql.service network-online.target
       Wants=network-online.target
+      OnFailure=backup-failure@%n.service
 
       [Service]
       Type=oneshot
@@ -75,9 +163,125 @@
       WantedBy=timers.target
   notify: daemon-reload
 
-- name: Enable pg-backup.timer
+- name: config-backup.service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/config-backup.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=/etc/portal archive → Linode Object Storage (age-encrypted)
+      After=network-online.target
+      Wants=network-online.target
+      OnFailure=backup-failure@%n.service
+
+      [Service]
+      Type=oneshot
+      # root: agent-ca and the env files are root-owned.
+      EnvironmentFile=/etc/portal/backup.env
+      ExecStart=/usr/local/bin/config-backup.sh
+      TimeoutStartSec=600
+      Nice=10
+  notify: daemon-reload
+
+- name: config-backup.timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/config-backup.timer
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Weekly /etc/portal config backup timer
+
+      [Timer]
+      {{ backup_config_schedule }}
+      Persistent=true
+      RandomizedDelaySec=300
+
+      [Install]
+      WantedBy=timers.target
+  notify: daemon-reload
+
+- name: pg-restore-verify.service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pg-restore-verify.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Restore rehearsal: newest dump → portal_restore_test → sanity → drop
+      After=postgresql.service
+      OnFailure=backup-failure@%n.service
+
+      [Service]
+      Type=oneshot
+      User=postgres
+      Group=postgres
+      EnvironmentFile=/etc/portal/backup.env
+      ExecStart=/usr/local/bin/restore-verify.sh
+      TimeoutStartSec=3600
+      Nice=15
+      IOSchedulingClass=best-effort
+      IOSchedulingPriority=7
+  notify: daemon-reload
+
+- name: pg-restore-verify.timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pg-restore-verify.timer
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Monthly restore rehearsal timer
+
+      [Timer]
+      {{ backup_restore_verify_schedule }}
+      Persistent=true
+      RandomizedDelaySec=1800
+
+      [Install]
+      WantedBy=timers.target
+  notify: daemon-reload
+
+- name: Enable backup timers
   ansible.builtin.systemd:
-    name: pg-backup.timer
+    name: "{{ item }}"
     enabled: true
     state: started
     daemon_reload: true
+  loop:
+    - pg-backup.timer
+    - config-backup.timer
+    - pg-restore-verify.timer
+
+# --- Remote retention (bucket lifecycle) -------------------------------------
+
+# vars.yml used to say retention is "handled by a bucket lifecycle rule" —
+# which nothing created. Apply it from the box (it has awscli + the keys).
+# The rule ID encodes the day count, which doubles as the idempotency check.
+- name: Read current bucket lifecycle configuration
+  ansible.builtin.command: >-
+    aws --endpoint-url={{ linode_object_storage_endpoint }}
+    s3api get-bucket-lifecycle-configuration --bucket {{ backup_bucket }}
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ vault_linode_access_key }}"
+    AWS_SECRET_ACCESS_KEY: "{{ vault_linode_secret_key }}"
+  register: backups_lifecycle
+  changed_when: false
+  failed_when: false   # NoSuchLifecycleConfiguration on a fresh bucket
+
+- name: Apply bucket lifecycle — expire dumps after {{ backup_remote_retention_days }} days
+  changed_when: true   # only runs when the current config differs (see when:)
+  ansible.builtin.command:
+    argv:
+      - aws
+      - "--endpoint-url={{ linode_object_storage_endpoint }}"
+      - s3api
+      - put-bucket-lifecycle-configuration
+      - --bucket
+      - "{{ backup_bucket }}"
+      - --lifecycle-configuration
+      - >-
+        {"Rules": [{"ID": "expire-backups-after-{{ backup_remote_retention_days }}d",
+        "Status": "Enabled", "Filter": {"Prefix": ""},
+        "Expiration": {"Days": {{ backup_remote_retention_days }}}}]}
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ vault_linode_access_key }}"
+    AWS_SECRET_ACCESS_KEY: "{{ vault_linode_secret_key }}"
+  when: "'expire-backups-after-' ~ backup_remote_retention_days ~ 'd' not in backups_lifecycle.stdout"

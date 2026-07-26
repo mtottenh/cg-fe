@@ -48,8 +48,17 @@
   ansible.builtin.apt:
     deb: "/tmp/{{ portal_scanner_deb_path | basename }}"
     state: present
+    # Rollback IS a deploy: `just deploy vPREV` hands us an older deb and
+    # apt must not refuse it ("a later version is already installed").
+    allow_downgrade: true
   when: portal_scanner_deb_path | default('') | length > 0
   notify: restart portal-scanner
+
+- name: Remove the copied deb from /tmp
+  ansible.builtin.file:
+    path: "/tmp/{{ portal_scanner_deb_path | basename }}"
+    state: absent
+  when: portal_scanner_deb_path | default('') | length > 0
 
 - name: Render /etc/portal/scanner.env from vault
   ansible.builtin.template:
@@ -66,3 +75,18 @@
     enabled: true
     state: started
     daemon_reload: true
+
+# -----------------------------------------------------------------------------
+# Health gate — no HTTP endpoint (it's a poller), so "active after a few
+# seconds" is the proxy for "didn't crash-loop on the new binary/config".
+# -----------------------------------------------------------------------------
+- name: Flush pending restarts before probing
+  ansible.builtin.meta: flush_handlers
+
+- name: portal-scanner is active (not crash-looping)
+  ansible.builtin.command: systemctl is-active --quiet portal-scanner  # noqa: command-instead-of-module
+  register: portal_scanner_active
+  changed_when: false
+  retries: 3
+  delay: 5
+  until: portal_scanner_active.rc == 0

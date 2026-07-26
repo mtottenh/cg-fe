@@ -1,0 +1,25 @@
+#!/bin/bash
+# {{ ansible_managed }}
+#
+# OnFailure= target for the backup units (via backup-failure@.service).
+# Makes a failed backup VISIBLE: journal tail into this unit's own log,
+# plus a /fail ping to the healthcheck URL when one is configured — a
+# dead-man's-switch service then alerts even if the box goes quiet.
+#
+# Never fails itself (exit 0): a broken reporter must not mask or replace
+# the original failure.
+
+set -uo pipefail
+
+UNIT="${1:-unknown}"
+
+echo "✗ ${UNIT} FAILED — last 25 log lines:"
+journalctl -u "$UNIT" -n 25 --no-pager || true
+
+if [ -n "${BACKUP_HEALTHCHECK_URL:-}" ]; then
+    curl -fsS -m 10 --retry 3 "${BACKUP_HEALTHCHECK_URL}/fail" \
+        --data-raw "unit=${UNIT}" >/dev/null \
+        || echo "warning: failure ping did not go through"
+fi
+
+exit 0

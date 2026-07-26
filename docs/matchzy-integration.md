@@ -284,7 +284,7 @@ Caddy validates chain + validity window against the portal CA; the API additiona
 
 ### 5.1 `portal-server-agent` (new top-level Rust project, sibling of `steam_bot`)
 
-Single small binary, mirroring the `steam_bot` conventions (clap + env config, `.deb` via `cargo-deb`, hardened systemd unit, `EnvironmentFile=/etc/portal/server-agent.env`):
+Single small binary, mirroring the `steam_bot` conventions (clap + env config, `.deb` via `cargo-deb`, hardened systemd unit, `EnvironmentFile=/etc/portal/portal-server-agent.env`):
 
 ```
 PORTAL_AGENT_URL=wss://agents.portal.example.com/agent/ws

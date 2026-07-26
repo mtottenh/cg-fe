@@ -104,8 +104,41 @@ ops_ssh_pubkey_file: "~/.ssh/id_ed25519.pub"
 
 # --- Backups ---------------------------------------------------------------
 backup_bucket: portal-backups
-# Keep 30 days of nightly dumps locally in /var/lib/portal/backups, and
-# upload all of them to Object Storage (retention handled by a bucket
-# lifecycle rule, not this script).
+# Keep 30 days of nightly dumps locally in /var/lib/portal/backups (plain
+# zstd — the box already holds the live DB, so a local plaintext dump adds
+# no exposure); upload age-ENCRYPTED copies to Object Storage.
 backup_local_retention_days: 30
 backup_schedule: "OnCalendar=*-*-* 03:15:00"    # 03:15 server local
+
+# REQUIRED (site.yml validation rejects an empty value): age recipient the
+# box encrypts uploads to. Generate once on the control machine:
+#   age-keygen -o portal-backup.key       # → prints "Public key: age1..."
+# Put the PUBLIC key here; the private key goes in your password manager
+# and must NEVER land on the box — an attacker with the box (or the bucket
+# keys, which the API also holds) can then read no historical backups.
+backup_age_public_key: ""
+
+# Remote retention: dumps in the bucket expire after this many days via an
+# S3 lifecycle rule the backups role applies (idempotently) from the box.
+backup_remote_retention_days: 180
+
+# zstd level for the nightly dump. 12 gets most of -19's ratio at a
+# fraction of the CPU on the 2-core Linode.
+backup_zstd_level: 12
+
+# Optional dead-man's-switch ping (e.g. healthchecks.io). The backup
+# scripts GET this URL on success and $URL/fail on failure; leave "" to
+# disable. Without it a silently-failing backup looks identical to a
+# working one.
+backup_healthcheck_url: ""
+
+# /etc/portal (env files + the gameserver agent-ca, if enabled) → encrypted
+# archive in s3://<bucket>/config/. Weekly: config changes rarely and every
+# converge re-renders it from the vault anyway; the irreplaceable part is
+# the agent CA key.
+backup_config_schedule: "OnCalendar=Mon *-*-* 03:45:00"
+
+# Monthly restore rehearsal: newest local dump → portal_restore_test →
+# sanity counts → drop. A backup you've never restored is a hope, not a
+# backup — this turns the quarterly-rehearsal advice into a mechanism.
+backup_restore_verify_schedule: "OnCalendar=*-*-01 04:30:00"

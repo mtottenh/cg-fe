@@ -1,0 +1,11 @@
+# ansible-lint config for deploy/ansible (used locally and by the
+# deploy-lint CI workflow in .github/workflows/deploy-lint.yml).
+#
+# Style rules demoted to warnings where they fight this tree's established
+# conventions: lowercase handler names ("restart portal-api"), unit-file
+# task names ("pg-backup.service"), and em-dash task titles. Substantive
+# rules (idempotency, syntax, module args) stay blocking.
+warn_list:
+  - name[casing]      # task/handler names deliberately mirror unit names
+  - name[template]    # "{{ item }}" mid-name reads better for unit loops
+  - args[module]      # experimental rule; false-positives on ufw policy loop

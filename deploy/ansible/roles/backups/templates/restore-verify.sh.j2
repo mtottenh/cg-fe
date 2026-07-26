@@ -1,0 +1,43 @@
+#!/bin/bash
+# {{ ansible_managed }}
+#
+# Restore rehearsal: newest local dump → portal_restore_test → sanity
+# counts → drop. Runs monthly from pg-restore-verify.timer (and on demand
+# via `just restore-verify`). A backup you've never restored is a hope,
+# not a backup.
+#
+# Runs as the postgres superuser (socket peer-auth). Never touches
+# ${POSTGRES_DB} itself. Config from /etc/portal/backup.env.
+
+set -euo pipefail
+
+BACKUP_DIR=/var/lib/portal/backups
+TESTDB=portal_restore_test
+
+LATEST=$(find "$BACKUP_DIR" -maxdepth 1 -name "${POSTGRES_DB}_*.sql.zst" -type f \
+    -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+if [ -z "$LATEST" ]; then
+    echo "✗ no local dumps matching ${POSTGRES_DB}_*.sql.zst in $BACKUP_DIR"
+    exit 1
+fi
+
+echo "→ rehearsing restore of $(basename "$LATEST") into $TESTDB"
+dropdb --if-exists "$TESTDB"
+createdb -O "$POSTGRES_USER" "$TESTDB"
+
+zstd -dc "$LATEST" | pg_restore -d "$TESTDB" --no-owner --role="$POSTGRES_USER"
+
+USERS=$(psql -d "$TESTDB" -Atc "SELECT count(*) FROM users")
+GAMES=$(psql -d "$TESTDB" -Atc "SELECT count(*) FROM games")
+echo "→ restored: users=$USERS games=$GAMES"
+
+dropdb "$TESTDB"
+
+# Seeded prod always has >=1 game; a zero here means the dump is missing
+# its data even though pg_restore exited 0.
+if [ "$GAMES" -lt 1 ]; then
+    echo "✗ sanity counts failed — dump restores but looks empty"
+    exit 1
+fi
+
+echo "✓ restore rehearsal passed ($(basename "$LATEST"))"

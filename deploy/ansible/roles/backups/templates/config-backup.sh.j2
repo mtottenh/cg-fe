@@ -1,0 +1,46 @@
+#!/bin/bash
+# {{ ansible_managed }}
+#
+# Weekly /etc/portal archive → age-encrypted → s3://<bucket>/config/.
+#
+# Most of /etc/portal re-renders from the vault on any converge — but
+# /etc/portal/agent-ca (the gameserver CA private key, when the MatchZy
+# integration is enabled) exists NOWHERE else: losing it means re-enrolling
+# every game server. This is its offsite copy.
+#
+# Runs as root (agent-ca and the env files are root-owned). Config from
+# /etc/portal/backup.env.
+
+set -euo pipefail
+
+BACKUP_DIR=/var/lib/portal/backups
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+NAME="etc-portal_${STAMP}.tar.zst"
+OUT="$BACKUP_DIR/$NAME"
+
+mkdir -p "$BACKUP_DIR"
+
+echo "→ archiving /etc/portal → $OUT"
+tar -C /etc -cf - portal | zstd -T0 -q -o "$OUT"
+chmod 0600 "$OUT"   # env secrets inside — root-only, unlike the pg dumps
+
+zstd -t -q "$OUT"
+(cd "$BACKUP_DIR" && sha256sum "$NAME" > "$NAME.sha256")
+chmod 0600 "$OUT.sha256"
+
+echo "→ encrypting for upload"
+age -r "$BACKUP_AGE_PUBLIC_KEY" -o "$OUT.age" "$OUT"
+
+echo "→ uploading to s3://${BACKUP_BUCKET}/config/"
+aws --endpoint-url="$AWS_ENDPOINT_URL" \
+    s3 cp "$OUT.age" "s3://${BACKUP_BUCKET}/config/${NAME}.age" --only-show-errors
+aws --endpoint-url="$AWS_ENDPOINT_URL" \
+    s3 cp "$OUT.sha256" "s3://${BACKUP_BUCKET}/config/${NAME}.sha256" --only-show-errors
+rm -f "$OUT.age"
+
+echo "→ pruning local config archives older than ${BACKUP_LOCAL_RETENTION_DAYS} days"
+find "$BACKUP_DIR" -maxdepth 1 -type f \
+    \( -name 'etc-portal_*.tar.zst' -o -name 'etc-portal_*.tar.zst.sha256' \) \
+    -mtime "+${BACKUP_LOCAL_RETENTION_DAYS}" -delete
+
+echo "✓ config backup complete"

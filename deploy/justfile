@@ -8,10 +8,35 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # --- config pulled from the Ansible inventory so we don't repeat ourselves
 HOST := `yq -r '.all.hosts[].ansible_host' ansible/inventory/prod.yml 2>/dev/null || echo portal`
+DOMAIN := `yq -r '.all.vars.portal_domain' ansible/inventory/prod.yml 2>/dev/null || echo portal.example.com`
 USER := "ops"
 
 default:
     @just --list
+
+# Check the control machine has everything the recipes below assume.
+doctor:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    fail=0
+    check() { local name="$1"; shift; if "$@" >/dev/null 2>&1; then echo "  ok   $name"; else echo "  MISS $name"; fail=1; fi; }
+    warn()  { local name="$1"; shift; if "$@" >/dev/null 2>&1; then echo "  ok   $name"; else echo "  warn $name (optional)"; fi; }
+    echo "control-machine prerequisites:"
+    check "ansible-playbook"                  command -v ansible-playbook
+    check "ansible-vault"                     command -v ansible-vault
+    check "gh (release downloads)"            command -v gh
+    check "gh auth"                           gh auth status
+    check "yq (inventory parsing)"            command -v yq
+    check "age-keygen (backup keypair)"       command -v age-keygen
+    check "ssh key ~/.ssh/id_ed25519.pub"     test -f "$HOME/.ssh/id_ed25519.pub"
+    check "vault.yml present"                 test -f ansible/group_vars/all/vault.yml
+    warn  "node+npm (web local-build mode)"   command -v npm
+    if head -1 ansible/group_vars/all/vault.yml 2>/dev/null | grep -q '^\$ANSIBLE_VAULT'; then
+        echo "  ok   vault.yml is ansible-vault encrypted"
+    else
+        echo "  warn vault.yml missing or NOT encrypted (ansible-vault encrypt it)"
+    fi
+    exit $fail
 
 # Install Galaxy roles + collections (linode.cloud, community.postgresql, ...).
 galaxy:
@@ -35,94 +60,236 @@ bootstrap-fresh:
 bootstrap:
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml --ask-vault-pass
 
-# Deploy a tagged release. Downloads debs from the matching GitHub release
-# and hands them to the playbook via -e overrides.
+# --- deploys -----------------------------------------------------------------
+
+# Deploy a tagged api release (portal-api + portal-scanner debs). Downloads
+# from the GitHub release, verifies checksums, converges.
 #
 # Usage: just deploy v0.2.1
 deploy VERSION:
     #!/usr/bin/env bash
     set -euo pipefail
-    tmp=$(mktemp -d)
+    tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
     echo "→ downloading portal-api + portal-scanner {{VERSION}} → $tmp"
     gh release download {{VERSION}} --repo mtottenh/cg \
         --pattern 'portal-api_*_amd64.deb' \
         --pattern 'portal-scanner_*_amd64.deb' \
+        --pattern 'SHA256SUMS' \
         --dir "$tmp"
-    ls -la "$tmp"
+    (cd "$tmp" && sha256sum -c --ignore-missing SHA256SUMS)
+    api=("$tmp"/portal-api_*_amd64.deb)
+    scan=("$tmp"/portal-scanner_*_amd64.deb)
+    [ ${#api[@]} -eq 1 ] && [ -f "${api[0]}" ]   || { echo "expected exactly one portal-api deb: ${api[*]}"; exit 1; }
+    [ ${#scan[@]} -eq 1 ] && [ -f "${scan[0]}" ] || { echo "expected exactly one portal-scanner deb: ${scan[*]}"; exit 1; }
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
         --ask-vault-pass \
         --tags portal_api,portal_scanner \
-        -e portal_api_deb_path="$tmp/$(ls "$tmp" | grep ^portal-api_)" \
-        -e portal_scanner_deb_path="$tmp/$(ls "$tmp" | grep ^portal-scanner_)"
-    rm -rf "$tmp"
+        -e portal_api_deb_path="${api[0]}" \
+        -e portal_scanner_deb_path="${scan[0]}"
 
-# Build the SPA locally (npm ci && npm run build, same-origin VITE_API_URL)
-# and ship web/dist to /var/www/portal. See roles/portal_web.
-# For dev iteration; prefer `deploy-web-release` for reproducible prod deploys.
-deploy-web:
+# Deploy a tagged demo-stats release.
+#
+# Usage: just deploy-demo-stats-release v0.1.0
+deploy-demo-stats-release VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+    echo "→ downloading portal-demo-stats {{VERSION}} → $tmp"
+    gh release download {{VERSION}} --repo mtottenh/csgo-demo-stats \
+        --pattern 'portal-demo-stats_*.deb' --pattern 'SHA256SUMS' --dir "$tmp"
+    (cd "$tmp" && sha256sum -c --ignore-missing SHA256SUMS)
+    deb=("$tmp"/portal-demo-stats_*.deb)
+    [ ${#deb[@]} -eq 1 ] && [ -f "${deb[0]}" ] || { echo "expected exactly one deb: ${deb[*]}"; exit 1; }
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
-        --ask-vault-pass --tags portal_web
+        --ask-vault-pass --tags portal_demo_stats \
+        -e portal_demo_stats_deb_path="${deb[0]}"
 
-# Ship a released SPA bundle: download the vite build from the cg-fe release
-# (produced by .github/workflows/release-web.yml) and unpack it to the docroot
-# — no local npm build, reproducible artifact.
+# Deploy a tagged steam-bot release (enables the role for this run, like
+# deploy-steam-bot).
+#
+# Usage: just deploy-steam-bot-release v0.1.0
+deploy-steam-bot-release VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+    echo "→ downloading portal-steam-bot {{VERSION}} → $tmp"
+    gh release download {{VERSION}} --repo mtottenh/cg-steam-bot \
+        --pattern 'portal-steam-bot_*.deb' --pattern 'SHA256SUMS' --dir "$tmp"
+    (cd "$tmp" && sha256sum -c --ignore-missing SHA256SUMS)
+    deb=("$tmp"/portal-steam-bot_*.deb)
+    [ ${#deb[@]} -eq 1 ] && [ -f "${deb[0]}" ] || { echo "expected exactly one deb: ${deb[*]}"; exit 1; }
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
+        --ask-vault-pass --tags portal_steam_bot \
+        -e portal_steam_bot_enabled=true \
+        -e portal_steam_bot_deb_path="${deb[0]}"
+
+# Ship a released SPA as the portal-web deb (preferred: dpkg removes stale
+# hashed assets, downgrades are rollbacks). Produced by cg-fe's
+# .github/workflows/release-web.yml.
 #
 # Usage: just deploy-web-release v0.1.0
 deploy-web-release VERSION:
     #!/usr/bin/env bash
     set -euo pipefail
-    tmp=$(mktemp -d)
-    echo "→ downloading web-dist {{VERSION}} from mtottenh/cg-fe → $tmp"
+    tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+    echo "→ downloading portal-web {{VERSION}} from mtottenh/cg-fe → $tmp"
     gh release download {{VERSION}} --repo mtottenh/cg-fe \
-        --pattern 'web-dist.tar.gz' --dir "$tmp"
+        --pattern 'portal-web_*_all.deb' --pattern 'SHA256SUMS' --dir "$tmp"
+    (cd "$tmp" && sha256sum -c --ignore-missing SHA256SUMS)
+    deb=("$tmp"/portal-web_*_all.deb)
+    [ ${#deb[@]} -eq 1 ] && [ -f "${deb[0]}" ] || { echo "expected exactly one deb: ${deb[*]}"; exit 1; }
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
         --ask-vault-pass --tags portal_web \
-        -e portal_web_dist_tarball="$tmp/web-dist.tar.gz"
-    rm -rf "$tmp"
+        -e portal_web_deb_path="${deb[0]}"
+
+# Deploy every service pinned in versions.yml (empty pin = skipped).
+# Each service converges separately, so expect one vault prompt per
+# service — use a vault password file if that grates.
+deploy-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    api=$(yq -r '.api // ""' versions.yml)
+    web=$(yq -r '.web // ""' versions.yml)
+    demo=$(yq -r '.demo_stats // ""' versions.yml)
+    bots=$(yq -r '.steam_bot // ""' versions.yml)
+    echo "pins: api=${api:-skip} web=${web:-skip} demo_stats=${demo:-skip} steam_bot=${bots:-skip}"
+    if [ -n "$api" ];  then just deploy "$api"; fi
+    if [ -n "$demo" ]; then just deploy-demo-stats-release "$demo"; fi
+    if [ -n "$bots" ]; then just deploy-steam-bot-release "$bots"; fi
+    if [ -n "$web" ];  then just deploy-web-release "$web"; fi
+    just verify
+
+# Build the SPA locally (npm ci && npm run build, same-origin VITE_API_URL)
+# and ship web/dist to /var/www/portal. Dev iteration only — prefer
+# `deploy-web-release` for reproducible prod deploys.
+deploy-web:
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
+        --ask-vault-pass --tags portal_web
 
 # Install/refresh the demo-stats service from a locally built deb
-# (built in the sibling demo-stats-service repo).
+# (built in the sibling demo-stats-service repo). Dev iteration only.
 #
-# Usage: just deploy-demo-stats ../demo-stats-service/target/debian/portal-demo-stats_0.1.0_amd64.deb
+# Usage: just deploy-demo-stats ../demo-stats-service/target/debian/portal-demo-stats_0.1.0-1_amd64.deb
 deploy-demo-stats DEB:
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
         --ask-vault-pass --tags portal_demo_stats \
         -e portal_demo_stats_deb_path={{DEB}}
 
 # Install/refresh the Steam bots (cs2-poller + cs2-enricher) from a locally
-# built deb. Build first in the sibling steam_bot workspace:
+# built deb. Dev iteration only. Build first in the sibling steam_bot
+# workspace:
 #   cargo build --release -p cs2-poller -p cs2-enricher \
 #     && cargo deb -p cs2-enricher --no-build
 #
-# Usage: just deploy-steam-bot ../steam_bot/target/debian/portal-steam-bot_0.1.0_amd64.deb
+# Usage: just deploy-steam-bot ../steam_bot/target/debian/portal-steam-bot_0.1.0-1_amd64.deb
 deploy-steam-bot DEB:
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
         --ask-vault-pass --tags portal_steam_bot \
         -e portal_steam_bot_enabled=true \
         -e portal_steam_bot_deb_path={{DEB}}
 
+# --- verification ------------------------------------------------------------
+
+# End-to-end health: public endpoints through Caddy, then unit status.
+verify:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "→ https://{{DOMAIN}}/health"
+    curl -fsS "https://{{DOMAIN}}/health" && echo " OK"
+    echo "→ https://{{DOMAIN}}/health/ready (db + demo-service reachability)"
+    curl -fsS "https://{{DOMAIN}}/health/ready" && echo " OK"
+    just status
+
+# systemctl status for every portal unit, plus postgres and the backup jobs.
+status:
+    ssh {{USER}}@{{HOST}} "systemctl status --no-pager portal-api postgresql caddy portal-scanner portal-demo-stats cs2-poller cs2-enricher 2>&1 | head -240; systemctl list-timers --no-pager 'pg-backup*' 'config-backup*' 'pg-restore-verify*'"
+
+# Last 200 warn/error lines across portal units AND the backup jobs (which
+# don't match the portal-* glob — a silently failing backup hides there).
+tail-errors:
+    ssh {{USER}}@{{HOST}} "journalctl -u 'portal-*' -u pg-backup -u config-backup -u pg-restore-verify -u 'backup-failure@*' -p warning -n 200 --no-pager"
+
 # Convenience: follow the live API log.
 logs:
     ssh {{USER}}@{{HOST}} -t 'journalctl -fu portal-api'
 
-# Last 200 warn/error lines across all portal units.
-tail-errors:
-    ssh {{USER}}@{{HOST}} "journalctl -u 'portal-*' -p warning -n 200 --no-pager"
+# Sanity: check what versions are actually installed on the box. Compare
+# against versions.yml.
+installed:
+    ssh {{USER}}@{{HOST}} "dpkg -l | awk '/portal-|^ii  caddy|^ii  postgresql/ {print \$2, \$3}'"
 
-# systemctl status for every portal unit, plus postgres.
-status:
-    ssh {{USER}}@{{HOST}} "systemctl status --no-pager portal-api postgresql caddy portal-scanner portal-demo-stats cs2-poller cs2-enricher 2>&1 | head -240"
+# --- backups & restore -------------------------------------------------------
+
+# Kick both backups immediately, outside the timers' schedule. Useful
+# before a risky migration or deploy.
+backup-now:
+    ssh {{USER}}@{{HOST}} 'sudo systemctl start pg-backup.service config-backup.service'
+    ssh {{USER}}@{{HOST}} 'sudo journalctl -u pg-backup.service -u config-backup.service -n 60 --no-pager'
+
+# What restore points exist: local plaintext dumps + encrypted bucket copies.
+backup-list:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "── local (plaintext .sql.zst, restorable without the age key) ──"
+    ssh {{USER}}@{{HOST}} 'sudo ls -lht /var/lib/portal/backups/ | head -15'
+    echo "── bucket (age-encrypted; needs the private key from your password manager) ──"
+    ssh {{USER}}@{{HOST}} "sudo sh -c '. /etc/portal/backup.env && aws --endpoint-url=\"\$AWS_ENDPOINT_URL\" s3 ls \"s3://\$BACKUP_BUCKET/\" && aws --endpoint-url=\"\$AWS_ENDPOINT_URL\" s3 ls \"s3://\$BACKUP_BUCKET/config/\"'"
+
+# Restore prod from a LOCAL dump on the box (see `just backup-list`).
+# Confirm-gated: stops writers, drops and re-creates the DB, restores,
+# restarts, health-checks. Migrations newer than the dump re-run on boot.
+#
+# Usage: just restore /var/lib/portal/backups/portal_prod_20260726T031500Z.sql.zst
+restore FILE:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    file="{{FILE}}"
+    echo "About to DROP AND RE-CREATE the production database on {{HOST}}"
+    echo "from: $file"
+    read -r -p "Type 'restore' to continue: " ans
+    [ "$ans" = "restore" ] || { echo "aborted"; exit 1; }
+    echo "→ verifying checksum (when the sidecar exists)"
+    ssh {{USER}}@{{HOST}} "sudo sh -c 'cd \"\$(dirname \"$file\")\" && { [ -f \"\$(basename \"$file\").sha256\" ] && sha256sum -c \"\$(basename \"$file\").sha256\" || echo \"no .sha256 sidecar — skipping verification\"; }'"
+    echo "→ stopping writers"
+    ssh {{USER}}@{{HOST}} 'sudo systemctl stop portal-api portal-scanner'
+    echo "→ drop + recreate + restore"
+    ssh {{USER}}@{{HOST}} "sudo -u postgres sh -c '. /etc/portal/backup.env && dropdb --if-exists \"\$POSTGRES_DB\" && createdb -O \"\$POSTGRES_USER\" \"\$POSTGRES_DB\" && zstd -dc \"$file\" | pg_restore -d \"\$POSTGRES_DB\" --no-owner --role=\"\$POSTGRES_USER\"'"
+    echo "→ restarting"
+    ssh {{USER}}@{{HOST}} 'sudo systemctl start portal-api portal-scanner'
+    ssh {{USER}}@{{HOST}} 'sleep 3 && curl -fsS localhost:3000/health' && echo " health OK"
+
+# Fetch an ENCRYPTED dump from the bucket, decrypt it on the box (the age
+# identity streams over ssh stdin — it never touches the box's disk), then
+# hand off to `just restore`.
+#
+# Usage: just restore-remote portal_prod_20260726T031500Z.sql.zst ~/secrets/portal-backup.key
+restore-remote NAME IDENTITY:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    name="{{NAME}}"
+    identity="{{IDENTITY}}"
+    [ -f "$identity" ] || { echo "identity file not found: $identity"; exit 1; }
+    dir=/var/lib/portal/backups
+    echo "→ fetching $name.age + checksum from the bucket"
+    ssh {{USER}}@{{HOST}} "sudo sh -c '. /etc/portal/backup.env && aws --endpoint-url=\"\$AWS_ENDPOINT_URL\" s3 cp \"s3://\$BACKUP_BUCKET/$name.age\" $dir/$name.age --only-show-errors && aws --endpoint-url=\"\$AWS_ENDPOINT_URL\" s3 cp \"s3://\$BACKUP_BUCKET/$name.sha256\" $dir/$name.sha256 --only-show-errors'"
+    echo "→ decrypting on the box (identity via stdin)"
+    ssh {{USER}}@{{HOST}} "sudo sh -c 'age -d -i /dev/stdin -o $dir/$name $dir/$name.age && rm -f $dir/$name.age && chown postgres:postgres $dir/$name $dir/$name.sha256 && chmod 0640 $dir/$name'" < "$identity"
+    echo "→ verifying checksum"
+    ssh {{USER}}@{{HOST}} "sudo sh -c 'cd $dir && sha256sum -c $name.sha256'"
+    just restore "$dir/$name"
+
+# Run the restore rehearsal right now (newest dump → portal_restore_test →
+# sanity counts → drop). Also runs monthly on a timer.
+restore-verify:
+    ssh {{USER}}@{{HOST}} 'sudo systemctl start pg-restore-verify.service'
+    ssh {{USER}}@{{HOST}} 'sudo journalctl -u pg-restore-verify.service -n 40 --no-pager'
+
+# --- misc --------------------------------------------------------------------
 
 # psql shell into the prod DB over SSH (no port forwarded, no password on
 # the network — socket auth on the box).
 db-shell:
     ssh {{USER}}@{{HOST}} -t "sudo -u portal psql -d portal_prod"
-
-# Kick a backup immediately, outside of the timer's schedule. Useful
-# before a risky migration or deploy.
-backup-now:
-    ssh {{USER}}@{{HOST}} 'sudo systemctl start pg-backup.service'
-    ssh {{USER}}@{{HOST}} 'sudo journalctl -u pg-backup.service -n 50 --no-pager'
 
 # Edit the vault in-place. Needs the vault password.
 edit-vault:
@@ -130,7 +297,3 @@ edit-vault:
 
 ssh:
     ssh {{USER}}@{{HOST}}
-
-# Sanity: check what versions are actually installed on the box.
-installed:
-    ssh {{USER}}@{{HOST}} "dpkg -l | awk '/portal-|^ii  caddy|^ii  postgresql/ {print \$2, \$3}'"

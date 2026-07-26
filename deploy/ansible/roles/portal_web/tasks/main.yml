@@ -1,66 +1,127 @@
 ---
-# Build the SPA and ship it to the Caddy docroot.
+# Ship the SPA to the box. Three modes, in precedence order:
 #
-# Default flow (local-build-then-ship): `npm ci && npm run build` runs on
-# the CONTROLLER (operator laptop or CI), the dist/ tree is tarred up and
-# unpacked into /var/www/portal on the box. Building on a 1–2 GB Linode is
-# tight (vite + vue-tsc want ~2 GB), so the box never runs npm at all.
-#
-# Alternatives:
-#   - CI artifact: set -e portal_web_dist_tarball=/path/to/dist.tar.gz to
-#     skip the local build and ship a prebuilt tarball.
-#   - On-box build: documented in deploy/README.md (needs Node >= 20.19 and
-#     a 4 GB box or temporary swap); not automated here on purpose.
+#   1. Deb (preferred, `portal_web_deb_path`): install the portal-web deb
+#      from the cg-fe release. dpkg tracks every file — upgrades remove
+#      stale hashed assets, downgrades are rollbacks. Use
+#      `just deploy-web-release vX.Y.Z`.
+#   2. Tarball (`portal_web_dist_tarball`): unpack a prebuilt dist tarball
+#      into the docroot. NOTE: unarchive never deletes, so stale assets
+#      accumulate — fine for dev iteration, not for prod.
+#   3. Local build (default when neither is set): `npm ci && npm run build`
+#      on the CONTROLLER (vite + vue-tsc want ~2 GB the Linode doesn't
+#      have), tar dist/, unpack as in mode 2.
 #
 # The bundle bakes VITE_API_URL at build time. Empty (the default) means
 # same-origin — see roles/portal_web/defaults/main.yml.
 
-- name: Build the SPA locally (controller)
-  when: portal_web_dist_tarball | length == 0
-  delegate_to: localhost
-  become: false
+# --- Mode 1: deb -------------------------------------------------------------
+
+- name: Install the SPA from the portal-web deb
+  when: portal_web_deb_path | default('') | length > 0
   block:
-    - name: Run npm ci (local)
-      ansible.builtin.command:
-        cmd: npm ci
-        chdir: "{{ portal_web_src_dir }}"
-      changed_when: true
+    # One-time migration: files laid down by the tarball modes are untracked
+    # by dpkg and would linger as stale assets forever. Clear the docroot on
+    # the FIRST deb install only (brief 404 window, once).
+    - name: Check whether portal-web is already installed
+      ansible.builtin.command: dpkg-query -W portal-web
+      register: portal_web_pkg
+      changed_when: false
+      failed_when: false
 
-    - name: Run npm build (local, VITE_API_URL='{{ portal_web_api_url }}')
-      ansible.builtin.command:
-        cmd: npm run build
-        chdir: "{{ portal_web_src_dir }}"
-      environment:
-        VITE_API_URL: "{{ portal_web_api_url }}"
-      changed_when: true
+    - name: One-time migration — clear the tarball-era docroot
+      ansible.builtin.file:
+        path: "{{ portal_web_docroot }}"
+        state: absent
+      when: portal_web_pkg.rc != 0
 
-    # Plain tar (not community.general.archive): we need the archive rooted
-    # INSIDE dist/ so unarchive lands index.html at the docroot top level.
-    - name: Pack dist into a tarball  # noqa: command-instead-of-module
-      ansible.builtin.command:
-        cmd: "tar -czf {{ portal_web_local_tarball }} -C {{ portal_web_src_dir }}/dist ."
-      changed_when: true
+    - name: Copy portal-web deb to target
+      ansible.builtin.copy:
+        src: "{{ portal_web_deb_path }}"
+        dest: "/tmp/{{ portal_web_deb_path | basename }}"
+        mode: "0644"
 
-- name: Resolve which tarball to ship
-  ansible.builtin.set_fact:
-    _portal_web_tarball: >-
-      {{ portal_web_dist_tarball if portal_web_dist_tarball | length > 0
-         else portal_web_local_tarball }}
+    - name: Install the portal-web deb
+      ansible.builtin.apt:
+        deb: "/tmp/{{ portal_web_deb_path | basename }}"
+        state: present
+        # Rollback IS a deploy: an older deb must not be refused.
+        allow_downgrade: true
 
-- name: Docroot exists and is owned by the caddy user
-  ansible.builtin.file:
-    path: "{{ portal_web_docroot }}"
-    state: directory
-    owner: "{{ portal_web_owner }}"
-    group: "{{ portal_web_group }}"
-    mode: "0755"
+    - name: Remove the copied deb from /tmp
+      ansible.builtin.file:
+        path: "/tmp/{{ portal_web_deb_path | basename }}"
+        state: absent
 
-- name: Unpack the SPA into the docroot
-  ansible.builtin.unarchive:
-    src: "{{ _portal_web_tarball }}"
-    dest: "{{ portal_web_docroot }}"
-    owner: "{{ portal_web_owner }}"
-    group: "{{ portal_web_group }}"
+# --- Modes 2 + 3: tarball / local build --------------------------------------
+
+- name: Ship the SPA from a tarball
+  when: portal_web_deb_path | default('') | length == 0
+  block:
+    - name: Build the SPA locally (controller)
+      when: portal_web_dist_tarball | length == 0
+      delegate_to: localhost
+      become: false
+      block:
+        # Fail with a clear message instead of a mid-play command error.
+        - name: npm is available on the controller
+          ansible.builtin.command: npm --version
+          register: portal_web_npm
+          changed_when: false
+          failed_when: false
+
+        - name: Assert the controller can build the SPA
+          ansible.builtin.assert:
+            that:
+              - portal_web_npm.rc == 0
+            fail_msg: >-
+              npm not found on the controller — the local-build mode needs
+              Node >= 20 + npm. Either install them, or deploy a release
+              artifact instead: `just deploy-web-release vX.Y.Z`.
+
+        - name: Run npm ci (local)
+          ansible.builtin.command:
+            cmd: npm ci
+            chdir: "{{ portal_web_src_dir }}"
+          changed_when: true
+
+        - name: Run npm build (local, VITE_API_URL='{{ portal_web_api_url }}')
+          ansible.builtin.command:
+            cmd: npm run build
+            chdir: "{{ portal_web_src_dir }}"
+          environment:
+            VITE_API_URL: "{{ portal_web_api_url }}"
+          changed_when: true
+
+        # Plain tar (not community.general.archive): we need the archive rooted
+        # INSIDE dist/ so unarchive lands index.html at the docroot top level.
+        - name: Pack dist into a tarball  # noqa: command-instead-of-module
+          ansible.builtin.command:
+            cmd: "tar -czf {{ portal_web_local_tarball }} -C {{ portal_web_src_dir }}/dist ."
+          changed_when: true
+
+    - name: Resolve which tarball to ship
+      ansible.builtin.set_fact:
+        _portal_web_tarball: >-
+          {{ portal_web_dist_tarball if portal_web_dist_tarball | length > 0
+             else portal_web_local_tarball }}
+
+    - name: Docroot exists and is owned by the caddy user
+      ansible.builtin.file:
+        path: "{{ portal_web_docroot }}"
+        state: directory
+        owner: "{{ portal_web_owner }}"
+        group: "{{ portal_web_group }}"
+        mode: "0755"
+
+    - name: Unpack the SPA into the docroot
+      ansible.builtin.unarchive:
+        src: "{{ _portal_web_tarball }}"
+        dest: "{{ portal_web_docroot }}"
+        owner: "{{ portal_web_owner }}"
+        group: "{{ portal_web_group }}"
+
+# --- Sanity (all modes) ------------------------------------------------------
 
 - name: Sanity — index.html landed
   ansible.builtin.stat:
@@ -71,4 +132,4 @@
   ansible.builtin.assert:
     that:
       - portal_web_index.stat.exists
-    fail_msg: "{{ portal_web_docroot }}/index.html missing after unpack — check the build/tarball"
+    fail_msg: "{{ portal_web_docroot }}/index.html missing after deploy — check the deb/build/tarball"

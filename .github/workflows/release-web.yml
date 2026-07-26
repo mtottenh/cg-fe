@@ -1,9 +1,14 @@
 name: release-web
 
-# Builds the production SPA (vite, minified) on tag and attaches the bundle to
-# the GitHub release, so deploys ship a versioned, reproducible artifact instead
-# of rebuilding from source on the operator's machine. The ansible portal_web
-# role consumes it via `-e portal_web_dist_tarball=...` (see `just deploy-web-release`).
+# Builds the production SPA (vite, minified) on tag and attaches TWO
+# artifacts to the GitHub release:
+#   - portal-web_<ver>_all.deb  — the preferred deploy path: apt tracks the
+#     files, upgrades remove stale hashed assets, and rollback is
+#     `just deploy-web-release vPREV` (allow_downgrade in the role)
+#   - web-dist.tar.gz           — kept for the tarball fallback mode of
+#     roles/portal_web (and for non-deb consumers)
+# The ansible portal_web role consumes the deb via
+# `-e portal_web_deb_path=...` (see `just deploy-web-release`).
 
 on:
   push:
@@ -18,9 +23,19 @@ on:
 permissions:
   contents: write   # attach the bundle to the release
 
+# One build per ref at a time; never cancel a release build midway.
+concurrency:
+  group: release-web-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  # A tag on a broken commit must not publish a bundle.
+  test:
+    uses: ./.github/workflows/test.yml
+
   build:
-    runs-on: ubuntu-latest
+    needs: test
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -43,18 +58,94 @@ jobs:
 
       # Rooted INSIDE dist/ so unarchive lands index.html at the docroot top
       # level — matches the portal_web role's own local-build tar.
-      - name: Package dist
+      - name: Package dist (tarball fallback)
         run: tar -czf web-dist.tar.gz -C web/dist .
+
+      # Deb version comes from the TAG (web/package.json stays 0.0.0 — the
+      # tag is the version authority for the frontend). Dispatch builds get
+      # a 0.0.0+g<sha> version so they can never shadow a real release.
+      - name: Package portal-web deb
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0+g${GITHUB_SHA::7}"
+          fi
+          mkdir -p pkg/DEBIAN pkg/var/www/portal
+          cp -a web/dist/. pkg/var/www/portal/
+          INSTALLED_SIZE=$(du -sk pkg/var | cut -f1)
+          cat > pkg/DEBIAN/control <<EOF
+          Package: portal-web
+          Version: ${VERSION}
+          Architecture: all
+          Section: web
+          Priority: optional
+          Installed-Size: ${INSTALLED_SIZE}
+          Maintainer: Gaming Portal Ops <ops@gaming-portal.invalid>
+          Description: Gaming portal SPA (static Vite bundle served by Caddy)
+           Prebuilt frontend for the community gaming portal. Installs the
+           hashed-asset bundle to /var/www/portal; Caddy serves it with an
+           index.html SPA fallback. Same-origin API (VITE_API_URL empty).
+          EOF
+          dpkg-deb --build --root-owner-group pkg "portal-web_${VERSION}_all.deb"
+          dpkg-deb -I "portal-web_${VERSION}_all.deb"
+
+      - name: Stage artifacts + checksums
+        run: |
+          mkdir -p out
+          cp web-dist.tar.gz portal-web_*_all.deb out/
+          (cd out && sha256sum * > SHA256SUMS)
+          ls -la out/
 
       - uses: actions/upload-artifact@v4
         with:
           name: web-dist
-          path: web-dist.tar.gz
+          path: out/*
           if-no-files-found: error
 
+  # Install the deb on a clean runner before letting it near a release.
+  smoke:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: out
+
+      - name: Checksums verify
+        run: cd out && sha256sum -c SHA256SUMS
+
+      - name: Install + sanity
+        run: |
+          set -x
+          sudo apt-get install -y ./out/portal-web_*_all.deb
+          test -f /var/www/portal/index.html
+          dpkg-query -W portal-web
+
+      - name: Purge removes the docroot payload
+        run: |
+          set -x
+          sudo dpkg --purge portal-web
+          ! test -e /var/www/portal/index.html
+
+  release:
+    needs: smoke
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: out
+
       - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: web-dist.tar.gz
+          files: |
+            out/web-dist.tar.gz
+            out/portal-web_*_all.deb
+            out/SHA256SUMS
           fail_on_unmatched_files: true

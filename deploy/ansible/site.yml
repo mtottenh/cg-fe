@@ -58,6 +58,18 @@
           using vault.example.yml as the key list ("Operator checklist" in
           deploy/README.md documents every key).
 
+    - name: Backup encryption key is configured
+      ansible.builtin.assert:
+        that:
+          - backup_age_public_key is defined
+          - backup_age_public_key is match('^age1')
+        fail_msg: >-
+          backup_age_public_key is not set (group_vars/all/vars.yml).
+          Off-box backups are age-encrypted; generate a keypair on the
+          control machine with `age-keygen -o portal-backup.key`, store the
+          private key in your password manager (NEVER on the box), and set
+          the printed age1... public key.
+
 - name: Pre-deploy database backup
   hosts: all
   become: true

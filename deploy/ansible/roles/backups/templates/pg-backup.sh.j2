@@ -1,31 +1,58 @@
 #!/bin/bash
 # {{ ansible_managed }}
 #
-# Nightly portal_prod dump. Writes a local copy first (so the S3 upload
-# failing doesn't lose the dump), then uploads, then prunes.
+# Nightly portal_prod dump. Local copy first (so an S3 outage never loses
+# the dump), validated before anything else trusts it, then an
+# age-ENCRYPTED copy is uploaded — leaked bucket keys must never expose
+# player data (the API holds the same key pair this script uploads with).
+# The local copy stays plaintext-zstd: the box already holds the live DB,
+# so it adds no exposure, and it keeps local restores key-free.
+#
+# All config comes from /etc/portal/backup.env (see roles/backups).
 
 set -euo pipefail
 
 BACKUP_DIR=/var/lib/portal/backups
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-OUT="$BACKUP_DIR/${POSTGRES_DB}_${STAMP}.sql.zst"
+NAME="${POSTGRES_DB}_${STAMP}.sql.zst"
+OUT="$BACKUP_DIR/$NAME"
 
 mkdir -p "$BACKUP_DIR"
 
 echo "→ pg_dump ${POSTGRES_DB} → $OUT"
-pg_dump --format=custom --compress=0 "$POSTGRES_DB" \
-    | zstd -T0 -q -19 -o "$OUT"
+# lock_timeout bounds lock WAITS only (not the dump itself): blocking >30s
+# behind DDL means something is wrong — fail loudly instead of wedging the
+# timer until TimeoutStartSec.
+PGOPTIONS='-c lock_timeout=30s' pg_dump --format=custom --compress=0 "$POSTGRES_DB" \
+    | zstd -T0 -q "-${BACKUP_ZSTD_LEVEL:-12}" -o "$OUT"
 
+echo "→ validating dump"
+zstd -t -q "$OUT"                              # archive integrity
+zstd -dc "$OUT" | pg_restore --list >/dev/null # pg_restore can read the catalog
+(cd "$BACKUP_DIR" && sha256sum "$NAME" > "$NAME.sha256")
 SIZE=$(stat -c%s "$OUT")
-echo "→ local dump written: $OUT ($SIZE bytes)"
+echo "→ validated: $OUT ($SIZE bytes)"
 
-echo "→ uploading to s3://${BACKUP_BUCKET}/$(basename "$OUT")"
+echo "→ encrypting for upload"
+age -r "$BACKUP_AGE_PUBLIC_KEY" -o "$OUT.age" "$OUT"
+
+echo "→ uploading to s3://${BACKUP_BUCKET}/"
 aws --endpoint-url="$AWS_ENDPOINT_URL" \
-    s3 cp "$OUT" "s3://${BACKUP_BUCKET}/$(basename "$OUT")" \
-    --only-show-errors
+    s3 cp "$OUT.age" "s3://${BACKUP_BUCKET}/${NAME}.age" --only-show-errors
+# Checksum of the PLAINTEXT .zst — verifies both the download and the
+# decryption when restoring.
+aws --endpoint-url="$AWS_ENDPOINT_URL" \
+    s3 cp "$OUT.sha256" "s3://${BACKUP_BUCKET}/${NAME}.sha256" --only-show-errors
+rm -f "$OUT.age"   # transient upload artifact; local retention keeps the .zst
 
 echo "→ pruning local dumps older than ${BACKUP_LOCAL_RETENTION_DAYS} days"
-find "$BACKUP_DIR" -type f -name '*.sql.zst' \
+find "$BACKUP_DIR" -maxdepth 1 -type f \
+    \( -name "${POSTGRES_DB}_*.sql.zst" -o -name "${POSTGRES_DB}_*.sql.zst.sha256" \) \
     -mtime "+${BACKUP_LOCAL_RETENTION_DAYS}" -delete
+
+if [ -n "${BACKUP_HEALTHCHECK_URL:-}" ]; then
+    curl -fsS -m 10 --retry 3 "$BACKUP_HEALTHCHECK_URL" >/dev/null \
+        || echo "warning: healthcheck ping failed (backup itself succeeded)"
+fi
 
 echo "✓ backup complete"

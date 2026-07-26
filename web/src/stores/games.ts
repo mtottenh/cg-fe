@@ -11,6 +11,7 @@ type GameDetail = components['schemas']['GameDetailResponse']
 type MapInfo = components['schemas']['MapInfoResponse']
 type AddMapRequest = components['schemas']['AddMapRequest']
 type UpdateMapRequest = components['schemas']['UpdateMapRequest']
+type WorkshopMapDetails = components['schemas']['WorkshopMapDetailsResponse']
 
 export const useGamesStore = defineStore('games', () => {
   const games = ref<GameSummary[]>([])
@@ -51,6 +52,9 @@ export const useGamesStore = defineStore('games', () => {
   const catalogMapState = createActionState()
   const updateCatalogMapState = createActionState()
   const deleteCatalogMapState = createActionState()
+  // Deliberately outside the admin aggregate: the lookup's failure is shown
+  // inline next to the "Fetch" button in the map form, not as a page banner.
+  const fetchWorkshopDetailsState = createActionState()
   const fetchRankTiersState = createActionState()
   const setRankTiersState = createActionState()
   const updateTeamSizeState = createActionState()
@@ -248,6 +252,16 @@ export const useGamesStore = defineStore('games', () => {
     }, 'Failed to delete map')
   }
 
+  /** Look up a Steam Workshop item to prefill the map form (admin). */
+  async function fetchWorkshopMapDetails(gameId: string, workshopId: string) {
+    return withActionState(fetchWorkshopDetailsState, async () => {
+      const result = await unwrapApi(api.GET('/v1/games/{game_id}/workshop-maps/{workshop_id}', {
+        params: { path: { game_id: gameId, workshop_id: workshopId } },
+      }))
+      return result.data
+    }, 'Failed to look up workshop item')
+  }
+
   // ==================== Rank Tiers ====================
 
   async function fetchRankTiers(gameId: string) {
@@ -307,11 +321,13 @@ export const useGamesStore = defineStore('games', () => {
     catalogMap,
     updateCatalogMap,
     deleteCatalogMap,
+    fetchWorkshopMapDetails,
     fetchMapsState,
     setMapPoolState,
     catalogMapState,
     updateCatalogMapState,
     deleteCatalogMapState,
+    fetchWorkshopDetailsState,
     // Rank Tiers
     fetchRankTiers,
     setRankTiers,
@@ -325,4 +341,11 @@ export const useGamesStore = defineStore('games', () => {
 })
 
 // Re-export types for convenience
-export type { GameSummary, GameDetail, MapInfo, AddMapRequest, UpdateMapRequest }
+export type {
+  GameSummary,
+  GameDetail,
+  MapInfo,
+  AddMapRequest,
+  UpdateMapRequest,
+  WorkshopMapDetails,
+}

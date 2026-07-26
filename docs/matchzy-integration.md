@@ -1,6 +1,6 @@
 # MatchZy Game-Server Integration — Design
 
-**Status:** Phases 1–4 implemented (2026-07-25) on branches `matchzy-phase1` (this repo + `api/`) and `server-agent/` (new sibling repo)
+**Status:** Phases 1–4 implemented (2026-07-25) on branches `matchzy-phase1` (this repo + `api/`) and `server-agent/` (new sibling repo); merged to `audit-fixes` 2026-07-26. Steam Workshop map support (§13) implemented 2026-07-26.
 **Scope:** portal API (`api/`), web frontend (`web/`), a new `server-agent/` component, deploy tooling (`deploy/`)
 **Supersedes:** `api/docs/gaming-portal-hld.md` §6.8 (get5/RCON-inbound adapter design) and refines `api/docs/gaming-portal-database-schema.md` §11 for MatchZy.
 
@@ -689,3 +689,86 @@ switch.
 4. **Server ownership model:** are all servers portal-operated, or can league admins register their own? (Design assumes portal-admin-only registration for now; the mTLS model extends to third-party hosts cleanly, but result-trust assumptions in §9 would need revisiting.)
 5. **`min_players_to_ready` / short-handed play:** full team (5) by default; §6.8's "play short-handed" path lowers the in-server ready threshold via `css_readyrequired` — should tournaments be able to forbid it (`settings.game_server.allow_short_handed: false`)?
 6. **Substitution policy default:** `roster_free` (rostered subs are pre-vetted, opponent notified) vs `admin_approval` — and should mid-*map* subs (as opposed to between-maps) always require the stricter policy?
+
+## 13. Steam Workshop maps (implemented 2026-07-26)
+
+Admins can add workshop maps to a game's catalog; matches on them work
+end-to-end (veto → config → server → demos → evidence) with no server-side
+pre-install and no Steam collections.
+
+**Research grounding (2026-07, primary sources: MatchZy v0.8.15 source,
+Valve tracker, DatHost/Get5 docs):**
+
+- CS2 loads workshop maps per-item: `host_workshop_map <id>` downloads
+  from the Steam CDN on demand and changelevels; no client subscription,
+  no restart, and no `-authkey` (that requirement was CS:GO-era). Cached
+  under the server's `steamapps/workshop/content/730/<id>/`.
+- MatchZy `maplist` entries that parse as an integer are loaded via
+  `host_workshop_map` (`Utility.cs` `ChangeMap()`, confirmed in issue
+  #107); anything else goes through `changelevel <name>`, which silently
+  no-ops for maps the server doesn't have. Get5's `workshop/id/name`
+  syntax is NOT supported and fails silently — never emit it.
+- Steam exposes **no write API for collections** (web UI only), MatchZy
+  never calls `ds_workshop_changelevel` (issue #292), and CS2 collections
+  carry a start-map bug (Valve tracker #3553) — hence the per-item model,
+  the same pattern as DatHost's match API.
+
+### 13.1 The four-field map model
+
+`MapInfo` / catalog entries (stored in `games.available_maps` JSONB — no
+migration; absent fields deserialize as `None`):
+
+| Field | Meaning |
+|---|---|
+| `id` | **Portal ID** — immutable internal key; veto, pools, `tournament_match_games`, events all use it |
+| `display_name` | What every UI shows (prefilled from the workshop item title) |
+| `engine_name` | **Map Name** — what the server/demo header calls the map; `None` = same as `id` (all stock maps) |
+| `external_id` (+ `external_url`) | **Workshop ID** — presence marks a workshop map and drives token translation |
+
+### 13.2 Flow
+
+- **Admin add:** GameConfigDialog's map form takes a pasted workshop
+  URL/id; `GET /v1/games/{game}/workshop-maps/{id}` (admin-gated,
+  `admin.games.manage`) proxies Steam's keyless
+  `ISteamRemoteStorage/GetPublishedFileDetails` and prefills
+  title/preview/engine-name hint (filename stem — a hint, admin-editable),
+  warning on non-CS2 app ids, non-public visibility, and banned items.
+  Outbound seam: `steam_workshop::WorkshopMetadataProvider` on `AppState`
+  (test double injectable, like the OpenID verifier).
+- **Config generation:** `build_config` resolves each portal map id
+  through the catalog into `MatchzyMapRef { portal_id, engine_name,
+  workshop_id }`; `matchzy_map_tokens` emits the maplist token —
+  **workshop id if present, else engine name** (also fixes the latent
+  silent-fail for any custom map whose portal id ≠ engine name).
+  Unexpressible entries (non-numeric workshop id, unsafe name charset)
+  fail config generation loudly rather than hanging the match. When any
+  token is a workshop id, `mp_match_restart_delay` is raised to 45s
+  (Get5's download-buffer pattern; tournament cvar overrides still win).
+  `tournament_match_games` rows and `map_sides` keep portal ids —
+  event ingest pairs by map number, so nothing downstream changes.
+- **Evidence validation:** demo headers carry the engine name, so
+  `GameMatchResult` gained `expected_map_names` + `map_name_advisory`
+  (serde-defaulted). The CS2 validator accepts the claimed id OR any
+  expected name; for workshop maps a mismatch is a warning + ×0.7
+  confidence (naming the observed map so the admin can fix
+  `engine_name`), while stock maps keep the fatal check. The evidence
+  handlers feed both fields from the catalog
+  (`EvidencePluginAdapter::with_map_catalog`).
+
+### 13.3 Operational caveats
+
+- **No revision pinning:** `host_workshop_map` always fetches the latest
+  author revision; a mid-tournament map update can desync late-joining
+  clients from a long-running server (between maps it resyncs). Vet maps
+  from authors who won't push updates mid-event.
+- **First load stalls** while the CDN download runs (hundreds of MB is
+  common) — loading the match config early (which the flow already does
+  at reservation setup) pre-warms map 1 before players connect.
+- **Open MatchZy issues to watch:** #294 (demo recording lost when the
+  same workshop map runs back-to-back with no map change), #303 (spawn
+  crashes on some workshop maps), #209 (wingman mode) — all argue for
+  admin-vetted maps with a test run, which is what the admin-only catalog
+  gives us.
+- The demo-stats pipeline keys on matchzy id + map number, not map name;
+  the catalog's `engine_name` exists for the *validation* layer and for
+  humans.

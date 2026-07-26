@@ -27,11 +27,62 @@
                 </v-card-title>
                 <v-card-text>
                   <v-row dense>
+                    <!-- Workshop import: paste a URL/id, fetch prefills the form -->
+                    <v-col cols="12">
+                      <div class="d-flex ga-2 align-start">
+                        <v-text-field
+                          v-model="workshopInput"
+                          label="Steam Workshop URL or ID"
+                          hint="Paste a steamcommunity.com workshop link to prefill this form"
+                          persistent-hint
+                          variant="outlined"
+                          density="compact"
+                          prepend-inner-icon="mdi-steam"
+                          :error-messages="gamesStore.fetchWorkshopDetailsState.error || undefined"
+                          @keydown.enter.prevent="fetchWorkshop"
+                        />
+                        <v-btn
+                          color="primary"
+                          variant="tonal"
+                          class="mt-1"
+                          :loading="gamesStore.fetchWorkshopDetailsState.loading"
+                          :disabled="!workshopInput.trim()"
+                          @click="fetchWorkshop"
+                        >
+                          Fetch
+                        </v-btn>
+                      </div>
+                      <v-alert
+                        v-for="warning in workshopWarnings"
+                        :key="warning"
+                        type="warning"
+                        density="compact"
+                        variant="tonal"
+                        class="mt-2"
+                      >
+                        {{ warning }}
+                      </v-alert>
+                      <div v-if="mapForm.external_id" class="d-flex ga-2 align-center mt-2">
+                        <v-chip
+                          size="small"
+                          color="primary"
+                          variant="tonal"
+                          prepend-icon="mdi-steam"
+                          :href="mapForm.external_url || undefined"
+                          target="_blank"
+                        >
+                          Workshop {{ mapForm.external_id }}
+                        </v-chip>
+                        <v-btn size="x-small" variant="text" @click="unlinkWorkshop">
+                          Unlink
+                        </v-btn>
+                      </div>
+                    </v-col>
                     <v-col cols="12" sm="6">
                       <v-text-field
                         v-model="mapForm.id"
                         label="Map ID"
-                        hint="e.g. de_dust2"
+                        hint="Portal identifier used in map pools and veto — e.g. de_dust2"
                         variant="outlined"
                         density="compact"
                         :disabled="!!editingMapId"
@@ -45,6 +96,16 @@
                         variant="outlined"
                         density="compact"
                         :rules="[v => !!v || 'Required']"
+                      />
+                    </v-col>
+                    <v-col cols="12">
+                      <v-text-field
+                        v-model="mapForm.engine_name"
+                        label="Engine Map Name"
+                        hint="What the game server and demos call this map. Leave blank when it equals the Map ID; for workshop maps it comes from inside the map's files."
+                        persistent-hint
+                        variant="outlined"
+                        density="compact"
                       />
                     </v-col>
                     <v-col cols="12">
@@ -104,6 +165,18 @@
                     :display-name="map.display_name"
                     :image-url="map.image_url"
                   />
+                  <div v-if="map.external_id" class="d-flex justify-center mt-1">
+                    <v-chip
+                      size="x-small"
+                      color="primary"
+                      variant="tonal"
+                      prepend-icon="mdi-steam"
+                      :href="map.external_url || undefined"
+                      target="_blank"
+                    >
+                      Workshop
+                    </v-chip>
+                  </div>
                   <div class="d-flex justify-center mt-1">
                     <v-btn aria-label="Edit map"
                       icon
@@ -363,7 +436,12 @@
 
 <script setup lang="ts">
 import { ref, computed, toRaw, watch } from 'vue'
-import { useGamesStore, type GameSummary, type MapInfo } from '@/stores/games'
+import {
+  useGamesStore,
+  type GameSummary,
+  type MapInfo,
+  type WorkshopMapDetails,
+} from '@/stores/games'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
@@ -482,6 +560,39 @@ const mapForm = ref({
   display_name: '',
   game_modes: ['competitive'] as string[],
   image_url: '',
+  engine_name: '',
+  external_id: '',
+  external_url: '',
+})
+
+// Workshop import state
+const workshopInput = ref('')
+const workshopDetails = ref<WorkshopMapDetails | null>(null)
+
+/**
+ * Sanity signals from the Steam lookup. These warn rather than block — the
+ * server is the authority and a determined admin may know better (e.g. an
+ * unlisted map that IS downloadable).
+ */
+const workshopWarnings = computed<string[]>(() => {
+  const details = workshopDetails.value
+  if (!details) return []
+  const warnings: string[] = []
+  if (details.banned) {
+    warnings.push('Steam has banned this workshop item.')
+  }
+  if (
+    details.consumer_app_id != null &&
+    props.game?.slug === 'cs2' &&
+    details.consumer_app_id !== 730
+  ) {
+    warnings.push(`This item belongs to Steam app ${details.consumer_app_id}, not CS2 (730).`)
+  }
+  // 0 = public, 3 = unlisted — both downloadable by servers.
+  if (details.visibility != null && details.visibility !== 0 && details.visibility !== 3) {
+    warnings.push('This item is not public — game servers will likely fail to download it.')
+  }
+  return warnings
 })
 
 // Reload config whenever the dialog opens for a game
@@ -631,7 +742,17 @@ async function saveTeamSize() {
 // Map CRUD
 function openAddMapForm() {
   editingMapId.value = null
-  mapForm.value = { id: '', display_name: '', game_modes: ['competitive'], image_url: '' }
+  mapForm.value = {
+    id: '',
+    display_name: '',
+    game_modes: ['competitive'],
+    image_url: '',
+    engine_name: '',
+    external_id: '',
+    external_url: '',
+  }
+  workshopInput.value = ''
+  workshopDetails.value = null
   mapFormVisible.value = true
 }
 
@@ -642,7 +763,12 @@ function openEditMapForm(map: MapInfo) {
     display_name: map.display_name,
     game_modes: [...map.game_modes],
     image_url: map.image_url || '',
+    engine_name: map.engine_name || '',
+    external_id: map.external_id || '',
+    external_url: map.external_url || '',
   }
+  workshopInput.value = ''
+  workshopDetails.value = null
   mapFormVisible.value = true
 }
 
@@ -651,15 +777,65 @@ function cancelMapForm() {
   editingMapId.value = null
 }
 
+/** Pull the numeric item id out of a pasted workshop URL (or bare digits). */
+function extractWorkshopId(input: string): string | null {
+  const trimmed = input.trim()
+  if (/^\d+$/.test(trimmed)) return trimmed
+  return trimmed.match(/[?&]id=(\d+)/)?.[1] ?? null
+}
+
+/** Turn workshop metadata into a portal map id suggestion. */
+function suggestPortalId(details: WorkshopMapDetails): string {
+  const base = details.engine_name_hint || details.title || `workshop_${details.workshop_id}`
+  return base
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 64)
+}
+
+async function fetchWorkshop() {
+  if (!props.game) return
+  const workshopId = extractWorkshopId(workshopInput.value)
+  if (!workshopId) {
+    snackbar.show('Enter a Steam Workshop URL or numeric item id', 'error')
+    return
+  }
+  try {
+    const details = await gamesStore.fetchWorkshopMapDetails(props.game.id, workshopId)
+    workshopDetails.value = details
+    // Prefill, never clobber what the admin already typed.
+    const form = mapForm.value
+    form.external_id = details.workshop_id
+    form.external_url = details.workshop_url
+    if (details.engine_name_hint && !form.engine_name) form.engine_name = details.engine_name_hint
+    if (details.title && !form.display_name) form.display_name = details.title
+    if (details.preview_url && !form.image_url) form.image_url = details.preview_url
+    if (!editingMapId.value && !form.id) form.id = suggestPortalId(details)
+  } catch {
+    // The lookup error renders inline under the workshop field.
+  }
+}
+
+function unlinkWorkshop() {
+  mapForm.value.external_id = ''
+  mapForm.value.external_url = ''
+  workshopDetails.value = null
+}
+
 async function saveMap() {
   if (!props.game) return
   savingMap.value = true
   try {
     if (editingMapId.value) {
+      // Empty strings clear engine_name/external_* server-side.
       await gamesStore.updateCatalogMap(props.game.id, editingMapId.value, {
         display_name: mapForm.value.display_name,
         game_modes: mapForm.value.game_modes,
         image_url: mapForm.value.image_url || null,
+        engine_name: mapForm.value.engine_name,
+        external_id: mapForm.value.external_id,
+        external_url: mapForm.value.external_url,
       })
       snackbar.show('Map updated', 'success')
     } else {
@@ -668,6 +844,9 @@ async function saveMap() {
         display_name: mapForm.value.display_name,
         game_modes: mapForm.value.game_modes,
         image_url: mapForm.value.image_url || null,
+        engine_name: mapForm.value.engine_name || null,
+        external_id: mapForm.value.external_id || null,
+        external_url: mapForm.value.external_url || null,
       })
       snackbar.show('Map added', 'success')
     }

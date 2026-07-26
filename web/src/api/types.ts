@@ -1655,6 +1655,29 @@ export interface paths {
         patch: operations["update_team_size"];
         trace?: never;
     };
+    "/v1/games/{game_id}/workshop-maps/{workshop_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Look up Steam Workshop metadata for a map (admin only).
+         * @description Validates an admin-pasted workshop item id and returns prefill data
+         *     for the map-catalog form (title, preview image, engine-name hint,
+         *     size, app, visibility). Read-only pass-through to Steam's keyless
+         *     `GetPublishedFileDetails` endpoint — nothing is stored.
+         */
+        get: operations["get_workshop_map_details"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/league-invitations/{invitation_id}/accept": {
         parameters: {
             query?: never;
@@ -1895,7 +1918,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Cancel an invitation (captain only). */
+        /**
+         * Cancel a pending invitation (captain) or withdraw a pending join
+         *     request (the applicant) — see the service for the direction rule
+         *     (Discord-design §9.4).
+         */
         delete: operations["cancel_invitation"];
         options?: never;
         head?: never;
@@ -4697,6 +4724,11 @@ export interface components {
              * @example Custom Map
              */
             display_name: string;
+            /**
+             * @description Engine-level map name (what the server and demo headers call the
+             *     map). Omit when it equals `id`; set for workshop maps.
+             */
+            engine_name?: string | null;
             /** @description External identifier (e.g., Steam Workshop ID). */
             external_id?: string | null;
             /** @description External URL (e.g., Steam Workshop URL). */
@@ -6856,6 +6888,13 @@ export interface components {
                  * @example Dust II
                  */
                 display_name: string;
+                /**
+                 * @description Engine-level map name (what the server and demo headers call the
+                 *     map). Absent means it equals `id`; set for workshop maps whose
+                 *     in-VPK name differs from the portal id.
+                 * @example de_cache
+                 */
+                engine_name?: string | null;
                 /** @description External identifier (e.g., Steam Workshop ID). */
                 external_id?: string | null;
                 /** @description External URL (e.g., full Steam Workshop URL). */
@@ -9026,6 +9065,13 @@ export interface components {
                  * @example Dust II
                  */
                 display_name: string;
+                /**
+                 * @description Engine-level map name (what the server and demo headers call the
+                 *     map). Absent means it equals `id`; set for workshop maps whose
+                 *     in-VPK name differs from the portal id.
+                 * @example de_cache
+                 */
+                engine_name?: string | null;
                 /** @description External identifier (e.g., Steam Workshop ID). */
                 external_id?: string | null;
                 /** @description External URL (e.g., full Steam Workshop URL). */
@@ -10205,6 +10251,56 @@ export interface components {
                 matches_forfeited: number;
                 /** @description Registration ID that was withdrawn. */
                 registration_id: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_WorkshopMapDetailsResponse: {
+            /** @description Steam Workshop item details, for prefilling the admin map form. */
+            data: {
+                /** @description Whether Steam has banned the item. */
+                banned: boolean;
+                /**
+                 * Format: int64
+                 * @description App the item belongs to (CS2 = 730) — mismatches mean the pasted
+                 *     id is not a CS2 map.
+                 */
+                consumer_app_id?: number | null;
+                /**
+                 * @description Engine-level map-name hint derived from the item's upload filename
+                 *     (e.g. `de_cache.vpk` → `de_cache`). A hint, not a guarantee — the
+                 *     admin should correct it if demo validation later reports otherwise.
+                 * @example de_cache
+                 */
+                engine_name_hint?: string | null;
+                /**
+                 * Format: int64
+                 * @description Item size in bytes (drives the download-stall expectation).
+                 */
+                file_size_bytes?: number | null;
+                /** @description Preview image URL (suggested map image). */
+                preview_url?: string | null;
+                /** @description Item title (suggested display name). */
+                title?: string | null;
+                /**
+                 * Format: date-time
+                 * @description When the author last updated the item.
+                 */
+                updated_at?: string | null;
+                /**
+                 * Format: int64
+                 * @description 0 = public, 1 = friends-only, 2 = private, 3 = unlisted. Servers
+                 *     can only download public/unlisted items.
+                 */
+                visibility?: number | null;
+                /**
+                 * @description Workshop item id (decimal digits).
+                 * @example 3437809122
+                 */
+                workshop_id: string;
+                /** @description Canonical steamcommunity URL for the item. */
+                workshop_url: string;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -12131,6 +12227,13 @@ export interface components {
              * @example Dust II
              */
             display_name: string;
+            /**
+             * @description Engine-level map name (what the server and demo headers call the
+             *     map). Absent means it equals `id`; set for workshop maps whose
+             *     in-VPK name differs from the portal id.
+             * @example de_cache
+             */
+            engine_name?: string | null;
             /** @description External identifier (e.g., Steam Workshop ID). */
             external_id?: string | null;
             /** @description External URL (e.g., full Steam Workshop URL). */
@@ -14983,6 +15086,11 @@ export interface components {
         UpdateMapRequest: {
             /** @description Display name. */
             display_name?: string | null;
+            /**
+             * @description Engine-level map name. Empty string clears the override (falls
+             *     back to the map id).
+             */
+            engine_name?: string | null;
             /** @description External identifier (e.g., Steam Workshop ID). */
             external_id?: string | null;
             /** @description External URL (e.g., Steam Workshop URL). */
@@ -15504,6 +15612,51 @@ export interface components {
             matches_forfeited: number;
             /** @description Registration ID that was withdrawn. */
             registration_id: string;
+        };
+        /** @description Steam Workshop item details, for prefilling the admin map form. */
+        WorkshopMapDetailsResponse: {
+            /** @description Whether Steam has banned the item. */
+            banned: boolean;
+            /**
+             * Format: int64
+             * @description App the item belongs to (CS2 = 730) — mismatches mean the pasted
+             *     id is not a CS2 map.
+             */
+            consumer_app_id?: number | null;
+            /**
+             * @description Engine-level map-name hint derived from the item's upload filename
+             *     (e.g. `de_cache.vpk` → `de_cache`). A hint, not a guarantee — the
+             *     admin should correct it if demo validation later reports otherwise.
+             * @example de_cache
+             */
+            engine_name_hint?: string | null;
+            /**
+             * Format: int64
+             * @description Item size in bytes (drives the download-stall expectation).
+             */
+            file_size_bytes?: number | null;
+            /** @description Preview image URL (suggested map image). */
+            preview_url?: string | null;
+            /** @description Item title (suggested display name). */
+            title?: string | null;
+            /**
+             * Format: date-time
+             * @description When the author last updated the item.
+             */
+            updated_at?: string | null;
+            /**
+             * Format: int64
+             * @description 0 = public, 1 = friends-only, 2 = private, 3 = unlisted. Servers
+             *     can only download public/unlisted items.
+             */
+            visibility?: number | null;
+            /**
+             * @description Workshop item id (decimal digits).
+             * @example 3437809122
+             */
+            workshop_id: string;
+            /** @description Canonical steamcommunity URL for the item. */
+            workshop_url: string;
         };
     };
     responses: never;
@@ -20701,6 +20854,76 @@ export interface operations {
             };
         };
     };
+    get_workshop_map_details: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game ID (slug) */
+                game_id: string;
+                /** @description Workshop item id (decimal digits) */
+                workshop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workshop item details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_WorkshopMapDetailsResponse"];
+                };
+            };
+            /** @description Not a workshop item id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden - admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Game or workshop item not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Steam Web API unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     accept_invitation: {
         parameters: {
             query?: never;
@@ -21628,7 +21851,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Invitation cancelled */
+            /** @description Invitation cancelled (captain) or join request withdrawn (applicant) */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -21644,7 +21867,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Forbidden - captain only */
+            /** @description Forbidden - captain for invites, the applicant for requests */
             403: {
                 headers: {
                     [name: string]: unknown;

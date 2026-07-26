@@ -235,6 +235,41 @@
         />
       </v-col>
 
+      <!-- Per-round overrides: the bracket final can outrank the default
+           ("all rounds bo1, final bo3"). SE has a final; DE's real final is
+           the grand final. -->
+      <v-col v-if="form.format === 'single_elimination'" cols="12" md="6">
+        <v-select
+          aria-label="Final Match Format"
+          v-model="form.final_format"
+          :items="matchFormatOptions"
+          item-title="label"
+          item-value="value"
+          label="Final Match Format (optional)"
+          variant="outlined"
+          density="comfortable"
+          clearable
+          hint="Overrides the default for the bracket final"
+          persistent-hint
+        />
+      </v-col>
+
+      <v-col v-if="form.format === 'double_elimination'" cols="12" md="6">
+        <v-select
+          aria-label="Grand Final Match Format"
+          v-model="form.grand_final_format"
+          :items="matchFormatOptions"
+          item-title="label"
+          item-value="value"
+          label="Grand Final Match Format (optional)"
+          variant="outlined"
+          density="comfortable"
+          clearable
+          hint="Overrides the default for the grand final"
+          persistent-hint
+        />
+      </v-col>
+
       <!-- Scheduling mode (create-only) -->
       <v-col v-if="isCreate" cols="12" md="6">
         <v-select
@@ -296,6 +331,125 @@
         />
       </v-col>
     </v-row>
+
+    <!-- Groups + Playoffs structure: group sizing and per-phase best-of
+         ("groups bo1, playoffs bo3, final bo5"). Stored in format_settings. -->
+    <template v-if="form.format === 'groups_and_playoffs'">
+      <v-divider class="my-4" />
+      <h3 class="text-subtitle-1 font-weight-bold mb-3">Groups &amp; Playoffs Structure</h3>
+      <v-row>
+        <v-col cols="12" md="6">
+          <v-text-field
+            v-model.number="form.group_count"
+            label="Number of Groups"
+            type="number"
+            min="2"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hint="Leave empty to size automatically from participant count"
+            persistent-hint
+          />
+        </v-col>
+        <v-col cols="12" md="6">
+          <v-text-field
+            v-model.number="form.advance_per_group"
+            label="Advance per Group"
+            type="number"
+            min="1"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hint="How many from each group reach the playoffs (default 2)"
+            persistent-hint
+          />
+        </v-col>
+        <v-col cols="12" md="6">
+          <v-select
+            aria-label="Group Stage Format"
+            v-model="form.group_format"
+            :items="groupFormatOptions"
+            item-title="label"
+            item-value="value"
+            label="Group Stage Format"
+            variant="outlined"
+            density="comfortable"
+          />
+        </v-col>
+        <v-col cols="12" md="6">
+          <v-select
+            aria-label="Playoff Format"
+            v-model="form.playoff_format"
+            :items="playoffFormatOptions"
+            item-title="label"
+            item-value="value"
+            label="Playoff Format"
+            variant="outlined"
+            density="comfortable"
+          />
+        </v-col>
+        <v-col cols="12" md="6">
+          <v-select
+            aria-label="Group Match Format"
+            v-model="form.group_match_format"
+            :items="matchFormatOptions"
+            item-title="label"
+            item-value="value"
+            label="Group Match Format (optional)"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hint="Best-of for group matches; empty uses the default"
+            persistent-hint
+          />
+        </v-col>
+        <v-col cols="12" md="6">
+          <v-select
+            aria-label="Playoff Match Format"
+            v-model="form.playoff_match_format"
+            :items="matchFormatOptions"
+            item-title="label"
+            item-value="value"
+            label="Playoff Match Format (optional)"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hint="Best-of for playoff matches; empty uses the default"
+            persistent-hint
+          />
+        </v-col>
+        <v-col cols="12" md="6">
+          <v-select
+            aria-label="Playoff Final Match Format"
+            v-model="form.playoff_final_format"
+            :items="matchFormatOptions"
+            item-title="label"
+            item-value="value"
+            label="Playoff Final Match Format (optional)"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hint="Overrides the playoff best-of for the final"
+            persistent-hint
+          />
+        </v-col>
+        <v-col v-if="form.playoff_format === 'double_elimination'" cols="12" md="6">
+          <v-select
+            aria-label="Playoff Grand Final Match Format"
+            v-model="form.playoff_grand_final_format"
+            :items="matchFormatOptions"
+            item-title="label"
+            item-value="value"
+            label="Grand Final Match Format (optional)"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hint="Overrides the playoff best-of for the grand final"
+            persistent-hint
+          />
+        </v-col>
+      </v-row>
+    </template>
 
     <!-- The pool is required, so a failed config load blocks creation.
          Say why instead of leaving a dead submit button. -->
@@ -551,6 +705,18 @@ const registrationTypeOptions = REGISTRATION_TYPES
 const schedulingModeOptions = SCHEDULING_MODES
 const matchFormatOptions = MATCH_FORMATS
 const withdrawalPolicyOptions = WITHDRAWAL_POLICIES
+
+// Groups+playoffs structure options — mirror GroupsConfig's accepted values
+// (api bracket_generator/groups.rs): group stages run RR or Swiss, playoffs
+// run SE or DE.
+const groupFormatOptions = [
+  { value: 'round_robin', label: 'Round Robin' },
+  { value: 'swiss', label: 'Swiss' },
+]
+const playoffFormatOptions = [
+  { value: 'single_elimination', label: 'Single Elimination' },
+  { value: 'double_elimination', label: 'Double Elimination' },
+]
 
 // --- Create-mode league/season filtering ---
 const activeGames = computed(() => (props.games ?? []).filter((g) => g.status === 'active'))

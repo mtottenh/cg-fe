@@ -27,7 +27,7 @@
       </p>
     </div>
     <div v-else>
-      <TournamentBracket :brackets="brackets" :matches="matches" />
+      <TournamentBracket :brackets="brackets" :matches="matches" :stages="stages" />
     </div>
   </v-card-text>
 </template>
@@ -43,7 +43,7 @@ defineEmits<{
 }>()
 
 const tournamentsStore = useTournamentsStore()
-const { currentTournament: tournament, brackets, matches } = storeToRefs(tournamentsStore)
+const { currentTournament: tournament, brackets, matches, stages } = storeToRefs(tournamentsStore)
 
 const {
   isSwissFormat,

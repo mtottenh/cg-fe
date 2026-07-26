@@ -5,6 +5,7 @@ import type { CreateStageRequest } from '@/api/overrides'
 import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
 
 type TournamentStageResponse = components['schemas']['TournamentStageResponse']
+type UpdateStageRequest = components['schemas']['UpdateTournamentStageRequest']
 
 /**
  * Stages slice: multi-phase tournament stages (group stage + playoffs, etc.).
@@ -14,6 +15,7 @@ export function createStagesSlice() {
 
   const fetchStagesState = createActionState()
   const createStageState = createActionState()
+  const updateStageState = createActionState()
 
   async function fetchStages(tournamentId: string): Promise<TournamentStageResponse[]> {
     return withActionState(fetchStagesState, async () => {
@@ -39,6 +41,22 @@ export function createStagesSlice() {
     }, 'Failed to create stage')
   }
 
+  async function updateStage(
+    tournamentId: string,
+    stageId: string,
+    request: UpdateStageRequest,
+  ): Promise<TournamentStageResponse> {
+    return withActionState(updateStageState, async () => {
+      const result = await unwrapApi(api.PATCH('/v1/tournaments/{tournament_id}/stages/{stage_id}', {
+        params: { path: { tournament_id: tournamentId, stage_id: stageId } },
+        body: request,
+      }))
+      const idx = stages.value.findIndex((s) => s.id === stageId)
+      if (idx !== -1) stages.value[idx] = result.data
+      return result.data
+    }, 'Failed to update stage')
+  }
+
   function clear() {
     stages.value = []
   }
@@ -47,8 +65,10 @@ export function createStagesSlice() {
     stages,
     fetchStagesState,
     createStageState,
+    updateStageState,
     fetchStages,
     createStage,
+    updateStage,
     clear,
   }
 }

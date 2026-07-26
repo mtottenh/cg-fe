@@ -4828,6 +4828,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tournaments/{tournament_id}/stages/{stage_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a tournament stage.
+         * @description Only pending stages can be edited — once a stage activates its matches
+         *     exist and the configuration is frozen. Editing a *pending* stage of a
+         *     started tournament is allowed (e.g. tuning the playoff best-of while the
+         *     group stage runs).
+         */
+        patch: operations["update_stage"];
+        trace?: never;
+    };
     "/v1/tournaments/{tournament_id}/start": {
         parameters: {
             query?: never;
@@ -6023,6 +6046,8 @@ export interface components {
              * @description Number of participants who advance.
              */
             advancement_count?: number | null;
+            /** @description Advancement rule: `top_n`, `top_n_per_group`, `manual`. Defaults to `top_n`. */
+            advancement_rule?: string | null;
             /**
              * Format: date-time
              * @description Stage end time.
@@ -6032,6 +6057,8 @@ export interface components {
             format: string;
             /** @description Format-specific settings. */
             format_settings?: unknown;
+            /** @description Map veto format override for this stage (game veto format id). */
+            map_veto_format?: string | null;
             /** @description Match format override for this stage. */
             match_format?: string | null;
             /** @description Stage name. */
@@ -15968,6 +15995,41 @@ export interface components {
             timezone_hint?: string | null;
             /** @description Updated withdrawal policy. */
             withdrawal_policy?: string | null;
+        };
+        /**
+         * @description Request to update a tournament stage. All fields optional; absent fields
+         *     keep their current value.
+         */
+        UpdateTournamentStageRequest: {
+            /**
+             * Format: int32
+             * @description Number of participants who advance.
+             */
+            advancement_count?: number | null;
+            /** @description Advancement rule: `top_n`, `top_n_per_group`, `manual`. */
+            advancement_rule?: string | null;
+            /**
+             * Format: date-time
+             * @description Stage end time.
+             */
+            ends_at?: string | null;
+            /**
+             * @description Format-specific settings (e.g. per-round match format overrides:
+             *     `round_formats`, `final_format`, `grand_final_format`). Replaces the
+             *     stored settings object wholesale when present.
+             */
+            format_settings?: unknown;
+            /** @description Map veto format override for this stage. */
+            map_veto_format?: string | null;
+            /** @description Match format override for this stage. */
+            match_format?: string | null;
+            /** @description Stage name. */
+            name?: string | null;
+            /**
+             * Format: date-time
+             * @description Stage start time.
+             */
+            starts_at?: string | null;
         };
         /** @description Response for upload initiation. */
         UploadInfoResponse: {
@@ -31483,6 +31545,71 @@ export interface operations {
                 };
             };
             /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    update_stage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Stage ID */
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTournamentStageRequest"];
+            };
+        };
+        responses: {
+            /** @description Stage updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentStageResponse"];
+                };
+            };
+            /** @description Validation error or stage not pending */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament or stage not found */
             404: {
                 headers: {
                     [name: string]: unknown;

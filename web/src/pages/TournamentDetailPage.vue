@@ -262,6 +262,7 @@
               <TournamentBracket
                 :brackets="brackets"
                 :matches="matches"
+                :stages="stages"
                 :highlight-registration-id="myRegistration?.id"
                 @match-click="openMatch"
               />
@@ -407,7 +408,7 @@ const {
   currentTournament: tournament,
   registrations: allRegistrations,
   myRegistrations, registrationCounts, registrationsPagination,
-  matches, brackets,
+  matches, brackets, stages,
 } = storeToRefs(tournamentsStore)
 
 const {
@@ -724,6 +725,9 @@ async function fetchData() {
         tournamentsStore.fetchRegistrationCounts(id),
         tournamentsStore.fetchMatches(id),
         tournamentsStore.fetchBrackets(id),
+        // Stage names/order power the bracket's stage switcher for
+        // groups+playoffs tournaments.
+        tournamentsStore.fetchStages(id).catch(() => []),
         gamesStore.fetchGames(),
       ]
 

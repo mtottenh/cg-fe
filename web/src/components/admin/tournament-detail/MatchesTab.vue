@@ -40,6 +40,12 @@
         </div>
       </template>
 
+      <template v-slot:item.match_format="{ item }">
+        <v-chip v-if="item.match_format" size="small" variant="tonal" color="primary">
+          {{ formatMatchFormatShort(item.match_format) }}
+        </v-chip>
+      </template>
+
       <template v-slot:item.score="{ item }">
         <span v-if="item.status === 'completed'">
           {{ item.participant1_score }} - {{ item.participant2_score }}
@@ -100,7 +106,7 @@ import { computed } from 'vue'
 import type { TournamentMatchResponse } from '@/stores/tournaments'
 import { formatDateTime } from '@/utils/formatters'
 import {
-  getMatchStatusColor, formatMatchStatus,
+  getMatchStatusColor, formatMatchStatus, formatMatchFormatShort,
   getNextMatchStatus, getMatchActionLabel, getMatchActionColor,
 } from '@/utils/matchStatus'
 
@@ -126,6 +132,7 @@ const hasEligibleMatches = computed(() => {
 const headers = [
   { title: 'Match', key: 'match_number', width: '80px' },
   { title: 'Participants', key: 'participants' },
+  { title: 'Format', key: 'match_format', width: '90px' },
   { title: 'Score', key: 'score', width: '100px' },
   { title: 'Status', key: 'status', width: '120px' },
   { title: 'Scheduled', key: 'scheduled_at', width: '150px' },

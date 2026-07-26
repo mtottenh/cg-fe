@@ -5,11 +5,18 @@
     @click="handleClick"
   >
     <div class="match-content">
-      <!-- Match number and status -->
+      <!-- Match number, best-of, and status. The Bo chip renders in compact
+           mode too — with per-round formats a bracket mixes Bo1 and Bo3
+           matches, and the bracket view is all compact cards. -->
       <div class="match-header d-flex justify-space-between align-center">
-        <v-chip size="x-small" variant="tonal" color="grey">
-          #{{ match.match_number }}
-        </v-chip>
+        <div class="d-flex ga-1">
+          <v-chip size="x-small" variant="tonal" color="grey">
+            #{{ match.match_number }}
+          </v-chip>
+          <v-chip v-if="match.match_format" size="x-small" variant="tonal" color="primary">
+            {{ formatMatchFormatShort(match.match_format) }}
+          </v-chip>
+        </div>
         <v-chip :color="statusColor" size="x-small" :variant="statusVariant">
           {{ statusLabel }}
         </v-chip>
@@ -90,6 +97,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { matchStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import { formatMatchFormat, formatMatchFormatShort } from '@/utils/matchStatus'
 import type { TournamentMatchResponse } from '@/stores/tournaments'
 
 const props = withDefaults(
@@ -135,21 +143,6 @@ const statusLabel = computed(() => getStatusLabel(matchStatusMap, props.match.st
 function isWinner(registrationId: string | null | undefined): boolean {
   if (!registrationId || !props.match.winner_registration_id) return false
   return props.match.winner_registration_id === registrationId
-}
-
-function formatMatchFormat(format: string): string {
-  switch (format) {
-    case 'bo1':
-      return 'Bo1'
-    case 'bo3':
-      return 'Bo3'
-    case 'bo5':
-      return 'Bo5'
-    case 'bo7':
-      return 'Bo7'
-    default:
-      return format
-  }
 }
 
 function formatDateTime(dateStr: string): string {

@@ -71,6 +71,11 @@ export function formatMatchFormat(format: string): string {
   return map[format] ?? format
 }
 
+/** Chip-sized variant: "bo3" → "Bo3". Unknown values pass through. */
+export function formatMatchFormatShort(format: string): string {
+  return /^bo\d+$/.test(format) ? `B${format.slice(1)}` : format
+}
+
 /**
  * The next status in the admin match transition state machine, or `null` when
  * there is no admin-advanceable step from here.

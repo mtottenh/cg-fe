@@ -164,6 +164,12 @@ echo "--- bootstrap admin"
   --display-name "E2E Admin" \
   --force)
 
+# P-143: the internal (X-API-Key) pipeline routes need a key the tests know.
+# This stack seeds its world over HTTP, never via `seed full`, so the key is
+# minted explicitly — `e2e/fixtures/internal-api.fixture.ts` carries its pair.
+echo "--- seed internal API key"
+(cd "${API_DIR}" && ./target/debug/portal-cli seed internal-api-key)
+
 echo "--- playwright (fresh seed into an empty database)"
 rm -f "${SEEDED_STATE}"
 cd "${WEB_DIR}"

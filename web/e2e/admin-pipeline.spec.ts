@@ -277,7 +277,10 @@ test.describe('Admin ingestion pipeline', () => {
     // answer to "why does this demo have no stats".
     await loginAsAdmin(page)
     await page.goto(`/admin/demos/${demo.id}`)
-    await expect(page.getByText(fileName)).toBeVisible()
+    // Heading role: the raw text also appears in the info table and the S3
+    // path, which is a strict-mode violation.
+    await expect(page.getByRole('heading', { name: fileName })).toBeVisible()
+    await expect(page.getByText('Failed', { exact: true })).toBeVisible()
     await expect(page.getByText('e2e: demo parser rejected the header')).toBeVisible()
 
     // And the pipeline overview counts it as a failed demo — the stage-level

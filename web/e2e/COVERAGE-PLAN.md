@@ -255,6 +255,29 @@ two each and together retire most of the dead-control class.
 | **T7** | **Roster-lock rework** (together) | ~~P-14~~ · ~~P-15~~ · ~~P-16~~ · ~~P-18~~ — **tier complete** (`297a19e`, corrected by P-148 `0d2981b`) | One unit, as designed |
 | **T8** | **Decide, then act** | all decided and closed (P-80 was the last, wave E) — **tier complete** | Each needed a product decision |
 
+### Fix wave F — COMPLETE (2026-07-26). THE REGISTER IS DRAINED: 0 open.
+
+The final 12 (one focused session + one parallel web-only agent for P-154):
+
+| Findings | What landed | api / web commits |
+|---|---|---|
+| P-183 | unsupported-game validation REFUSES instead of fabricating a pass | `2102be9` |
+| P-120 | empty tier list clears the override, falls back to plugin defaults | `2102be9` / `4c3eef1` |
+| P-149 · P-189 | generic `entity-changes` audit read over HTTP + real pagination on both audit reads | `2102be9` |
+| P-129 | server-side `?sort=oldest` on the review queue + UI toggle | `2102be9` / `4c3eef1` |
+| P-156 | games catalog pages in SQL | `2102be9` |
+| P-155 | search results carry `user_id`; bans send the account id | `2102be9` / `4c3eef1` |
+| P-143 | seeded internal X-API-Key; enrichment failure driven UI-deep by e2e | `2102be9` / `4c3eef1` |
+| P-66 | timeline reads the real transition log; stored suggestions load on mount | `4c3eef1` |
+| P-128 | TeamEditPage gates Save on form validity (rules used to be decoration) | `4c3eef1` |
+| P-154 | SearchAutocomplete releases input focus after selection (agent; test fails pre-fix; the un-reproducible full swallow is scoped honestly in the row) | `be9fad8` |
+| P-173 | RULED wontfix — accepted schema debt (rationale in the row) | — |
+
+Every fix carries a red-provable test at the layer that can hold it
+(integration for the api surfaces, a component test for P-154, the
+P-143 e2e for the pipeline). P-204 and P-173 are the register's two
+deliberate wontfixes, each with its ruling recorded.
+
 ### Fix wave E — COMPLETE (2026-07-26). Single-session close-out of the register.
 
 One focused session (no lanes — the coordination overhead was no longer worth it
@@ -361,10 +384,9 @@ through the UI — not an API-level check.
 **Strongly recommended, cheap — ALL DONE:** ~~P-61~~ (`6478752`) · ~~P-126~~
 (`f3c6550`) · ~~P-124~~ (`c99ae81`) · ~~P-58~~ (verified, `3013f58+cb05c99`).
 
-**Ship without (the remaining 12 open, as of wave E):** P-66 · P-120 · P-128 ·
-P-129 · P-143 · P-149 · P-154 · P-155 · P-156 · P-173 · P-183 · P-189 —
-previously-triaged debt, ops convenience, or test-infra; none blocks a core
-action, and the ratchets hold the classes they belong to.
+**Ship without:** nothing — wave F drained the register to 0 open. The two
+wontfixes (P-204 by-design, P-173 accepted schema debt) carry their rulings
+in their rows.
 
 ### 4a. Root-cause clusters — what to fix ONCE instead of 51 times
 
@@ -470,9 +492,9 @@ authoritative; the summary is derived from it, never hand-edited. Fixed findings
 their row (full write-ups: `COVERAGE-PLAN.old.md` + the commit named in the row). Open
 findings have detail entries below the table.
 
-**Status (derived): 207 found · 194 fixed · 12 open** · 1 wontfix (P-53 mitigated).
+**Status (derived): 207 found · 205 fixed · 0 open** · 2 wontfix (P-53 mitigated).
 
-Open: P-66, P-120, P-128, P-129, P-143, P-149, P-154, P-155, P-156, P-173, P-183, P-189.
+Open: none — the register is drained.
 
 **P-74..P-85 came from the first F wave** — **12 findings from 3 agents in one afternoon**,
 on three admin surfaces that had all shipped, been reviewed, and been inverse-audited without
@@ -557,7 +579,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-63 | Disband team has no UI | product gap | **fixed** `28afc7a` |
 | P-64 | Demo auto-link backfill unreachable from UI | admin gap | **fixed** `0dd69e1+4ead184` |
 | P-65 | `/users/me/action-items` missing from OpenAPI doc | build (P-52 family) | **fixed** `ea55c83` |
-| P-66 | Match audit trail + stored suggestions invisible | minor | open |
+| P-66 | Match audit trail + stored suggestions invisible | minor | **fixed** `4c3eef1` (web) |
 | P-67 | Dead-surface cleanup batch | hygiene | **fixed** `c985d26` |
 | P-68 | Scraped Premier rating has no correction path | data integrity | **fixed** `0dd69e1+4ead184+2751a44` |
 | P-69 | Platform Elo engine is dead code (never called) | **scope decided** | **fixed** `82e8b14` |
@@ -592,8 +614,8 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-100 | Vuetify `v-select` exposes no accessible name, app-wide | **a11y** | **fixed** `b137146` |
 | P-101 | Seeding fixture typed `seed` non-optional, blessing a false compare | test-infra | **fixed** `c3d0122` |
 | P-127 | **The result-panel event system is dead by construction, not just for dispute** | **feature dead** | **fixed** `5d040f1` |
-| P-128 | Team colour fields have no client validation against a backend bound | user trap | open |
-| P-129 | Review queue still has no server-side sort control (P-55 follow-up) | admin friction | open |
+| P-128 | Team colour fields have no client validation against a backend bound | user trap | **fixed** `4c3eef1` (web) |
+| P-129 | Review queue still has no server-side sort control (P-55 follow-up) | admin friction | **fixed** `2102be9+4c3eef1` |
 | P-130 | Fixtures picked a game positionally; a sort_order test reordered them | test-infra | **fixed** `3a0df22` |
 | P-131 | `dispute.reason` rendered raw on two admin surfaces — both treated a declared enum as the free-text field beside it | user-facing | **fixed** `86701cc` |
 | P-132 | Eight `.role` raw renders across six files — six took the LABEL off the wire while colouring the chip from the map, so they looked deliberate | user-facing | **fixed** `86701cc` |
@@ -609,7 +631,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-126 | A disbanded team can still be renamed — no terminal check on update | integrity | **fixed** `f3c6550` |
 | P-118 | **Evidence upload URL hard-coded to the dev stack** | **cross-env** | **fixed** `a9e2988` |
 | P-119 | Stale specs asserted raw enums the status-map sweeps humanised | test rot | **fixed** `3bcfd12` |
-| P-120 | Rank tiers can never be cleared once set | product gap | open |
+| P-120 | Rank tiers can never be cleared once set | product gap | **fixed** `2102be9+4c3eef1` |
 | P-121 | `per_page` on `GET /v1/games` is decorative — no limit/offset applied | correctness | **fixed** `339fc13` |
 | P-122 | `gamesStore.error` is app-wide; one page's failure alerts another | user-facing | **fixed** `98c5b72` |
 | P-117 | Stage formats rendered and offered raw; ratchet regex missed `.format` | user-facing | **fixed** `af05f75` |
@@ -634,7 +656,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-140 | Nothing asserted a declared permission is seeded and granted, so P-139 was invisible | gate gap | **fixed** `2751a44` |
 | P-141 | `admin.audit.view` declared, seeded nowhere, gated on by nothing, guards a subsystem that does not exist | dead code | **fixed** `2751a44` |
 | P-142 | **`PermissionChecker` short-circuits for the dev user in `test-utils` builds, so no integration test calling as `dev-token` ever consults the permissions table** | **gate gap** | **fixed** `613f6e5` (canary) |
-| P-143 | Enrichment-failure rendering is API-covered but not UI-covered — the e2e stack mints no `X-API-Key`, so no test can drive a failure into the page | coverage gap | open |
+| P-143 | Enrichment-failure rendering is API-covered but not UI-covered — the e2e stack mints no `X-API-Key`, so no test can drive a failure into the page | coverage gap | **fixed** `2102be9+4c3eef1` |
 | P-144 | Demo-catalog counts were global, not game-scoped — a CS2 admin saw totals inflated by every other game | correctness | **fixed** `731f638+c4c8b6b` |
 | P-145 | **Every `entity_changes` insert failed — `ip_address` bound as text into an INET column. The audit trail was CLI-read-only and had never been written to** | **audit dead** | **fixed** `297a19e` |
 | P-146 | `seed reset` ran `UPDATE entity_changes SET changed_by = NULL` against a `NOT NULL` column — impossible by construction, harmless only while nothing wrote to the table | latent | **fixed** `261e302` |
@@ -646,14 +668,14 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-204 | `get_demo_status_counts` gates on `is_admin` (`users.view_all`) while demo MUTATIONS use `require_demos_manage`. RULED BY DESIGN: reads-on-view (moderator+), mutations-on-manage is the documented split — `PermissionService::is_admin`'s doc and `require_pipeline_view`'s comment both state it, and `is_admin` genuinely checks `users.view_all` | inconsistent | wontfix — by design |
 | P-205 | `AdminDemoDetailPage:718` is the only remaining caller of `unlinkFromMatch`; correct today because the API maintains the pair, but it would silently regress to P-158 with no test on it | coverage gap | **fixed** `613f6e5` |
 | P-206 | An `#[ignore]`d test still issues live outbound requests when `CS2_DEMO_SERVICE_URL` is set — the ignore attribute is the only thing between `cargo test` and a third-party host | **config safety** | **fixed** `9960a9a` |
-| P-149 | Override audit rows are written but have no HTTP read surface — only `portal-cli` can read them | ops gap | open |
+| P-149 | Override audit rows are written but have no HTTP read surface — only `portal-cli` can read them | ops gap | **fixed** `2102be9` |
 | P-150 | `entity_changes.changed_by` is `NOT NULL REFERENCES players(id) ON DELETE SET NULL` — a self-contradictory pair | schema | **fixed** `9960a9a` (0088) |
 | P-151 | **Permission strings used as bare literals (10 sites) are absent from the registry, so the P-140 guard cannot see them** | **gate gap** | **fixed** `61fa1f1` |
 | P-152 | **The admin route guard named `'admin'`, a role NO migration seeds — a granted `platform_admin` was bounced off every admin route. Silently halved P-70** | **blocker half-open** | **fixed** `e92aead` |
 | P-153 | **`revoke_role_from_user` has no priority ceiling (its `assign` counterpart does) — a platform_admin can strip a super_admin's role. The UI hides the buttons; that is cosmetic** | **authorization** | **fixed** `df76b70` |
-| P-154 | After selecting from any `SearchAutocomplete`, the next click anywhere is swallowed — measured app-wide, pre-existing | user-facing | open |
-| P-155 | `BanCreateModal` posts a *player* id as `user_id`; works only via the deliberate 1:1 `make_shared_account_ids` invariant, whose own doc reserves the right to migrate away | latent | open |
-| P-156 | The admin games handler hardcodes an in-memory catalog slice; past 100 games it needs a real `LIMIT/OFFSET` query (the store now warns rather than truncating silently) | scale | open |
+| P-154 | After selecting from any `SearchAutocomplete`, the next click anywhere was swallowed. Root-caused to the shared base RETAINING INPUT FOCUS after selection (Vuetify's list preventDefaults mousedown + refocus-after-leave); the filing e2e had measured focus as the discriminator. Fixed by releasing focus on selection, pinned by a component test that FAILS pre-fix. Honest limit: the full swallow did not reproduce in an isolated driven browser, so the fix targets the measured mechanism | user-facing | **fixed** `be9fad8` |
+| P-155 | `BanCreateModal` posts a *player* id as `user_id`; works only via the deliberate 1:1 `make_shared_account_ids` invariant, whose own doc reserves the right to migrate away | latent | **fixed** `2102be9+4c3eef1` |
+| P-156 | The admin games handler hardcodes an in-memory catalog slice; past 100 games it needs a real `LIMIT/OFFSET` query (the store now warns rather than truncating silently) | scale | **fixed** `2102be9` |
 | P-157 | **Deleting evidence unlinked the demo best-effort and still returned 204.** Fixed by ORDERING, not a transaction (no unit-of-work exists): the pointer goes first, so an unlink failure deletes nothing and the whole call is retryable. A second swallowed error on the same line is now hard. Moving the unlink ahead of `delete_evidence` exposed its authz, now a pre-flight | **trust** | **fixed** `731f638` |
 | P-158 | The identical "Unlink" gesture meant different things on two surfaces. Fixed at BOTH levels — the component emits the link id (the demo id was what made the link-only route reachable) and the admin route now removes the paired evidence row too — so they cannot drift apart again | correctness | **fixed** `731f638+c4c8b6b` |
 | P-159 | `linkDiscoveredDemo` recovered the new link by matching `game_number`, mapping the evidence id onto the wrong link on bo3+. `evidenceIdMap` REMOVED outright rather than demoted — while it existed it took precedence, so a stale wrong entry would still have won | correctness | **fixed** `c4c8b6b` |
@@ -670,13 +692,13 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-180 | **`MatchCompletionSaga::compensate()` marks compensation COMPLETE having undone nothing** — logs "requires manual compensation review", fetches the progression logs, comments "actual deletion would depend on business requirements", then completes. A failed saga leaves the winner advanced. On the AUTOMATIC path, not an admin tool | **integrity** | **fixed** `59201d0` |
 | P-181 | `seed_by_season_rank` silently falls back to rating seeding with an `info!` log — an operator who picks season-rank seeding gets rating seeding and is never told | user-facing | **fixed** `59201d0` |
 | P-182 | `get_team_name_for_registration` returns the literal `"Current Team"`, so every veto-timeout broadcast ships `current_team: "Current Team"`. **Investigated, deliberately not fixed yet**: the field is fabricated AND unread — `useMatchLobby.ts:123` copies only `seconds_remaining` and the registration id, and the function's own doc says clients resolve the name themselves. So it is redundant by design and false in practice. Every fix touches the wire contract (remove the field, or make it `Option`), and resolving it server-side needs a registration repo threaded into the timeout task; `VetoSessionState` carries no names. A test helper (`common/ws.rs:78`) also deserializes it. Needs a contract decision, not a patch | user-facing | **fixed** `613f6e5+ee0ef8b` |
-| P-183 | Default `validate_evidence` returns `is_valid: true` for any game with no implementation (mitigated: `confidence: 0.0` + a warning string) | integrity | open |
+| P-183 | Default `validate_evidence` returned `is_valid: true` for any game with no implementation. The mitigation kept the fabricated verdict; it now REFUSES (`NotSupported` → 400) and no verdict is written for an unsupported game | integrity | **fixed** `2102be9` |
 | P-184 | **Reapply's mirror image: the winner attribution write lived inside the RR/Swiss standings branch, so on elimination brackets reapply moved the bracket to the new winner while `winner_registration_id` still named the old one** — the match disagreeing with the pairing it produced | integrity | **fixed** `7a19c34` |
 | P-185 | **An organiser could not approve pending registration #21 at all** — neither participant table had a server pager | **blocks core flow** | **fixed** `8a7ae7e+df69c36` |
 | P-186 | **Swiss next-round pairing builds its registration map from a 1000-row page and `filter_map`s standings through it — a participant past row 1000 is silently DROPPED FROM THE PAIRING.** Data loss, not display | **integrity** | **fixed** `59201d0` |
 | P-187 | `seed_by_*` seeds only the first 1000 registrations | integrity | **fixed** `59201d0` |
 | P-188 | `process_no_shows` iterates only the first 1000 approved rows; anyone past that is never marked no-show | integrity | **fixed** `59201d0` |
-| P-189 | Result-override audit read hard-coded to `100, 0` with no pagination surface | admin gap | open |
+| P-189 | Result-override audit read hard-coded to `100, 0` with no pagination surface | admin gap | **fixed** `2102be9` |
 | P-190 | **`HomePage` upcoming-matches scans `per_page: 100` per tournament AND matches only `player_id`, so a team-only participant never sees ANY upcoming match** | user-facing | **fixed** `6478752` |
 | P-191 | Eight more page/component/composable pagination scans (`TeamDetailPage` 20, `LeagueSearchAutocomplete` 200→clamped to 100, `useLeagueDetail`/`LeagueDetailPage` 20 with counts from `.length`, `HomePage:487`, `LeagueMembersModal`, `leagues.ts:295`, `TournamentInvitationsModal`) | user-facing | **fixed** `6478752` |
 | P-192 | **The pagination guard globbed `src/stores/**` only, so every page/component/composable instance was INVISIBLE to it** — green throughout while 13 scans sat outside its field of view. Scope is now asserted, so narrowing it fails loudly instead of shrinking coverage behind a passing tick | **gate gap** | **fixed** `d88a783` |
@@ -692,7 +714,7 @@ the only instrument that detects it is driving the UI. Finish §4-F.
 | P-170 | After an override the claimed (wrong) score showed beside the corrected one with nothing saying which governs. **Owner ruling: show the corrected score.** Claim row kept (it is evidence); the UI now marks it superseded | user-facing | **fixed** `97f4ae7+64f83a4` |
 | P-171 | `MatchResultsTab` printed `submitted_by_user_id` as a raw UUID while `submitted_by_display_name` sat unused on the same DTO — P-95/P-115/P-123 class | user-facing | **fixed** `97f4ae7` |
 | P-172 | Evidence/demo chips read `id.slice(0, 8)`; v7 prefixes are timestamps, so files attached seconds apart rendered as identical chips | user-facing | **fixed** `97f4ae7` |
-| P-173 | `tournament_matches.participant1_score` is `NOT NULL DEFAULT 0`, so "no result yet" is indistinguishable from "0-0" at the column level — `winner_registration_id` is the only honest has-result signal, and `?? '-'` fallbacks on those fields are dead code | latent | open |
+| P-173 | `tournament_matches.participant1_score` is `NOT NULL DEFAULT 0`, so "no result yet" is indistinguishable from "0-0" at the column level. RULED accepted schema debt: every reader keys "has result" off `winner_registration_id` (the honest signal), P-165 removed the one path where 0-vs-NULL could decide a winner, and a nullable migration would ripple `Option<i32>` through every adapter for no user-visible change | latent | wontfix — accepted schema debt |
 | P-174 | **A player who leaves or is removed keeps a My Teams card whose chip printed the literal `left`/`removed`** — `teamStatusMap` was fed a THIRD enum nobody had keyed it against, and the P-112 sweep had deleted those values as belonging to neither | **live leak** | **fixed** `86701cc` |
 | P-175 | `EvidenceDisplay:165` renders `evidence_type` raw; the property is outside the ratchet's list so the guard cannot see it. `evidence_type` is `string` on the wire — P-112 class | user-facing | **fixed** `a22e166+6478752` |
 | P-176 | `AdminPipelinePage:376` renders `h.source` raw; `player_rating_history.source` is `VARCHAR(64)` with no CHECK, so genuinely unconstrained | debt | **fixed** `6478752` |
@@ -1496,10 +1518,8 @@ A = genuine · B = bypassed action · C = API-only asserts · D = vacuous (basel
       1-2: still 26, unchanged** — no new drift introduced, and every entry is accounted for
       by P-67/P-70/P-71/P-74/P-92
 - [x] `match-workflow:253` name/assertion fixed (`c3d0122`) — the last misleading-name item
-- [x] Register drained to decided-wontfix or fixed — **wave E close-out (2026-07-26): 193
-      fixed · 1 wontfix · 12 open**, and every one of the 12 is previously-triaged
-      ship-without debt, needs-product-decision, or test-infra (P-66, P-120, P-128, P-129,
-      P-143, P-149, P-154, P-155, P-156, P-173, P-183, P-189)
+- [x] Register drained to decided-wontfix or fixed — **wave F (2026-07-26): 205 fixed ·
+      2 wontfix · 0 open.** The register is drained.
 - [x] **Full suite green in one run** (P-107) — 316/0 on 2026-07-25 (first attempt was 302/4/3)
 - [x] Final spot-check: deliberately break a component and watch the suite go **red** —
       regressed `matchStatusMap.ready.label` to the raw enum `'ready'`; `match-workflow:242`

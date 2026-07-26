@@ -249,8 +249,12 @@
                 </v-card-text>
               </v-card>
 
+              <!-- P-120: an empty list is saveable — it clears the custom
+                   tiers and the game reverts to its plugin defaults. Say so,
+                   because "Save" with nothing listed is otherwise alarming. -->
               <p v-if="tierDrafts.length === 0" class="text-center text-medium-emphasis pa-8">
-                No rank tiers configured. Click "Add Tier" to define one.
+                No custom rank tiers. Click "Add Tier" to define one — or save
+                with none to use the game's built-in defaults.
               </p>
 
               <div class="d-flex align-center ga-2">
@@ -280,8 +284,7 @@
                 </v-btn>
               </div>
               <p v-if="tiersDirty && !tiersValid" class="text-caption text-error mt-2">
-                Every tier needs an ID, a name and whole-number Min Rating and Order, and a
-                game needs at least one tier.
+                Every tier needs an ID, a name and whole-number Min Rating and Order.
               </p>
             </template>
           </v-tabs-window-item>
@@ -420,9 +423,10 @@ function isWholeNumber(v: number | string): boolean {
 
 const tiersValid = computed(
   () =>
-    // The API requires at least one tier (`SetRankTiersRequest`,
-    // `#[validate(length(min = 1, max = 20))]`).
-    tierDrafts.value.length > 0 &&
+    // P-120: an EMPTY list is now valid — it clears the stored override and
+    // the game falls back to its plugin's default tiers (`SetRankTiersRequest`
+    // accepts 0-20; with the old `min = 1` a custom tier set could be
+    // installed but never removed again).
     tierDrafts.value.length <= 20 &&
     tierDrafts.value.every(
       (t) =>

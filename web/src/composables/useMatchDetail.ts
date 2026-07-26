@@ -16,6 +16,7 @@ import { formatMapName } from '@/utils/maps'
 import type { components } from '@/api/types'
 
 type SuggestedTimeResponse = components['schemas']['SuggestedTimeResponse']
+type MatchStatusLogResponse = components['schemas']['MatchStatusLogResponse']
 
 export function useMatchDetail() {
   const route = useRoute()
@@ -34,6 +35,12 @@ export function useMatchDetail() {
   const tournamentMapPool = ref<string[]>([])
   const suggestedTimes = ref<string[]>([])
   const suggestionsDetailed = ref<SuggestedTimeResponse[]>([])
+  /**
+   * P-66: the real transition log (actor / when / reason), which the status
+   * timeline annotates its steps from — it used to infer times from the
+   * three timestamp columns on the match row and show nothing else.
+   */
+  const statusHistory = ref<MatchStatusLogResponse[]>([])
 
   // Polling
   const POLL_MS = 15_000
@@ -231,6 +238,44 @@ export function useMatchDetail() {
     }
   }
 
+  /** P-66: the transition log behind the timeline. Never throws. */
+  async function fetchStatusHistory(tournamentId: string, matchId: string) {
+    try {
+      const result = await unwrapApi(api.GET(
+        '/v1/tournaments/{tournament_id}/matches/{match_id}/status-history',
+        { params: { path: { tournament_id: tournamentId, match_id: matchId } } }
+      ))
+      statusHistory.value = result.data
+    } catch {
+      statusHistory.value = []
+    }
+  }
+
+  /**
+   * P-66: the page used to POST `suggestions/generate` on every load — a
+   * WRITE on page view, which regenerated (and re-stored) suggestions the
+   * backend had already persisted, and the stored set was never read at all.
+   * Load now READS the stored suggestions and only generates when there are
+   * none yet.
+   */
+  async function loadSuggestions(tournamentId: string, matchId: string) {
+    try {
+      const result = await unwrapApi(api.GET(
+        '/v1/tournaments/{tournament_id}/matches/{match_id}/suggestions',
+        { params: { path: { tournament_id: tournamentId, match_id: matchId } } }
+      ))
+      if (result.data.length > 0) {
+        suggestionsDetailed.value = result.data
+        suggestedTimes.value = result.data.map((s: SuggestedTimeResponse) => s.suggested_start)
+        return
+      }
+    } catch {
+      // Fall through to generation — an unreadable store is the same as an
+      // empty one for this purpose.
+    }
+    await fetchBackendSuggestions(tournamentId, matchId)
+  }
+
   // Data fetching
   /**
    * Refetch the current claim and the claim history for this match.
@@ -277,12 +322,19 @@ export function useMatchDetail() {
     const tournamentId = tournament.id
     const matchId = match.value.id
 
+    const statusBeforePoll = match.value.status
     const refreshed = await tournamentsStore.fetchMatch(tournamentId, matchId).catch(() => null)
     // A newer fetchAll started while we were in flight — its data wins.
     if (gen !== fetchGen) return
     if (refreshed) match.value = refreshed
 
     const tasks: Promise<unknown>[] = []
+
+    // P-66: the timeline annotates steps from the real transition log; a
+    // status change means a new log row exists.
+    if (refreshed && refreshed.status !== statusBeforePoll) {
+      tasks.push(fetchStatusHistory(tournamentId, matchId))
+    }
 
     if (tournament.scheduling_mode === 'self_scheduled' && match.value) {
       const status = match.value.status
@@ -463,6 +515,11 @@ export function useMatchDetail() {
           if (gen !== fetchGen) return
         }
 
+        // P-66: the transition log the timeline annotates from. Fire-and-
+        // forget; it never throws and an empty log renders the old static
+        // timeline.
+        void fetchStatusHistory(tournamentId, matchId)
+
         if (tournamentsStore.currentTournament.scheduling_mode === 'self_scheduled') {
           await Promise.all([
             schedulingStore.fetchActiveProposal(tournamentId, matchId).catch(() => null),
@@ -470,7 +527,8 @@ export function useMatchDetail() {
           ])
 
           if (opponentPlayerId.value && showSchedulingPanel.value) {
-            fetchBackendSuggestions(tournamentId, matchId)
+            // P-66: read the stored suggestions; generate only when empty.
+            void loadSuggestions(tournamentId, matchId)
           }
         }
 
@@ -630,6 +688,7 @@ export function useMatchDetail() {
     opponentPlayerId,
     suggestedTimes,
     suggestionsDetailed,
+    statusHistory,
     showConfirmationPanel,
     canSubmitResult,
     showWaitingForOpponent,

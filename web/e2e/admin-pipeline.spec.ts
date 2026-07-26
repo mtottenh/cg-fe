@@ -2,6 +2,8 @@ import { test, expect, type Page } from '@playwright/test'
 import { loginAsAdmin, getAdminToken, login } from './fixtures/auth.fixture'
 import { createPlayerWithSteamId, enableTrackingViaApi } from './fixtures/player-surfaces.fixture'
 import { getDemoLinks } from './fixtures/awards.fixture'
+import { catalogDemoViaApi, getDemoGame, uniqueDemoFileName } from './fixtures/demo-admin.fixture'
+import { markDemoStatsFailed } from './fixtures/internal-api.fixture'
 import {
   createBackfillScenario,
   createPlayerWithScrapedRating,
@@ -257,5 +259,32 @@ test.describe('Admin ingestion pipeline', () => {
     // The override endpoint stays admin-only — the control is on an
     // admin-guarded page, but the endpoint must not rely on that.
     expect(await submitRatingStatus(subject.token, subject.playerId, 99)).toBe(403)
+  })
+
+  test('P-143: an enrichment failure reported by the service is visible to the operator', async ({
+    page,
+  }) => {
+    // Everything upstream of the catalog speaks X-API-Key; until the seeder
+    // minted a key for the stack, no e2e could DRIVE a failure into these
+    // surfaces — the rendering below was asserted only at the API layer.
+    const game = await getDemoGame()
+    const fileName = uniqueDemoFileName('e2e-enrich-fail')
+    const demo = await catalogDemoViaApi(adminToken, game.id, fileName)
+
+    await markDemoStatsFailed(demo.id, 'e2e: demo parser rejected the header')
+
+    // The demo detail page shows the failure and its reason — the operator's
+    // answer to "why does this demo have no stats".
+    await loginAsAdmin(page)
+    await page.goto(`/admin/demos/${demo.id}`)
+    await expect(page.getByText(fileName)).toBeVisible()
+    await expect(page.getByText('e2e: demo parser rejected the header')).toBeVisible()
+
+    // And the pipeline overview counts it as a failed demo — the stage-level
+    // signal that enrichment is losing demos. >= 1 rather than an exact
+    // count: the suite runs fullyParallel and other specs catalog demos too.
+    // getDemoGame prefers CS2, and the overview is scoped by SLUG (P-144).
+    const overview = await getPipelineOverview(adminToken, 'cs2')
+    expect(overview.demos.failed).toBeGreaterThanOrEqual(1)
   })
 })

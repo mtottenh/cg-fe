@@ -27,6 +27,9 @@
             <div v-if="getStepTimestamp(step)" class="text-caption text-medium-emphasis">
               {{ formatDateTime(getStepTimestamp(step)!) }}
             </div>
+            <div v-if="getStepNote(step)" class="text-caption text-medium-emphasis font-italic">
+              {{ getStepNote(step) }}
+            </div>
           </div>
         </div>
       </div>
@@ -37,11 +40,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { TournamentMatchResponse } from '@/stores/tournaments'
+import type { components } from '@/api/types'
 import { formatDateTime } from '@/utils/formatters'
+
+type MatchStatusLogResponse = components['schemas']['MatchStatusLogResponse']
 
 const props = defineProps<{
   match: TournamentMatchResponse
   schedulingMode?: 'live' | 'self_scheduled' | 'hybrid'
+  /**
+   * P-66: the real transition log. When present, steps show the moment the
+   * match actually entered them (and flag admin overrides) instead of the
+   * three-timestamp inference below; absent, the old static rendering holds.
+   */
+  history?: MatchStatusLogResponse[]
 }>()
 
 interface Step {
@@ -159,8 +171,20 @@ function getStepColor(step: Step): string {
   }
 }
 
+/**
+ * P-66: the latest log row that put the match INTO this step's status. The
+ * log is the authority — it records every transition with when and by what —
+ * where the match row only carries three timestamp columns.
+ */
+function logEntryFor(step: Step): MatchStatusLogResponse | null {
+  const rows = props.history?.filter((h) => h.to_status === step.status)
+  return rows && rows.length > 0 ? rows[rows.length - 1]! : null
+}
+
 function getStepTimestamp(step: Step): string | null {
   if (isStepComplete(step) || isStepCurrent(step)) {
+    const logged = logEntryFor(step)
+    if (logged) return logged.transitioned_at
     switch (step.status) {
       case 'scheduled':
         return props.match.scheduled_at || null
@@ -175,6 +199,19 @@ function getStepTimestamp(step: Step): string | null {
     }
   }
   return null
+}
+
+/**
+ * A short provenance note for a step, from the log: an admin override is the
+ * one actor worth flagging (it is the audited case — P-84's lesson), and a
+ * recorded reason beats inference. System transitions stay unlabelled.
+ */
+function getStepNote(step: Step): string | null {
+  if (!isStepComplete(step) && !isStepCurrent(step)) return null
+  const logged = logEntryFor(step)
+  if (!logged) return null
+  if (logged.is_admin_override) return 'admin override'
+  return logged.transition_reason ?? null
 }
 
 </script>

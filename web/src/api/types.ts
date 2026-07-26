@@ -4,6 +4,33 @@
  */
 
 export interface paths {
+    "/v1/admin/audit/entity-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin: read the audit trail for one entity, newest first.
+         * @description P-149: `entity_changes` — the audit spine that roster-lock overrides,
+         *     score corrections and every other audited write land in — was readable
+         *     only through `portal-cli`. An audit trail an operator cannot reach over
+         *     HTTP is barely better than none; this is the generic read the
+         *     match-scoped `result-overrides` endpoint is a specialisation of.
+         *
+         *     Gated on `admin.users.view` — the platform's read gate (staff and up),
+         *     per the reads-on-view / mutations-on-manage split ruled in P-204.
+         */
+        get: operations["admin_list_entity_changes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/bans": {
         parameters: {
             query?: never;
@@ -768,9 +795,10 @@ export interface paths {
         };
         /**
          * List pending result reviews for admin queue.
-         * @description Returns all reviews pending admin action, **newest first** — the queue is
-         *     paginated, so a fresh escalation ordered onto the last page is one nobody
-         *     ever sees (P-55).
+         * @description Returns all reviews pending admin action, **newest first** by default —
+         *     the queue is paginated, so a fresh escalation ordered onto the last page
+         *     is one nobody ever sees (P-55). `?sort=oldest` flips the order
+         *     server-side (P-129).
          */
         get: operations["list_pending_reviews"];
         put?: never;
@@ -5159,6 +5187,11 @@ export interface components {
             /** @description Demo category (uncategorized, pug, league, scrim, ignored). */
             category: string;
         };
+        /**
+         * @description Types of changes tracked in the audit trail.
+         * @enum {string}
+         */
+        ChangeType: "create" | "update" | "delete" | "revert";
         /** @description Response DTO for check-in status. */
         CheckInStatusResponse: {
             /** @description Whether the check-in window is currently open. */
@@ -8736,6 +8769,46 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_EntityChangeResponse: {
+            data: {
+                /** @description Kind of change. */
+                change_type: components["schemas"]["ChangeType"];
+                /** @description Player who made the change. */
+                changed_by: string;
+                /**
+                 * @description Their display name, resolved server-side — an audit row that names its
+                 *     actor only by UUID is not usable audit (the P-115/P-123 lesson).
+                 */
+                changed_by_display_name?: string | null;
+                /**
+                 * Format: date-time
+                 * @description When the change was made.
+                 */
+                created_at: string;
+                /** @description ID of the changed entity. */
+                entity_id: string;
+                /** @description Entity type the change targeted (e.g. "league_season", "tournament_match"). */
+                entity_type: string;
+                /** @description Changed field, when the change is field-scoped. */
+                field_name?: string | null;
+                /** @description Change record ID. */
+                id: string;
+                /** @description Value after the change. */
+                new_value?: unknown;
+                /** @description Value before the change. */
+                old_value?: unknown;
+                /** @description Why it was reverted. */
+                revert_reason?: string | null;
+                /**
+                 * Format: date-time
+                 * @description When a later change reverted this one.
+                 */
+                reverted_at?: string | null;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_Vec_EvidenceSummaryResponse: {
             data: {
                 /** Format: date-time */
@@ -10990,6 +11063,49 @@ export interface components {
             /** @description The raw one-time token. Never retrievable again. */
             token: string;
         };
+        /**
+         * @description One recorded change from the entity audit trail (P-149).
+         *
+         *     Until this existed the `entity_changes` table — the audit spine every
+         *     override writes to (roster-lock overrides, score corrections, …) — was
+         *     readable only through `portal-cli`, so ops tooling and admins had no HTTP
+         *     answer to "who changed this, when, from what, to what, and why".
+         */
+        EntityChangeResponse: {
+            /** @description Kind of change. */
+            change_type: components["schemas"]["ChangeType"];
+            /** @description Player who made the change. */
+            changed_by: string;
+            /**
+             * @description Their display name, resolved server-side — an audit row that names its
+             *     actor only by UUID is not usable audit (the P-115/P-123 lesson).
+             */
+            changed_by_display_name?: string | null;
+            /**
+             * Format: date-time
+             * @description When the change was made.
+             */
+            created_at: string;
+            /** @description ID of the changed entity. */
+            entity_id: string;
+            /** @description Entity type the change targeted (e.g. "league_season", "tournament_match"). */
+            entity_type: string;
+            /** @description Changed field, when the change is field-scoped. */
+            field_name?: string | null;
+            /** @description Change record ID. */
+            id: string;
+            /** @description Value after the change. */
+            new_value?: unknown;
+            /** @description Value before the change. */
+            old_value?: unknown;
+            /** @description Why it was reverted. */
+            revert_reason?: string | null;
+            /**
+             * Format: date-time
+             * @description When a later change reverted this one.
+             */
+            reverted_at?: string | null;
+        };
         /** @description Response for evidence details. */
         EvidenceResponse: {
             /** Format: date-time */
@@ -12562,6 +12678,13 @@ export interface components {
                 id: string;
                 /** @description Whether the player is looking for a team. */
                 looking_for_team: boolean;
+                /**
+                 * @description Owning user's ID (P-155). Callers acting on the ACCOUNT — bans, role
+                 *     grants — must send this, not the player id: the two are equal today
+                 *     only by the seed's deliberate 1:1 id invariant, whose own doc
+                 *     reserves the right to migrate away.
+                 */
+                user_id: string;
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -13011,6 +13134,13 @@ export interface components {
             id: string;
             /** @description Whether the player is looking for a team. */
             looking_for_team: boolean;
+            /**
+             * @description Owning user's ID (P-155). Callers acting on the ACCOUNT — bans, role
+             *     grants — must send this, not the player id: the two are equal today
+             *     only by the seed's deliberate 1:1 id invariant, whose own doc
+             *     reserves the right to migrate away.
+             */
+            user_id: string;
         };
         /**
          * @description One combined player-stats row: separate summed core stats plus a
@@ -13929,7 +14059,13 @@ export interface components {
         };
         /** @description Replace the full set of rank tiers for a game. */
         SetRankTiersRequest: {
-            /** @description Rank tiers (1-20 items). */
+            /**
+             * @description Rank tiers (0-20 items). An empty list CLEARS the stored override,
+             *     and reads then fall back to the game plugin's default tiers
+             *     (`get_rank_tiers` already treats `[]` that way) — P-120: with
+             *     `min = 1` here, a custom tier set could be installed but never
+             *     removed again.
+             */
             rank_tiers: components["schemas"]["RankTierInput"][];
         };
         /** @description Request to set a tournament-specific map pool. */
@@ -15378,6 +15514,56 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    admin_list_entity_changes: {
+        parameters: {
+            query: {
+                /**
+                 * @description Entity type to read history for (e.g. `league_season`,
+                 *     `tournament_match`).
+                 */
+                entity_type: string;
+                /** @description ID of the entity. */
+                entity_id: string;
+                /** @description Page number (1-indexed). */
+                page?: number;
+                /** @description Number of items per page. */
+                per_page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorded changes for the entity, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_EntityChangeResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing admin.users.view */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     list_bans: {
         parameters: {
             query?: {
@@ -17767,6 +17953,12 @@ export interface operations {
                 page?: number;
                 /** @description Number of items per page. */
                 per_page?: number;
+                /**
+                 * @description Sort order: `newest` (default) or `oldest` (P-129 — work the backlog
+                 *     from the far end without paging to it). Declared in the utoipa block
+                 *     so the generated client carries it (the P-54 lesson).
+                 */
+                sort?: string | null;
             };
             header?: never;
             path?: never;
@@ -17781,6 +17973,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_ResultReviewListResponse"];
+                };
+            };
+            /** @description Unknown sort value */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Unauthorized */
@@ -18674,7 +18875,12 @@ export interface operations {
     };
     admin_list_match_result_overrides: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Page number (1-indexed). */
+                page?: number;
+                /** @description Number of items per page. */
+                per_page?: number;
+            };
             header?: never;
             path: {
                 /** @description Tournament ID */

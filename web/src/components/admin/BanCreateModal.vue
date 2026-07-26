@@ -233,7 +233,11 @@ async function submit() {
 
   try {
     const request: CreateBanRequest = {
-      user_id: selectedPlayer.value.id,
+      // P-155: bans act on the ACCOUNT, so send the user id the search
+      // result now carries. This used to send the *player* id, which was
+      // only correct via the seed's deliberate 1:1 id invariant — an
+      // invariant whose own doc reserves the right to migrate away.
+      user_id: selectedPlayer.value.user_id,
       ban_type: form.value.ban_type,
       reason: form.value.reason,
       duration_seconds: calculateDurationSeconds(),

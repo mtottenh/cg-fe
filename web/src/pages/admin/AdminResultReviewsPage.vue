@@ -7,18 +7,34 @@
           Reviews flagged by demo validation requiring admin attention
         </p>
         <p class="text-caption text-medium-emphasis" data-testid="review-queue-count">
-          {{ store.total }} pending · newest first · page {{ store.page }} of {{ store.totalPages }}
+          {{ store.total }} pending · {{ store.sort === 'oldest' ? 'oldest first' : 'newest first' }}
+          · page {{ store.page }} of {{ store.totalPages }}
         </p>
       </div>
-      <v-btn
-        color="primary"
-        variant="tonal"
-        prepend-icon="mdi-refresh"
-        :loading="store.fetchReviewsState.loading"
-        @click="loadReviews"
-      >
-        Refresh
-      </v-btn>
+      <div class="d-flex align-center ga-2">
+        <!-- P-129: SERVER-side sort — the queue is paginated, so only the
+             server can put its far end on page 1. This is why the table's
+             own column sorting stays disabled. -->
+        <v-btn-toggle
+          :model-value="store.sort"
+          density="comfortable"
+          variant="outlined"
+          mandatory
+          @update:model-value="setSort"
+        >
+          <v-btn value="newest" size="small" aria-label="Sort newest first">Newest</v-btn>
+          <v-btn value="oldest" size="small" aria-label="Sort oldest first">Oldest</v-btn>
+        </v-btn-toggle>
+        <v-btn
+          color="primary"
+          variant="tonal"
+          prepend-icon="mdi-refresh"
+          :loading="store.fetchReviewsState.loading"
+          @click="loadReviews"
+        >
+          Refresh
+        </v-btn>
+      </div>
     </div>
 
     <!-- Data Table -->
@@ -166,6 +182,21 @@ async function loadReviews() {
     if (page.value > store.totalPages) {
       page.value = store.totalPages
     }
+  } catch {
+    snackbar.show('Failed to load reviews', 'error')
+  }
+}
+
+/**
+ * P-129: flipping the sort restarts at page 1 — page N of one order is a
+ * different slice of the queue in the other, so keeping the page number
+ * would show an arbitrary window and call it a sort.
+ */
+async function setSort(value: 'newest' | 'oldest') {
+  if (value === store.sort) return
+  page.value = 1
+  try {
+    await store.fetchReviews({ page: 1, sort: value })
   } catch {
     snackbar.show('Failed to load reviews', 'error')
   }

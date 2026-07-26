@@ -38,7 +38,12 @@
             </v-card-title>
             <v-divider />
             <v-card-text>
-              <v-form @submit.prevent="handleSubmit">
+              <!-- P-128: the form had no validity gate at all — field rules
+                   (the colour pickers' hex rule, the URL rules) painted
+                   errors while Save submitted the invalid value anyway and
+                   the backend 400'd. `formValid` is null until first
+                   validation, so the disable below checks `=== false`. -->
+              <v-form v-model="formValid" @submit.prevent="handleSubmit">
                 <!-- Basic Info Section -->
                 <div class="text-subtitle-1 font-weight-bold mb-4">Basic Information</div>
 
@@ -151,7 +156,7 @@
                     color="primary"
                     size="large"
                     :loading="saving"
-                    :disabled="!hasChanges"
+                    :disabled="!hasChanges || formValid === false"
                   >
                     <v-icon start>mdi-content-save</v-icon>
                     Save Changes
@@ -245,6 +250,9 @@ const isNewTeam = computed(() => route.query.newTeam === 'true')
 
 const loading = ref(true)
 const saving = ref(false)
+// P-128: v-form validity (null until first validation) — gates Save so a
+// field rule that fails actually blocks the submit instead of decorating it.
+const formValid = ref<boolean | null>(null)
 const error = ref<string | null>(null)
 const showSuccess = ref(false)
 const successMessage = ref('')

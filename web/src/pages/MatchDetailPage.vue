@@ -103,7 +103,13 @@
       </v-card>
 
       <!-- Match Status Timeline -->
-      <MatchStatusTimeline :match="match" :scheduling-mode="tournament.scheduling_mode as 'live' | 'self_scheduled' | 'hybrid'" class="mb-6" />
+      <!-- P-66: `history` feeds the timeline the real transition log. -->
+      <MatchStatusTimeline
+        :match="match"
+        :scheduling-mode="tournament.scheduling_mode as 'live' | 'self_scheduled' | 'hybrid'"
+        :history="statusHistory"
+        class="mb-6"
+      />
 
       <!-- Scheduling Panel (for self-scheduled matches, includes calendar overlay) -->
       <MatchSchedulingPanel
@@ -467,7 +473,7 @@ const route = useRoute()
 
 const {
   match, tournament, activeProposal, proposalHistory,
-  currentResult, resultHistory, matchFormat,
+  currentResult, resultHistory, matchFormat, statusHistory,
   loading, schedulingLoading, error: combinedError, clearError,
   showSchedulingPanel, showCheckInPanel, isProposer, canPropose,
   showResultPanel, showConfirmationPanel, canSubmitResult,

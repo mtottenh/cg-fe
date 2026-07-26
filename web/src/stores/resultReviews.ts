@@ -40,6 +40,13 @@ export const useResultReviewsStore = defineStore('resultReviews', () => {
   const page = ref(1)
   const perPage = ref(DEFAULT_PER_PAGE)
   /**
+   * Server-side sort of the queue (P-129): 'newest' (default) or 'oldest'.
+   * The server sorts because the queue is paginated — a local table sort
+   * would only reorder the visible page while claiming to order the queue,
+   * which is why the table's own sorting stays disabled.
+   */
+  const sort = ref<'newest' | 'oldest'>('newest')
+  /**
    * `ResultReviewListResponse` carries `total` but no `PaginationMeta`
    * (portal-api/src/dto/result_review.rs), so the page count is derived.
    */
@@ -59,18 +66,22 @@ export const useResultReviewsStore = defineStore('resultReviews', () => {
   ])
 
   async function fetchReviews(
-    params: { page?: number; per_page?: number } = {},
+    params: { page?: number; per_page?: number; sort?: 'newest' | 'oldest' } = {},
   ): Promise<ResultReviewSummaryResponse[]> {
     const requestedPage = params.page ?? page.value
     const requestedPerPage = params.per_page ?? perPage.value
+    const requestedSort = params.sort ?? sort.value
     return withActionState(fetchReviewsState, async () => {
       const result = await unwrapApi(api.GET('/v1/admin/result-reviews', {
-        params: { query: { page: requestedPage, per_page: requestedPerPage } },
+        params: {
+          query: { page: requestedPage, per_page: requestedPerPage, sort: requestedSort },
+        },
       }))
       reviews.value = result.data.reviews
       total.value = result.data.total
       page.value = requestedPage
       perPage.value = requestedPerPage
+      sort.value = requestedSort
       return reviews.value
     }, 'Failed to fetch result reviews')
   }
@@ -166,6 +177,7 @@ export const useResultReviewsStore = defineStore('resultReviews', () => {
     currentReview,
     total,
     page,
+    sort,
     perPage,
     totalPages,
     loading,

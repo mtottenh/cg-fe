@@ -28,7 +28,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { parseSteamCallbackFragment } from '@/utils/steamAuth'
+import { consumePostLoginRedirect, parseSteamCallbackFragment } from '@/utils/steamAuth'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -51,7 +51,9 @@ onMounted(async () => {
 
   try {
     await authStore.loginWithTokens(tokens.accessToken, tokens.refreshToken)
-    router.replace('/')
+    // Deep links (e.g. PUG share links) stash their destination before the
+    // Steam round-trip; land there instead of home when present.
+    router.replace(consumePostLoginRedirect() ?? '/')
   } catch {
     error.value = authStore.error || 'Steam sign-in failed. Please try again.'
   }

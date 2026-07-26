@@ -71,6 +71,29 @@ const router = createRouter({
       component: () => import('@/pages/TournamentDetailPage.vue'),
       meta: { requiresAuth: true, layout: 'dynamic' },
     },
+
+    // Pick-up games. The join route is public on purpose: it renders the
+    // share-link preview + a Steam sign-in CTA for logged-out invitees
+    // (joining still requires an account — game servers lock rosters to
+    // SteamID64s).
+    {
+      path: '/pugs',
+      name: 'pugs',
+      component: () => import('@/pages/PugsHubPage.vue'),
+      meta: { requiresAuth: true, layout: 'dynamic' },
+    },
+    {
+      path: '/pugs/join/:code',
+      name: 'pug-join',
+      component: () => import('@/pages/PugJoinPage.vue'),
+      meta: { layout: 'default' },
+    },
+    {
+      path: '/pugs/:id',
+      name: 'pug-lobby',
+      component: () => import('@/pages/PugLobbyPage.vue'),
+      meta: { requiresAuth: true, layout: 'dynamic' },
+    },
     {
       path: '/tournaments/:tournamentSlug/matches/:matchId',
       name: 'match-detail',

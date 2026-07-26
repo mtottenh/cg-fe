@@ -67,6 +67,26 @@ export interface VetoCompleteMessage {
   session: VetoSessionPayload
 }
 
+/** One weighted wheel segment (PUG wheel mode). */
+export interface WheelSegmentPayload {
+  map_id: string
+  /** Nomination count — duplicate nominations weight the wheel. */
+  weight: number
+  nominated_by: string[]
+}
+
+/** A PUG wheel spin: every client renders the identical animation from this
+ * payload; the authoritative state arrives in the following
+ * veto_action_performed / veto_complete frames. */
+export interface WheelSpinMessage {
+  type: 'wheel_spin'
+  game_number: number
+  segments: WheelSegmentPayload[]
+  winner_map_id: string
+  spin_seed: number
+  duration_ms: number
+}
+
 export interface VetoActionAckMessage {
   type: 'veto_action_ack'
   success: boolean
@@ -154,6 +174,7 @@ export type ServerMessage =
   | VetoStateUpdateMessage
   | VetoActionPerformedMessage
   | VetoCompleteMessage
+  | WheelSpinMessage
   | VetoActionAckMessage
   | PlayerConnectedMessage
   | PlayerDisconnectedMessage
@@ -196,6 +217,7 @@ const SERVER_MESSAGE_TYPES = new Set<ServerMessage['type']>([
   'veto_state_update',
   'veto_action_performed',
   'veto_complete',
+  'wheel_spin',
   'veto_action_ack',
   'player_connected',
   'player_disconnected',

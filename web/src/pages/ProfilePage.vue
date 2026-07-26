@@ -148,6 +148,7 @@
       <MatchHistoryList class="mb-4" />
 
       <PublicMmStatsCard :player-id="playerProfile.id" class="mb-4" />
+      <PugStatsCard :player-id="playerProfile.id" class="mb-4" />
       <PlayerGameStatsCard :player-id="playerProfile.id" />
     </template>
 
@@ -174,6 +175,7 @@ import { useAuthStore } from '@/stores/auth'
 import { usePlayersStore } from '@/stores/players'
 import PlayerGameStatsCard from '@/components/player/PlayerGameStatsCard.vue'
 import PublicMmStatsCard from '@/components/player/PublicMmStatsCard.vue'
+import PugStatsCard from '@/components/player/PugStatsCard.vue'
 import MatchHistoryList from '@/components/player/MatchHistoryList.vue'
 import TrophyCase from '@/components/player/TrophyCase.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'

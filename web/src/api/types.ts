@@ -3389,6 +3389,358 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/players/{player_id}/pug-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Career PUG stats for a player — demo-derived (`demos.category = 'pug'`),
+         *     entirely separate from tournament profiles.
+         */
+        get: operations["player_pug_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a PUG lobby. */
+        post: operations["create_pug"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/code/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Unauthenticated share-link preview ("you've been invited..."). */
+        get: operations["preview_by_code"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/code/{code}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join via invite code. */
+        post: operations["join_by_code"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** PUGs the caller created or joined (personal feed, newest first). */
+        get: operations["my_pugs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Publicly listed gathering lobbies (open-PUGs browser). */
+        get: operations["open_pugs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recently completed PUGs (public results feed). */
+        get: operations["recent_pugs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get full lobby state. Participants always see it; share-link viewers
+         *     pass `?code=`; listed and finished pugs are public.
+         */
+        get: operations["get_pug"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel the PUG (creator only; admins via tournament.manage). */
+        post: operations["cancel_pug"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}/captain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Toggle a player's captain flag (creator only). */
+        put: operations["set_captain"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}/code/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate the invite code (creator only) — old links die immediately. */
+        post: operations["rotate_code"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}/kick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Kick a player (creator only). */
+        post: operations["kick_player"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Leave the lobby (gathering only; the creator cancels instead). */
+        post: operations["leave_pug"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}/lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lock the lobby: materialize the match and start map selection. */
+        post: operations["lock_pug"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}/rematch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rematch: clone a finished PUG (settings + roster + teams) into a fresh
+         *     lobby with a new invite code (creator only).
+         */
+        post: operations["rematch_pug"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}/shuffle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Randomize balanced teams (creator only). */
+        post: operations["shuffle_teams"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}/spin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Spin the wheel for the current map slot (creator or captain). */
+        post: operations["spin_wheel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}/swap-teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mirror the rosters — team 1 ↔ team 2 (creator only). */
+        post: operations["swap_teams"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}/team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Join a team / move to the bench. Players move themselves; the creator
+         *     may move anyone.
+         */
+        put: operations["set_team"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pugs/{pug_id}/wheel-entry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Nominate a map for the wheel (one per player, upserted). */
+        put: operations["nominate_map"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tournaments": {
         parameters: {
             query?: never;
@@ -5474,6 +5826,27 @@ export interface components {
             /** @description Team tag (short identifier, 2-5 chars). */
             tag: string;
         };
+        /** @description Create a PUG lobby. */
+        CreatePugRequest: {
+            /** @description Game ID. */
+            game_id: string;
+            /** @description Show this lobby in the public open-PUGs browser. */
+            listed?: boolean;
+            /** @description Veto mode: custom map pool (subset of the game's catalog). */
+            map_pool?: string[] | null;
+            /** @description veto (pick/ban) or wheel (weighted random). */
+            map_selection_mode: components["schemas"]["PugMapSelectionMode"];
+            /** @description Series format: bo1, bo3 or bo5. */
+            match_format: components["schemas"]["MatchFormat"];
+            /** @description Preferred server region (must match a registered server's region). */
+            region?: string | null;
+            side_selection_mode?: null | components["schemas"]["SideSelectionMode"];
+            /**
+             * Format: int32
+             * @description Players per team; defaults to the game's configured team size.
+             */
+            team_size?: number | null;
+        };
         /** @description Request body for creating a new role. */
         CreateRoleRequest: {
             /**
@@ -6521,7 +6894,7 @@ export interface components {
                  */
                 short_name?: string | null;
                 /**
-                 * @description Human-readable identifier (e.g., "cs2", "aoe4") - used in URLs.
+                 * @description Human-readable identifier (e.g., "cs2", "aoe2") - used in URLs.
                  * @example cs2
                  */
                 slug: string;
@@ -6559,6 +6932,8 @@ export interface components {
                 /** @description Whether the agent's WebSocket is connected right now. */
                 agent_connected: boolean;
                 agent_version?: string | null;
+                /** @description Whether PUG reservations may take this server. */
+                allow_pugs: boolean;
                 created_at: string;
                 current_match_id?: string | null;
                 enabled: boolean;
@@ -6617,7 +6992,7 @@ export interface components {
                  */
                 short_name?: string | null;
                 /**
-                 * @description Human-readable identifier (e.g., "cs2", "aoe4") - used in URLs.
+                 * @description Human-readable identifier (e.g., "cs2", "aoe2") - used in URLs.
                  * @example cs2
                  */
                 slug: string;
@@ -6626,7 +7001,7 @@ export interface components {
                  * @description Display order (lower = shown first).
                  *
                  *     P-90: this column has always existed (`migrations/0003_create_games.sql:42`,
-                 *     seeded `cs2 = 1` / `aoe4 = 2`) and `PATCH /v1/games/{game_id}` has always
+                 *     seeded `cs2 = 1` / `aoe2 = 2`) and `PATCH /v1/games/{game_id}` has always
                  *     accepted it, but no *response* carried it. The admin edit modal therefore
                  *     had nothing to seed its "Sort Order" field from and hardcoded `0` — showing
                  *     every game a value that was not the truth — and, to avoid writing that
@@ -6647,6 +7022,15 @@ export interface components {
                  * @example 5
                  */
                 team_size_default: number;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_JoinCodeResponse: {
+            /** @description Rotated invite code. */
+            data: {
+                join_code: string;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -7511,6 +7895,69 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_PugDetailResponse: {
+            /** @description Full lobby state. */
+            data: {
+                /**
+                 * @description The viewer's registration in the materialized match (drives the veto
+                 *     lobby UI), when they are on a team.
+                 */
+                my_registration_id?: string | null;
+                players: components["schemas"]["PugPlayerResponse"][];
+                pug: components["schemas"]["PugResponse"];
+                spins: components["schemas"]["PugWheelSpinResponse"][];
+                wheel_entries: components["schemas"]["PugWheelEntryResponse"][];
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_PugPreviewResponse: {
+            /** @description Unauthenticated share-link preview. */
+            data: {
+                game_id: string;
+                id: string;
+                map_selection_mode: components["schemas"]["PugMapSelectionMode"];
+                match_format: components["schemas"]["MatchFormat"];
+                /** Format: int64 */
+                players_count: number;
+                region?: string | null;
+                /** Format: int64 */
+                slots_total: number;
+                status: components["schemas"]["PugStatus"];
+                /** Format: int32 */
+                team_size: number;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_PugStatsResponse: {
+            /** @description Career PUG stats — demo-derived, separate from tournament profiles. */
+            data: {
+                /** Format: int64 */
+                assists: number;
+                /** Format: double */
+                avg_adr: number;
+                /** Format: double */
+                avg_hs_percentage: number;
+                /** Format: int64 */
+                deaths: number;
+                /** Format: int64 */
+                demos_counted: number;
+                /** Format: int64 */
+                kills: number;
+                /** Format: int64 */
+                losses: number;
+                /** Format: int64 */
+                matches_played: number;
+                /** Format: int64 */
+                wins: number;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_RegisterResponse: {
             /** @description Response for successful user registration. */
             data: {
@@ -7905,6 +8352,24 @@ export interface components {
                 server_id: string;
                 starts_at: string;
                 tournament_id?: string | null;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_SpinResponse: {
+            /** @description Result of a wheel spin. */
+            data: {
+                /** Format: int32 */
+                duration_ms: number;
+                /** Format: int32 */
+                game_number: number;
+                is_complete: boolean;
+                segments: unknown;
+                selected_maps: string[];
+                /** Format: int64 */
+                spin_seed: number;
+                winner_map_id: string;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -8892,6 +9357,8 @@ export interface components {
                 /** @description Whether the agent's WebSocket is connected right now. */
                 agent_connected: boolean;
                 agent_version?: string | null;
+                /** @description Whether PUG reservations may take this server. */
+                allow_pugs: boolean;
                 created_at: string;
                 current_match_id?: string | null;
                 enabled: boolean;
@@ -9456,6 +9923,39 @@ export interface components {
                 result: components["schemas"]["AwardResultResponse"];
                 /** @description Tournament or league-season name, when the scope still exists. */
                 scope_name?: string | null;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_PugResponse: {
+            data: {
+                completed_at?: string | null;
+                created_at: string;
+                expires_at: string;
+                game_id: string;
+                id: string;
+                /** @description Invite code — only present for participants. */
+                join_code?: string | null;
+                listed: boolean;
+                map_pool?: string[] | null;
+                map_selection_mode: components["schemas"]["PugMapSelectionMode"];
+                match_format: components["schemas"]["MatchFormat"];
+                match_id?: string | null;
+                /** @description creator | player — the viewer's relationship to this pug. */
+                my_role?: string | null;
+                region?: string | null;
+                side_selection_mode: components["schemas"]["SideSelectionMode"];
+                status: components["schemas"]["PugStatus"];
+                /** Format: int32 */
+                team1_score?: number | null;
+                /** Format: int32 */
+                team2_score?: number | null;
+                /** Format: int32 */
+                team_size: number;
+                tournament_id?: string | null;
+                /** Format: int32 */
+                winner_team?: number | null;
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -11388,7 +11888,7 @@ export interface components {
              */
             short_name?: string | null;
             /**
-             * @description Human-readable identifier (e.g., "cs2", "aoe4") - used in URLs.
+             * @description Human-readable identifier (e.g., "cs2", "aoe2") - used in URLs.
              * @example cs2
              */
             slug: string;
@@ -11491,6 +11991,8 @@ export interface components {
             /** @description Whether the agent's WebSocket is connected right now. */
             agent_connected: boolean;
             agent_version?: string | null;
+            /** @description Whether PUG reservations may take this server. */
+            allow_pugs: boolean;
             created_at: string;
             current_match_id?: string | null;
             enabled: boolean;
@@ -11549,7 +12051,7 @@ export interface components {
              */
             short_name?: string | null;
             /**
-             * @description Human-readable identifier (e.g., "cs2", "aoe4") - used in URLs.
+             * @description Human-readable identifier (e.g., "cs2", "aoe2") - used in URLs.
              * @example cs2
              */
             slug: string;
@@ -11558,7 +12060,7 @@ export interface components {
              * @description Display order (lower = shown first).
              *
              *     P-90: this column has always existed (`migrations/0003_create_games.sql:42`,
-             *     seeded `cs2 = 1` / `aoe4 = 2`) and `PATCH /v1/games/{game_id}` has always
+             *     seeded `cs2 = 1` / `aoe2 = 2`) and `PATCH /v1/games/{game_id}` has always
              *     accepted it, but no *response* carried it. The admin edit modal therefore
              *     had nothing to seed its "Sort Order" field from and hardcoded `0` — showing
              *     every game a value that was not the truth — and, to avoid writing that
@@ -11652,6 +12154,14 @@ export interface components {
             player_id: string;
             /** @description Role for the player: player or substitute. */
             role?: string;
+        };
+        /** @description Rotated invite code. */
+        JoinCodeResponse: {
+            join_code: string;
+        };
+        /** @description Kick a player (creator only). */
+        KickPlayerRequest: {
+            player_id: string;
         };
         /** @description One ranked row in award standings or a plain leaderboard. */
         LeaderboardEntryResponse: {
@@ -12149,6 +12659,11 @@ export interface components {
             /** Format: int32 */
             team2_score: number;
         };
+        /** @description Lock the lobby and start map selection. */
+        LockPugRequest: {
+            /** @description Allow uneven / short-handed teams. */
+            force?: boolean;
+        };
         /** @description Request body for user login. */
         LoginRequest: {
             /** @description Password. */
@@ -12302,6 +12817,11 @@ export interface components {
             /** @description Registration ID of the participant checking in. */
             registration_id: string;
         };
+        /**
+         * @description Format of a match (best of N).
+         * @enum {string}
+         */
+        MatchFormat: "bo1" | "bo3" | "bo5" | "bo7";
         /** @description A single public match history entry. */
         MatchHistoryEntryResponse: {
             /** Format: int32 */
@@ -12659,7 +13179,7 @@ export interface components {
                  */
                 short_name?: string | null;
                 /**
-                 * @description Human-readable identifier (e.g., "cs2", "aoe4") - used in URLs.
+                 * @description Human-readable identifier (e.g., "cs2", "aoe2") - used in URLs.
                  * @example cs2
                  */
                 slug: string;
@@ -12668,7 +13188,7 @@ export interface components {
                  * @description Display order (lower = shown first).
                  *
                  *     P-90: this column has always existed (`migrations/0003_create_games.sql:42`,
-                 *     seeded `cs2 = 1` / `aoe4 = 2`) and `PATCH /v1/games/{game_id}` has always
+                 *     seeded `cs2 = 1` / `aoe2 = 2`) and `PATCH /v1/games/{game_id}` has always
                  *     accepted it, but no *response* carried it. The admin edit modal therefore
                  *     had nothing to seed its "Sort Order" field from and hardcoded `0` — showing
                  *     every game a value that was not the truth — and, to avoid writing that
@@ -13458,6 +13978,124 @@ export interface components {
              */
             wins: number;
         };
+        /** @description Full lobby state. */
+        PugDetailResponse: {
+            /**
+             * @description The viewer's registration in the materialized match (drives the veto
+             *     lobby UI), when they are on a team.
+             */
+            my_registration_id?: string | null;
+            players: components["schemas"]["PugPlayerResponse"][];
+            pug: components["schemas"]["PugResponse"];
+            spins: components["schemas"]["PugWheelSpinResponse"][];
+            wheel_entries: components["schemas"]["PugWheelEntryResponse"][];
+        };
+        /**
+         * @description How a PUG chooses its maps.
+         * @enum {string}
+         */
+        PugMapSelectionMode: "veto" | "wheel";
+        /** @description A player in a PUG lobby. */
+        PugPlayerResponse: {
+            avatar_url?: string | null;
+            display_name: string;
+            /** @description Players without a linked Steam ID cannot enter the game server. */
+            has_steam_id: boolean;
+            is_captain: boolean;
+            joined_at: string;
+            player_id: string;
+            /** Format: int32 */
+            team?: number | null;
+        };
+        /** @description Unauthenticated share-link preview. */
+        PugPreviewResponse: {
+            game_id: string;
+            id: string;
+            map_selection_mode: components["schemas"]["PugMapSelectionMode"];
+            match_format: components["schemas"]["MatchFormat"];
+            /** Format: int64 */
+            players_count: number;
+            region?: string | null;
+            /** Format: int64 */
+            slots_total: number;
+            status: components["schemas"]["PugStatus"];
+            /** Format: int32 */
+            team_size: number;
+        };
+        /** @description A PUG lobby. */
+        PugResponse: {
+            completed_at?: string | null;
+            created_at: string;
+            expires_at: string;
+            game_id: string;
+            id: string;
+            /** @description Invite code — only present for participants. */
+            join_code?: string | null;
+            listed: boolean;
+            map_pool?: string[] | null;
+            map_selection_mode: components["schemas"]["PugMapSelectionMode"];
+            match_format: components["schemas"]["MatchFormat"];
+            match_id?: string | null;
+            /** @description creator | player — the viewer's relationship to this pug. */
+            my_role?: string | null;
+            region?: string | null;
+            side_selection_mode: components["schemas"]["SideSelectionMode"];
+            status: components["schemas"]["PugStatus"];
+            /** Format: int32 */
+            team1_score?: number | null;
+            /** Format: int32 */
+            team2_score?: number | null;
+            /** Format: int32 */
+            team_size: number;
+            tournament_id?: string | null;
+            /** Format: int32 */
+            winner_team?: number | null;
+        };
+        /** @description Career PUG stats — demo-derived, separate from tournament profiles. */
+        PugStatsResponse: {
+            /** Format: int64 */
+            assists: number;
+            /** Format: double */
+            avg_adr: number;
+            /** Format: double */
+            avg_hs_percentage: number;
+            /** Format: int64 */
+            deaths: number;
+            /** Format: int64 */
+            demos_counted: number;
+            /** Format: int64 */
+            kills: number;
+            /** Format: int64 */
+            losses: number;
+            /** Format: int64 */
+            matches_played: number;
+            /** Format: int64 */
+            wins: number;
+        };
+        /**
+         * @description Lifecycle status of a PUG lobby.
+         *
+         *     Mirrors the DB CHECK constraint in `migrations/0091_pugs.sql`.
+         * @enum {string}
+         */
+        PugStatus: "gathering" | "map_selection" | "awaiting_server" | "live" | "completed" | "cancelled" | "expired";
+        /** @description A wheel nomination. */
+        PugWheelEntryResponse: {
+            map_id: string;
+            player_id: string;
+            player_name: string;
+        };
+        /** @description A recorded wheel spin (replayable animation payload). */
+        PugWheelSpinResponse: {
+            /** Format: int32 */
+            game_number: number;
+            /** @description `[{map_id, weight, nominated_by}]` snapshot at spin time. */
+            segments: unknown;
+            /** Format: int64 */
+            spin_seed: number;
+            spun_at: string;
+            winner_map_id: string;
+        };
         /** @description Request to raise a dispute against a match result. */
         RaiseDisputeRequest: {
             /** @description Detailed description of the dispute. */
@@ -13651,7 +14289,7 @@ export interface components {
             reason?: string | null;
         };
         /**
-         * @description Lifecycle of a match's server reservation.
+         * @description Lifecycle status of a server reservation.
          * @enum {string}
          */
         ReservationStatus: "pending" | "configuring" | "ready" | "live" | "completed" | "failed" | "cancelled";
@@ -14137,6 +14775,11 @@ export interface components {
             starts_at: string;
             tournament_id?: string | null;
         };
+        /** @description Toggle captain status (creator only). */
+        SetCaptainRequest: {
+            is_captain: boolean;
+            player_id: string;
+        };
         /** @description Request to set admin notes on a demo. */
         SetDemoNotesRequest: {
             /** @description Admin notes (optional, null to clear). */
@@ -14171,11 +14814,26 @@ export interface components {
              */
             rank_tiers: components["schemas"]["RankTierInput"][];
         };
+        /** @description Assign a player to a team (or the bench). */
+        SetTeamRequest: {
+            /** @description Player to move; omitted = yourself. Only the creator may move others. */
+            player_id?: string | null;
+            /**
+             * Format: int32
+             * @description 1 or 2; null = bench.
+             */
+            team?: number | null;
+        };
         /** @description Request to set a tournament-specific map pool. */
         SetTournamentMapPoolRequest: {
             /** @description Map IDs for the tournament pool (must exist in the game's map catalog). */
             map_ids: string[];
         };
+        /**
+         * @description How starting sides are determined for picked maps.
+         * @enum {string}
+         */
+        SideSelectionMode: "picker_choice" | "coin_flip" | "knife";
         /** @description Social links update request DTO. */
         SocialLinksRequest: {
             /**
@@ -14231,6 +14889,19 @@ export interface components {
              * @example https://youtube.com/@channel
              */
             youtube?: string | null;
+        };
+        /** @description Result of a wheel spin. */
+        SpinResponse: {
+            /** Format: int32 */
+            duration_ms: number;
+            /** Format: int32 */
+            game_number: number;
+            is_complete: boolean;
+            segments: unknown;
+            selected_maps: string[];
+            /** Format: int64 */
+            spin_seed: number;
+            winner_map_id: string;
         };
         /**
          * @description Format of a tournament stage.
@@ -14968,6 +15639,8 @@ export interface components {
         };
         /** @description Partial update of a game server. Absent fields are unchanged. */
         UpdateGameServerRequest: {
+            /** @description Whether PUG reservations may take this server. */
+            allow_pugs?: boolean | null;
             /** @description Admin kill-switch; a disabled server is never allocated. */
             enabled?: boolean | null;
             /** Format: int32 */
@@ -15091,9 +15764,9 @@ export interface components {
              *     back to the map id).
              */
             engine_name?: string | null;
-            /** @description External identifier (e.g., Steam Workshop ID). */
+            /** @description External identifier (e.g., Steam Workshop ID). Empty string clears. */
             external_id?: string | null;
-            /** @description External URL (e.g., Steam Workshop URL). */
+            /** @description External URL (e.g., Steam Workshop URL). Empty string clears. */
             external_url?: string | null;
             /** @description Game modes this map supports. */
             game_modes?: string[] | null;
@@ -15598,6 +16271,10 @@ export interface components {
             maps: components["schemas"]["MapStatusResponse"][];
             /** @description The veto session. */
             session: components["schemas"]["VetoSessionResponse"];
+        };
+        /** @description Nominate a map for the wheel. */
+        WheelEntryRequest: {
+            map_id: string;
         };
         /** @description Request to withdraw from a tournament. */
         WithdrawFromTournamentRequest: {
@@ -20169,7 +20846,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Game ID (e.g., cs2, aoe4) */
+                /** @description Game ID (e.g., cs2, aoe2) */
                 game_id: string;
             };
             cookie?: never;
@@ -26750,6 +27427,612 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiError"];
                 };
+            };
+        };
+    };
+    player_pug_stats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Player ID */
+                player_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PUG aggregates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_PugStatsResponse"];
+                };
+            };
+        };
+    };
+    create_pug: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePugRequest"];
+            };
+        };
+        responses: {
+            /** @description PUG created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_PugDetailResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Too many active PUGs */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    preview_by_code: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Invite code */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lobby preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_PugPreviewResponse"];
+                };
+            };
+            /** @description Unknown code */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    join_by_code: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Invite code */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Joined */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_PugDetailResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Lobby full */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    my_pugs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description My pugs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_PugResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    open_pugs: {
+        parameters: {
+            query?: {
+                /** @description Filter by game */
+                game_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Open listed pugs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_PugResponse"];
+                };
+            };
+        };
+    };
+    recent_pugs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_PugResponse"];
+                };
+            };
+        };
+    };
+    get_pug: {
+        parameters: {
+            query?: {
+                /** @description Invite code (share-link viewers) */
+                code?: string;
+            };
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lobby state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_PugDetailResponse"];
+                };
+            };
+            /** @description Private lobby */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    cancel_pug: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_captain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCaptainRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rotate_code: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New code */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_JoinCodeResponse"];
+                };
+            };
+            /** @description Not the creator */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    kick_player: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KickPlayerRequest"];
+            };
+        };
+        responses: {
+            /** @description Kicked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    leave_pug: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Left */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    lock_pug: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LockPugRequest"];
+            };
+        };
+        responses: {
+            /** @description Locked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_PugDetailResponse"];
+                };
+            };
+            /** @description Teams invalid / missing Steam links */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not the creator or a captain */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    rematch_pug: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New lobby */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_PugDetailResponse"];
+                };
+            };
+            /** @description PUG not finished */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not the creator */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    shuffle_teams: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Shuffled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    spin_wheel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Spin result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_SpinResponse"];
+                };
+            };
+            /** @description Not spin time */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not the creator or a captain */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    swap_teams: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Swapped */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_team: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetTeamRequest"];
+            };
+        };
+        responses: {
+            /** @description Assigned */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    nominate_map: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WheelEntryRequest"];
+            };
+        };
+        responses: {
+            /** @description Nominated */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -14,9 +14,19 @@
 
     <!-- State A: Not Registered -->
     <v-card-text v-if="!loading && !registered">
-      <p class="text-body-2 mb-4">
+      <p class="text-body-2 mb-2">
         Enable automatic match tracking by entering your CS2 Game Authentication Code.
-        You can find this in CS2 under Settings &gt; Game &gt; Game Authentication Code.
+      </p>
+      <!-- The in-game Settings menu does NOT expose these codes — Steam's
+           help wizard is the only reliable place to mint/view both. -->
+      <p class="text-body-2 mb-4">
+        Get both codes from
+        <a
+          href="https://help.steampowered.com/en/wizard/HelpWithGameIssue/?appid=730&issueid=128&ref=cs210mans.uk"
+          target="_blank"
+          rel="noopener noreferrer"
+        >Steam's Game Authentication Code page</a>
+        (sign in with the same Steam account you play CS2 on).
       </p>
 
       <v-form ref="registerForm" @submit.prevent="handleRegister">
@@ -34,7 +44,7 @@
           label="Latest Share Code (optional)"
           placeholder="CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx"
           prepend-inner-icon="mdi-share-variant"
-          hint="Your most recent match share code. Found on the match scoreboard in CS2."
+          hint="Your most recent match share code — shown on the same Steam page."
           persistent-hint
           class="mb-4"
         />

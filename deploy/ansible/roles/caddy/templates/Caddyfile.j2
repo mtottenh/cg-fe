@@ -40,9 +40,11 @@
         }
     }
 
-    # API routes — everything the backend owns.
+    # API routes — everything the backend owns. /health/* covers
+    # /health/ready (db + demo-service readiness), which a bare /health
+    # match let fall through to the SPA fallback.
     @api {
-        path /v1/* /uploads/* /swagger-ui/* /api-docs/* /health
+        path /v1/* /uploads/* /swagger-ui/* /api-docs/* /health /health/*
     }
     handle @api {
         reverse_proxy 127.0.0.1:3000 {
@@ -127,7 +129,9 @@ agents.{{ portal_domain }} {
     tls {
         client_auth {
             mode require_and_verify
-            trusted_ca_cert_file {{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}/ca.pem
+            # The PUBLIC cert, published here by the portal_api role — caddy
+            # cannot traverse /etc/portal (root:portal 0750, holds secrets).
+            trusted_ca_cert_file /etc/caddy/portal-agent-ca.pem
         }
     }
 

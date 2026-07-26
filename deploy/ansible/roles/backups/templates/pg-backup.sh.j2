@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-BACKUP_DIR=/var/lib/portal/backups
+BACKUP_DIR=/var/lib/portal-backups
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 NAME="${POSTGRES_DB}_${STAMP}.sql.zst"
 OUT="$BACKUP_DIR/$NAME"
@@ -46,7 +46,12 @@ PGOPTIONS='-c lock_timeout=30s' pg_dump --format=custom --compress=0 "$POSTGRES_
 
 echo "→ validating dump"
 zstd -t -q "$OUT"                              # archive integrity
-zstd -dc "$OUT" | pg_restore --list >/dev/null # pg_restore can read the catalog
+# pg_restore --list reads only the TOC and closes the pipe early, so zstd
+# takes a SIGPIPE — under pipefail that intermittently fails the pipeline
+# even though validation SUCCEEDED. pg_restore's exit status is the verdict.
+set +o pipefail
+zstd -dc "$OUT" 2>/dev/null | pg_restore --list >/dev/null   # catalog readable
+set -o pipefail
 (cd "$BACKUP_DIR" && sha256sum "$NAME" > "$NAME.sha256")
 SIZE=$(stat -c%s "$OUT")
 echo "→ validated: $OUT ($SIZE bytes)"

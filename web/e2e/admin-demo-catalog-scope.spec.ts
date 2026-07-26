@@ -70,7 +70,7 @@ test.describe('Admin demo management — catalog counts', () => {
     // Substring match, deliberately: `admin-games-config.spec.ts` renames this
     // game by appending a suffix, and Playwright's accessible-name matching is
     // substring-based, so the prefix keeps matching either way.
-    const option = page.getByRole('option', { name: 'Age of Empires IV' })
+    const option = page.getByRole('option', { name: 'Age of Empires II' })
     await expect(option).toBeVisible({ timeout: 20000 })
     const [statsRequest] = await Promise.all([
       page.waitForRequest(

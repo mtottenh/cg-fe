@@ -43,7 +43,7 @@ portal_scanner_deb_path: ""
 #   sudo -u portal psql -d portal_prod -c 'SELECT id, name FROM games;'
 # then set this (group_vars or -e). The portal_scanner role refuses to run
 # while it's empty.
-scanner_game_id: ""
+scanner_game_id: "c905260f-d71c-496c-a027-2e5145ac9918"
 
 # Only scan keys under this prefix in the demos bucket ("" = whole bucket).
 scanner_s3_prefix: ""
@@ -65,7 +65,7 @@ demo_stats_port: 3100
 # NOTE: the CA dir is NOT covered by the pg_dump backups — copy it into your
 # backup routine; losing the key means re-enrolling every agent. Requires a
 # DNS A record for agents.{{ portal_domain }}.
-gameserver_integration_enabled: false
+gameserver_integration_enabled: true
 portal_agent_ca_dir: /etc/portal/agent-ca
 
 # Public https front for the demo parser. The API's SSRF guard requires an
@@ -189,3 +189,13 @@ monitoring_metrics_ports:
   portal-demo-stats: 9466
   cs2-poller: 9467
   cs2-enricher: 9468
+
+# Loopback Steam Guard code-entry page for cs2-enricher: when the bot's
+# Steam login is challenged for a 2FA code (no shared secret, machine
+# token invalidated), it parks and this page accepts the code. Same
+# ingress pattern as Grafana: the daemon binds loopback only; with
+# monitoring_ingress == tailnet, Tailscale Serve terminates HTTPS on the
+# box's ts.net name at :8443 (443 is Grafana's) and proxies in.
+# Break-glass without the tailnet: ssh -L 9478:127.0.0.1:9478.
+steam_bot_guard_port: 9478
+steam_bot_guard_serve_port: 8443

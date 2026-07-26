@@ -76,8 +76,6 @@ type User = components['schemas']['UserResponse']
 type Player = components['schemas']['PlayerResponse']
 type LoginRequest = components['schemas']['LoginRequest']
 type LoginResponse = components['schemas']['LoginResponse']
-type RegisterRequest = components['schemas']['RegisterRequest']
-type RegisterResponse = components['schemas']['RegisterResponse']
 type UserRoleAssignment = components['schemas']['UserRoleAssignmentResponse']
 
 export const useAuthStore = defineStore('auth', () => {
@@ -131,12 +129,11 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Per-action states
   const loginState = createActionState()
-  const registerState = createActionState()
   const fetchCurrentUserState = createActionState()
   const fetchMyRolesState = createActionState()
 
   const { loading, error } = aggregateActionStates([
-    loginState, registerState, fetchCurrentUserState, fetchMyRolesState,
+    loginState, fetchCurrentUserState, fetchMyRolesState,
   ])
 
   async function login(credentials: LoginRequest): Promise<LoginResponse> {
@@ -171,37 +168,8 @@ export const useAuthStore = defineStore('auth', () => {
     }, 'Login failed')
   }
 
-  async function register(credentials: RegisterRequest): Promise<RegisterResponse> {
-    return withActionState(registerState, async () => {
-      const result = await unwrapApi(api.POST('/v1/auth/register', {
-        body: credentials,
-      }))
-
-      const data = result.data
-
-      // Store the access token
-      token.value = data.access_token
-      localStorage.setItem('token', data.access_token)
-      setAuthToken(data.access_token)
-
-      // Keep the refresh token in memory; the httpOnly cookie is the
-      // durable copy.
-      if (data.refresh_token) {
-        refreshToken.value = data.refresh_token
-      }
-
-      // Store user and player
-      user.value = data.user
-      player.value = data.player
-      playerId.value = data.player.id
-      localStorage.setItem('player_id', data.player.id)
-
-      // Load roles (empty for fresh registrations — but keeps the contract).
-      await fetchMyRoles().catch(() => { roles.value = [] })
-
-      return data
-    }, 'Registration failed')
-  }
+  // (Email registration removed: Steam is the only sign-in method. The
+  // backend /v1/auth/register endpoint remains for tooling and tests.)
 
   /**
    * Complete a token-based (Steam) sign-in.
@@ -451,7 +419,7 @@ export const useAuthStore = defineStore('auth', () => {
     initialize,
     login,
     loginWithTokens,
-    register,
+
     fetchCurrentUser,
     fetchMyRoles,
     refreshAccessToken,
@@ -459,11 +427,11 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     // Per-action states
     loginState,
-    registerState,
+
     fetchCurrentUserState,
     fetchMyRolesState,
   }
 })
 
 // Re-export types for convenience
-export type { User, Player, LoginRequest, LoginResponse, RegisterRequest, RegisterResponse }
+export type { User, Player, LoginRequest, LoginResponse }

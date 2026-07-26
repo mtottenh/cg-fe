@@ -514,10 +514,10 @@ test.describe('Admin Management', () => {
       await expect(table).toBeVisible({ timeout: 10000 })
 
       // Both games are seeded by migration 0003_create_games.sql:68-70
-      // ('cs2' / "Counter-Strike 2" and 'aoe4' / "Age of Empires IV"), so this
+      // ('cs2' / "Counter-Strike 2" and 'aoe2' / "Age of Empires II"), so this
       // precondition holds on any migrated database.
       await expect(table.getByText('Counter-Strike 2')).toBeVisible()
-      await expect(table.getByText('Age of Empires IV')).toBeVisible()
+      await expect(table.getByText('Age of Empires II')).toBeVisible()
 
       // Type in search field using label
       await page.getByLabel('Search games...').fill('counter')
@@ -527,7 +527,7 @@ test.describe('Admin Management', () => {
       // survive and the non-matching one must disappear. The old test typed
       // 'cs' and then asserted nothing at all.
       await expect(table.getByText('Counter-Strike 2')).toBeVisible()
-      await expect(table.getByText('Age of Empires IV')).toBeHidden()
+      await expect(table.getByText('Age of Empires II')).toBeHidden()
     })
 
     test('should show empty state when no games match search', async ({ page }) => {

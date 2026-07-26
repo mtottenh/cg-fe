@@ -157,7 +157,7 @@ watch(() => props.game, (newGame) => {
       is_featured: newGame.is_featured,
       // P-90: this used to be a hardcoded `0`, because `GameSummaryResponse`
       // carried no `sort_order` — so the field showed every game a number that
-      // was not its own (cs2 is 1, aoe4 is 2). The DTO now returns it.
+      // was not its own (cs2 is 1, aoe2 is 2). The DTO now returns it.
       sort_order: newGame.sort_order,
     }
   }

@@ -41,17 +41,27 @@ all:
     portal:
       hosts:
         portal-prod:
-          ansible_host: CHANGE_ME            # e.g. 45.33.x.x — set by `just provision`
+          ansible_host: 172.239.103.230
           ansible_user: ops
           ansible_python_interpreter: /usr/bin/python3
 
     gameservers:
-      hosts: {}
+      hosts:
+        # Pre-existing LinuxGSM CS2 box (Linode csgoone-click-eu-west).
+        # Inventory hostname doubles as the portal registry name; DNS
+        # game.cs210mans.uk points here. CS2 runs as `cs2server` — the
+        # MatchZy path below is its live install.
+        game.cs210mans.uk:
+          ansible_host: 172.236.23.68
+          ansible_user: ops                  # first converge as root: -e ansible_user=root
+          ansible_python_interpreter: /usr/bin/python3
+          gameserver_matchzy_config_path: /home/cs2server/serverfiles/game/csgo/cfg/MatchZy/config.cfg
+          gameserver_matchzy_config_owner: cs2server
 
   vars:
     # The domain Caddy terminates TLS for. Pointed at ansible_host via
     # an A record elsewhere (plus one for demos.<domain>).
-    portal_domain: portal.example.com
+    portal_domain: cs210mans.uk
 
     # Let's Encrypt contact. Caddy nags if this is empty.
-    caddy_acme_email: ops@example.com
+    caddy_acme_email: mtottenh@gmail.com

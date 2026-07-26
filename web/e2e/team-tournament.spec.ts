@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { getAdminToken } from './fixtures/auth.fixture'
+import { getAdminToken, loginAsAdmin } from './fixtures/auth.fixture'
 import {
   createTeamSwissScenario,
   completeTeamMatchP1Wins,
@@ -100,6 +100,10 @@ test.describe('5v5 Swiss team tournament', () => {
     // =====================================================================
     // 2. UI — team-based rendering on the public detail page
     // =====================================================================
+    // Tournament pages are members-only now.
+    await loginAsAdmin(page)
+    // Tournament pages are members-only now.
+    await loginAsAdmin(page)
     await page.goto(`/tournaments/${scenario.tournamentSlug}`)
     await expect(page.getByRole('heading', { name: 'Tournament Not Found' })).not.toBeVisible()
     await expect(page.getByRole('tab', { name: 'Overview' })).toBeVisible()

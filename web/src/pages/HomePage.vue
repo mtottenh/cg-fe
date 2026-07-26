@@ -222,21 +222,17 @@
       <!-- Hero Section -->
       <v-row justify="center" class="mb-8">
         <v-col cols="12" md="8" class="text-center">
-          <h1 class="text-h2 font-weight-bold mb-4">Gaming Portal</h1>
+          <h1 class="text-h2 font-weight-bold mb-4">CS2 10 Mans</h1>
           <p class="text-h6 text-medium-emphasis mb-6">
             Competitive gaming platform for teams and players
           </p>
           <v-row justify="center">
             <v-col cols="auto">
+              <!-- Steam is the only sign-in method (accounts ARE Steam
+                   identities) — send guests straight there. -->
               <v-btn color="primary" size="large" to="/login">
-                <v-icon start>mdi-login</v-icon>
-                Sign In
-              </v-btn>
-            </v-col>
-            <v-col cols="auto">
-              <v-btn color="secondary" size="large" to="/register">
-                <v-icon start>mdi-account-plus</v-icon>
-                Create Account
+                <v-icon start>mdi-steam</v-icon>
+                Sign in through Steam
               </v-btn>
             </v-col>
           </v-row>

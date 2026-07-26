@@ -23,6 +23,7 @@
  *              body: { new_owner_player_id }                             (bearer owner)
  */
 
+import { login as authLogin } from './auth.fixture'
 import { createTestUser } from './checkin.fixture'
 import { invitePlayer, acceptInvitation } from './team-member.fixture'
 import { uniqueId } from './test-data'
@@ -286,19 +287,7 @@ export async function loginAsUser(
   page: import('@playwright/test').Page,
   user: { email: string; password: string },
 ): Promise<void> {
-  // Clear auth state first so we can cleanly log in as the target user.
-  const currentUrl = page.url()
-  if (currentUrl === 'about:blank' || !currentUrl.includes('localhost')) {
-    await page.goto('/')
-  }
-  await page.evaluate(() => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('player_id')
-  })
-  await page.goto('/login')
-  await page.getByRole('textbox', { name: 'Username or Email' }).fill(user.email)
-  await page.locator('input[type="password"]').first().fill(user.password)
-  await page.getByRole('button', { name: 'Login' }).click()
-  // Wait for navigation away from /login
-  await page.waitForURL((u) => !u.pathname.endsWith('/login'), { timeout: 10000 })
+  // Steam-only UI: no login form to drive. Exchange the API-created test
+  // user's credentials directly and inject the session (see auth.fixture).
+  await authLogin(page, { username_or_email: user.email, password: user.password })
 }

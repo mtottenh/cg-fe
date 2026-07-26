@@ -15,7 +15,8 @@
       - curl
       - jq
       - zstd
-      - awscli          # used by the backup script to push to Linode Object Storage
+      # (awscli deliberately NOT here: the backups role installs it itself,
+      # base also runs on game hosts, and Ubuntu 24.04 doesn't package it.)
       - python3-psycopg2  # required by Ansible's postgresql_* modules
       - acl             # lets Ansible become an unprivileged user (become_user: postgres)
       - gnupg           # apt key handling for third-party repos (PGDG, Caddy)

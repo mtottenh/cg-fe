@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { getAdminToken } from './fixtures/auth.fixture'
+import { getAdminToken, loginAsAdmin } from './fixtures/auth.fixture'
 import { createDraftTournament } from './fixtures/tournament-lifecycle.fixture'
 import {
   driveIndividualTournamentToInProgress,
@@ -62,6 +62,10 @@ for (const fmt of FORMATS) {
       test.setTimeout(180_000)
 
       const adminToken = await getAdminToken()
+      // Tournament pages are members-only now.
+      await loginAsAdmin(page)
+      // Tournament pages are members-only now.
+      await loginAsAdmin(page)
 
       // --- 1. Create draft + drive to in_progress so the bracket generates ---
       const tournament = await createDraftTournament(adminToken, {

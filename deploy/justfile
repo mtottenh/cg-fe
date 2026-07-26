@@ -13,10 +13,12 @@ HOST := `yq -r '.all.children.portal.hosts[].ansible_host' ansible/inventory/pro
 DOMAIN := `yq -r '.all.vars.portal_domain' ansible/inventory/prod.yml 2>/dev/null || echo portal.example.com`
 USER := "ops"
 
-# Vault password: prompt interactively, OR read from the gitignored
-# ansible/.vault_pass when it exists (chmod 600 it) — the latter makes every
-# recipe non-interactive, so a deploy can be driven unattended.
-VAULT_ARGS := `[ -f ansible/.vault_pass ] && echo "--vault-password-file ansible/.vault_pass" || echo "--ask-vault-pass"`
+# Vault password: prompt interactively, OR read from a password file —
+# checked in order: ~/.config/cg-portal/vault_pass (preferred on WSL, where
+# /mnt/c forces the executable bit and ansible would then try to EXECUTE the
+# file as a password script), then the gitignored ansible/.vault_pass.
+# Either makes every recipe non-interactive for unattended deploys.
+VAULT_ARGS := `for f in "$HOME/.config/cg-portal/vault_pass" ansible/.vault_pass; do if [ -f "$f" ]; then echo "--vault-password-file $f"; exit; fi; done; echo "--ask-vault-pass"`
 
 # On WSL (/mnt/c is world-writable) ansible REFUSES to load ansible.cfg, so
 # the settings that matter for driving deploys land here as env instead.
@@ -63,7 +65,9 @@ provision:
     #!/usr/bin/env bash
     set -euo pipefail
     : "${LINODE_TOKEN:?export LINODE_TOKEN=<personal access token> first}"
-    ansible-playbook ansible/provision.yml
+    # VAULT_ARGS: the playbook-adjacent group_vars/all/vault.yml is loaded
+    # even for the localhost provision play, and it's vault-encrypted.
+    ansible-playbook ansible/provision.yml {{VAULT_ARGS}}
 
 # First converge against a freshly provisioned box (runbook step 6): brings
 # up base + postgres + API + SPA + Caddy + backups from the release debs,
@@ -311,7 +315,7 @@ backup-list:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "── local (plaintext .sql.zst, restorable without the age key) ──"
-    ssh {{USER}}@{{HOST}} 'sudo ls -lht /var/lib/portal/backups/ | head -15'
+    ssh {{USER}}@{{HOST}} 'sudo ls -lht /var/lib/portal-backups/ | head -15'
     echo "── bucket (age-encrypted; needs the private key from your password manager) ──"
     ssh {{USER}}@{{HOST}} "sudo sh -c '. /etc/portal/backup.env && aws --endpoint-url=\"\$AWS_ENDPOINT_URL\" s3 ls \"s3://\$BACKUP_BUCKET/\" && aws --endpoint-url=\"\$AWS_ENDPOINT_URL\" s3 ls \"s3://\$BACKUP_BUCKET/config/\"'"
 
@@ -319,7 +323,7 @@ backup-list:
 # Confirm-gated: stops writers, drops and re-creates the DB, restores,
 # restarts, health-checks. Migrations newer than the dump re-run on boot.
 #
-# Usage: just restore /var/lib/portal/backups/portal_prod_20260726T031500Z.sql.zst
+# Usage: just restore /var/lib/portal-backups/portal_prod_20260726T031500Z.sql.zst
 restore FILE:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -349,7 +353,7 @@ restore-remote NAME IDENTITY:
     name="{{NAME}}"
     identity="{{IDENTITY}}"
     [ -f "$identity" ] || { echo "identity file not found: $identity"; exit 1; }
-    dir=/var/lib/portal/backups
+    dir=/var/lib/portal-backups
     echo "→ fetching $name.age + checksum from the bucket"
     ssh {{USER}}@{{HOST}} "sudo sh -c '. /etc/portal/backup.env && aws --endpoint-url=\"\$AWS_ENDPOINT_URL\" s3 cp \"s3://\$BACKUP_BUCKET/$name.age\" $dir/$name.age --only-show-errors && aws --endpoint-url=\"\$AWS_ENDPOINT_URL\" s3 cp \"s3://\$BACKUP_BUCKET/$name.sha256\" $dir/$name.sha256 --only-show-errors'"
     echo "→ decrypting on the box (identity via stdin)"

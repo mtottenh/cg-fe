@@ -53,14 +53,22 @@ jobs:
       # frontend against the actual released backend (higher fidelity for a
       # release gate) and skips the ~5-min Rust compile. The migrations are
       # compiled into the binary (sqlx::migrate!), so it self-migrates on boot
-      # with no migrations/ dir. Defaults to the latest mtottenh/cg release;
-      # override via the api_version workflow_dispatch input. For a private
-      # backend repo set the API_REPO_TOKEN secret (PAT with repo read).
+      # with no migrations/ dir. Version resolution: the api_version
+      # workflow_dispatch input, else the deploy/versions.yml pin, else the
+      # latest release. The pin matters: "latest" once silently tested new
+      # frontend code against a months-old API and every registration-state
+      # spec burned its retries (2026-07-26) — the suite should exercise the
+      # API version we'd actually deploy beside. For a private backend repo
+      # set the API_REPO_TOKEN secret (PAT with repo read).
       - name: Download released API (portal-api deb)
         env:
           GH_TOKEN: ${{ secrets.API_REPO_TOKEN || github.token }}
           API_VERSION: ${{ inputs.api_version }}
         run: |
+          if [ -z "$API_VERSION" ]; then
+            API_VERSION=$(sed -n 's/^api: *"\(v[^"]*\)".*/\1/p' deploy/versions.yml)
+            echo "api_version input empty → versions.yml pin: '${API_VERSION:-<none, falling back to latest>}'"
+          fi
           mkdir -p api-pkg
           gh release download $API_VERSION --repo mtottenh/cg \
             --pattern 'portal-api_*_amd64.deb' --dir api-pkg

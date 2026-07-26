@@ -30,10 +30,10 @@
 
   vars:
     linode_label: portal-prod
-    # London — same region as the gb-lon-1 Object Storage bucket the demos
-    # already live in. (`linode-cli regions list` for alternatives; gb-lon
-    # is the newer London 2 site.)
-    linode_region: eu-west
+    # London 2 — same region as the portal-* Object Storage buckets AND the
+    # CS2 game host. (eu-west, London 1, is restricted for new instance
+    # creation as of 2026-07 — the API refuses it.)
+    linode_region: gb-lon
     # g6-standard-2 = 2 vCPU / 4 GB. Demo parsing holds an entire .dem in
     # memory, so 4 GB is the recommended floor. g6-standard-1 (2 GB) works
     # if demo-stats concurrency stays at 1 (see the cs210mans audit doc).

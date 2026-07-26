@@ -168,7 +168,7 @@ test.describe('Tournament Admin Flows', () => {
       // (the Game select itself + the Map Veto Format select's hint
       // "Select a game first..."), so pick the first to disambiguate.
       // Choose CS2 explicitly: a tournament needs a map pool, and CS2 is the
-      // seeded game that has a map catalog (AoE4 has none and sorts first).
+      // seeded game that has a map catalog (AoE2 has none and sorts first).
       await modal.locator('.v-select').filter({ hasText: 'Game' }).first().click()
       await page.getByRole('option', { name: /Counter-Strike 2/i }).click()
 

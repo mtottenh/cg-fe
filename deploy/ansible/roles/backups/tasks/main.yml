@@ -59,6 +59,15 @@
 
 # --- Config + scripts --------------------------------------------------------
 
+# On a fresh box this role runs BEFORE any portal deb has created the
+# shared `portal` group (site.yml orders backups ahead of portal_api).
+# Create it here; the deb postinsts' `adduser --system --group portal`
+# happily adopts an existing group.
+- name: Shared portal group exists
+  ansible.builtin.group:
+    name: portal
+    system: true
+
 - name: /etc/portal exists
   ansible.builtin.file:
     path: /etc/portal
@@ -77,6 +86,12 @@
       AWS_ACCESS_KEY_ID={{ vault_linode_access_key }}
       AWS_SECRET_ACCESS_KEY={{ vault_linode_secret_key }}
       AWS_ENDPOINT_URL={{ linode_object_storage_endpoint }}
+      AWS_DEFAULT_REGION={{ linode_object_storage_region }}
+      # awscli v2.23+ sends CRC integrity checksums by default; Linode
+      # Object Storage rejects them and `s3 cp` dies with a NoneType
+      # error. when_required = only when the operation demands one.
+      AWS_REQUEST_CHECKSUM_CALCULATION=when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
       BACKUP_BUCKET={{ backup_bucket }}
       BACKUP_LOCAL_RETENTION_DAYS={{ backup_local_retention_days }}
       BACKUP_ZSTD_LEVEL={{ backup_zstd_level }}
@@ -98,9 +113,9 @@
     - restore-verify.sh
     - backup-failure.sh
 
-- name: /var/lib/portal/backups
+- name: /var/lib/portal-backups
   ansible.builtin.file:
-    path: /var/lib/portal/backups
+    path: /var/lib/portal-backups
     state: directory
     owner: postgres
     group: postgres

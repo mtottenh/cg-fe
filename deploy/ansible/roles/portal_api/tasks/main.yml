@@ -88,11 +88,37 @@
         DATABASE_URL: "{{ portal_api_database_url }}"
       notify: restart portal-api
 
-    - name: CA certificate readable by Caddy
+    - name: CA certificate file mode
       ansible.builtin.file:
         path: "{{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}/ca.pem"
         owner: portal
         group: portal
+        mode: "0644"
+
+    # Caddy (user caddy) cannot traverse /etc/portal (root:portal 0750) —
+    # and adding it to the portal group would expose the service env
+    # secrets. Publish the PUBLIC cert to a Caddy-owned path instead; the
+    # Caddyfile's client_auth points here. The private key never leaves
+    # {{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}.
+    - name: /etc/caddy exists (caddy deb installs later on a fresh box)
+      ansible.builtin.file:
+        path: /etc/caddy
+        state: directory
+        mode: "0755"
+
+    # No `notify: reload caddy` here: this role runs BEFORE the caddy role,
+    # and portal_api's own flush_handlers would then reload caddy against
+    # the not-yet-rendered Caddyfile (seen failing on the first converge).
+    # The caddy role's Caddyfile render performs the reload that matters;
+    # on the ~never event of CA rotation, the next converge's reload picks
+    # the new cert up.
+    - name: Publish the agent CA certificate for Caddy
+      ansible.builtin.copy:
+        src: "{{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}/ca.pem"
+        dest: /etc/caddy/portal-agent-ca.pem
+        remote_src: true
+        owner: root
+        group: root
         mode: "0644"
 
 # -----------------------------------------------------------------------------

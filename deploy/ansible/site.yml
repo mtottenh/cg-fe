@@ -86,7 +86,7 @@
           the printed age1... public key.
 
 - name: Pre-deploy database backup
-  hosts: all
+  hosts: portal
   become: true
   gather_facts: false
   # Tagged portal_api so every `just deploy` (--tags portal_api,...) snapshots
@@ -110,7 +110,7 @@
       when: not pg_backup_unit.stat.exists
 
 - name: Converge portal host
-  hosts: all
+  hosts: portal
   become: true
   gather_facts: true
 
@@ -153,3 +153,19 @@
 
     - role: portal_web
       tags: [portal_web]
+
+# Game-server hosts (CS2 + MatchZy + portal-server-agent). Skipped while
+# the gameservers group is empty. base runs here too — same hardening as
+# the portal box, with the game ports opened via ufw_extra_allow
+# (group_vars/gameservers.yml) in the same batch that enables ufw.
+# Registration/enrollment steps inside gameserver_agent delegate to the
+# portal host, so the portal must be converged first (play order above).
+- name: Converge game-server hosts
+  hosts: gameservers
+  become: true
+  gather_facts: true
+  tags: [gameserver]
+
+  roles:
+    - role: base
+    - role: gameserver_agent

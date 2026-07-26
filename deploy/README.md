@@ -48,6 +48,7 @@ deploy/
 │       ├── portal_scanner/     # Installs the portal-scanner.deb; renders scanner.env
 │       ├── portal_demo_stats/  # Installs the portal-demo-stats.deb; renders demo-stats.env
 │       ├── portal_steam_bot/   # Installs portal-steam-bot.deb (cs2-poller + cs2-enricher); opt-in
+│       ├── gameserver_agent/   # CS2 hosts: agent deb + registration + enrollment + MatchZy
 │       ├── monitoring/         # Prometheus + Grafana + Loki + Alloy + exporters; opt-in
 │       ├── caddy/              # Caddy auto-HTTPS; proxies API + demos.<domain> (+ grafana.)
 │       └── portal_web/         # Builds the SPA locally, ships dist → /var/www/portal
@@ -140,6 +141,7 @@ site.yml:
 | `vault_steam_bot_username` / `_password` / `_shared_secret` (only if bots enabled) | Dedicated Steam bot account for the enricher's Game Coordinator login (Prime + CS2), and its Guard TOTP secret |
 | `vault_grafana_admin_password` (only if monitoring enabled) | Grafana admin login (≥12 chars; applied on Grafana's first start) |
 | `vault_tailscale_auth_key` (only if `monitoring_ingress: tailnet`) | Pre-authorized Tailscale key for the box's first `tailscale up`; unused after joining |
+| `vault_gameserver_rcon_passwords` (only if gameservers exist) | Dict of RCON passwords keyed by inventory hostname (CS2 runs with `-usercon`) |
 | `vault_alert_webhook_url` (optional) | Webhook Grafana alerts POST to (healthchecks.io / ntfy); `""` keeps alerts UI-only |
 
 **Non-secret config (`ansible/group_vars/all/vars.yml`)**:
@@ -345,6 +347,37 @@ just deploy-steam-bot ../steam_bot/target/debian/portal-steam-bot_0.1.0_amd64.de
 include the bots in every `site.yml` converge, set it in `group_vars`. The
 poller and enricher, like the scanner, also need `SCANNER_GAME_ID`-equivalent
 config baked in via `steam_bot_game_slug` (default `cs2`).
+
+## Game-server hosts
+
+CS2 boxes running MatchZy + portal-server-agent are fully converged from
+the same playbook — per host the only inputs are an SSH login, an entry in
+the `gameservers` inventory group (the hostname doubles as the server's
+name in the portal registry), and its RCON password in
+`vault_gameserver_rcon_passwords`. A converge (`just bootstrap`, or
+`just deploy-agent <deb>` for agent-only runs) then:
+
+1. applies `base` hardening with the game + GOTV ports opened in the same
+   batch that enables ufw (no player-dropping window),
+2. installs the portal-server-agent deb,
+3. registers the server in the portal registry and enrolls the agent —
+   `portal-cli gameserver create` (idempotent by hostname) + a one-time
+   token, delegated to the portal box; the keypair never leaves the game
+   host,
+4. writes the demo-upload block into MatchZy's `config.cfg`
+   (`gameserver_matchzy_config_path`; the block comes from
+   `/etc/portal/agent/matchzy_portal.cfg`, persisted by enroll),
+5. gates on the unit being active AND the portal actually receiving
+   heartbeats (any status but `offline` — `error` just means the CS2
+   server's RCON isn't up yet).
+
+Prerequisites: `gameserver_integration_enabled: true`, the
+`agents.<domain>` DNS record, and a portal-api deb new enough to ship the
+`portal-cli gameserver create` command. The agent CA is generated
+automatically by the portal_api role on its first converge with the
+integration enabled. Enrollment is one-time per host: re-converges skip
+it while `/etc/portal/agent/client.pem` exists; to re-enroll, revoke via
+`portal-cli gameserver revoke`, delete `/etc/portal/agent`, and re-run.
 
 ## Monitoring
 

@@ -51,6 +51,16 @@
     proto: tcp
   loop: ["22", "80", "443"]
 
+# Group-specific extra allows (e.g. game + GOTV ports on the gameservers
+# group — see group_vars/gameservers.yml). Applied BEFORE enable so a live
+# host never has a window where its traffic is dropped.
+- name: ufw — group-specific extra allows
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto | default('tcp') }}"
+  loop: "{{ ufw_extra_allow | default([]) }}"
+
 - name: ufw — enable
   community.general.ufw:
     state: enabled

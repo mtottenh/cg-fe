@@ -127,6 +127,9 @@ reached over your Tailscale network instead and needs no DNS record — see
 deploy/README.md "Monitoring"). Wait for propagation before step 6 so
 Caddy can get certificates.
 
+(Game-server hosts are converged from the same playbook once added to the
+`gameservers` inventory group — see deploy/README.md "Game-server hosts".)
+
 ## 5. Get the artifacts
 
 **Preferred: tagged GitHub releases.** Each repo's `build-deb` /

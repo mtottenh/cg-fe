@@ -58,6 +58,44 @@
   notify: restart portal-api
 
 # -----------------------------------------------------------------------------
+# Agent CA (gameserver integration) — generated once, idempotently, so the
+# runbook's manual `portal-cli gameserver ca-init` step disappears. The API
+# (user portal) signs enrollment CSRs with ca.key; Caddy (user caddy) reads
+# ca.pem for client_auth on the agents vhost — hence 0755 dir, key kept
+# portal-owned 0600. NOT covered by pg_dump backups; config-backup archives
+# /etc/portal weekly (losing the key = re-enrolling every agent).
+# -----------------------------------------------------------------------------
+- name: Agent CA exists
+  when: gameserver_integration_enabled | default(false)
+  block:
+    - name: Agent CA directory
+      ansible.builtin.file:
+        path: "{{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}"
+        state: directory
+        owner: portal
+        group: portal
+        mode: "0755"
+
+    - name: Generate the agent CA (first converge only)
+      ansible.builtin.command: >-
+        portal-cli gameserver ca-init
+        --dir {{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}
+      args:
+        creates: "{{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}/ca.pem"
+      become: true
+      become_user: portal
+      environment:
+        DATABASE_URL: "{{ portal_api_database_url }}"
+      notify: restart portal-api
+
+    - name: CA certificate readable by Caddy
+      ansible.builtin.file:
+        path: "{{ portal_agent_ca_dir | default('/etc/portal/agent-ca') }}/ca.pem"
+        owner: portal
+        group: portal
+        mode: "0644"
+
+# -----------------------------------------------------------------------------
 # systemd drop-in — per-service outbound firewall. The API should only
 # talk to: localhost (Postgres), and Linode Object Storage. We can't
 # easily enumerate LOS's IPs, so we allow 'any' for now but note the

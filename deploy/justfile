@@ -9,7 +9,7 @@ set dotenv-load := true
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # --- config pulled from the Ansible inventory so we don't repeat ourselves
-HOST := `yq -r '.all.hosts[].ansible_host' ansible/inventory/prod.yml 2>/dev/null || echo portal`
+HOST := `yq -r '.all.children.portal.hosts[].ansible_host' ansible/inventory/prod.yml 2>/dev/null || echo portal`
 DOMAIN := `yq -r '.all.vars.portal_domain' ansible/inventory/prod.yml 2>/dev/null || echo portal.example.com`
 USER := "ops"
 
@@ -216,6 +216,34 @@ deploy-demo-stats DEB:
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
         {{VAULT_ARGS}} --tags portal_demo_stats \
         -e portal_demo_stats_deb_path={{DEB}}
+
+# Install/refresh the portal-server-agent on every host in the gameservers
+# inventory group from a locally built deb. Registration, enrollment, and
+# MatchZy wiring are automatic (roles/gameserver_agent). Build first in the
+# sibling server-agent repo: cargo build --release && cargo deb --no-build
+#
+# Usage: just deploy-agent ../server-agent/target/debian/portal-server-agent_0.1.0-1_amd64.deb
+deploy-agent DEB:
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
+        {{VAULT_ARGS}} --tags gameserver \
+        -e gameserver_agent_deb_path={{DEB}}
+
+# Same, from a tagged GitHub release of the cg-server-agent repo.
+#
+# Usage: just deploy-agent-release v0.1.0
+deploy-agent-release VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+    echo "→ downloading portal-server-agent {{VERSION}} → $tmp"
+    gh release download {{VERSION}} --repo mtottenh/cg-server-agent \
+        --pattern 'portal-server-agent_*.deb' --pattern 'SHA256SUMS' --dir "$tmp"
+    (cd "$tmp" && sha256sum -c --ignore-missing SHA256SUMS)
+    deb=("$tmp"/portal-server-agent_*.deb)
+    [ ${#deb[@]} -eq 1 ] && [ -f "${deb[0]}" ] || { echo "expected exactly one deb: ${deb[*]}"; exit 1; }
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
+        {{VAULT_ARGS}} --tags gameserver \
+        -e gameserver_agent_deb_path="${deb[0]}"
 
 # Install/refresh the Steam bots (cs2-poller + cs2-enricher) from a locally
 # built deb. Dev iteration only. Build first in the sibling steam_bot

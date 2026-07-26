@@ -54,6 +54,12 @@ vault_alert_webhook_url: ""
 # `tailscale up` once the node is joined, even after the key expires).
 vault_tailscale_auth_key: "tskey-auth-CHANGE_ME"
 
+# --- Game-server hosts (only required when the gameservers group has hosts) -
+# RCON password per game host, keyed by INVENTORY HOSTNAME. The CS2 server
+# must run with -usercon and this password; the agent drives MatchZy with it.
+# vault_gameserver_rcon_passwords:
+#   cs2-lon-1: "CHANGE_ME"
+
 # --- Optional per-service S3 credential overrides ---------------------------
 # The scanner and the demo-stats service default to the vault_linode_* pair
 # above. Uncomment to give them their own keys (tighter blast radius).

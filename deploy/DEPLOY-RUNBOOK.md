@@ -8,6 +8,17 @@ The one-line shape: **provision → configure secrets → DNS → converge the
 site → bootstrap admin → wire the scanner/demo-stats → deploy releases →
 verify.**
 
+> **Status of this checkout (2026-07-26):** releases are cut and pinned in
+> `versions.yml` (api `v0.2.0`, web `v0.1.0`, demo-stats `v0.2.0`,
+> steam-bot `v0.1.0` unpinned/opt-in), and `ansible/group_vars/all/vault.yml`
+> is pre-seeded: postgres/JWT/Grafana secrets already generated,
+> `backup_age_public_key` already set in `vars.yml` (private key:
+> `~/portal-backup.key` in WSL — **move it to the password manager and
+> delete it**). What remains for the operator: the step-1 accounts
+> (Linode token, Object Storage keys, buckets, Steam key, domain), the
+> step-3 inventory values, `ansible-vault encrypt` + optional
+> `.vault_pass`, and DNS. Everything after that is `just` recipes.
+
 ---
 
 ## 0. Control-machine prerequisites (once)
@@ -125,16 +136,21 @@ the `just deploy*` recipes download and verify them for you in steps 6–8.
 If releases already exist (check `gh release list --repo mtottenh/cg`),
 **skip to step 6.**
 
-To cut a release: bump the Cargo version to match, tag, push —
+Current releases: **api `v0.2.0`** (portal-api + portal-scanner debs),
+**web `v0.1.0`** (portal-web deb), **demo-stats `v0.2.0`**, **steam-bot
+`v0.1.0`** — already pinned in `versions.yml`.
+
+To cut the NEXT release: bump the Cargo version to match, tag, push —
 
 ```bash
 cd ../api && git tag v0.2.1 && git push --tags        # portal-api + portal-scanner
-cd ../demo-stats-service && git tag v0.1.0 && git push --tags
-cd ../community_gaming && git tag v0.1.0 && git push --tags   # cg-fe → portal-web
+cd ../demo-stats-service && git tag v0.2.1 && git push --tags
+cd ../community_gaming && git tag v0.1.1 && git push --tags   # cg-fe → portal-web
 ```
 (The workflow **refuses a tag that doesn't match the package version** —
 `[workspace.package]` in api/Cargo.toml, `version` in the others — so bump
-first, tag second.)
+first, tag second. Web is the exception: its deb version comes from the
+tag itself.)
 
 <details>
 <summary><b>Fallback: build the debs locally</b> (no releases yet, or offline)</summary>
@@ -161,19 +177,12 @@ on the 2 GB Linode itself.
 
 The scanner needs a game id that only exists after the API has migrated the
 DB, so the **first** converge deliberately excludes the scanner and
-demo-stats. Run it as **root** (only root has an SSH key until `roles/base`
-creates the `ops` user):
+demo-stats. One recipe does it all (downloads + verifies the api and web
+release debs, runs the tagged play as root — only root has an SSH key
+until `roles/base` creates the `ops` user):
 
 ```bash
-tmp=$(mktemp -d)
-gh release download vX.Y.Z --repo mtottenh/cg \
-    --pattern 'portal-api_*_amd64.deb' --pattern 'SHA256SUMS' --dir "$tmp"
-(cd "$tmp" && sha256sum -c --ignore-missing SHA256SUMS)
-
-ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
-  --ask-vault-pass -e ansible_user=root \
-  --tags base,postgres,portal_api,portal_web,caddy,backups \
-  -e portal_api_deb_path="$tmp"/portal-api_*_amd64.deb
+just first-converge v0.2.0 v0.1.0     # <api release> <web release>
 ```
 This installs base hardening, Postgres 16 (socket-only), the API (migrations
 run on boot → seeds the `games` table), the SPA into `/var/www/portal`, Caddy
@@ -198,8 +207,10 @@ ssh ops@<ipv4> "sudo -u portal DATABASE_URL='$SOCK' \
   portal-cli bootstrap admin --username admin --email you@yourdomain.com"
 #   (prompts for a password)
 
-# get the CS2 game UUID (needed by the scanner)
-just db-shell        # then:  SELECT id, name FROM games WHERE slug = 'cs2';  \q
+# get the CS2 game UUID (needed by the scanner) — non-interactive:
+ssh ops@<ipv4> "sudo -u portal psql -d portal_prod -Atc \
+  \"SELECT id FROM games WHERE slug = 'cs2'\""
+#   (or interactively: just db-shell)
 
 # mint the scanner's service API key
 ssh ops@<ipv4> "sudo -u portal DATABASE_URL='$SOCK' \
@@ -221,10 +232,10 @@ $EDITOR ansible/group_vars/all/vars.yml
 
 ```bash
 # scanner (now that scanner_game_id is set) — re-uses the api release debs
-just deploy vX.Y.Z
+just deploy v0.2.0
 
 # demo-stats from its release
-just deploy-demo-stats-release vX.Y.Z
+just deploy-demo-stats-release v0.2.0
 ```
 
 **Expect:** each recipe downloads the debs, verifies `SHA256SUMS`,
@@ -239,11 +250,9 @@ just verify        # /health + /health/ready through Caddy, then unit status
 ```
 Then in a browser: open the site, click **Sign in through Steam**, confirm
 the round-trip lands you signed in (this exercises PORTAL_PUBLIC_URL /
-STEAM_API_KEY end to end). Finally pin what you deployed:
-
-```bash
-$EDITOR versions.yml        # api/web/demo_stats pins = the tags you shipped
-```
+STEAM_API_KEY end to end). Finally confirm `versions.yml` pins match what
+you shipped (`just installed` vs the pins) — they're pre-set to the
+current releases.
 
 ## 10. Optional
 
@@ -263,8 +272,23 @@ Everyone then signs in through Steam and lands on their imported account.
 `vault_steam_bot_*` keys (dedicated Steam bot account for the enricher),
 then:
 ```bash
-just deploy-steam-bot-release vX.Y.Z     # from the cg-steam-bot release
+just deploy-steam-bot-release v0.1.0     # from the cg-steam-bot release
 ```
+
+**Monitoring stack** (Prometheus + Grafana + Loki — README "Monitoring"
+has the full picture). `vault_grafana_admin_password` is already seeded in
+the vault; choose the ingress:
+```bash
+$EDITOR ansible/group_vars/all/vars.yml
+#   monitoring_enabled: true
+#   monitoring_ingress: public      # + grafana.<domain> DNS A record (step 4)
+#                     | tailnet     # + vault_tailscale_auth_key in the vault, no DNS
+
+just bootstrap        # converges the monitoring role + Caddy/tailnet ingress
+```
+**Expect:** Grafana at `https://grafana.<domain>` (public) or the tailnet
+URL, dashboards pre-provisioned; every service's `/metrics` stays
+loopback-only.
 
 ## 11. Day-2 operations
 

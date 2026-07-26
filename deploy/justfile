@@ -63,8 +63,36 @@ provision:
     : "${LINODE_TOKEN:?export LINODE_TOKEN=<personal access token> first}"
     ansible-playbook ansible/provision.yml
 
-# First converge against a freshly provisioned box: only root has an SSH key
-# until roles/base creates the ops user, so override ansible_user once.
+# First converge against a freshly provisioned box (runbook step 6): brings
+# up base + postgres + API + SPA + Caddy + backups from the release debs,
+# deliberately excluding the scanner/demo-stats (their config is minted in
+# step 7). Runs as root — only root has an SSH key until roles/base creates
+# the ops user.
+#
+# Usage: just first-converge v0.2.0 v0.1.0   (api release, web release)
+first-converge API_VERSION WEB_VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+    echo "→ downloading portal-api {{API_VERSION}} + portal-web {{WEB_VERSION}} → $tmp"
+    gh release download {{API_VERSION}} --repo mtottenh/cg \
+        --pattern 'portal-api_*_amd64.deb' --pattern 'SHA256SUMS' --dir "$tmp"
+    (cd "$tmp" && sha256sum -c --ignore-missing SHA256SUMS && rm SHA256SUMS)
+    gh release download {{WEB_VERSION}} --repo mtottenh/cg-fe \
+        --pattern 'portal-web_*_all.deb' --pattern 'SHA256SUMS' --dir "$tmp"
+    (cd "$tmp" && sha256sum -c --ignore-missing SHA256SUMS)
+    api=("$tmp"/portal-api_*_amd64.deb)
+    web=("$tmp"/portal-web_*_all.deb)
+    [ ${#api[@]} -eq 1 ] && [ -f "${api[0]}" ] || { echo "expected exactly one portal-api deb: ${api[*]}"; exit 1; }
+    [ ${#web[@]} -eq 1 ] && [ -f "${web[0]}" ] || { echo "expected exactly one portal-web deb: ${web[*]}"; exit 1; }
+    ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
+        {{VAULT_ARGS}} -e ansible_user=root \
+        --tags base,postgres,portal_api,portal_web,caddy,backups \
+        -e portal_api_deb_path="${api[0]}" \
+        -e portal_web_deb_path="${web[0]}"
+
+# Full-site first converge (every role incl. scanner — only valid once the
+# step-7 config exists). For a fresh box prefer `just first-converge`.
 bootstrap-fresh:
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml {{VAULT_ARGS}} -e ansible_user=root
 

@@ -277,6 +277,11 @@ then:
 ```bash
 just deploy-steam-bot-release v0.1.0     # from the cg-steam-bot release
 ```
+An empty `vault_steam_bot_shared_secret` is valid: 2FA challenges then
+park on the enricher's loopback Steam Guard code-entry page
+(`:9478`; served over the tailnet at `:8443` when
+`monitoring_ingress=tailnet`, or `ssh -L 9478:127.0.0.1:9478` as
+break-glass) instead of failing the login.
 
 **Monitoring stack** (Prometheus + Grafana + Loki — README "Monitoring"
 has the full picture). `vault_grafana_admin_password` is already seeded in
@@ -337,26 +342,34 @@ available.
 
 ## Game-server agents (optional, MatchZy integration)
 
-Off by default. To enable match automation on CS2 hosts
-(docs/matchzy-integration.md):
+Off by default. Fully ansible-automated since the `gameserver_agent` role
+landed — per host the only inputs are an SSH login, an inventory entry,
+and an RCON password (README "Game-server hosts" has the full mechanics;
+design in docs/matchzy-integration.md):
 
 1. **DNS**: add `agents.portal.yourdomain.com. A <ipv4>` (third record).
-2. **CA init** (once, on the box):
-   `ssh ops@<ipv4> "sudo -u portal portal-cli gameserver ca-init --dir /etc/portal/agent-ca"`.
-   The CA private key now exists ONLY there — it's covered by the weekly
-   `config-backup` timer, and losing it means re-enrolling every agent.
-3. **Enable**: set `gameserver_integration_enabled: true` in
+2. **Enable**: set `gameserver_integration_enabled: true` in
    `ansible/group_vars/all/vars.yml`, then `just bootstrap`. This adds the
-   `agents.<domain>` Caddy site (mTLS client certs) and the API env.
-4. **Each game host**: install `portal-server-agent_*.deb` from the
-   `mtottenh/cg-server-agent` release, mint a one-time enrollment token
-   (admin UI → Game Servers, or `portal-cli gameserver enroll-token`), then
-   on the host: `sudo portal-server-agent enroll --url https://portal.… --token cgs_…`
-   and `sudo systemctl start portal-server-agent`. Full prerequisites
-   (MatchZy, `-usercon`, GOTV) are in that repo's README.
+   `agents.<domain>` Caddy site (mTLS client certs), the API env, and
+   **generates the agent CA automatically** (portal_api role, idempotent;
+   offsite-copied by the weekly config-backup timer — losing it means
+   re-enrolling every agent).
+3. **Each game host**: add it to the `gameservers` group in
+   `ansible/inventory/prod.yml` (the hostname doubles as its portal
+   registry name; set `gameserver_matchzy_config_path` for automatic
+   MatchZy demo-upload wiring), put its RCON password in the vault under
+   `vault_gameserver_rcon_passwords.<hostname>`, then:
+   ```bash
+   just deploy-agent-release v0.1.0   # deb install + registry create +
+                                      # enroll + MatchZy wiring + health gate
+   ```
+   Host prerequisites (CS2 + MatchZy 0.8.15+, `-usercon`, GOTV) are in the
+   cg-server-agent README. Enrollment is one-time per host; to re-enroll,
+   `portal-cli gameserver revoke`, delete `/etc/portal/agent`, re-run.
 
-**Expect:** the server flips `offline → available` in the admin UI on the
-first heartbeat (~30 s).
+**Expect:** the converge itself gates on the portal receiving heartbeats —
+if the play is green, the server is `available` (or `error`, which just
+means the CS2 server's RCON isn't up yet) in the admin UI.
 
 ## Notes / rough edges
 

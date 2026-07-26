@@ -4,7 +4,7 @@ import type { components } from '@/api/types'
  * Admin game-configuration helpers.
  *
  * **Games are global config with no create endpoint.** `migrations/0003_create_games.sql:68-70`
- * inserts exactly two rows (`cs2`, `aoe4`) and `routes/games.rs` has no `POST /`, so
+ * inserts exactly two rows (`cs2`, `aoe2`) and `routes/games.rs` has no `POST /`, so
  * a spec cannot build its own game the way the tournament fixtures build their own
  * tournament (`portal-cli game create` exists, but shelling out to a cargo binary is
  * not an API seeding path and would not work against a plain dev stack). Every mutating
@@ -12,14 +12,14 @@ import type { components } from '@/api/types'
  * back in a `finally`.
  *
  * `cs2` is depended on by most of the suite (the seeded tournament, league, team,
- * awards and demo fixtures all resolve it), so the **mutation target is `aoe4`** — it
+ * awards and demo fixtures all resolve it), so the **mutation target is `aoe2`** — it
  * is referenced only by `admin-management.spec.ts`'s read-only Games section. The
  * mutations are kept short-lived and display-name changes are *suffixed* rather than
  * replaced, because Playwright's substring matching means that spec's
- * `getByText('Age of Empires IV')` still passes while a suffixed rename is in flight
+ * `getByText('Age of Empires II')` still passes while a suffixed rename is in flight
  * (`fullyParallel: true` locally; CI pins `workers: 1`).
  *
- * The one residual cross-file window is the disable→enable pair: while `aoe4` is in
+ * The one residual cross-file window is the disable→enable pair: while `aoe2` is in
  * maintenance it drops out of `GET /v1/games` (`list_active`), so a *locally* parallel
  * worker loading `/admin/games` in that ~1s window would not see the row. It cannot be
  * designed away without a create endpoint; `admin-games-config.spec.ts` runs serially so
@@ -28,7 +28,7 @@ import type { components } from '@/api/types'
  * ## `id` is a UUID, `slug` is the human key — both are accepted since P-87
  *
  * `migrations/0024_restructure_games_uuid.sql` moved `games.id` to a UUID and added
- * `slug` ('cs2' / 'aoe4'). `GameSummaryResponse.id` is that UUID, and it is what the
+ * `slug` ('cs2' / 'aoe2'). `GameSummaryResponse.id` is that UUID, and it is what the
  * frontend store passes to every game endpoint. The six *config* write handlers used to
  * read the game with `find_by_id_or_slug` and then write with
  * `game_repo.update(&game_id, ..)` — `WHERE slug = $1` — so every write from the UI
@@ -45,7 +45,7 @@ import type { components } from '@/api/types'
  *
  * ## Rank tiers are the one piece of state that cannot be put back exactly
  *
- * `aoe4` is seeded with **no** rank tiers and has no plugin to supply defaults, so its
+ * `aoe2` is seeded with **no** rank tiers and has no plugin to supply defaults, so its
  * baseline is the empty list — and `SetRankTiersRequest` is
  * `#[validate(length(min = 1, max = 20))]`, i.e. the API has no way to express "clear
  * them". Once a game has custom tiers it can only ever be given different ones. The
@@ -70,11 +70,11 @@ export type UpdateTeamSizeRequest = S['UpdateTeamSizeRequest']
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
 /** The seeded game this spec is allowed to mutate. See the module doc. */
-export const MUTABLE_GAME_SLUG = 'aoe4'
+export const MUTABLE_GAME_SLUG = 'aoe2'
 /** Its migration-seeded display name — the value every mutation restores to. */
-export const MUTABLE_GAME_NAME = 'Age of Empires IV'
+export const MUTABLE_GAME_NAME = 'Age of Empires II'
 /** Its migration-seeded short name. */
-export const MUTABLE_GAME_SHORT_NAME = 'AoE4'
+export const MUTABLE_GAME_SHORT_NAME = 'AoE2'
 /** Its migration-seeded sort order (`0003_create_games.sql:70`; cs2 is 1). */
 export const MUTABLE_GAME_SORT_ORDER = 2
 /** Its migration-seeded team size (`0003_create_games.sql:70`: min 1, max 4, default 1). */
@@ -83,7 +83,7 @@ export const MUTABLE_GAME_TEAM_SIZE: TeamSizeConfig = { min: 1, default: 1, max:
 /**
  * The rank-tier baseline the rank-tier spec establishes and restores to.
  *
- * Not a migration value — `aoe4` ships with none, and the API cannot express
+ * Not a migration value — `aoe2` ships with none, and the API cannot express
  * "no tiers" (see the module doc). Deterministic and idempotent, which is what
  * the restore contract actually needs.
  */
@@ -158,7 +158,7 @@ export async function enableGameViaApi(adminToken: string, idOrSlug: string): Pr
  * (`portal-db/src/repositories/game.rs:106-131`), so sending `null` preserves the old
  * value instead of clearing it. Specs must therefore only mutate fields that already
  * have a value — which is why the edit-modal test moves `display_name`, `short_name`
- * and `is_featured` and leaves `description` / `icon_url` (both NULL on `aoe4`) alone.
+ * and `is_featured` and leaves `description` / `icon_url` (both NULL on `aoe2`) alone.
  */
 export async function patchGameViaApi(
   adminToken: string,
@@ -220,7 +220,7 @@ export async function updateTeamSizeViaApi(
 }
 
 /**
- * Put `aoe4` back exactly as migration 0003 seeded it: active, original names, featured,
+ * Put `aoe2` back exactly as migration 0003 seeded it: active, original names, featured,
  * sort order 2, team size 1/1/4. Safe to call when nothing was changed.
  *
  * Rank tiers are deliberately NOT touched here — they are restored by the one spec that

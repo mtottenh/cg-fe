@@ -145,6 +145,11 @@ function editSettingsTitle(scope: Page | Locator) {
 
 test.describe('League Team Management Flows', () => {
   test.describe('Browse Teams via Leagues', () => {
+    // Browse routes are members-only now — sign in before each test.
+    test.beforeEach(async ({ page }) => {
+      await loginAsAdmin(page)
+    })
+
     let scenario: LeagueSeasonScenario
     let roster: TeamRosterScenario
 

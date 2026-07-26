@@ -73,7 +73,7 @@ async function jsonOrThrow<T>(response: Response, context: string): Promise<T> {
  * The map catalog + default pool of a seeded game, by slug.
  *
  * Defaults to `cs2`: it is the seeded game that actually has a map catalog,
- * and the one specs are told never to mutate (AoE4 is the mutable one).
+ * and the one specs are told never to mutate (AoE2 is the mutable one).
  */
 export async function fetchGameCatalog(slug = 'cs2'): Promise<GameMapCatalog> {
   const listResp = await fetch(`${API_URL}/v1/games`)

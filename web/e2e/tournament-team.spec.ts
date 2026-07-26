@@ -411,6 +411,8 @@ test.describe('Team Tournament Registration', () => {
     const adminToken = await getAdminToken()
     const scenario = await createTeamRegistrationScenario(adminToken)
 
+    // Tournament pages are members-only now.
+    await loginAsAdmin(page)
     await page.goto(`/tournaments/${scenario.tournamentSlug}`)
     await expect(page.getByRole('heading', { name: scenario.tournamentName })).toBeVisible({
       timeout: 15_000,

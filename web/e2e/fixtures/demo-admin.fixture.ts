@@ -182,7 +182,7 @@ export async function getOtherDemoGame(): Promise<DemoGame> {
     data: Array<{ id: string; slug?: string; display_name: string }>
   }>(resp, 'List games')
   const games = body.data ?? []
-  const other = games.find((g) => g.slug?.toLowerCase() === 'aoe4')
+  const other = games.find((g) => g.slug?.toLowerCase() === 'aoe2')
   if (!other) {
     throw new Error(
       `No second game to scope demo counts against; games seen: ${games

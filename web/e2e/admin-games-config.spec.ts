@@ -48,7 +48,7 @@ import {
  *
  * **P-90 — Sort Order was fabricated, and 0 was unsettable.** `GameSummaryResponse`
  * carried no `sort_order`, so `GameEditModal` seeded the field to a hardcoded `0` —
- * a number that was never the game's own (cs2 is 1, aoe4 is 2) — and then only sent
+ * a number that was never the game's own (cs2 is 1, aoe2 is 2) — and then only sent
  * the field when it was non-zero, so no game's sort order could ever be set to 0.
  * Fixed: the DTO returns `sort_order`, the modal seeds from it, and "changed" is the
  * send condition.
@@ -73,7 +73,7 @@ import {
  */
 
 /**
- * Serial, file-wide. There is one `aoe4` row and no way to make a second one, so
+ * Serial, file-wide. There is one `aoe2` row and no way to make a second one, so
  * `fullyParallel: true` runs these tests against the *same* record: the first run of
  * this spec had the disable/enable test's restore hook reset `display_name` while the
  * edit-modal test was still asserting its rename, and the validation test read the
@@ -197,11 +197,11 @@ test.describe('Admin games — GameEditModal', () => {
     expect(before.is_featured).toBe(true)
 
     // The new name *extends* the seeded one. `admin-management.spec.ts` asserts
-    // `getByText('Age of Empires IV')` is visible, and Playwright matches on
+    // `getByText('Age of Empires II')` is visible, and Playwright matches on
     // substring, so a concurrent worker still sees what it expects while this
     // rename is in flight. See the fixture header.
     const newName = `${MUTABLE_GAME_NAME} ${uniqueId()}`
-    const newShortName = 'AoE4-E2E'
+    const newShortName = 'AoE2-E2E'
 
     await loginAsAdmin(page)
     await page.goto('/admin/games')
@@ -311,7 +311,7 @@ test.describe('Admin games — GameEditModal', () => {
 
     const modal = page.getByRole('dialog').filter({ hasText: 'Edit Game:' })
     await expect(modal).toBeVisible()
-    // The load-bearing assertion: pre-fix this read '0' for cs2 and aoe4 alike.
+    // The load-bearing assertion: pre-fix this read '0' for cs2 and aoe2 alike.
     await expect(modal.getByLabel('Sort Order')).toHaveValue(String(MUTABLE_GAME_SORT_ORDER))
 
     await modal.getByLabel('Sort Order').fill('0')
@@ -411,7 +411,7 @@ test.describe('Admin games — GameConfigDialog', () => {
   test('admin renames a rank tier and adds another through the config dialog', async ({ page }) => {
     test.setTimeout(60_000)
     const adminToken = await getAdminToken()
-    // Establish the baseline explicitly — `aoe4` ships with no tiers, and the API
+    // Establish the baseline explicitly — `aoe2` ships with no tiers, and the API
     // cannot express "none", so this spec owns that state. See the fixture header.
     await setRankTiersViaApi(adminToken, MUTABLE_GAME_SLUG, MUTABLE_GAME_TIER_BASELINE)
 

@@ -178,7 +178,7 @@ describe('games store — truncation is surfaced, not silent (P-121)', () => {
   it('stays quiet when the page holds the whole catalog', async () => {
     const store = useGamesStore()
 
-    mockGet.mockResolvedValueOnce(paginated([game('g1', 'cs2'), game('g2', 'aoe4')], 2))
+    mockGet.mockResolvedValueOnce(paginated([game('g1', 'cs2'), game('g2', 'aoe2')], 2))
     await store.fetchGames()
 
     // A warning that fires on the ordinary case is a warning people learn to

@@ -9,6 +9,7 @@ warn_list:
   - name[casing]      # task/handler names deliberately mirror unit names
   - name[template]    # "{{ item }}" mid-name reads better for unit loops
   - args[module]      # experimental rule; false-positives on ufw policy loop
+  - yaml[line-length] # advisory here, matching .yamllint's relaxed profile
 
 # Galaxy-installed roles live inside the tree (roles_path = roles); their
 # style is upstream's problem, same rationale as the .yamllint ignore.

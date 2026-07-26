@@ -80,6 +80,11 @@ $EDITOR ansible/group_vars/all/vars.yml
 cp ansible/group_vars/all/vault.example.yml ansible/group_vars/all/vault.yml
 $EDITOR ansible/group_vars/all/vault.yml     # set the keys from step 1
 ansible-vault encrypt ansible/group_vars/all/vault.yml   # pick a vault password; store it in your password manager
+
+# OPTIONAL — unattended runs: drop the vault password in the gitignored
+# ansible/.vault_pass (chmod 600). Every `just` recipe then skips the
+# interactive prompt, so deploys can be driven end-to-end by tooling.
+printf '%s' 'your-vault-password' > ansible/.vault_pass && chmod 600 ansible/.vault_pass
 ```
 
 **Required vault keys for the base deploy:** `vault_postgres_password`,

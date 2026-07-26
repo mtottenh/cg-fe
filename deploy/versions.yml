@@ -6,7 +6,8 @@
 # its Cargo.toml/package version, so a published tag always names the real
 # artifact version.
 
-api: ""         # mtottenh/cg              — portal-api + portal-scanner debs
-web: ""         # mtottenh/cg-fe           — portal-web deb
-demo_stats: ""  # mtottenh/csgo-demo-stats — portal-demo-stats deb
-steam_bot: ""   # mtottenh/cg-steam-bot    — portal-steam-bot deb (opt-in service)
+api: "v0.2.0"        # mtottenh/cg              — portal-api + portal-scanner debs
+web: "v0.1.0"        # mtottenh/cg-fe           — portal-web deb
+demo_stats: "v0.2.0" # mtottenh/csgo-demo-stats — portal-demo-stats deb
+steam_bot: ""        # mtottenh/cg-steam-bot    — v0.1.0 exists; pin once the
+                     # dedicated Steam bot account + vault_steam_bot_* are set

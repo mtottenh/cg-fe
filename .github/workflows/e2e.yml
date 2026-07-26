@@ -103,6 +103,14 @@ jobs:
             --display-name "E2E Admin" \
             --force
 
+      # The internal (X-API-Key) demo-pipeline routes are key-authenticated;
+      # the admin-pipeline spec drives them through the well-known seeded key
+      # (P-143, e2e/fixtures/internal-api.fixture.ts). This subcommand exists
+      # precisely because this stack seeds over HTTP and never runs `seed
+      # full` — without it those specs 401.
+      - name: Seed the internal API key
+        run: '"$CLI_BIN" seed internal-api-key'
+
       # Playwright's webServer config starts the Vite dev server itself.
       - name: Run E2E tests
         run: cd web && npx playwright test

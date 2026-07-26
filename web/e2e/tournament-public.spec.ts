@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { getAdminToken } from './fixtures/auth.fixture'
+import { getAdminToken, clearAuthState } from './fixtures/auth.fixture'
 import { uniqueId } from './fixtures/test-data'
 import {
   createDraftTournament,
@@ -128,6 +128,19 @@ function tournamentCard(page: Page, name: string) {
 }
 
 test.describe('Tournament Public Flows', () => {
+  // Browse routes are members-only now (Steam-only auth change): every
+  // test runs signed in as a shared throwaway member. Tests needing a
+  // SPECIFIC identity call loginAsUser themselves — it swaps sessions.
+  let browsingUser: { email: string; password: string }
+
+  test.beforeAll(async () => {
+    browsingUser = await registerAsRosterUser()
+  })
+
+  test.beforeEach(async ({ page }) => {
+    await loginAsUser(page, browsingUser)
+  })
+
   test.describe('Browse Tournaments', () => {
     test('should display tournaments list page', async ({ page }) => {
       await page.goto('/tournaments')
@@ -453,25 +466,16 @@ test.describe('Tournament Public Flows', () => {
   })
 
   test.describe('Tournament Registration - Individual', () => {
-    test('should redirect to login when not authenticated and trying to register', async ({ page }) => {
+    test('should redirect to login when not authenticated', async ({ page }) => {
       const adminToken = await getAdminToken()
       const tournament = await createOpenRegistrationTournament(adminToken)
 
-      // Fresh browser context = anonymous visitor.
+      // Anonymous visitor: the ROUTE bounces before any content renders —
+      // tournament pages are members-only (router meta.requiresAuth).
+      await clearAuthState(page)
       await page.goto(`/tournaments/${tournament.slug}`)
-      await expect(page.getByRole('heading', { name: tournament.name })).toBeVisible()
-
-      // The card renders the CTA for anonymous visitors too
-      // (TournamentRegistrationCard.vue:15-24 gates on the tournament, not auth).
-      const registerButton = registrationCard(page).getByRole('button', { name: 'Register Now' })
-      await expect(registerButton).toBeVisible()
-      await registerButton.click()
-
-      // handleRegister() pushes the login route with a redirect back here
-      // (TournamentDetailPage.vue:510-514).
-      await expect(page).toHaveURL(/\/login/)
-      await expect(page).toHaveURL(new RegExp(`redirect=.*${tournament.slug}`))
-      await expect(page.getByRole('button', { name: 'Login' })).toBeVisible()
+      await expect(page).toHaveURL(new RegExp(`/login\\?redirect=.*${tournament.slug}`))
+      await expect(page.getByTestId('steam-login-button')).toBeVisible()
 
       // ...and nothing was registered on the way out.
       expect(await listRegistrations(adminToken, tournament.id)).toHaveLength(0)

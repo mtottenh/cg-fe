@@ -35,51 +35,73 @@ export async function clearAuthState(page: Page): Promise<void> {
   })
 }
 
+const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
+
 /**
- * Login a user via the login page.
+ * Log a user in by exchanging credentials at the API and injecting the
+ * resulting tokens exactly as the app stores them (localStorage `token` +
+ * `player_id`). The login PAGE is Steam-only — there is no password form
+ * to drive; password credentials exist only on API-created test users.
  */
 export async function login(page: Page, credentials: AuthCredentials): Promise<void> {
-  // Ensure we're logged out before accessing login page
   await clearAuthState(page)
-  await page.goto('/login')
-
-  // Fill login form - use input role to avoid matching icon buttons
-  await page.getByRole('textbox', { name: 'Username or Email' }).fill(credentials.username_or_email)
-  // Password field needs locator to avoid matching the eye icon
-  await page.locator('input[type="password"]').first().fill(credentials.password)
-
-  // Submit form
-  await page.getByRole('button', { name: 'Login' }).click()
-
-  // Wait for navigation away from login page
-  await expect(page).not.toHaveURL('/login')
+  const resp = await fetch(`${API_URL}/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(credentials),
+  })
+  if (!resp.ok) {
+    throw new Error(
+      `API login failed for ${credentials.username_or_email}: ${resp.status} ${await resp.text()}`,
+    )
+  }
+  const { data } = (await resp.json()) as {
+    data: { access_token: string; player_id?: string | null }
+  }
+  await page.evaluate(
+    ([token, playerId]) => {
+      localStorage.setItem('token', token!)
+      if (playerId) localStorage.setItem('player_id', playerId)
+    },
+    [data.access_token, data.player_id ?? ''],
+  )
+  // Fresh load so the auth store initializes from storage.
+  await page.goto('/')
+  await expect(page).not.toHaveURL(/\/login/)
 }
 
 /**
- * Register a new user via the register page.
- * Note: After registration, the user is logged in. Call clearAuthState() if you need
- * to access login/register pages afterward.
+ * Create a user account (API) and sign the page in as them.
  */
 export async function register(page: Page, data: RegisterData): Promise<void> {
-  // Ensure we're logged out before accessing register page
-  await clearAuthState(page)
-  await page.goto('/register')
-
-  // Fill registration form - use specific selectors to avoid matching icons
-  await page.getByRole('textbox', { name: 'Username' }).fill(data.username)
-  await page.getByRole('textbox', { name: 'Email' }).fill(data.email)
-  // Password field needs locator to avoid matching the eye icon
-  await page.locator('input[type="password"]').first().fill(data.password)
-
-  if (data.display_name) {
-    await page.getByRole('textbox', { name: 'Display Name' }).fill(data.display_name)
+  // Email registration has no UI anymore (Steam-only sign-in) — create the
+  // account through the API endpoint the tooling uses, then inject the
+  // session like login() does.
+  const resp = await fetch(`${API_URL}/v1/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: data.username,
+      email: data.email,
+      password: data.password,
+      display_name: data.display_name ?? data.username,
+    }),
+  })
+  if (!resp.ok) {
+    throw new Error(`API register failed for ${data.username}: ${resp.status} ${await resp.text()}`)
   }
-
-  // Submit form
-  await page.getByRole('button', { name: 'Create Account' }).click()
-
-  // Wait for success message
-  await expect(page.getByText('Registration successful')).toBeVisible()
+  const { data: body } = (await resp.json()) as {
+    data: { access_token: string; player: { id: string } }
+  }
+  await clearAuthState(page)
+  await page.evaluate(
+    ([token, playerId]) => {
+      localStorage.setItem('token', token!)
+      if (playerId) localStorage.setItem('player_id', playerId)
+    },
+    [body.access_token, body.player.id],
+  )
+  await page.goto('/')
 }
 
 /**

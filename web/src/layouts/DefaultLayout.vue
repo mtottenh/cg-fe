@@ -1,14 +1,16 @@
 <template>
   <v-app>
-    <AppHeader title="Gaming Portal">
+    <AppHeader title="CS2 10 Mans">
       <template #append>
-        <v-btn variant="text" to="/tournaments">Tournaments</v-btn>
-        <v-btn variant="text" to="/leagues">Leagues</v-btn>
-        <v-btn variant="text" to="/players">Players</v-btn>
-        <v-divider vertical class="mx-2" />
+        <!-- Browse routes require auth — don't dangle links guests can't use. -->
+        <template v-if="isLoggedIn">
+          <v-btn variant="text" to="/tournaments">Tournaments</v-btn>
+          <v-btn variant="text" to="/leagues">Leagues</v-btn>
+          <v-btn variant="text" to="/players">Players</v-btn>
+          <v-divider vertical class="mx-2" />
+        </template>
         <template v-if="!isLoggedIn">
-          <v-btn variant="text" to="/login">Login</v-btn>
-          <v-btn variant="text" to="/register">Register</v-btn>
+          <v-btn variant="text" to="/login" prepend-icon="mdi-steam">Sign in</v-btn>
         </template>
         <template v-else>
           <v-btn v-if="authStore.isAdmin" variant="text" to="/admin" class="mr-2">
@@ -39,7 +41,7 @@
     <v-footer app color="surface" border="t">
       <v-container>
         <div class="text-center text-caption text-medium-emphasis">
-          Gaming Portal &copy; {{ new Date().getFullYear() }}
+          CS2 10 Mans &copy; {{ new Date().getFullYear() }}
         </div>
       </v-container>
     </v-footer>

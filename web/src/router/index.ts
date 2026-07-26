@@ -12,17 +12,12 @@ const router = createRouter({
       meta: { layout: 'dynamic' },
     },
 
-    // Guest-only routes (login, register) - use DefaultLayout
+    // Guest-only route — Steam is the ONLY sign-in method (no email
+    // registration; accounts are Steam identities).
     {
       path: '/login',
       name: 'login',
       component: () => import('@/pages/LoginPage.vue'),
-      meta: { guest: true, layout: 'default' },
-    },
-    {
-      path: '/register',
-      name: 'register',
-      component: () => import('@/pages/RegisterPage.vue'),
       meta: { guest: true, layout: 'default' },
     },
 
@@ -36,50 +31,51 @@ const router = createRouter({
       meta: { layout: 'default' },
     },
 
-    // Public browse routes - use dynamic layout
+    // Browse routes — members only: the community decided tournaments,
+    // leagues, and player profiles are not for logged-out visitors.
     {
       path: '/leagues',
       name: 'leagues',
       component: () => import('@/pages/LeaguesPage.vue'),
-      meta: { layout: 'dynamic' },
+      meta: { requiresAuth: true, layout: 'dynamic' },
     },
     {
       path: '/leagues/:id',
       name: 'league-detail',
       component: () => import('@/pages/LeagueDetailPage.vue'),
-      meta: { layout: 'dynamic' },
+      meta: { requiresAuth: true, layout: 'dynamic' },
     },
     {
       path: '/players',
       name: 'players',
       component: () => import('@/pages/PlayersPage.vue'),
-      meta: { layout: 'dynamic' },
+      meta: { requiresAuth: true, layout: 'dynamic' },
     },
     {
       path: '/players/:id',
       name: 'player-detail',
       component: () => import('@/pages/PlayerDetailPage.vue'),
-      meta: { layout: 'dynamic' },
+      meta: { requiresAuth: true, layout: 'dynamic' },
     },
 
-    // Tournament routes - public
+    // Tournament routes — members only (see above)
     {
       path: '/tournaments',
       name: 'tournaments',
       component: () => import('@/pages/TournamentsPage.vue'),
-      meta: { layout: 'dynamic' },
+      meta: { requiresAuth: true, layout: 'dynamic' },
     },
     {
       path: '/tournaments/:slug',
       name: 'tournament-detail',
       component: () => import('@/pages/TournamentDetailPage.vue'),
-      meta: { layout: 'dynamic' },
+      meta: { requiresAuth: true, layout: 'dynamic' },
     },
     {
       path: '/tournaments/:tournamentSlug/matches/:matchId',
       name: 'match-detail',
       component: () => import('@/pages/MatchDetailPage.vue'),
-      meta: { layout: 'dynamic' },
+      meta: { requiresAuth: true, layout: 'dynamic' },
     },
 
     // Authenticated user routes - use PortalLayout

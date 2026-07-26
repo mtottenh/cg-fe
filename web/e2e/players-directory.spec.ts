@@ -2,11 +2,10 @@ import { test, expect } from '@playwright/test'
 import { uniqueEmail, uniqueId, uniqueUsername } from './fixtures/test-data'
 
 /**
- * `/players` — the public player directory. COVERAGE-PLAN §8 records it as a
- * route no test has ever loaded.
- *
- * It has no mutations, so the behaviour worth pinning is the search → result →
- * navigate path (and that it is genuinely public, i.e. usable signed-out).
+ * `/players` — the player directory. Members-only since the Steam-only auth
+ * change (the route carries requiresAuth), so every test signs in as a
+ * throwaway member first; the signed-out case is covered by auth.spec.ts's
+ * route-gating tests.
  */
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
@@ -54,6 +53,32 @@ async function registerDirectoryPlayer(lookingForTeam = true): Promise<Directory
 }
 
 test.describe('Public players directory', () => {
+  // Members-only route: sign in before every test (Steam-only auth change).
+  test.beforeEach(async ({ page }) => {
+    const creds = { username_or_email: '', password: 'TestPassword123!' }
+    const username = `dirviewer_${Date.now()}_${Math.floor(Math.random() * 1e6)}`
+    const resp = await fetch(`${API_URL}/v1/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username,
+        email: `${username}@example.com`,
+        password: creds.password,
+        display_name: username,
+      }),
+    })
+    if (!resp.ok) throw new Error(`viewer register failed: ${resp.status}`)
+    const { data } = (await resp.json()) as { data: { access_token: string; player: { id: string } } }
+    await page.goto('/')
+    await page.evaluate(
+      ([token, playerId]) => {
+        localStorage.setItem('token', token!)
+        if (playerId) localStorage.setItem('player_id', playerId)
+      },
+      [data.access_token, data.player.id],
+    )
+  })
+
   test('finds a player by name and links through to their profile', async ({ page }) => {
     const player = await registerDirectoryPlayer()
 

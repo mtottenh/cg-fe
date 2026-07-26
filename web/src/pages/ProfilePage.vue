@@ -155,12 +155,11 @@
       v-else-if="!loading"
       icon="mdi-account-off"
       title="Not Logged In"
-      subtitle="Sign in to view your profile, or create an account to get started."
+      subtitle="Sign in through Steam to view your profile."
     >
       <template #action>
         <div class="mt-4">
-          <v-btn color="primary" class="mr-2" to="/login">Sign In</v-btn>
-          <v-btn variant="outlined" to="/register">Register</v-btn>
+          <v-btn color="primary" prepend-icon="mdi-steam" to="/login">Sign in</v-btn>
         </div>
       </template>
     </EmptyState>

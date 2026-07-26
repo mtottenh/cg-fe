@@ -1,6 +1,6 @@
 <template>
   <v-app>
-    <AppHeader title="Gaming Portal" show-nav @toggle-nav="drawer = !drawer">
+    <AppHeader title="CS2 10 Mans" show-nav @toggle-nav="drawer = !drawer">
       <template #append>
         <CaptainActionsBell />
         <v-btn aria-label="Admin Panel" v-if="authStore.isAdmin" variant="text" to="/admin" icon>

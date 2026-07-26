@@ -57,16 +57,27 @@
           </v-btn>
         </v-card-title>
         <v-card-text>
-          <PugPlayerRow
-            v-for="player in benchPlayers"
-            :key="player.player_id"
-            :player="player"
-            :is-creator="isCreator"
-            :editable="editable"
-            @kick="emit('kick', player.player_id)"
-            @toggle-captain="emit('toggle-captain', player.player_id, !player.is_captain)"
-            @move="(team) => emit('move', player.player_id, team)"
-          />
+          <div v-for="player in benchPlayers" :key="player.player_id" class="d-flex align-center">
+            <PugPlayerRow
+              class="flex-grow-1"
+              :player="player"
+              :is-creator="isCreator"
+              :editable="editable"
+              @kick="emit('kick', player.player_id)"
+              @toggle-captain="emit('toggle-captain', player.player_id, !player.is_captain)"
+              @move="(team) => emit('move', player.player_id, team)"
+            />
+            <v-btn
+              v-if="editable && canDraft"
+              size="x-small"
+              variant="tonal"
+              color="primary"
+              :data-testid="`draft-${player.player_id}`"
+              @click="emit('draft', player.player_id)"
+            >
+              Draft
+            </v-btn>
+          </div>
           <div
             v-if="benchPlayers.length === 0"
             class="text-body-2 text-medium-emphasis text-center py-2"
@@ -95,11 +106,26 @@ const props = defineProps<{
   editable: boolean
 }>()
 
+/**
+ * Captains draft: the team with fewer players picks (tie: team 1). The
+ * button shows for the picking team's captain and the creator; the backend
+ * enforces the same rule.
+ */
+const canDraft = computed(() => {
+  if (props.isCreator) return true
+  const count = (team: number) => props.players.filter((p) => p.team === team).length
+  const picking = count(1) <= count(2) ? 1 : 2
+  return props.players.some(
+    (p) => p.player_id === props.myPlayerId && p.is_captain && p.team === picking
+  )
+})
+
 const emit = defineEmits<{
   'join-team': [team: 1 | 2 | null]
   kick: [playerId: string]
   'toggle-captain': [playerId: string, isCaptain: boolean]
   move: [playerId: string, team: 1 | 2 | null]
+  draft: [playerId: string]
 }>()
 
 const myTeam = computed<number | null>(() => {

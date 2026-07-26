@@ -46,6 +46,7 @@ export const usePugsStore = defineStore('pugs', () => {
   const kickState = createActionState()
   const teamState = createActionState()
   const captainState = createActionState()
+  const draftState = createActionState()
   const shuffleState = createActionState()
   const swapState = createActionState()
   const rotateCodeState = createActionState()
@@ -194,6 +195,16 @@ export const usePugsStore = defineStore('pugs', () => {
     }, 'Failed to update captain')
   }
 
+  async function draftPick(pugId: string, playerId: string): Promise<void> {
+    return withActionState(draftState, async () => {
+      await unwrapApi(api.POST('/v1/pugs/{pug_id}/draft', {
+        params: { path: { pug_id: pugId } },
+        body: { player_id: playerId },
+      }))
+      await fetchPug(pugId)
+    }, 'Failed to draft the player')
+  }
+
   async function shuffleTeams(pugId: string): Promise<void> {
     return withActionState(shuffleState, async () => {
       await unwrapApi(api.POST('/v1/pugs/{pug_id}/shuffle', {
@@ -296,6 +307,7 @@ export const usePugsStore = defineStore('pugs', () => {
     kickState,
     teamState,
     captainState,
+    draftState,
     shuffleState,
     swapState,
     rotateCodeState,
@@ -319,6 +331,7 @@ export const usePugsStore = defineStore('pugs', () => {
     kickPlayer,
     setTeam,
     setCaptain,
+    draftPick,
     shuffleTeams,
     swapTeams,
     nominateMap,

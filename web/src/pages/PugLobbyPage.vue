@@ -111,6 +111,7 @@
           @kick="(playerId) => pugsStore.kickPlayer(pugIdRef, playerId)"
           @toggle-captain="(playerId, isCaptain) => pugsStore.setCaptain(pugIdRef, playerId, isCaptain)"
           @move="(playerId, team) => pugsStore.setTeam(pugIdRef, team, playerId)"
+          @draft="(playerId) => pugsStore.draftPick(pugIdRef, playerId)"
         />
 
         <!-- Wheel nominations -->

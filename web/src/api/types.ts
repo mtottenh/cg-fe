@@ -3582,6 +3582,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/pugs/{pug_id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Captains draft: assign the next bench player to the picking team. */
+        post: operations["draft_pick"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/pugs/{pug_id}/kick": {
         parameters: {
             query?: never;
@@ -6775,6 +6792,17 @@ export interface components {
                 reason: string;
                 /** @description Registration ID that was disqualified. */
                 registration_id: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_DraftPickResponse: {
+            /** @description Which team a draft pick landed on. */
+            data: {
+                player_id: string;
+                /** Format: int32 */
+                team: number;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -11568,6 +11596,19 @@ export interface components {
         DisqualifyRequest: {
             /** @description Reason for disqualification. */
             reason: string;
+        };
+        /**
+         * @description Draft the next bench player (captains draft). The team with fewer
+         *     players picks; only that team's captain (or the creator) may draft.
+         */
+        DraftPickRequest: {
+            player_id: string;
+        };
+        /** @description Which team a draft pick landed on. */
+        DraftPickResponse: {
+            player_id: string;
+            /** Format: int32 */
+            team: number;
         };
         /**
          * @description Typed input for eligibility restrictions.
@@ -27761,6 +27802,42 @@ export interface operations {
                 };
             };
             /** @description Not the creator */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    draft_pick: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PUG ID */
+                pug_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftPickRequest"];
+            };
+        };
+        responses: {
+            /** @description Drafted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_DraftPickResponse"];
+                };
+            };
+            /** @description Not the picking captain */
             403: {
                 headers: {
                     [name: string]: unknown;

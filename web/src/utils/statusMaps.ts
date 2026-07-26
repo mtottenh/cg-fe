@@ -468,3 +468,26 @@ export const stageFormatMap: StatusMap<S['StageFormat']> = {
   swiss: { color: 'info', label: 'Swiss' },
   group_stage: { color: 'secondary', label: 'Group Stage' },
 }
+
+// P-178: this lived as three identical inline copies (LeaguesPage,
+// LeagueDetailPage, LeagueSearchAutocomplete) because this file was owned by
+// a concurrent lane when they were written — each copy's own comment said it
+// belonged here. Consolidating made it countable, which tipped the unkeyed
+// ratchet — so `LeagueResponse.status` got the P-112 treatment (typed as
+// `LeagueStatus`) and the map is compile-locked.
+export const leagueStatusMap: StatusMap<S['LeagueStatus']> = {
+  active: { color: 'success', label: 'Active' },
+  archived: { color: 'grey', label: 'Archived' },
+  suspended: { color: 'error', label: 'Suspended' },
+}
+
+// P-175: `EvidenceDisplay` rendered `evidence_type` raw ("server_log").
+// The DTO field got the P-112 treatment (typed as `EvidenceType`), so the
+// map is compile-locked.
+export const evidenceTypeMap: StatusMap<S['EvidenceType']> = {
+  demo: { color: 'primary', label: 'Demo' },
+  screenshot: { color: 'info', label: 'Screenshot' },
+  video: { color: 'info', label: 'Video' },
+  link: { color: 'secondary', label: 'Link' },
+  server_log: { color: 'secondary', label: 'Server Log' },
+}

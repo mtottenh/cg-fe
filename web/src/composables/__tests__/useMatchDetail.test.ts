@@ -56,6 +56,9 @@ type MatchParticipants = NonNullable<
  * The `GET .../matches/{id}/participants` payload the page now resolves
  * identity from. `my_registration_id` is decided server-side from the match
  * row, which is what removed the 100-participant ceiling (P-53/P-56).
+ * `my_registration_can_check_in` is likewise server-computed (P-193): check-in
+ * is authorized narrower than participation (captain/owner/delegate/player),
+ * and the panel keys off this field rather than a client copy of the rule.
  */
 function makeParticipants(overrides: Partial<MatchParticipants> = {}): MatchParticipants {
   return {
@@ -63,6 +66,7 @@ function makeParticipants(overrides: Partial<MatchParticipants> = {}): MatchPart
     participant1: { id: 'reg-a', player_id: 'player-a' },
     participant2: { id: 'reg-b', player_id: 'player-b' },
     my_registration_id: 'reg-a',
+    my_registration_can_check_in: true,
     ...overrides,
   } as MatchParticipants
 }
@@ -152,6 +156,18 @@ describe('useMatchDetail panel-visibility computeds', () => {
     // The server reports no registration of the caller's in this match.
     tournamentsStore.matchParticipants = makeParticipants({ my_registration_id: undefined })
     expect(composable.userRegistrationId.value).toBeNull()
+    expect(composable.showCheckInPanel.value).toBe(false)
+  })
+
+  it('showCheckInPanel is false for a participant the server says cannot check in (P-193)', () => {
+    const { composable, tournamentsStore } = setup({ status: 'checking_in' })
+    // A plain roster member: speaks for the registration (participant, may
+    // submit results) but is not captain/owner/delegate, so check-in would
+    // 403. The panel must not be offered.
+    tournamentsStore.matchParticipants = makeParticipants({
+      my_registration_can_check_in: false,
+    })
+    expect(composable.userRegistrationId.value).toBe('reg-a')
     expect(composable.showCheckInPanel.value).toBe(false)
   })
 

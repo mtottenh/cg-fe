@@ -2,13 +2,14 @@ import { ref } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState } from '@/stores/helpers'
-import { replaceById, upsertById } from '@/utils/collections'
+import { replaceById, updateById, upsertById } from '@/utils/collections'
 
 type TournamentRegistrationResponse = components['schemas']['TournamentRegistrationResponse']
 type RegisterTeamRequest = components['schemas']['RegisterTeamRequest']
 type RegisterPlayerRequest = components['schemas']['RegisterPlayerRequest']
 type PaginationMeta = components['schemas']['PaginationMeta']
 type CheckInStatusResponse = components['schemas']['CheckInStatusResponse']
+type DisqualificationResponse = components['schemas']['DisqualificationResponse']
 type TournamentRegistrationCountsResponse =
   components['schemas']['TournamentRegistrationCountsResponse']
 
@@ -239,17 +240,25 @@ export function createRegistrationsSlice() {
     }, 'Failed to reject registration')
   }
 
+  /**
+   * P-61: this used to call the status-flip variant
+   * (`/v1/tournaments/.../disqualify`), which marked the registration and
+   * walked away — every remaining match the participant was seated in sat
+   * mid-bracket forever. The admin endpoint forfeits those matches as part
+   * of the disqualification, and its response says how many, so the UI can
+   * report the cascade instead of implying nothing else happened.
+   */
   async function disqualifyRegistration(
     tournamentId: string,
     registrationId: string,
     reason: string
-  ): Promise<TournamentRegistrationResponse> {
+  ): Promise<DisqualificationResponse> {
     return withActionState(disqualifyRegistrationState, async () => {
-      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/registrations/{registration_id}/disqualify', {
+      const result = await unwrapApi(api.POST('/v1/admin/tournaments/{tournament_id}/registrations/{registration_id}/disqualify', {
         params: { path: { tournament_id: tournamentId, registration_id: registrationId } },
         body: { reason },
       }))
-      replaceById(registrations.value, result.data)
+      updateById(registrations.value, registrationId, { status: 'disqualified' })
       await refreshRegistrationCounts(tournamentId)
       return result.data
     }, 'Failed to disqualify registration')

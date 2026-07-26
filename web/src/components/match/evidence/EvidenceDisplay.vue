@@ -162,7 +162,14 @@
             <tr v-for="ev in evidence" :key="ev.id" :data-testid="`evidence-row-${ev.id}`">
               <td>{{ ev.name }}</td>
               <td>
-                <v-chip size="x-small" variant="tonal">{{ ev.evidence_type }}</v-chip>
+                <!-- P-175: rendered the wire value ("server_log") raw. -->
+                <v-chip
+                  size="x-small"
+                  :color="getStatusColor(evidenceTypeMap, ev.evidence_type)"
+                  variant="tonal"
+                >
+                  {{ getStatusLabel(evidenceTypeMap, ev.evidence_type) }}
+                </v-chip>
               </td>
               <td v-if="detailed">
                 <v-chip size="x-small" :color="evidenceStatusColor(ev.status)" variant="tonal">
@@ -218,7 +225,7 @@ import { useEvidenceStore } from '@/stores/evidence'
 import { useMatchResultsStore } from '@/stores/matchResults'
 import type { components } from '@/api/types'
 import { formatDateTime } from '@/utils/formatters'
-import { evidenceStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import { evidenceStatusMap, evidenceTypeMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import { validationDisplay, validationErrorsOf } from './validationState'
 
 const props = withDefaults(

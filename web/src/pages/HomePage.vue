@@ -324,7 +324,6 @@ import ErrorAlert from '@/components/ErrorAlert.vue'
 import { matchStatusMap, teamRoleMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 type TournamentMatchResponse = components['schemas']['TournamentMatchResponse']
-type TournamentRegistrationResponse = components['schemas']['TournamentRegistrationResponse']
 
 interface UpcomingMatch {
   match: TournamentMatchResponse
@@ -392,63 +391,49 @@ onMounted(async () => {
   }
 })
 
+/**
+ * P-190: this used to scan 5 in-progress tournaments' registration lists at
+ * `per_page: 100` and match only `r.player_id` — so a TEAM participant (whose
+ * registration has no player_id) never saw any upcoming match, and past
+ * registration row 100 (or live tournament #6) neither did anyone else. The
+ * server already answers the actual question — `/v1/users/me/matches` joins
+ * both individual registrations AND team membership — so ask it, and resolve
+ * tournament names for just the tournaments that actually appear.
+ */
 async function fetchUpcomingMatches() {
   if (!authStore.playerId) return
 
   loadingMatches.value = true
   try {
-    // Get live tournaments
-    const tournamentsResult = await unwrapApi(api.GET('/v1/tournaments', {
-      params: { query: { status: 'in_progress', per_page: 5 } },
+    const matchesResult = await unwrapApi(api.GET('/v1/users/me/matches', {
+      params: { query: { limit: 50 } },
     }))
-    const liveTournaments = tournamentsResult.data
+    const active = matchesResult.data.filter(m => ACTIVE_MATCH_STATUSES.includes(m.status))
+    if (active.length === 0) {
+      upcomingMatches.value = []
+      return
+    }
 
-    if (liveTournaments.length === 0) return
-
-    // For each tournament, fetch registrations and matches in parallel
-    const results = await Promise.all(
-      liveTournaments.map(async (tournament) => {
-        try {
-          const [regsResult, matchesResult] = await Promise.all([
-            unwrapApi(api.GET('/v1/tournaments/{tournament_id}/registrations', {
-              params: {
-                path: { tournament_id: tournament.id },
-                query: { per_page: 100 },
-              },
-            })),
-            unwrapApi(api.GET('/v1/tournaments/{tournament_id}/matches', {
-              params: { path: { tournament_id: tournament.id } },
-            })),
-          ])
-
-          const regs: TournamentRegistrationResponse[] = regsResult.data
-          const matches: TournamentMatchResponse[] = matchesResult.data
-
-          // Find the player's registration in this tournament
-          const myReg = regs.find(r => r.player_id === authStore.playerId)
-          if (!myReg) return []
-
-          // Filter matches where the player is a participant with an active status
-          return matches
-            .filter(
-              m =>
-                ACTIVE_MATCH_STATUSES.includes(m.status) &&
-                (m.participant1_registration_id === myReg.id ||
-                  m.participant2_registration_id === myReg.id)
-            )
-            .map(m => ({
-              match: m,
-              tournamentName: tournament.name,
-              tournamentSlug: tournament.slug,
-            }))
-        } catch (e) {
-          console.error('Failed to fetch matches for tournament:', e)
-          return []
-        }
-      })
+    const tournamentIds = [...new Set(active.map(m => m.tournament_id))]
+    const tournaments = await Promise.all(
+      tournamentIds.map(id =>
+        unwrapApi(api.GET('/v1/tournaments/{tournament_id}', {
+          params: { path: { tournament_id: id } },
+        }))
+          .then(r => r.data)
+          .catch(() => null)
+      )
     )
+    const byId = new Map(tournaments.filter(t => t !== null).map(t => [t.id, t]))
 
-    upcomingMatches.value = results.flat()
+    upcomingMatches.value = active.map(m => {
+      const tournament = byId.get(m.tournament_id)
+      return {
+        match: m,
+        tournamentName: tournament?.name ?? 'Tournament',
+        tournamentSlug: tournament?.slug ?? '',
+      }
+    })
   } catch (e) {
     console.error('Failed to fetch upcoming matches:', e)
   } finally {

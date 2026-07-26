@@ -55,6 +55,7 @@ export function useMatchDetail() {
   const {
     myRegistration,
     userRegistrationId,
+    canCheckIn,
     opponentPlayerId,
     opponentRegistrationId: _opponentRegistrationId,
   } = useMatchContext(match)
@@ -90,8 +91,13 @@ export function useMatchDetail() {
     )
   })
 
+  // P-193: gated on the server-computed check-in authorization, not mere
+  // participation — a plain roster member speaks for the registration but
+  // cannot check in (captain/owner/delegate/player only), and showing the
+  // panel to them produced a silent 403. Both conditions: the panel needs
+  // the registration id to POST with, and the authorization to offer it.
   const showCheckInPanel = computed(() => {
-    if (!match.value || !userRegistrationId.value) return false
+    if (!match.value || !userRegistrationId.value || !canCheckIn.value) return false
     return ['scheduled', 'checking_in'].includes(match.value.status)
   })
 
@@ -255,8 +261,15 @@ export function useMatchDetail() {
    */
   async function pollMatch() {
     // Keep the server panel fresh on the polling path too (§7.3 / M7).
+    // Fire-and-forget READ: `void` alone discards the promise but not its
+    // rejection, which then fails whole unit runs as an unhandled rejection
+    // (the P-107 shape). Failure already lands in the store's action state,
+    // so swallowing the rejection here loses nothing — this is not the
+    // P-105 pattern (a swallowed MUTATION reported as success).
     if (match.value?.id) {
-      void useMatchServerStore().fetchMatchServer(match.value.id)
+      useMatchServerStore()
+        .fetchMatchServer(match.value.id)
+        .catch(() => {})
     }
     const tournament = tournamentsStore.currentTournament
     if (!tournament || !match.value) return

@@ -514,12 +514,19 @@ async function handleReasonConfirm(reason: string) {
       )
       snackbar.show(`${participantName} rejected`, 'success')
     } else {
-      await tournamentsStore.disqualifyRegistration(
+      const dq = await tournamentsStore.disqualifyRegistration(
         tournament.value.id,
         selectedRegistration.value.id,
         reason
       )
-      snackbar.show(`${participantName} disqualified`, 'success')
+      // P-61: the disqualification forfeits the participant's remaining
+      // matches — say so, instead of implying only the status changed.
+      snackbar.show(
+        dq.matches_forfeited > 0
+          ? `${participantName} disqualified — ${dq.matches_forfeited} remaining ${dq.matches_forfeited === 1 ? 'match' : 'matches'} forfeited`
+          : `${participantName} disqualified`,
+        'success'
+      )
     }
     showReasonModal.value = false
   } catch {

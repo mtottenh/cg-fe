@@ -373,7 +373,7 @@
                 <tbody>
                   <tr v-for="(h, i) in ratingHistory" :key="`${h.recorded_at}-${i}`">
                     <td class="font-weight-medium">{{ h.rating }}</td>
-                    <td class="text-caption">{{ h.source }}</td>
+                    <td class="text-caption">{{ formatRatingSource(h.source) }}</td>
                     <td class="text-caption">{{ formatDateTime(h.recorded_at) }}</td>
                   </tr>
                 </tbody>
@@ -416,6 +416,20 @@ import ErrorAlert from '@/components/ErrorAlert.vue'
 import type { components } from '@/api/types'
 
 type PlayerSummary = components['schemas']['PlayerSearchResponse']
+
+/**
+ * P-176: rating-history sources rendered raw ("demo_rank_update").
+ * `player_rating_history.source` is genuinely unconstrained (VARCHAR, and the
+ * admin override form accepts free text), so this humanizes machine tokens —
+ * snake_case becomes spaced words — and passes anything else through
+ * unchanged rather than pretending to know a vocabulary the column doesn't
+ * have.
+ */
+function formatRatingSource(source: string): string {
+  return /^[a-z0-9_]+$/.test(source)
+    ? source.replace(/_/g, ' ').replace(/^\w/, (c: string) => c.toUpperCase())
+    : source
+}
 
 const demosStore = useDemosStore()
 const playersStore = usePlayersStore()

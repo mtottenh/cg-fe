@@ -62,8 +62,11 @@ export function createLifecycleSlice(refreshers: {
     per_page?: number
   }): Promise<TournamentSummaryResponse[]> {
     return withActionState(fetchTournamentsState, async () => {
+      // P-191: a caller that omits per_page must get a DELIBERATE page size
+      // at the store boundary, not the API's silent default of 20 — that
+      // default is how the P-28 search and P-43 queue truncations shipped.
       const result = await unwrapApi(api.GET('/v1/tournaments', {
-        params: { query: filters },
+        params: { query: { ...filters, per_page: filters?.per_page ?? 20 } },
       }))
       tournaments.value = result.data
       pagination.value = result.pagination

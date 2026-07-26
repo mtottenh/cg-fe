@@ -115,28 +115,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { useLeaguesStore } from '@/stores/leagues'
 import { useGamesStore } from '@/stores/games'
 import { useAuthStore } from '@/stores/auth'
-import { leagueAccessTypeMap, getStatusColor, getStatusLabel, type StatusMap } from '@/utils/statusMaps'
+import { leagueAccessTypeMap, leagueStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import EmptyState from '@/components/EmptyState.vue'
 
-/**
- * P-112 baseline entry: the card chip printed the raw `league.status` at every
- * visitor of /leagues, so an archived league read "archived" and a suspended
- * one "suspended", both greyed identically by the colour ternary.
- *
- * Keys mirror `LeagueStatus`
- * (api/crates/portal-domain/src/entities/league.rs:80) /
- * `leagues_check_status` (api/migrations/0020_create_leagues.sql:19).
- * Duplicated locally (also in `LeagueDetailPage` and
- * `LeagueSearchAutocomplete`) because `src/utils/statusMaps.ts` was owned by a
- * concurrent lane — it belongs there as `leagueStatusMap`. Not compile-lockable:
- * `LeagueResponse.status` is a bare `String` on the wire (P-112).
- */
-const leagueStatusMap: StatusMap = {
-  active: { color: 'success', label: 'Active' },
-  archived: { color: 'grey', label: 'Archived' },
-  suspended: { color: 'error', label: 'Suspended' },
-}
+// P-178: the local copy moved to `statusMaps.ts` once the lane contention on
+// that file ended — see `leagueStatusMap` there.
 
 const route = useRoute()
 const router = useRouter()

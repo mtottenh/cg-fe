@@ -52,33 +52,12 @@ import SearchAutocomplete from '@/components/SearchAutocomplete.vue'
 import { api } from '@/api'
 import { unwrapApi } from '@/stores/helpers'
 import type { components } from '@/api/types'
-import { getStatusColor, getStatusLabel, type StatusMap } from '@/utils/statusMaps'
+import { getStatusColor, getStatusLabel, leagueStatusMap } from '@/utils/statusMaps'
 
 type LeagueResponse = components['schemas']['LeagueResponse']
 
-/**
- * P-112 baseline entry: this chip printed the raw `league.status`, so an
- * archived league read as the literal "archived" in the lowest-weight styling
- * and a suspended one as "suspended" — with the colour ternary lumping both
- * into an undifferentiated grey.
- *
- * Keys mirror `LeagueStatus`
- * (api/crates/portal-domain/src/entities/league.rs:80) and the
- * `leagues_check_status` CHECK (api/migrations/0020_create_leagues.sql:19):
- * active / archived / suspended.
- *
- * Local rather than in `src/utils/statusMaps.ts` only because that file was
- * owned by a concurrent lane — it belongs there as `leagueStatusMap`, shared
- * with `LeaguesPage` and `LeagueDetailPage` which carry the same copy. Not
- * compile-lockable: `LeagueResponse.status` is a bare `String` on the wire, so
- * no union is generated (P-112).
- */
-const leagueStatusMap: StatusMap = {
-  active: { color: 'success', label: 'Active' },
-  archived: { color: 'grey', label: 'Archived' },
-  suspended: { color: 'error', label: 'Suspended' },
-}
-
+// P-178: the local map copy moved to `statusMaps.ts` once the lane contention
+// on that file ended — see `leagueStatusMap` there for provenance.
 const statusColor = (status: string) => getStatusColor(leagueStatusMap, status)
 const statusLabel = (status: string) => getStatusLabel(leagueStatusMap, status)
 

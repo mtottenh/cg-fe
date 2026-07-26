@@ -77,8 +77,8 @@
                       size="small"
                       variant="text"
                       v-bind="activatorProps"
-                      :disabled="item.membership_type === 'owner'"
-                      title="Change Role"
+                      :disabled="isLastAdmin(item)"
+                      :title="isLastAdmin(item) ? 'Cannot demote the last admin' : 'Change Role'"
                     >
                       <v-icon>mdi-account-cog</v-icon>
                     </v-btn>
@@ -101,10 +101,10 @@
                   size="small"
                   variant="text"
                   color="error"
-                  :disabled="item.membership_type === 'owner'"
+                  :disabled="isLastAdmin(item)"
                   :loading="removingMemberId === item.user_id"
                   @click="removeMember(item)"
-                  title="Remove Member"
+                  :title="isLastAdmin(item) ? 'Cannot remove the last admin' : 'Remove Member'"
                 >
                   <v-icon>mdi-account-remove</v-icon>
                 </v-btn>
@@ -367,6 +367,18 @@ const cancellingInvitationId = ref<string | null>(null)
 const inviteModalOpen = ref(false)
 const processingApplicationId = ref<string | null>(null)
 const approving = ref(false)
+
+/**
+ * P-177: both action guards used to test `membership_type === 'owner'` — a
+ * value `LeagueMembershipType` does not contain (admin/moderator/member), so
+ * they NEVER fired and every member was actionable. The rule the backend
+ * actually enforces is last-admin protection ("cannot remove/demote the last
+ * admin"), so that is what the UI mirrors now: acting on an admin is blocked
+ * exactly when they are the only one. The API remains the enforcer.
+ */
+const isLastAdmin = (member: { membership_type: string }) =>
+  member.membership_type === 'admin' &&
+  members.value.filter(m => m.membership_type === 'admin').length <= 1
 
 // Nested-state loading flags: keep computed() because we only want the inner
 // boolean, and `storeToRefs(leaguesStore).fetchMembersState.value.loading` would

@@ -55,6 +55,21 @@ export function useMatchContext(match: Ref<TournamentMatchResponse | null>) {
 
   const isParticipant = computed(() => !!userRegistrationId.value)
 
+  /**
+   * Whether the current user may CHECK IN for their registration (P-193).
+   *
+   * Check-in is authorized narrower than `speaks_for` — captain, team owner,
+   * active delegate, or the registered player — because checking in can
+   * auto-advance the match. A plain roster member is a participant (can
+   * submit/confirm results) but cannot check in, and until this field
+   * existed the panel was shown to them anyway and the POST silently 403'd.
+   * The server computes the answer with the same predicate the endpoint
+   * enforces; the client deliberately holds no copy of the rule.
+   */
+  const canCheckIn = computed(
+    (): boolean => participants.value?.my_registration_can_check_in ?? false,
+  )
+
   const opponentRegistration = computed((): TournamentRegistrationResponse | null => {
     const resolved = participants.value
     if (!resolved || !userRegistrationId.value) return null
@@ -77,6 +92,7 @@ export function useMatchContext(match: Ref<TournamentMatchResponse | null>) {
     myRegistration,
     userRegistrationId,
     isParticipant,
+    canCheckIn,
     opponentRegistrationId,
     opponentPlayerId,
   }

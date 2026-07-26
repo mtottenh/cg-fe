@@ -6357,7 +6357,7 @@ export interface components {
                 discovered_at?: string | null;
                 discovered_by_plugin?: string | null;
                 evidence_source: string;
-                evidence_type: string;
+                evidence_type: components["schemas"]["EvidenceType"];
                 /** Format: date-time */
                 expires_at?: string | null;
                 /** Format: int64 */
@@ -6599,7 +6599,7 @@ export interface components {
                  */
                 settings: unknown;
                 slug: string;
-                status: string;
+                status: components["schemas"]["LeagueStatus"];
                 /** Format: date-time */
                 updated_at: string;
             };
@@ -6896,6 +6896,17 @@ export interface components {
             data: {
                 /** @description The match these registrations belong to. */
                 match_id: string;
+                /**
+                 * @description Whether the caller may CHECK IN for their registration (P-193).
+                 *
+                 *     Check-in is gated narrower than `speaks_for` — captain, team owner,
+                 *     active delegate, or the registered player — because a check-in can
+                 *     auto-advance the match. A plain roster member speaks for the
+                 *     registration (may submit and confirm results) yet cannot check it
+                 *     in, so the check-in panel must key off THIS field rather than
+                 *     `my_registration_id`, or it offers an action the backend refuses.
+                 */
+                my_registration_can_check_in: boolean;
                 /**
                  * @description The caller's own registration id, when the caller is one of the two —
                  *     directly as the registered player, or as a member of the registered
@@ -8668,8 +8679,8 @@ export interface components {
                  * @description When discovered
                  */
                 discovered_at: string;
-                /** @description Type of evidence */
-                evidence_type: string;
+                /** @description Type of evidence. Typed as the enum (P-112/P-175); wire-compatible. */
+                evidence_type: components["schemas"]["EvidenceType"];
                 /** @description External identifier */
                 external_id: string;
                 /**
@@ -8716,7 +8727,7 @@ export interface components {
             data: {
                 /** Format: date-time */
                 created_at: string;
-                evidence_type: string;
+                evidence_type: components["schemas"]["EvidenceType"];
                 /** Format: uuid */
                 id: string;
                 name: string;
@@ -10593,8 +10604,8 @@ export interface components {
              * @description When discovered
              */
             discovered_at: string;
-            /** @description Type of evidence */
-            evidence_type: string;
+            /** @description Type of evidence. Typed as the enum (P-112/P-175); wire-compatible. */
+            evidence_type: components["schemas"]["EvidenceType"];
             /** @description External identifier */
             external_id: string;
             /**
@@ -10962,7 +10973,7 @@ export interface components {
             discovered_at?: string | null;
             discovered_by_plugin?: string | null;
             evidence_source: string;
-            evidence_type: string;
+            evidence_type: components["schemas"]["EvidenceType"];
             /** Format: date-time */
             expires_at?: string | null;
             /** Format: int64 */
@@ -10994,7 +11005,7 @@ export interface components {
         EvidenceSummaryResponse: {
             /** Format: date-time */
             created_at: string;
-            evidence_type: string;
+            evidence_type: components["schemas"]["EvidenceType"];
             /** Format: uuid */
             id: string;
             name: string;
@@ -11024,6 +11035,11 @@ export interface components {
              */
             validation_errors: string[];
         };
+        /**
+         * @description Type of evidence.
+         * @enum {string}
+         */
+        EvidenceType: "demo" | "screenshot" | "video" | "link" | "server_log";
         /** @description Extracted result from evidence. */
         ExtractedResultResponse: {
             /** Format: int64 */
@@ -11528,7 +11544,7 @@ export interface components {
              */
             settings: unknown;
             slug: string;
-            status: string;
+            status: components["schemas"]["LeagueStatus"];
             /** Format: date-time */
             updated_at: string;
         };
@@ -11563,6 +11579,11 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /**
+         * @description League status.
+         * @enum {string}
+         */
+        LeagueStatus: "active" | "archived" | "suspended";
         /** @description Response DTO for a league team invitation. */
         LeagueTeamInvitationResponse: {
             /** Format: date-time */
@@ -12141,6 +12162,17 @@ export interface components {
             /** @description The match these registrations belong to. */
             match_id: string;
             /**
+             * @description Whether the caller may CHECK IN for their registration (P-193).
+             *
+             *     Check-in is gated narrower than `speaks_for` — captain, team owner,
+             *     active delegate, or the registered player — because a check-in can
+             *     auto-advance the match. A plain roster member speaks for the
+             *     registration (may submit and confirm results) yet cannot check it
+             *     in, so the check-in panel must key off THIS field rather than
+             *     `my_registration_id`, or it offers an action the backend refuses.
+             */
+            my_registration_can_check_in: boolean;
+            /**
              * @description The caller's own registration id, when the caller is one of the two —
              *     directly as the registered player, or as a member of the registered
              *     team-season. `null` for spectators and staff.
@@ -12430,7 +12462,7 @@ export interface components {
                  */
                 settings: unknown;
                 slug: string;
-                status: string;
+                status: components["schemas"]["LeagueStatus"];
                 /** Format: date-time */
                 updated_at: string;
             }[];

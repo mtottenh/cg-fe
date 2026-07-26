@@ -87,10 +87,8 @@ const PAGINATION_EXEMPT: Record<string, string> = {
  * exactly, so a new instance fails and a fixed one fails too (delete the entry).
  */
 const KNOWN_BLIND: Record<string, string> = {
-  '/v1/tournaments':
-    'stores/tournament/_lifecycle.ts — pass-through; both page callers do pass ' +
-    'per_page today, so this is a latent trap rather than a live bug. Needs a ' +
-    'default at the store boundary.',
+  // (empty — the last entry, the /v1/tournaments store-boundary default, was
+  // fixed in the P-191 burn-down)
 }
 
 /** path → the operation id of its GET, straight out of the generated types. */

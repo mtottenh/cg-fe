@@ -33,6 +33,17 @@
         >
           This tournament requires approval. Your registration will be reviewed by an admin.
         </v-alert>
+
+        <v-alert
+          v-if="error"
+          type="error"
+          variant="tonal"
+          density="compact"
+          class="mt-4"
+          data-testid="registration-error"
+        >
+          {{ error }}
+        </v-alert>
       </v-card-text>
 
       <v-divider />
@@ -61,6 +72,8 @@ import type { TournamentResponse } from '@/stores/tournaments'
 import { useFormRules } from '@/composables/useFormRules'
 
 defineProps<{  tournament: TournamentResponse
+  /** Server-side registration rejection to display inline. */
+  error?: string | null
 }>()
 
 const emit = defineEmits<{  register: [participantName: string]

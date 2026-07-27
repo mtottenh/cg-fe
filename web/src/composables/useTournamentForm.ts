@@ -1,4 +1,10 @@
 import { ref, reactive, computed, watch, type Ref } from 'vue'
+import {
+  emptyRules,
+  rulesFromResponse,
+  buildEligibilityPayload,
+  type EligibilityRules,
+} from '@/composables/useEligibilityRules'
 import type {
   TournamentResponse,
   CreateTournamentRequest,
@@ -202,8 +208,13 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
   const formRef = ref()
   const formValid = ref(false)
 
+  /** Entry requirements — separate from the flat form state (nine fields
+   * with their own editor component). */
+  const eligibilityRules = ref<EligibilityRules>(emptyRules())
+
   /** Snapshot for change detection in edit mode. */
   const originalForm = ref<TournamentFormState | null>(null)
+  const originalEligibility = ref<EligibilityRules | null>(null)
 
   // Keep the form in sync with the tournament being edited.
   if (mode === 'edit' && opts.initial) {
@@ -211,6 +222,10 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
       if (!t) return
       Object.assign(form, fromTournament(t))
       originalForm.value = { ...form }
+      eligibilityRules.value = rulesFromResponse(
+        (t as { eligibility_restrictions?: unknown }).eligibility_restrictions as never,
+      )
+      originalEligibility.value = { ...eligibilityRules.value }
     }, { immediate: true })
   }
 
@@ -230,6 +245,11 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
   const canEditStartDate = computed(() =>
     mode === 'create'
     || (status.value !== null && ['draft', 'published', 'registration_open', 'registration_closed', 'ready'].includes(status.value))
+  )
+  // The backend freezes eligibility once registration opens (changing the
+  // rules under registered players would strand them).
+  const canEditEligibility = computed(() =>
+    mode === 'create' || (status.value !== null && ['draft', 'published'].includes(status.value))
   )
 
   // --- Game detail + map pool (shared composable) ---
@@ -255,7 +275,9 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
     if (mode === 'create') return true
     if (!originalForm.value) return false
     const formChanged = JSON.stringify(form) !== JSON.stringify(originalForm.value)
-    return formChanged || gameDetailBundle.mapPoolChangedFromOriginal.value
+    const eligibilityChanged =
+      JSON.stringify(eligibilityRules.value) !== JSON.stringify(originalEligibility.value)
+    return formChanged || eligibilityChanged || gameDetailBundle.mapPoolChangedFromOriginal.value
   })
 
   // --- Slug auto-generation (create mode) ---
@@ -273,6 +295,8 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
   function reset() {
     Object.assign(form, defaultFormState())
     originalForm.value = null
+    eligibilityRules.value = emptyRules()
+    originalEligibility.value = null
   }
 
   // --- Payload builders ---
@@ -335,6 +359,7 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
       // Previously this was a best-effort PUT after create, which silently
       // left tournaments with no pool whenever the default was kept.
       map_pool: gameDetailBundle.selectedMapIds.value,
+      eligibility_restrictions: buildEligibilityPayload(eligibilityRules.value),
       format_settings: buildFormatSettings() ?? undefined,
       settings: {
         side_selection_mode: form.side_selection_mode,
@@ -386,6 +411,24 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
         : {}
     patch.settings = { ...storedSettings, side_selection_mode: form.side_selection_mode }
 
+    // Eligibility: only when changed. Clearing every rule sends an explicit
+    // eligibility:null (the backend's settings merge removes the key);
+    // sending nothing would leave the old rules in place.
+    if (
+      originalEligibility.value
+      && JSON.stringify(eligibilityRules.value) !== JSON.stringify(originalEligibility.value)
+    ) {
+      const payload = buildEligibilityPayload(eligibilityRules.value)
+      if (payload) {
+        patch.eligibility_restrictions = payload
+      } else {
+        patch.settings = {
+          ...(patch.settings as Record<string, unknown>),
+          eligibility: null,
+        }
+      }
+    }
+
     // Same merge discipline for format_settings: replace the keys this form
     // owns, preserve foreign ones (swiss max_rounds etc.).
     const storedFormatSettings =
@@ -409,7 +452,9 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
     canEditParticipants,
     canEditRegistrationDates,
     canEditStartDate,
+    canEditEligibility,
     hasChanges,
+    eligibilityRules,
     generateSlug,
     reset,
     buildCreatePayload,

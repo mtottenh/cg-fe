@@ -595,6 +595,40 @@
 
     <v-divider class="my-4" />
 
+    <!-- Entry Requirements -->
+    <h3 class="text-subtitle-1 font-weight-bold mb-3">
+      Entry Requirements
+      <v-chip
+        v-if="activeEligibilityRules > 0"
+        size="x-small"
+        color="primary"
+        variant="tonal"
+        class="ml-2"
+      >
+        {{ activeEligibilityRules }} active
+      </v-chip>
+      <v-chip
+        v-if="isEdit && !canEditEligibility"
+        size="x-small"
+        color="warning"
+        class="ml-2"
+      >
+        Locked
+      </v-chip>
+    </h3>
+    <p v-if="isEdit && !canEditEligibility" class="text-caption text-medium-emphasis mb-3">
+      Requirements are frozen once registration opens — changing the rules
+      under registered players would strand them.
+    </p>
+    <EligibilityRulesEditor
+      v-model="eligibilityRules"
+      :show-team-rules="form.participant_type === 'team' || (isEdit && tournament?.participant_type === 'team')"
+      :disabled="isEdit && !canEditEligibility"
+      class="mb-4"
+    />
+
+    <v-divider class="my-4" />
+
     <!-- Additional Settings -->
     <h3 class="text-subtitle-1 font-weight-bold mb-3">Additional Settings</h3>
     <v-row>
@@ -632,6 +666,8 @@ import {
   type TournamentFormMode,
 } from '@/composables/useTournamentForm'
 import MapPoolPicker from '@/components/MapPoolPicker.vue'
+import EligibilityRulesEditor from '@/components/eligibility/EligibilityRulesEditor.vue'
+import { activeRuleCount } from '@/composables/useEligibilityRules'
 
 interface LeagueSummary {
   id: string
@@ -678,7 +714,9 @@ const {
   canEditParticipants,
   canEditRegistrationDates,
   canEditStartDate,
+  canEditEligibility,
   hasChanges,
+  eligibilityRules,
   generateSlug,
   reset,
   buildCreatePayload,
@@ -697,6 +735,8 @@ const {
 } = formBundle
 
 const rules = useFormRules()
+
+const activeEligibilityRules = computed(() => activeRuleCount(eligibilityRules.value))
 
 // --- Options (static) ---
 const formatOptions = TOURNAMENT_FORMATS

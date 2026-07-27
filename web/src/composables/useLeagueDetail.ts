@@ -26,6 +26,8 @@ export function useLeagueDetail() {
   const joiningLeague = ref(false)
   const applyingToLeague = ref(false)
   const error = ref<string | null>(null)
+  /** Join/apply rejections — rendered inline at the CTA, not as a page error. */
+  const joinError = ref<string | null>(null)
 
   // Selection state
   const selectedSeasonId = ref<string | null>(null)
@@ -190,10 +192,14 @@ export function useLeagueDetail() {
   async function joinLeague() {
     if (!league.value) return
     joiningLeague.value = true
+    joinError.value = null
     try {
       await leaguesStore.joinLeague(league.value.id)
     } catch (e) {
-      error.value = leaguesStore.joinLeagueState.error || 'Failed to join league'
+      // Deliberately NOT `error` — that renders at the top of the page as a
+      // retryable page-load failure. A join rejection (e.g. entry
+      // requirements) belongs next to the button that was clicked.
+      joinError.value = leaguesStore.joinLeagueState.error || 'Failed to join league'
       throw e
     } finally {
       joiningLeague.value = false
@@ -203,14 +209,19 @@ export function useLeagueDetail() {
   async function applyToLeague(message?: string) {
     if (!league.value) return
     applyingToLeague.value = true
+    joinError.value = null
     try {
       await leaguesStore.applyToLeague(league.value.id, message)
     } catch (e) {
-      error.value = leaguesStore.applyToLeagueState.error || 'Failed to apply to league'
+      joinError.value = leaguesStore.applyToLeagueState.error || 'Failed to apply to league'
       throw e
     } finally {
       applyingToLeague.value = false
     }
+  }
+
+  function clearJoinError() {
+    joinError.value = null
   }
 
   async function leaveLeague() {
@@ -275,6 +286,8 @@ export function useLeagueDetail() {
     applyingToLeague,
     error,
     clearError,
+    joinError,
+    clearJoinError,
 
     // Auth (pass through for template)
     isAuthenticated: computed(() => authStore.isAuthenticated),

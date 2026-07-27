@@ -108,58 +108,22 @@
             <!-- Entry Requirements (optional) -->
             <v-col cols="12">
               <v-expansion-panels variant="accordion">
-                <v-expansion-panel title="Entry Requirements (Optional)">
+                <v-expansion-panel>
+                  <v-expansion-panel-title>
+                    Entry Requirements
+                    <v-chip
+                      v-if="activeRules > 0"
+                      size="x-small"
+                      color="primary"
+                      variant="tonal"
+                      class="ml-2"
+                    >
+                      {{ activeRules }} active
+                    </v-chip>
+                    <span v-else class="text-medium-emphasis ml-2">(none)</span>
+                  </v-expansion-panel-title>
                   <v-expansion-panel-text>
-                    <v-row dense>
-                      <v-col cols="6">
-                        <v-text-field
-                          v-model.number="form.min_rating"
-                          label="Minimum Rating"
-                          type="number"
-                          variant="outlined"
-                          density="compact"
-                          hint="Players below this rating cannot join"
-                          persistent-hint
-                          clearable
-                        />
-                      </v-col>
-                      <v-col cols="6">
-                        <v-text-field
-                          v-model.number="form.max_rating"
-                          label="Maximum Rating"
-                          type="number"
-                          variant="outlined"
-                          density="compact"
-                          hint="Players above this rating cannot join"
-                          persistent-hint
-                          clearable
-                        />
-                      </v-col>
-                      <v-col cols="6">
-                        <v-text-field
-                          v-model.number="form.max_peak_rating"
-                          label="Max Peak Rating"
-                          type="number"
-                          variant="outlined"
-                          density="compact"
-                          hint="Anti-smurf: max all-time peak rating"
-                          persistent-hint
-                          clearable
-                        />
-                      </v-col>
-                      <v-col cols="6">
-                        <v-text-field
-                          v-model.number="form.min_matches"
-                          label="Minimum Matches Played"
-                          type="number"
-                          variant="outlined"
-                          density="compact"
-                          hint="Require players to have played N matches"
-                          persistent-hint
-                          clearable
-                        />
-                      </v-col>
-                    </v-row>
+                    <EligibilityRulesEditor v-model="eligibilityRules" />
                   </v-expansion-panel-text>
                 </v-expansion-panel>
               </v-expansion-panels>
@@ -223,11 +187,14 @@ import { ref, computed, watch } from 'vue'
 import { useLeaguesStore } from '@/stores/leagues'
 import type { GameSummary } from '@/stores/games'
 import { useFormRules } from '@/composables/useFormRules'
+import { LEAGUE_ACCESS_TYPES, type LeagueAccessType } from '@/composables/useLeagueEligibility'
 import {
-  LEAGUE_ACCESS_TYPES,
-  buildEligibilitySettings,
-  type LeagueAccessType,
-} from '@/composables/useLeagueEligibility'
+  emptyRules,
+  activeRuleCount,
+  buildEligibilityPayload,
+  type EligibilityRules,
+} from '@/composables/useEligibilityRules'
+import EligibilityRulesEditor from '@/components/eligibility/EligibilityRulesEditor.vue'
 
 // Long scrolling forms in a small floating dialog are unusable on phones.
 const { smAndDown } = useDisplay()
@@ -257,11 +224,10 @@ const form = ref({
   description: '',
   logo_url: '',
   access_type: 'open',
-  min_rating: null as number | null,
-  max_rating: null as number | null,
-  max_peak_rating: null as number | null,
-  min_matches: null as number | null,
 })
+
+const eligibilityRules = ref<EligibilityRules>(emptyRules())
+const activeRules = computed(() => activeRuleCount(eligibilityRules.value))
 
 const accessTypes = LEAGUE_ACCESS_TYPES
 
@@ -294,11 +260,8 @@ watch(open, (isOpen) => {
       description: '',
       logo_url: '',
       access_type: 'open',
-      min_rating: null,
-      max_rating: null,
-      max_peak_rating: null,
-      min_matches: null,
     }
+    eligibilityRules.value = emptyRules()
     error.value = null
   }
 })
@@ -315,11 +278,6 @@ async function save() {
   error.value = null
 
   try {
-    const settingsPayload = buildEligibilitySettings(form.value)
-    // Create endpoint treats missing `settings` the same as empty — drop the
-    // key when there are no rules to avoid sending `{ settings: {} }`.
-    const settings = Object.keys(settingsPayload).length > 0 ? settingsPayload : undefined
-
     await leaguesStore.createLeague({
       game_id: form.value.game_id,
       name: form.value.name,
@@ -327,7 +285,9 @@ async function save() {
       access_type: form.value.access_type as LeagueAccessType,
       description: form.value.description || undefined,
       logo_url: form.value.logo_url || undefined,
-      settings,
+      // Typed + backend-validated (unsatisfiable bounds are a 400, not a
+      // silently broken league); the API folds it into settings.eligibility.
+      eligibility_restrictions: buildEligibilityPayload(eligibilityRules.value),
     })
 
     emit('created')

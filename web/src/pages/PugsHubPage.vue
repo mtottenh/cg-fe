@@ -1,8 +1,22 @@
 <template>
   <v-container>
-    <div class="d-flex align-center mb-4">
+    <div class="d-flex align-center flex-wrap ga-3 mb-4">
       <h1 class="text-h4">Pick-Up Games</h1>
       <v-spacer />
+      <!-- Same `?game=<id>` convention the dashboard's game cards use, so a
+           per-game hub is a shareable link. -->
+      <v-select
+        v-model="gameFilter"
+        :items="gameItems"
+        label="Game"
+        aria-label="Filter by game"
+        density="compact"
+        variant="outlined"
+        hide-details
+        clearable
+        style="max-width: 220px"
+        data-testid="pug-game-filter"
+      />
       <v-btn
         color="primary"
         prepend-icon="mdi-plus"
@@ -85,7 +99,7 @@
       <v-card-text>
         <v-progress-linear v-if="pugsStore.fetchOpenState.loading" indeterminate />
         <div v-else-if="openPugs.length === 0" class="text-body-2 text-medium-emphasis">
-          No public lobbies right now.
+          {{ gameFilter ? `No public ${gameName(gameFilter)} lobbies right now.` : 'No public lobbies right now.' }}
         </div>
         <v-list v-else density="comfortable">
           <v-list-item
@@ -99,6 +113,11 @@
               {{ pug.map_selection_mode === 'wheel' ? 'Wheel' : 'Veto' }}
             </v-list-item-title>
             <v-list-item-subtitle v-if="pug.region">{{ pug.region }}</v-list-item-subtitle>
+            <template v-slot:append>
+              <!-- Which game a lobby is for is otherwise invisible, and with
+                   two active games the list mixes them. -->
+              <v-chip size="x-small" variant="tonal">{{ gameName(pug.game_id) }}</v-chip>
+            </template>
           </v-list-item>
         </v-list>
       </v-card-text>
@@ -228,7 +247,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
@@ -240,10 +259,28 @@ import { getStatusColor, getStatusLabel, pugStatusMap } from '@/utils/statusMaps
 const router = useRouter()
 const gamesStore = useGamesStore()
 const pugsStore = usePugsStore()
-const { myPugs, openPugs, recentPugs } = storeToRefs(pugsStore)
+const { myPugs: allMyPugs, openPugs, recentPugs: allRecentPugs } = storeToRefs(pugsStore)
 const confirmDialog = useConfirmDialog()
 
 const createOpen = ref(false)
+
+// Game scoping. `fetchOpen` filters server-side (the endpoint takes game_id);
+// `mine` and `recent` have no server filter, so those are narrowed client-side
+// off PugResponse.game_id — both endpoints are capped at 50 rows, so this is a
+// filter over an already-bounded list, not an unbounded over-fetch.
+const route = useRoute()
+const gameFilter = ref<string | null>(
+  typeof route.query.game === 'string' ? route.query.game : null,
+)
+
+function gameName(gameId: string | null | undefined): string {
+  if (!gameId) return ''
+  return gamesStore.games.find((g) => g.id === gameId)?.display_name ?? 'Unknown game'
+}
+
+function matchesFilter(pug: { game_id: string }): boolean {
+  return !gameFilter.value || pug.game_id === gameFilter.value
+}
 
 const form = reactive({
   gameId: null as string | null,
@@ -258,6 +295,18 @@ const form = reactive({
 const gameItems = computed(() =>
   gamesStore.games.map((g) => ({ title: g.display_name, value: g.id }))
 )
+
+const myPugs = computed(() => allMyPugs.value.filter(matchesFilter))
+const recentPugs = computed(() => allRecentPugs.value.filter(matchesFilter))
+
+// Refetch open lobbies server-side and keep the URL shareable. `replace` so
+// flipping the filter doesn't stack history entries.
+watch(gameFilter, (game) => {
+  void pugsStore.fetchOpen(game ?? undefined)
+  void router.replace({ query: game ? { game } : {} })
+  // Keep the (closed) create dialog pointed at what you're browsing.
+  if (game && !createOpen.value) form.gameId = game
+})
 
 const sideOptions = computed(() => {
   const base = [
@@ -329,11 +378,14 @@ onMounted(async () => {
   await Promise.allSettled([
     gamesStore.fetchGames(),
     pugsStore.fetchMine(),
-    pugsStore.fetchOpen(),
+    pugsStore.fetchOpen(gameFilter.value ?? undefined),
     pugsStore.fetchRecent(),
   ])
-  if (!form.gameId && gamesStore.games.length > 0) {
-    form.gameId = gamesStore.games[0]!.id
+  // Default the create dialog to the game being browsed; fall back to the
+  // first active game only when no filter is set. Picking games[0] regardless
+  // meant a CS2 player browsing CS2 could silently create an AoE2 PUG.
+  if (!form.gameId) {
+    form.gameId = gameFilter.value ?? gamesStore.games[0]?.id ?? null
   }
 })
 </script>

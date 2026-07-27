@@ -137,17 +137,39 @@
             </span>
           </v-card-title>
           <v-card-text>
-            <v-row dense>
-              <v-col v-for="map in gameMaps" :key="map.id" cols="6" sm="4" md="3" lg="2">
-                <GameMapCard
-                  :map-id="map.id"
-                  :display-name="map.display_name"
-                  :image-url="map.image_url"
-                  :selectable="isParticipant"
-                  :status-label="nominationLabel(map.id)"
-                  :status="myNomination === map.id ? 'picked' : 'available'"
-                  @select="nominate(map.id)"
-                />
+            <v-row>
+              <v-col cols="12" md="7">
+                <v-row dense>
+                  <v-col v-for="map in gameMaps" :key="map.id" cols="6" sm="4" md="6" lg="4">
+                    <GameMapCard
+                      :map-id="map.id"
+                      :display-name="map.display_name"
+                      :image-url="map.image_url"
+                      :selectable="isParticipant"
+                      :status-label="nominationLabel(map.id)"
+                      :status="myNomination === map.id ? 'picked' : 'available'"
+                      @select="nominate(map.id)"
+                    />
+                  </v-col>
+                </v-row>
+              </v-col>
+
+              <!-- Live preview of the wheel these nominations build. Same
+                   component, palette and geometry the real spin uses, so what
+                   you see here is exactly what will spin — it just has no
+                   `spin` prop, which leaves it static. -->
+              <v-col cols="12" md="5">
+                <div class="d-flex flex-column align-center" data-testid="wheel-preview">
+                  <div class="text-caption text-medium-emphasis mb-2">
+                    Wheel preview · {{ gatheringSegments.length }}
+                    {{ gatheringSegments.length === 1 ? 'slice' : 'slices' }}
+                  </div>
+                  <WheelSpinner :segments="gatheringSegments" :size="260" />
+                  <div class="text-caption text-medium-emphasis mt-2 text-center">
+                    Un-nominated maps still get one slice each, so the wheel is
+                    never empty.
+                  </div>
+                </div>
               </v-col>
             </v-row>
           </v-card-text>
@@ -334,6 +356,7 @@ import VetoPanel from '@/components/match/veto/VetoPanel.vue'
 import PugShareCard from '@/components/pug/PugShareCard.vue'
 import PugTeamBoard from '@/components/pug/PugTeamBoard.vue'
 import WheelPanel from '@/components/pug/WheelPanel.vue'
+import WheelSpinner from '@/components/pug/WheelSpinner.vue'
 import type { WheelResult, WheelSpinPlayback } from '@/components/pug/WheelPanel.vue'
 import { provideMatchLobby, useMatchLobby } from '@/composables/useMatchLobby'
 import { usePugLobbySocket } from '@/composables/usePugLobbySocket'
@@ -415,6 +438,23 @@ const idleSegments = computed(() => {
     player_name: e.player_name,
   }))
   return buildSegments(entries, remaining)
+})
+
+// Pre-lock preview. `idleSegments` (below/above) reads the veto session's
+// remaining maps, which does not exist until the pug materialises, so the
+// allowed pool here is the pug's configured pool falling back to the game's
+// catalog. buildSegments mirrors the server's own weighting exactly.
+const gatheringSegments = computed(() => {
+  if (!detail.value) return []
+  const allowed =
+    detail.value.pug.map_pool && detail.value.pug.map_pool.length > 0
+      ? detail.value.pug.map_pool
+      : gameMaps.value.map((m) => m.id)
+  const entries = detail.value.wheel_entries.map((e) => ({
+    map_id: e.map_id,
+    player_name: e.player_name,
+  }))
+  return buildSegments(entries, allowed)
 })
 
 const wheelResults = computed<WheelResult[]>(() =>

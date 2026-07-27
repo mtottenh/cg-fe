@@ -5781,16 +5781,14 @@ export interface components {
             access_type?: string;
             /** @description Optional description. */
             description?: string | null;
+            eligibility_restrictions?: null | components["schemas"]["EligibilityRestrictionsInput"];
             /** @description Game ID (UUID) this league is for. */
             game_id: string;
             /** @description Optional logo URL. */
             logo_url?: string | null;
             /** @description League name. */
             name: string;
-            /**
-             * @description Optional league settings (entry requirements, etc.).
-             *     Entry requirements go under the `"eligibility"` key.
-             */
+            /** @description Optional league settings (free-form JSON for non-eligibility keys). */
             settings?: unknown;
             /** @description URL-friendly slug. */
             slug: string;
@@ -7099,6 +7097,7 @@ export interface components {
                 created_at: string;
                 created_by: string;
                 description?: string | null;
+                eligibility_restrictions?: null | components["schemas"]["EligibilityRestrictionsResponse"];
                 game_id: string;
                 id: string;
                 logo_url?: string | null;
@@ -11640,7 +11639,8 @@ export interface components {
         /**
          * @description Typed input for eligibility restrictions.
          *
-         *     All fields are optional — only specified fields are enforced.
+         *     All fields are optional — only specified fields are enforced. Rating
+         *     values are on the game's own rating scale (e.g. CS Rating 0–35000).
          */
         EligibilityRestrictionsInput: {
             /** @description Only allow players in certain rank tiers (e.g., `["silver", "gold"]`). */
@@ -11680,6 +11680,16 @@ export interface components {
              * @description Min current rating for any individual player.
              */
             min_rating_per_player?: number | null;
+            /**
+             * Format: int32
+             * @description Min average of team members' current ratings.
+             */
+            min_team_average_rating?: number | null;
+            /**
+             * Format: int32
+             * @description Min sum of all team members' current ratings.
+             */
+            min_team_total_rating?: number | null;
         };
         /** @description Eligibility restrictions configured for a tournament. */
         EligibilityRestrictionsResponse: {
@@ -11720,6 +11730,16 @@ export interface components {
              * @description Min current rating for any player.
              */
             min_rating_per_player?: number | null;
+            /**
+             * Format: int32
+             * @description Min average of team members' current ratings.
+             */
+            min_team_average_rating?: number | null;
+            /**
+             * Format: int32
+             * @description Min sum of all team members' current ratings.
+             */
+            min_team_total_rating?: number | null;
         };
         /** @description A freshly minted enrollment token — shown exactly once. */
         EnrollmentTokenResponse: {
@@ -12350,6 +12370,7 @@ export interface components {
             created_at: string;
             created_by: string;
             description?: string | null;
+            eligibility_restrictions?: null | components["schemas"]["EligibilityRestrictionsResponse"];
             game_id: string;
             id: string;
             logo_url?: string | null;
@@ -13292,6 +13313,7 @@ export interface components {
                 created_at: string;
                 created_by: string;
                 description?: string | null;
+                eligibility_restrictions?: null | components["schemas"]["EligibilityRestrictionsResponse"];
                 game_id: string;
                 id: string;
                 logo_url?: string | null;
@@ -15730,6 +15752,7 @@ export interface components {
             access_type?: string | null;
             /** @description Updated description. */
             description?: string | null;
+            eligibility_restrictions?: null | components["schemas"]["EligibilityRestrictionsInput"];
             /** @description Updated logo URL. */
             logo_url?: string | null;
             /** @description Updated league name. */

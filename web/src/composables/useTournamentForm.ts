@@ -1,4 +1,10 @@
 import { ref, reactive, computed, watch, type Ref } from 'vue'
+import {
+  emptyRules,
+  rulesFromResponse,
+  buildEligibilityPayload,
+  type EligibilityRules,
+} from '@/composables/useEligibilityRules'
 import type {
   TournamentResponse,
   CreateTournamentRequest,
@@ -43,6 +49,17 @@ export interface TournamentFormState {
   team_size: number
   registration_type: string
   scheduling_mode: string
+  // Format configuration (persisted in format_settings JSONB)
+  final_format: string | null
+  grand_final_format: string | null
+  group_count: number | null
+  advance_per_group: number | null
+  group_format: string
+  playoff_format: string
+  group_match_format: string | null
+  playoff_match_format: string | null
+  playoff_final_format: string | null
+  playoff_grand_final_format: string | null
   // Edit-only
   timezone_hint: string
 }
@@ -73,7 +90,54 @@ function defaultFormState(): TournamentFormState {
     team_size: 5,
     registration_type: 'open',
     scheduling_mode: 'live',
+    final_format: null,
+    grand_final_format: null,
+    group_count: null,
+    advance_per_group: null,
+    group_format: 'round_robin',
+    playoff_format: 'single_elimination',
+    group_match_format: null,
+    playoff_match_format: null,
+    playoff_final_format: null,
+    playoff_grand_final_format: null,
     timezone_hint: '',
+  }
+}
+
+/**
+ * The format_settings keys this form owns. Everything else in the JSONB
+ * (e.g. swiss max_rounds) is preserved untouched by the patch builders.
+ */
+const MANAGED_FORMAT_SETTINGS_KEYS = [
+  'final_format',
+  'grand_final_format',
+  'group_count',
+  'advance_per_group',
+  'group_format',
+  'playoff_format',
+  'group_match_format',
+  'playoff_match_format',
+  'playoff_final_format',
+  'playoff_grand_final_format',
+] as const
+
+function readFormatSettings(t: TournamentResponse): Partial<TournamentFormState> {
+  const raw = t.format_settings
+  if (!raw || typeof raw !== 'object') return {}
+  const fs = raw as Record<string, unknown>
+  const str = (k: string) => (typeof fs[k] === 'string' ? (fs[k] as string) : null)
+  const num = (k: string) => (typeof fs[k] === 'number' ? (fs[k] as number) : null)
+  return {
+    final_format: str('final_format'),
+    grand_final_format: str('grand_final_format'),
+    group_count: num('group_count'),
+    advance_per_group: num('advance_per_group'),
+    group_format: str('group_format') ?? 'round_robin',
+    playoff_format: str('playoff_format') ?? 'single_elimination',
+    group_match_format: str('group_match_format'),
+    playoff_match_format: str('playoff_match_format'),
+    playoff_final_format: str('playoff_final_format'),
+    playoff_grand_final_format: str('playoff_grand_final_format'),
   }
 }
 
@@ -99,6 +163,8 @@ function fromTournament(t: TournamentResponse): TournamentFormState {
     ...base,
     name: t.name,
     slug: t.slug,
+    format: t.format,
+    ...readFormatSettings(t),
     description: t.description || '',
     min_participants: t.min_participants,
     max_participants: t.max_participants,
@@ -142,8 +208,13 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
   const formRef = ref()
   const formValid = ref(false)
 
+  /** Entry requirements — separate from the flat form state (nine fields
+   * with their own editor component). */
+  const eligibilityRules = ref<EligibilityRules>(emptyRules())
+
   /** Snapshot for change detection in edit mode. */
   const originalForm = ref<TournamentFormState | null>(null)
+  const originalEligibility = ref<EligibilityRules | null>(null)
 
   // Keep the form in sync with the tournament being edited.
   if (mode === 'edit' && opts.initial) {
@@ -151,6 +222,16 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
       if (!t) return
       Object.assign(form, fromTournament(t))
       originalForm.value = { ...form }
+      eligibilityRules.value = rulesFromResponse(
+        (t as { eligibility_restrictions?: unknown }).eligibility_restrictions as never,
+      )
+      // Deep-copy the array: a shallow spread would alias allowed_rank_tiers,
+      // so an in-place edit would mutate the "original" too and the change
+      // would be silently dropped from the patch.
+      originalEligibility.value = {
+        ...eligibilityRules.value,
+        allowed_rank_tiers: [...eligibilityRules.value.allowed_rank_tiers],
+      }
     }, { immediate: true })
   }
 
@@ -170,6 +251,11 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
   const canEditStartDate = computed(() =>
     mode === 'create'
     || (status.value !== null && ['draft', 'published', 'registration_open', 'registration_closed', 'ready'].includes(status.value))
+  )
+  // The backend freezes eligibility once registration opens (changing the
+  // rules under registered players would strand them).
+  const canEditEligibility = computed(() =>
+    mode === 'create' || (status.value !== null && ['draft', 'published'].includes(status.value))
   )
 
   // --- Game detail + map pool (shared composable) ---
@@ -195,7 +281,9 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
     if (mode === 'create') return true
     if (!originalForm.value) return false
     const formChanged = JSON.stringify(form) !== JSON.stringify(originalForm.value)
-    return formChanged || gameDetailBundle.mapPoolChangedFromOriginal.value
+    const eligibilityChanged =
+      JSON.stringify(eligibilityRules.value) !== JSON.stringify(originalEligibility.value)
+    return formChanged || eligibilityChanged || gameDetailBundle.mapPoolChangedFromOriginal.value
   })
 
   // --- Slug auto-generation (create mode) ---
@@ -213,9 +301,38 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
   function reset() {
     Object.assign(form, defaultFormState())
     originalForm.value = null
+    eligibilityRules.value = emptyRules()
+    originalEligibility.value = null
   }
 
   // --- Payload builders ---
+
+  /**
+   * The format-configuration keys implied by the current form state, keyed by
+   * the selected tournament format. Single/double elim carry only the final
+   * override; groups+playoffs carries the whole groups config including
+   * per-phase best-of. Returns null when there is nothing to say.
+   */
+  function buildFormatSettings(): Record<string, unknown> | null {
+    const s: Record<string, unknown> = {}
+    if (form.format === 'groups_and_playoffs') {
+      if (form.group_count) s.group_count = form.group_count
+      if (form.advance_per_group) s.advance_per_group = form.advance_per_group
+      s.group_format = form.group_format
+      s.playoff_format = form.playoff_format
+      if (form.group_match_format) s.group_match_format = form.group_match_format
+      if (form.playoff_match_format) s.playoff_match_format = form.playoff_match_format
+      if (form.playoff_final_format) s.playoff_final_format = form.playoff_final_format
+      if (form.playoff_format === 'double_elimination' && form.playoff_grand_final_format) {
+        s.playoff_grand_final_format = form.playoff_grand_final_format
+      }
+    } else if (form.format === 'single_elimination' && form.final_format) {
+      s.final_format = form.final_format
+    } else if (form.format === 'double_elimination' && form.grand_final_format) {
+      s.grand_final_format = form.grand_final_format
+    }
+    return Object.keys(s).length > 0 ? s : null
+  }
 
   function buildCreatePayload(): CreateTournamentRequest {
     return {
@@ -248,6 +365,8 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
       // Previously this was a best-effort PUT after create, which silently
       // left tournaments with no pool whenever the default was kept.
       map_pool: gameDetailBundle.selectedMapIds.value,
+      eligibility_restrictions: buildEligibilityPayload(eligibilityRules.value),
+      format_settings: buildFormatSettings() ?? undefined,
       settings: {
         side_selection_mode: form.side_selection_mode,
       },
@@ -288,7 +407,42 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
     patch.check_in_start = form.check_in_required ? formatDateTimeForApi(form.check_in_start) : undefined
     patch.check_in_end = form.check_in_required ? formatDateTimeForApi(form.check_in_end) : undefined
     patch.rules_url = form.rules_url || undefined
-    patch.settings = { side_selection_mode: form.side_selection_mode }
+
+    // Merge over the stored settings object — this patch used to send only
+    // {side_selection_mode}, silently erasing any other settings keys (e.g.
+    // eligibility restrictions) on every save.
+    const storedSettings =
+      t.settings && typeof t.settings === 'object'
+        ? { ...(t.settings as Record<string, unknown>) }
+        : {}
+    patch.settings = { ...storedSettings, side_selection_mode: form.side_selection_mode }
+
+    // Eligibility: only when changed. Clearing every rule sends an explicit
+    // eligibility:null (the backend's settings merge removes the key);
+    // sending nothing would leave the old rules in place.
+    if (
+      originalEligibility.value
+      && JSON.stringify(eligibilityRules.value) !== JSON.stringify(originalEligibility.value)
+    ) {
+      const payload = buildEligibilityPayload(eligibilityRules.value)
+      if (payload) {
+        patch.eligibility_restrictions = payload
+      } else {
+        patch.settings = {
+          ...(patch.settings as Record<string, unknown>),
+          eligibility: null,
+        }
+      }
+    }
+
+    // Same merge discipline for format_settings: replace the keys this form
+    // owns, preserve foreign ones (swiss max_rounds etc.).
+    const storedFormatSettings =
+      t.format_settings && typeof t.format_settings === 'object'
+        ? { ...(t.format_settings as Record<string, unknown>) }
+        : {}
+    for (const key of MANAGED_FORMAT_SETTINGS_KEYS) delete storedFormatSettings[key]
+    patch.format_settings = { ...storedFormatSettings, ...(buildFormatSettings() ?? {}) }
 
     return patch as UpdateTournamentRequest
   }
@@ -304,7 +458,9 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
     canEditParticipants,
     canEditRegistrationDates,
     canEditStartDate,
+    canEditEligibility,
     hasChanges,
+    eligibilityRules,
     generateSlug,
     reset,
     buildCreatePayload,

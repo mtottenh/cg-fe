@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useTournamentForm } from '@/composables/useTournamentForm'
 import { useGamesStore } from '@/stores/games'
 import { useTournamentsStore, type TournamentResponse } from '@/stores/tournaments'
+import { emptyRules } from '@/composables/useEligibilityRules'
 
 /** Mount a throwaway component so the composable's watchers/computeds run
  *  under a real component instance. */
@@ -361,5 +362,142 @@ describe('useTournamentForm (edit mode)', () => {
   it('falls back to picker_choice when no side_selection_mode is set', () => {
     const { form } = setup(makeTournament())
     expect(form.form.side_selection_mode).toBe('picker_choice')
+  })
+
+  it('buildUpdatePatch merges settings instead of clobbering foreign keys', () => {
+    // The patch used to send settings = {side_selection_mode} wholesale,
+    // erasing anything else stored there (e.g. eligibility restrictions).
+    const t = makeTournament() as TournamentResponse & { settings?: Record<string, unknown> }
+    t.settings = {
+      side_selection_mode: 'knife',
+      eligibility_restrictions: { min_rating_per_player: 1000 },
+    }
+    const { form } = setup(t)
+    form.form.side_selection_mode = 'picker_choice'
+    const patch = form.buildUpdatePatch() as { settings?: Record<string, unknown> }
+    expect(patch.settings).toEqual({
+      side_selection_mode: 'picker_choice',
+      eligibility_restrictions: { min_rating_per_player: 1000 },
+    })
+  })
+
+  it('buildUpdatePatch sends changed eligibility as the typed field', () => {
+    // The patch also spreads the STORED settings, which still contain the
+    // OLD eligibility copy — so the wire body carries two disagreeing
+    // versions. The backend's merge_eligibility_into_settings inserts the
+    // typed field over settings.eligibility, so the new value wins. This
+    // test locks that contract: if a backend refactor ever preferred the
+    // embedded copy, edits would silently no-op.
+    const t = makeTournament() as TournamentResponse & {
+      settings?: Record<string, unknown>
+      eligibility_restrictions?: Record<string, unknown>
+    }
+    t.settings = { eligibility: { min_rating_per_player: 1000 } }
+    t.eligibility_restrictions = { min_rating_per_player: 1000 }
+    const { form } = setup(t)
+    expect(form.eligibilityRules.value.min_rating_per_player).toBe(1000)
+
+    form.eligibilityRules.value = {
+      ...form.eligibilityRules.value,
+      min_rating_per_player: 2000,
+    }
+    const patch = form.buildUpdatePatch() as {
+      eligibility_restrictions?: Record<string, unknown>
+    }
+    expect(patch.eligibility_restrictions).toEqual({ min_rating_per_player: 2000 })
+  })
+
+  it('buildUpdatePatch clears eligibility with an explicit null', () => {
+    const t = makeTournament() as TournamentResponse & {
+      settings?: Record<string, unknown>
+      eligibility_restrictions?: Record<string, unknown>
+    }
+    t.settings = { side_selection_mode: 'knife', eligibility: { min_rating_per_player: 1000 } }
+    t.eligibility_restrictions = { min_rating_per_player: 1000 }
+    const { form } = setup(t)
+
+    form.eligibilityRules.value = emptyRules()
+    const patch = form.buildUpdatePatch() as {
+      settings?: Record<string, unknown>
+      eligibility_restrictions?: unknown
+    }
+    // No typed field (there are no rules to send); the key is removed via
+    // the settings merge's null-clear instead.
+    expect(patch.eligibility_restrictions).toBeUndefined()
+    expect(patch.settings?.eligibility).toBeNull()
+    // ...and unrelated settings survive.
+    expect(patch.settings?.side_selection_mode).toBe('knife')
+  })
+
+  it('buildUpdatePatch rewrites managed format_settings keys, preserving foreign ones', () => {
+    const t = makeTournament({ format: 'single_elimination' }) as TournamentResponse & {
+      format_settings?: Record<string, unknown>
+    }
+    t.format_settings = { final_format: 'bo3', max_rounds: 5 }
+    const { form } = setup(t)
+    expect(form.form.final_format).toBe('bo3')
+    form.form.final_format = 'bo5'
+    const patch = form.buildUpdatePatch() as { format_settings?: Record<string, unknown> }
+    expect(patch.format_settings).toEqual({ final_format: 'bo5', max_rounds: 5 })
+  })
+})
+
+describe('useTournamentForm format_settings (create mode)', () => {
+  const cleanups: Array<() => void> = []
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.spyOn(useGamesStore(), 'fetchGame').mockResolvedValue({} as ReturnType<typeof useGamesStore>['fetchGame'] extends (...a: never[]) => Promise<infer U> ? U : never)
+    vi.spyOn(useTournamentsStore(), 'getTournamentMapPool').mockResolvedValue(null as unknown as ReturnType<typeof useTournamentsStore>['getTournamentMapPool'] extends (...a: never[]) => Promise<infer U> ? U : never)
+  })
+
+  afterEach(() => {
+    while (cleanups.length) cleanups.pop()!()
+  })
+
+  function setup() {
+    const { result, unmount } = withApp(() => useTournamentForm({ mode: 'create' }))
+    cleanups.push(unmount)
+    return result
+  }
+
+  it('single elim with a final override emits format_settings.final_format', () => {
+    const form = setup()
+    form.form.format = 'single_elimination'
+    form.form.final_format = 'bo3'
+    const payload = form.buildCreatePayload() as { format_settings?: Record<string, unknown> }
+    expect(payload.format_settings).toEqual({ final_format: 'bo3' })
+  })
+
+  it('no overrides means no format_settings at all', () => {
+    const form = setup()
+    form.form.format = 'single_elimination'
+    const payload = form.buildCreatePayload() as { format_settings?: Record<string, unknown> }
+    expect(payload.format_settings).toBeUndefined()
+  })
+
+  it('groups_and_playoffs emits the full groups config with per-phase formats', () => {
+    // "Groups bo1, playoffs bo3, final bo5" — the headline configuration.
+    const form = setup()
+    form.form.format = 'groups_and_playoffs'
+    form.form.group_count = 4
+    form.form.advance_per_group = 2
+    form.form.group_format = 'round_robin'
+    form.form.playoff_format = 'single_elimination'
+    form.form.group_match_format = 'bo1'
+    form.form.playoff_match_format = 'bo3'
+    form.form.playoff_final_format = 'bo5'
+    // Not double elim, so a stray grand-final override must not leak.
+    form.form.playoff_grand_final_format = 'bo7'
+    const payload = form.buildCreatePayload() as { format_settings?: Record<string, unknown> }
+    expect(payload.format_settings).toEqual({
+      group_count: 4,
+      advance_per_group: 2,
+      group_format: 'round_robin',
+      playoff_format: 'single_elimination',
+      group_match_format: 'bo1',
+      playoff_match_format: 'bo3',
+      playoff_final_format: 'bo5',
+    })
   })
 })

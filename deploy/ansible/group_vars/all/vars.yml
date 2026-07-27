@@ -150,7 +150,7 @@ backup_restore_verify_schedule: "OnCalendar=*-*-01 04:30:00"
 # optionally vault_alert_webhook_url) before enabling. Enabling also turns
 # on the METRICS_ADDR loopback exporters in the service env files, so re-run
 # the service roles (a full `just bootstrap` covers everything).
-monitoring_enabled: false
+monitoring_enabled: true
 
 # How the operator reaches Grafana (everything else is always loopback):
 #   public  — grafana.<domain> Caddy vhost + DNS A record + ACME cert
@@ -162,7 +162,7 @@ monitoring_enabled: false
 #             HTTPS Certificates enabled on the tailnet (admin console)
 #             and vault_tailscale_auth_key for the first converge.
 #             Break-glass if the tailnet is down: ssh -L 3001:127.0.0.1:3001.
-monitoring_ingress: public
+monitoring_ingress: tailnet
 
 # Loopback listen ports for the stack. 3110 for Loki because
 # portal-demo-stats owns the Loki default 3100.

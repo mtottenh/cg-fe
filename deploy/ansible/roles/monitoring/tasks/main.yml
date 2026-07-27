@@ -170,12 +170,16 @@
 
 # --- Loki --------------------------------------------------------------------
 
+# Grafana's loki deb creates the `loki` USER with primary group `nogroup`
+# (gid 65534) and no `loki` group at all — chgrp'ing to a `loki` group
+# failed the first real converge. Own the dirs by user only and leave the
+# group as the user's primary.
 - name: Loki data directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     owner: loki
-    group: loki
+    group: nogroup
     mode: "0750"
   loop:
     - /var/lib/loki
@@ -187,8 +191,10 @@
   ansible.builtin.template:
     src: loki-config.yml.j2
     dest: /etc/loki/config.yml
-    owner: root
-    group: loki
+    # No `loki` group exists (the deb gives the user primary group nogroup)
+    # — keep the config tight by owning it as the loki user directly.
+    owner: loki
+    group: nogroup
     mode: "0640"
   notify: restart loki
 
@@ -241,18 +247,27 @@
 - name: Tailnet ingress (Tailscale Serve → loopback Grafana)
   when: monitoring_ingress | default('public') == 'tailnet'
   block:
+    # .noarmor.gpg is a BINARY keyring — it must land with a .gpg
+    # extension. Ubuntu 26.04's apt (sequoia verifier) rejects binary
+    # content in a .asc file as "unsupported filetype" and then fails
+    # NO_PUBKEY (seen on the first tailnet converge).
     - name: Tailscale signing key
       ansible.builtin.get_url:
         url: "https://pkgs.tailscale.com/stable/ubuntu/{{ ansible_distribution_release }}.noarmor.gpg"
-        dest: /etc/apt/keyrings/tailscale.asc
+        dest: /etc/apt/keyrings/tailscale.gpg
         mode: "0644"
+
+    - name: Mis-named binary keyring from the first converge is gone
+      ansible.builtin.file:
+        path: /etc/apt/keyrings/tailscale.asc
+        state: absent
 
     - name: Tailscale apt source
       ansible.builtin.copy:
         dest: /etc/apt/sources.list.d/tailscale.list
         mode: "0644"
         content: |
-          deb [signed-by=/etc/apt/keyrings/tailscale.asc] https://pkgs.tailscale.com/stable/ubuntu {{ ansible_distribution_release }} main
+          deb [signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/ubuntu {{ ansible_distribution_release }} main
 
     - name: Tailscale package
       ansible.builtin.apt:

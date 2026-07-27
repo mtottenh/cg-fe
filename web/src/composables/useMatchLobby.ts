@@ -344,6 +344,9 @@ export function useMatchLobby(
     // Veto action via WS
     sendVetoAction,
 
+    // Raw frame subscription (PUG wheel spins ride the same socket)
+    onMessage: socket.onMessage,
+
     // Lifecycle
     initialize,
     connect: socket.connect,

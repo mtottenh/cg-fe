@@ -122,16 +122,60 @@
             This league is invite-only. Contact a league admin to request an invitation.
           </v-alert>
 
-          <!-- Entry requirements (shown when league has eligibility restrictions) -->
-          <v-alert v-if="entryRequirements" type="warning" variant="tonal" density="compact" class="mt-2">
-            <div class="d-flex align-center">
-              <v-icon start size="small">mdi-shield-check</v-icon>
-              <strong class="mr-2">Entry Requirements:</strong>
-              <span v-for="(req, i) in entryRequirementsList" :key="i">
-                {{ req }}<span v-if="i < entryRequirementsList.length - 1" class="mx-1">|</span>
-              </span>
-            </div>
+          <!-- Join/apply rejection: inline, next to the CTA the user
+               clicked. Not retryable — retrying an eligibility rejection
+               cannot succeed. -->
+          <v-alert
+            v-if="joinError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mt-2"
+            closable
+            data-testid="join-error"
+            @click:close="clearJoinError"
+          >
+            {{ joinError }}
           </v-alert>
+
+          <!-- Entry requirements: neutral chips (requirements are ordinary
+               configuration, not an alarm), with the viewer's own pass/fail
+               when they aren't a member yet. -->
+          <v-card
+            v-if="hasEntryRequirements"
+            variant="tonal"
+            density="compact"
+            class="mt-2 pa-3"
+            data-testid="entry-requirements"
+          >
+            <div class="d-flex align-center mb-2">
+              <v-icon start size="small">mdi-shield-check</v-icon>
+              <span class="text-subtitle-2 font-weight-bold">Entry Requirements</span>
+              <v-chip
+                v-if="viewerChecksRelevant && eligibilityCheck.failingChecks.value.length > 0"
+                size="x-small"
+                color="error"
+                variant="tonal"
+                class="ml-2"
+              >
+                You don't meet {{ eligibilityCheck.failingChecks.value.length }}
+                {{ eligibilityCheck.failingChecks.value.length === 1 ? 'requirement' : 'requirements' }}
+              </v-chip>
+              <v-chip
+                v-else-if="viewerChecksRelevant && eligibilityCheck.stats.value"
+                size="x-small"
+                color="success"
+                variant="tonal"
+                class="ml-2"
+              >
+                You qualify
+              </v-chip>
+            </div>
+            <EligibilityRulesDisplay
+              :rules="leagueRules"
+              :checks="viewerChecksRelevant ? eligibilityCheck.checks.value : null"
+            />
+          </v-card>
         </v-col>
       </v-row>
 
@@ -383,6 +427,18 @@
             counter="500"
             hint="Tell the admins why you'd like to join"
           />
+          <!-- The rejection used to render at the top of the page, BEHIND
+               this dialog's overlay — the dialog just appeared not to
+               submit. -->
+          <v-alert
+            v-if="joinError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mt-2"
+          >
+            {{ joinError }}
+          </v-alert>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -479,8 +535,10 @@ import ErrorAlert from '@/components/ErrorAlert.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
 import type { TournamentSummaryResponse } from '@/stores/tournaments'
-import type { LeagueSettings } from '@/api/overrides'
 import { seasonStatusMap, leagueAccessTypeMap, leagueStatusMap, teamRoleMap, getStatusColor, getStatusLabel, getStatusIcon } from '@/utils/statusMaps'
+import { rulesFromSettings, hasAnyRules } from '@/composables/useEligibilityRules'
+import { useEligibilityCheck } from '@/composables/useEligibilityCheck'
+import EligibilityRulesDisplay from '@/components/eligibility/EligibilityRulesDisplay.vue'
 
 // P-178: the local map copy moved to `statusMaps.ts` once the lane contention
 // on that file ended — see `leagueStatusMap` there for provenance.
@@ -494,7 +552,7 @@ const {
   selectedSeasonId, selectedTeam, teamMembers,
   loading, loadingSeasons, loadingTeams, loadingTournaments, loadingMembers, creatingTeam,
   joiningLeague, applyingToLeague,
-  error, clearError, isAuthenticated,
+  error, clearError, joinError, clearJoinError, isAuthenticated,
   fetchAll, fetchTeamMembers, createTeam,
   joinLeague, applyToLeague, leaveLeague,
 } = useLeagueDetail()
@@ -530,27 +588,21 @@ const newTeam = ref({
 
 const rules = useFormRules()
 
-// Entry requirements from league settings
-const entryRequirements = computed(() => {
-  const settings = league.value?.settings as LeagueSettings | null | undefined
-  const eligibility = settings?.eligibility
-  if (!eligibility) return null
-  const hasAny = Object.values(eligibility).some(v => v !== null && v !== undefined)
-  return hasAny ? eligibility : null
-})
+// Entry requirements via the shared rules model.
+const leagueRules = computed(() => rulesFromSettings(league.value?.settings))
+const hasEntryRequirements = computed(() => hasAnyRules(leagueRules.value))
 
-const entryRequirementsList = computed((): string[] => {
-  const e = entryRequirements.value
-  if (!e) return []
-  const reqs: string[] = []
-  if (e.min_rating_per_player) reqs.push(`Min Rating: ${e.min_rating_per_player}`)
-  if (e.max_rating_per_player) reqs.push(`Max Rating: ${e.max_rating_per_player}`)
-  if (e.max_peak_rating_per_player) reqs.push(`Max Peak Rating: ${e.max_peak_rating_per_player}`)
-  if (e.min_matches_played) reqs.push(`Min Matches: ${e.min_matches_played}`)
-  if (e.allowed_rank_tiers && e.allowed_rank_tiers.length > 0)
-    reqs.push(`Rank Tiers: ${e.allowed_rank_tiers.join(', ')}`)
-  return reqs
-})
+// "Do I qualify?" — checked against the viewer's own stats, but only when
+// the answer can change what they do next: prospective joiners. Members and
+// signed-out visitors see the plain rules.
+const viewerChecksRelevant = computed(
+  () => isAuthenticated.value && !isLeagueMember.value,
+)
+const eligibilityCheck = useEligibilityCheck(
+  leagueRules,
+  computed(() => (viewerChecksRelevant.value ? authStore.playerId : null)),
+  computed(() => league.value?.game_id ?? null),
+)
 
 const leagueStatusLabel = computed(() => getStatusLabel(leagueStatusMap, league.value?.status ?? ''))
 const leagueStatusColor = computed(() => getStatusColor(leagueStatusMap, league.value?.status ?? ''))

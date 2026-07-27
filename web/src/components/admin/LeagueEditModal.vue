@@ -101,53 +101,27 @@
               />
             </v-col>
 
-            <!-- Entry Requirements -->
+            <!-- Entry Requirements — same editor as the Create modal, so
+                 the two can never drift again (they had: hints existed in
+                 one and not the other). -->
             <v-col cols="12">
               <v-expansion-panels variant="accordion">
-                <v-expansion-panel title="Entry Requirements">
+                <v-expansion-panel>
+                  <v-expansion-panel-title>
+                    Entry Requirements
+                    <v-chip
+                      v-if="activeRules > 0"
+                      size="x-small"
+                      color="primary"
+                      variant="tonal"
+                      class="ml-2"
+                    >
+                      {{ activeRules }} active
+                    </v-chip>
+                    <span v-else class="text-medium-emphasis ml-2">(none)</span>
+                  </v-expansion-panel-title>
                   <v-expansion-panel-text>
-                    <v-row dense>
-                      <v-col cols="6">
-                        <v-text-field
-                          v-model.number="form.min_rating"
-                          label="Minimum Rating"
-                          type="number"
-                          variant="outlined"
-                          density="compact"
-                          clearable
-                        />
-                      </v-col>
-                      <v-col cols="6">
-                        <v-text-field
-                          v-model.number="form.max_rating"
-                          label="Maximum Rating"
-                          type="number"
-                          variant="outlined"
-                          density="compact"
-                          clearable
-                        />
-                      </v-col>
-                      <v-col cols="6">
-                        <v-text-field
-                          v-model.number="form.max_peak_rating"
-                          label="Max Peak Rating"
-                          type="number"
-                          variant="outlined"
-                          density="compact"
-                          clearable
-                        />
-                      </v-col>
-                      <v-col cols="6">
-                        <v-text-field
-                          v-model.number="form.min_matches"
-                          label="Min Matches Played"
-                          type="number"
-                          variant="outlined"
-                          density="compact"
-                          clearable
-                        />
-                      </v-col>
-                    </v-row>
+                    <EligibilityRulesEditor v-model="eligibilityRules" />
                   </v-expansion-panel-text>
                 </v-expansion-panel>
               </v-expansion-panels>
@@ -184,12 +158,16 @@ import { useDisplay } from 'vuetify'
 import { ref, watch } from 'vue'
 import { useLeaguesStore, type UserLeagueMembership, type LeagueResponse } from '@/stores/leagues'
 import { useFormRules } from '@/composables/useFormRules'
+import { LEAGUE_ACCESS_TYPES, type LeagueAccessType } from '@/composables/useLeagueEligibility'
+import { computed } from 'vue'
 import {
-  LEAGUE_ACCESS_TYPES,
-  extractEligibilityForm,
-  buildEligibilitySettings,
-  type LeagueAccessType,
-} from '@/composables/useLeagueEligibility'
+  emptyRules,
+  activeRuleCount,
+  rulesFromSettings,
+  buildEligibilityPayload,
+  type EligibilityRules,
+} from '@/composables/useEligibilityRules'
+import EligibilityRulesEditor from '@/components/eligibility/EligibilityRulesEditor.vue'
 
 // Long scrolling forms in a small floating dialog are unusable on phones.
 const { smAndDown } = useDisplay()
@@ -218,11 +196,10 @@ const form = ref({
   description: '',
   logo_url: '',
   access_type: 'open',
-  min_rating: null as number | null,
-  max_rating: null as number | null,
-  max_peak_rating: null as number | null,
-  min_matches: null as number | null,
 })
+
+const eligibilityRules = ref<EligibilityRules>(emptyRules())
+const activeRules = computed(() => activeRuleCount(eligibilityRules.value))
 
 const accessTypes = LEAGUE_ACCESS_TYPES
 
@@ -245,17 +222,16 @@ async function fetchLeagueDetails() {
     const league = await leaguesStore.fetchLeague(props.league.league_id)
     leagueDetails.value = league
 
-    // Populate form with league details. Eligibility fields are pulled out of
-    // `settings.eligibility` by the shared extractor so the shape stays in
-    // lockstep with the Create modal.
+    // Populate form with league details; eligibility comes from the shared
+    // rules model (settings.eligibility JSONB).
     form.value = {
       name: league.name,
       slug: league.slug,
       description: league.description || '',
       logo_url: league.logo_url || '',
       access_type: league.access_type,
-      ...extractEligibilityForm(league.settings),
     }
+    eligibilityRules.value = rulesFromSettings(league.settings)
   } catch {
     error.value = leaguesStore.error || 'Failed to load league details'
   } finally {
@@ -295,12 +271,19 @@ async function save() {
       updateData.access_type = form.value.access_type as LeagueAccessType
     }
 
-    // Build settings via shared helper — shape stays identical to the Create
-    // modal. Send even when empty so callers can clear eligibility rules.
-    const newSettings = buildEligibilitySettings(form.value)
-    const currentSettings = leagueDetails.value.settings as Record<string, unknown> ?? {}
-    if (JSON.stringify(newSettings) !== JSON.stringify(currentSettings)) {
-      updateData.settings = newSettings
+    // Eligibility: send the typed field only when the rules changed. This
+    // used to overwrite the WHOLE settings JSONB with just the eligibility
+    // key, erasing every other setting on save; the typed field touches only
+    // settings.eligibility (the backend merges), and clearing all rules
+    // sends an explicit `eligibility: null` so removal actually persists.
+    const originalPayload = buildEligibilityPayload(rulesFromSettings(leagueDetails.value.settings))
+    const newPayload = buildEligibilityPayload(eligibilityRules.value)
+    if (JSON.stringify(newPayload ?? null) !== JSON.stringify(originalPayload ?? null)) {
+      if (newPayload) {
+        updateData.eligibility_restrictions = newPayload
+      } else {
+        updateData.settings = { eligibility: null }
+      }
     }
 
     // Skip if nothing changed

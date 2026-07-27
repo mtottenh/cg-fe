@@ -36,6 +36,47 @@
         @check-in="handleCheckIn"
       />
 
+      <!-- Entry requirements: visible BEFORE anyone clicks Register, with
+           the viewer's own pass/fail for the per-player rules. -->
+      <v-card
+        v-if="hasTournamentRequirements"
+        variant="tonal"
+        class="mb-6 pa-3"
+        data-testid="entry-requirements"
+      >
+        <div class="d-flex align-center mb-2 flex-wrap ga-1">
+          <v-icon start size="small">mdi-shield-check</v-icon>
+          <span class="text-subtitle-2 font-weight-bold">Entry Requirements</span>
+          <v-chip
+            v-if="viewerChecksRelevant && eligibilityCheck.failingChecks.value.length > 0"
+            size="x-small"
+            color="error"
+            variant="tonal"
+            class="ml-2"
+          >
+            You don't meet {{ eligibilityCheck.failingChecks.value.length }}
+            {{ eligibilityCheck.failingChecks.value.length === 1 ? 'requirement' : 'requirements' }}
+          </v-chip>
+          <v-chip
+            v-else-if="viewerChecksRelevant && eligibilityCheck.stats.value"
+            size="x-small"
+            color="success"
+            variant="tonal"
+            class="ml-2"
+          >
+            You qualify
+          </v-chip>
+        </div>
+        <EligibilityRulesDisplay
+          :rules="tournamentRules"
+          :checks="viewerChecksRelevant ? eligibilityCheck.checks.value : null"
+        />
+        <div v-if="tournament.league_id" class="text-caption text-medium-emphasis mt-2">
+          This tournament is part of a league — the league's entry requirements
+          apply as well.
+        </div>
+      </v-card>
+
       <!-- Tabs -->
       <v-card>
         <v-tabs v-model="activeTab" bg-color="transparent">
@@ -262,6 +303,7 @@
               <TournamentBracket
                 :brackets="brackets"
                 :matches="matches"
+                :stages="stages"
                 :highlight-registration-id="myRegistration?.id"
                 @match-click="openMatch"
               />
@@ -334,6 +376,7 @@
          it again, and the API then rejected the duplicate with no explanation
          (P-167). -->
     <TeamRegistrationModal
+      :error="registrationError"
       v-if="tournament"
       v-model="showTeamRegistrationModal"
       :tournament="tournament"
@@ -342,6 +385,7 @@
     />
 
     <PlayerRegistrationModal
+      :error="registrationError"
       v-if="tournament"
       v-model="showPlayerRegistrationModal"
       :tournament="tournament"
@@ -383,6 +427,9 @@ import StatsLeaderboard from '@/components/awards/StatsLeaderboard.vue'
 import TournamentMatchCard from '@/components/tournament/TournamentMatchCard.vue'
 import TeamRegistrationModal from '@/components/tournament/TeamRegistrationModal.vue'
 import PlayerRegistrationModal from '@/components/tournament/PlayerRegistrationModal.vue'
+import EligibilityRulesDisplay from '@/components/eligibility/EligibilityRulesDisplay.vue'
+import { rulesFromResponse, hasAnyRules } from '@/composables/useEligibilityRules'
+import { useEligibilityCheck } from '@/composables/useEligibilityCheck'
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { useActionFeedback } from '@/composables/useActionFeedback'
@@ -407,7 +454,7 @@ const {
   currentTournament: tournament,
   registrations: allRegistrations,
   myRegistrations, registrationCounts, registrationsPagination,
-  matches, brackets,
+  matches, brackets, stages,
 } = storeToRefs(tournamentsStore)
 
 const {
@@ -452,6 +499,28 @@ const feedback = useActionFeedback()
 const confirmDialog = useConfirmDialog()
 const showTeamRegistrationModal = ref(false)
 const showPlayerRegistrationModal = ref(false)
+/** Registration rejection detail, rendered inside the open modal (the
+ * snackbar truncates at 140 chars — an eligibility explanation doesn't fit). */
+const registrationError = ref<string | null>(null)
+
+// Entry requirements via the shared rules model.
+const tournamentRules = computed(() =>
+  rulesFromResponse(tournament.value?.eligibility_restrictions ?? null),
+)
+const hasTournamentRequirements = computed(() => hasAnyRules(tournamentRules.value))
+const viewerChecksRelevant = computed(
+  () => authStore.isAuthenticated && !myRegistration.value,
+)
+const eligibilityCheck = useEligibilityCheck(
+  tournamentRules,
+  computed(() => (viewerChecksRelevant.value ? authStore.playerId : null)),
+  computed(() => tournament.value?.game_id ?? null),
+)
+
+// A stale rejection must not greet the next open.
+watch([showTeamRegistrationModal, showPlayerRegistrationModal], ([team, player]) => {
+  if (!team && !player) registrationError.value = null
+})
 const editModalOpen = ref(false)
 
 // Aggregated loading signal for the registration panel — true whenever any
@@ -586,8 +655,11 @@ function handleRegister() {
 
 async function handleTeamRegister(teamSeasonId: string, participantName: string, participantLogoUrl?: string) {
   if (!tournament.value) return
-  showTeamRegistrationModal.value = false
-  await feedback.run(
+  // The modal stays open until the request succeeds. Closing it first meant
+  // an eligibility rejection landed as a truncated toast over an empty page
+  // with the user's team selection discarded.
+  registrationError.value = null
+  const result = await feedback.run(
     () => tournamentsStore.registerTeam(tournament.value!.id, {
       team_season_id: teamSeasonId,
       participant_name: participantName,
@@ -596,26 +668,40 @@ async function handleTeamRegister(teamSeasonId: string, participantName: string,
     {
       success: 'Team registered successfully!',
       failureFallback: 'Failed to register team',
-      errorSource: tournamentsStore,
+      // The precise action state, not the store-wide aggregate — the
+      // aggregate could surface a stale error from an unrelated action.
+      errorSource: tournamentsStore.registerTeamState,
       after: fetchData,
     },
   )
+  if (result !== null) {
+    showTeamRegistrationModal.value = false
+  } else {
+    registrationError.value =
+      tournamentsStore.registerTeamState.error || 'Failed to register team'
+  }
 }
 
 async function handlePlayerRegister(participantName: string) {
   if (!tournament.value) return
-  showPlayerRegistrationModal.value = false
-  await feedback.run(
+  registrationError.value = null
+  const result = await feedback.run(
     () => tournamentsStore.registerPlayer(tournament.value!.id, {
       participant_name: participantName,
     }),
     {
       success: 'Successfully registered!',
       failureFallback: 'Failed to register',
-      errorSource: tournamentsStore,
+      errorSource: tournamentsStore.registerPlayerState,
       after: fetchData,
     },
   )
+  if (result !== null) {
+    showPlayerRegistrationModal.value = false
+  } else {
+    registrationError.value =
+      tournamentsStore.registerPlayerState.error || 'Failed to register'
+  }
 }
 
 function handleWithdraw() {
@@ -724,6 +810,9 @@ async function fetchData() {
         tournamentsStore.fetchRegistrationCounts(id),
         tournamentsStore.fetchMatches(id),
         tournamentsStore.fetchBrackets(id),
+        // Stage names/order power the bracket's stage switcher for
+        // groups+playoffs tournaments.
+        tournamentsStore.fetchStages(id).catch(() => []),
         gamesStore.fetchGames(),
       ]
 

@@ -67,6 +67,7 @@
       <v-row class="mt-2">
         <v-col cols="12" md="8">
           <PublicMmStatsCard :player-id="playerId" class="mb-4" />
+          <PugStatsCard :player-id="playerId" class="mb-4" />
           <PlayerGameStatsCard :player-id="playerId" />
         </v-col>
 
@@ -208,6 +209,7 @@ import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { teamRoleMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import PlayerGameStatsCard from '@/components/player/PlayerGameStatsCard.vue'
 import PublicMmStatsCard from '@/components/player/PublicMmStatsCard.vue'
+import PugStatsCard from '@/components/player/PugStatsCard.vue'
 import TrophyCase from '@/components/player/TrophyCase.vue'
 
 const route = useRoute()

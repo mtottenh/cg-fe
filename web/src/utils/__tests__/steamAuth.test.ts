@@ -43,3 +43,23 @@ describe('steamLoginUrl', () => {
     expect(steamLoginUrl()).toMatch(/\/v1\/auth\/steam\/login$/)
   })
 })
+
+describe('post-login redirect stash', () => {
+  it('round-trips a same-origin path', async () => {
+    const { stashPostLoginRedirect, consumePostLoginRedirect } = await import('../steamAuth')
+    stashPostLoginRedirect('/pugs/join/ABC123XYZ0')
+    expect(consumePostLoginRedirect()).toBe('/pugs/join/ABC123XYZ0')
+    // consumed exactly once
+    expect(consumePostLoginRedirect()).toBeNull()
+  })
+
+  it('refuses absolute and protocol-relative URLs (open-redirect guard)', async () => {
+    const { stashPostLoginRedirect, consumePostLoginRedirect } = await import('../steamAuth')
+    stashPostLoginRedirect('https://evil.example/phish')
+    expect(consumePostLoginRedirect()).toBeNull()
+    stashPostLoginRedirect('//evil.example/phish')
+    expect(consumePostLoginRedirect()).toBeNull()
+    stashPostLoginRedirect(null)
+    expect(consumePostLoginRedirect()).toBeNull()
+  })
+})

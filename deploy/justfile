@@ -166,7 +166,7 @@ deploy-steam-bot-release VERSION:
     [ ${#deb[@]} -eq 1 ] && [ -f "${deb[0]}" ] || { echo "expected exactly one deb: ${deb[*]}"; exit 1; }
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
         {{VAULT_ARGS}} --tags portal_steam_bot \
-        -e portal_steam_bot_enabled=true \
+        -e '{"portal_steam_bot_enabled": true}' \
         -e portal_steam_bot_deb_path="${deb[0]}"
 
 # Ship a released SPA as the portal-web deb (preferred: dpkg removes stale
@@ -259,7 +259,7 @@ deploy-agent-release VERSION:
 deploy-steam-bot DEB:
     ansible-playbook -i ansible/inventory/prod.yml ansible/site.yml \
         {{VAULT_ARGS}} --tags portal_steam_bot \
-        -e portal_steam_bot_enabled=true \
+        -e '{"portal_steam_bot_enabled": true}' \
         -e portal_steam_bot_deb_path={{DEB}}
 
 # --- verification ------------------------------------------------------------

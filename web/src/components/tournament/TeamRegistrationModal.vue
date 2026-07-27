@@ -82,6 +82,19 @@
             :rules="[rules.required, rules.maxLength]"
           />
         </template>
+        <!-- Server rejection (e.g. team ELO bounds), in full — the page's
+             snackbar truncates, and the modal must stay open so the
+             selection isn't lost. -->
+        <v-alert
+          v-if="error"
+          type="error"
+          variant="tonal"
+          density="compact"
+          class="mt-4"
+          data-testid="registration-error"
+        >
+          {{ error }}
+        </v-alert>
       </v-card-text>
 
       <v-divider />
@@ -112,6 +125,8 @@ import { teamRoleMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 const props = defineProps<{  tournament: TournamentResponse
   registrations: TournamentRegistrationResponse[]
+  /** Server-side registration rejection to display inline. */
+  error?: string | null
 }>()
 
 const emit = defineEmits<{  register: [teamSeasonId: string, participantName: string, participantLogoUrl?: string]

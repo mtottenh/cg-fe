@@ -29,7 +29,18 @@
 </template>
 
 <script setup lang="ts">
-import { steamLoginUrl } from '@/utils/steamAuth'
+import { onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { stashPostLoginRedirect, steamLoginUrl } from '@/utils/steamAuth'
 
 const steamUrl = steamLoginUrl()
+const route = useRoute()
+
+// The Steam round-trip loses ?redirect= (the backend hard-redirects to
+// /auth/steam/complete), so stash the destination now — this is what makes
+// PUG share links survive sign-in.
+onMounted(() => {
+  const redirect = route.query.redirect
+  stashPostLoginRedirect(typeof redirect === 'string' ? redirect : null)
+})
 </script>

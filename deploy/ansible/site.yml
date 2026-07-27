@@ -149,7 +149,7 @@
     # After monitoring: the guard-page tailscale-serve tasks need tailscaled.
     - role: portal_steam_bot
       tags: [portal_steam_bot]
-      when: portal_steam_bot_enabled | default(false)
+      when: portal_steam_bot_enabled | default(false) | bool
 
     - role: caddy
       tags: [caddy]

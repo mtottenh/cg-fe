@@ -225,7 +225,13 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
       eligibilityRules.value = rulesFromResponse(
         (t as { eligibility_restrictions?: unknown }).eligibility_restrictions as never,
       )
-      originalEligibility.value = { ...eligibilityRules.value }
+      // Deep-copy the array: a shallow spread would alias allowed_rank_tiers,
+      // so an in-place edit would mutate the "original" too and the change
+      // would be silently dropped from the patch.
+      originalEligibility.value = {
+        ...eligibilityRules.value,
+        allowed_rank_tiers: [...eligibilityRules.value.allowed_rank_tiers],
+      }
     }, { immediate: true })
   }
 

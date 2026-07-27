@@ -408,6 +408,14 @@ const standingsHeaders = [
 // Fetch standings for every Swiss/RR bracket in the whole tournament (not
 // just the visible stage, so switching tabs doesn't refetch). Sequenced so a
 // tournament swap can't interleave stale rows into the fresh map.
+//
+// The tournament id comes from each BRACKET, not from the store's
+// `currentTournament`: callers that fetch tournament + brackets in one
+// unordered Promise.all (AdminTournamentDetailPage) can have brackets for
+// tournament Y land while `currentTournament` still holds Z, and the
+// resulting mismatched (Z, Y-bracket) request 404s into an empty table that
+// nothing ever retries — the standings card just silently never appears.
+// Taking the id from the same payload makes that mismatch impossible.
 let standingsSeq = 0
 watch(() => props.brackets, async (brackets) => {
   const seq = ++standingsSeq
@@ -416,12 +424,13 @@ watch(() => props.brackets, async (brackets) => {
     (b) => b.bracket_type === 'swiss' || b.bracket_type === 'round_robin',
   )
   if (tableBrackets.length === 0) return
-  const tournament = tournamentsStore.currentTournament
-  if (!tournament) return
   const results = await Promise.all(
     tableBrackets.map(async (bracket) => {
       try {
-        const data = await tournamentsStore.fetchBracketStandings(tournament.id, bracket.id)
+        const data = await tournamentsStore.fetchBracketStandings(
+          bracket.tournament_id,
+          bracket.id,
+        )
         return [bracket.id, data ?? []] as const
       } catch {
         return [bracket.id, []] as const

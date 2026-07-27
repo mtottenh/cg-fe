@@ -55,6 +55,20 @@
       </v-col>
       <v-col cols="12" sm="6">
         <v-text-field
+          v-model.number="maxAvgRating"
+          label="Max Average Rating"
+          type="number"
+          min="0"
+          density="compact"
+          clearable
+          :disabled="disabled"
+          hint="Anti-smurf: max historical average rating"
+          persistent-hint
+          data-testid="rule-max-avg"
+        />
+      </v-col>
+      <v-col cols="12" sm="6">
+        <v-text-field
           v-model.number="minMatches"
           label="Minimum Matches Played"
           type="number"
@@ -184,6 +198,7 @@ function bind(key: RuleKey) {
 const minRating = bind('min_rating_per_player')
 const maxRating = bind('max_rating_per_player')
 const maxPeakRating = bind('max_peak_rating_per_player')
+const maxAvgRating = bind('max_avg_rating_per_player')
 const minMatches = bind('min_matches_played')
 const minTeamAvg = bind('min_team_average_rating')
 const maxTeamAvg = bind('max_team_average_rating')

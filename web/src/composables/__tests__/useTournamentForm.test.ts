@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useTournamentForm } from '@/composables/useTournamentForm'
 import { useGamesStore } from '@/stores/games'
 import { useTournamentsStore, type TournamentResponse } from '@/stores/tournaments'
+import { emptyRules } from '@/composables/useEligibilityRules'
 
 /** Mount a throwaway component so the composable's watchers/computeds run
  *  under a real component instance. */
@@ -378,6 +379,54 @@ describe('useTournamentForm (edit mode)', () => {
       side_selection_mode: 'picker_choice',
       eligibility_restrictions: { min_rating_per_player: 1000 },
     })
+  })
+
+  it('buildUpdatePatch sends changed eligibility as the typed field', () => {
+    // The patch also spreads the STORED settings, which still contain the
+    // OLD eligibility copy — so the wire body carries two disagreeing
+    // versions. The backend's merge_eligibility_into_settings inserts the
+    // typed field over settings.eligibility, so the new value wins. This
+    // test locks that contract: if a backend refactor ever preferred the
+    // embedded copy, edits would silently no-op.
+    const t = makeTournament() as TournamentResponse & {
+      settings?: Record<string, unknown>
+      eligibility_restrictions?: Record<string, unknown>
+    }
+    t.settings = { eligibility: { min_rating_per_player: 1000 } }
+    t.eligibility_restrictions = { min_rating_per_player: 1000 }
+    const { form } = setup(t)
+    expect(form.eligibilityRules.value.min_rating_per_player).toBe(1000)
+
+    form.eligibilityRules.value = {
+      ...form.eligibilityRules.value,
+      min_rating_per_player: 2000,
+    }
+    const patch = form.buildUpdatePatch() as {
+      eligibility_restrictions?: Record<string, unknown>
+    }
+    expect(patch.eligibility_restrictions).toEqual({ min_rating_per_player: 2000 })
+  })
+
+  it('buildUpdatePatch clears eligibility with an explicit null', () => {
+    const t = makeTournament() as TournamentResponse & {
+      settings?: Record<string, unknown>
+      eligibility_restrictions?: Record<string, unknown>
+    }
+    t.settings = { side_selection_mode: 'knife', eligibility: { min_rating_per_player: 1000 } }
+    t.eligibility_restrictions = { min_rating_per_player: 1000 }
+    const { form } = setup(t)
+
+    form.eligibilityRules.value = emptyRules()
+    const patch = form.buildUpdatePatch() as {
+      settings?: Record<string, unknown>
+      eligibility_restrictions?: unknown
+    }
+    // No typed field (there are no rules to send); the key is removed via
+    // the settings merge's null-clear instead.
+    expect(patch.eligibility_restrictions).toBeUndefined()
+    expect(patch.settings?.eligibility).toBeNull()
+    // ...and unrelated settings survive.
+    expect(patch.settings?.side_selection_mode).toBe('knife')
   })
 
   it('buildUpdatePatch rewrites managed format_settings keys, preserving foreign ones', () => {

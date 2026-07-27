@@ -12,6 +12,7 @@ export type EligibilityRules = {
   min_rating_per_player: number | null
   max_rating_per_player: number | null
   max_peak_rating_per_player: number | null
+  max_avg_rating_per_player: number | null
   min_matches_played: number | null
   min_team_average_rating: number | null
   max_team_average_rating: number | null
@@ -31,6 +32,7 @@ export const PLAYER_RULE_KEYS = [
   'min_rating_per_player',
   'max_rating_per_player',
   'max_peak_rating_per_player',
+  'max_avg_rating_per_player',
   'min_matches_played',
 ] as const
 
@@ -48,6 +50,7 @@ export function emptyRules(): EligibilityRules {
     min_rating_per_player: null,
     max_rating_per_player: null,
     max_peak_rating_per_player: null,
+    max_avg_rating_per_player: null,
     min_matches_played: null,
     min_team_average_rating: null,
     max_team_average_rating: null,
@@ -127,6 +130,7 @@ const RULE_PRESENTATION: Record<RuleKey, { kind: 'player' | 'team'; icon: string
   min_rating_per_player: { kind: 'player', icon: 'mdi-chevron-double-up', format: (v) => `Rating ≥ ${v}` },
   max_rating_per_player: { kind: 'player', icon: 'mdi-chevron-double-down', format: (v) => `Rating ≤ ${v}` },
   max_peak_rating_per_player: { kind: 'player', icon: 'mdi-summit', format: (v) => `Peak rating ≤ ${v}` },
+  max_avg_rating_per_player: { kind: 'player', icon: 'mdi-chart-line', format: (v) => `Average rating ≤ ${v}` },
   min_matches_played: { kind: 'player', icon: 'mdi-counter', format: (v) => `≥ ${v} matches played` },
   min_team_average_rating: { kind: 'team', icon: 'mdi-account-group', format: (v) => `Team avg rating ≥ ${v}` },
   max_team_average_rating: { kind: 'team', icon: 'mdi-account-group', format: (v) => `Team avg rating ≤ ${v}` },

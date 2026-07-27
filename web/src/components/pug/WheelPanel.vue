@@ -14,7 +14,7 @@
 
     <v-card-text>
       <v-alert
-        v-if="segments.length === 0"
+        v-if="displaySegments.length === 0"
         type="info"
         variant="tonal"
         density="compact"
@@ -25,7 +25,7 @@
 
       <template v-else>
         <WheelSpinner
-          :segments="segments"
+          :segments="displaySegments"
           :spin="activeSpin"
           @settled="onSettled"
         />
@@ -33,7 +33,7 @@
         <!-- Weighted legend: who nominated what -->
         <div class="d-flex flex-wrap ga-2 mt-4 justify-center">
           <v-chip
-            v-for="segment in segments"
+            v-for="segment in displaySegments"
             :key="segment.map_id"
             size="small"
             variant="tonal"
@@ -132,6 +132,13 @@ const emit = defineEmits<{
 
 const spinning = ref(false)
 const activeSpin = ref<{ winnerMapId: string; spinSeed: number; durationMs: number } | null>(null)
+// While a spin plays, the wheel is frozen to the spin frame's OWN segment
+// snapshot: the veto state frame that follows immediately removes the
+// winner from the idle segments, which would redraw the disc (and lose
+// the landing target) mid-animation (review M1).
+const frozenSegments = ref<WheelSegmentInput[] | null>(null)
+
+const displaySegments = computed(() => frozenSegments.value ?? props.segments)
 
 const nextGameNumber = computed(() => props.results.length + 1)
 
@@ -140,6 +147,7 @@ watch(
   (playback) => {
     if (!playback) return
     spinning.value = true
+    frozenSegments.value = playback.segments
     activeSpin.value = {
       winnerMapId: playback.winner_map_id,
       spinSeed: playback.spin_seed,
@@ -151,6 +159,7 @@ watch(
 function onSettled(winnerMapId: string): void {
   spinning.value = false
   activeSpin.value = null
+  frozenSegments.value = null
   emit('settled', winnerMapId)
 }
 </script>

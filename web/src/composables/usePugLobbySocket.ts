@@ -33,6 +33,9 @@ export function usePugLobbySocket(getPugId: () => string | null, options: PugLob
 
   let ws: WebSocket | null = null
   let reconnectAttempts = 0
+  // Authorization refused: reconnecting cannot help, and hammering a 403
+  // endpoint from the fallback poller is worse (review m6).
+  let fatalAuth = false
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let fallbackTimer: ReturnType<typeof setInterval> | null = null
   let pingTimer: ReturnType<typeof setInterval> | null = null
@@ -47,8 +50,14 @@ export function usePugLobbySocket(getPugId: () => string | null, options: PugLob
 
   function connect(): void {
     const pugId = getPugId()
+    if (!pugId || disposed || fatalAuth) return
     const token = getAuthToken()
-    if (!pugId || !token || disposed) return
+    if (!token) {
+      // No token, no socket — but the lobby must not freeze: poll slowly
+      // until a token appears (review m6).
+      startFallbackPolling()
+      return
+    }
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
 
     stopFallbackPolling()
@@ -80,8 +89,10 @@ export function usePugLobbySocket(getPugId: () => string | null, options: PugLob
           ringDoorbell('connected')
           break
         case 'auth_error':
-          // Not authorized (or bad token): reconnecting won't help.
-          reconnectAttempts = MAX_RECONNECT_ATTEMPTS
+          // Not authorized (or bad token): reconnecting won't help, and
+          // neither will polling the (equally refused) REST endpoint.
+          fatalAuth = true
+          stopFallbackPolling()
           socket.close()
           break
         case 'pug_changed':
@@ -98,7 +109,7 @@ export function usePugLobbySocket(getPugId: () => string | null, options: PugLob
     socket.onclose = () => {
       connected.value = false
       stopPing()
-      if (disposed) return
+      if (disposed || fatalAuth) return
       if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttempts += 1
         const delay = RECONNECT_DELAY_MS * Math.min(reconnectAttempts, 5)
@@ -150,7 +161,8 @@ export function usePugLobbySocket(getPugId: () => string | null, options: PugLob
     fallbackTimer = setInterval(() => {
       if (document.visibilityState === 'hidden') return
       options.onChanged('fallback_poll')
-      // Keep probing for a way back onto the socket.
+      // Keep probing for a way back onto the socket (never after an auth
+      // refusal — connect() guards on fatalAuth).
       reconnectAttempts = 0
       connect()
     }, FALLBACK_POLL_MS)

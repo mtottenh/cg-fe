@@ -120,6 +120,7 @@
           :my-player-id="myPlayerId"
           :is-creator="isCreator"
           :editable="true"
+          :picking-team="detail.picking_team ?? null"
           @join-team="(team) => pugsStore.setTeam(pugIdRef, team)"
           @kick="(playerId) => pugsStore.kickPlayer(pugIdRef, playerId)"
           @toggle-captain="(playerId, isCaptain) => pugsStore.setCaptain(pugIdRef, playerId, isCaptain)"
@@ -423,14 +424,16 @@ const wheelResults = computed<WheelResult[]>(() =>
   }))
 )
 
-lobby.onMessage('wheel_spin', (msg) => {
-  playback.value = {
-    game_number: msg.game_number,
-    segments: msg.segments,
-    winner_map_id: msg.winner_map_id,
-    spin_seed: msg.spin_seed,
-    duration_ms: msg.duration_ms,
-  }
+lobby.onMessage({
+  wheel_spin: (msg) => {
+    playback.value = {
+      game_number: msg.game_number,
+      segments: msg.segments,
+      winner_map_id: msg.winner_map_id,
+      spin_seed: msg.spin_seed,
+      duration_ms: msg.duration_ms,
+    }
+  },
 })
 
 async function spin(): Promise<void> {
@@ -461,7 +464,8 @@ async function onSpinSettled(): Promise<void> {
 // ── Gathering state ──
 const forceLock = ref(false)
 
-const gameMaps = computed(() => gamesStore.maps)
+// Map catalog for the nomination grid (fetchMaps returns without storing).
+const gameMaps = ref<Awaited<ReturnType<typeof gamesStore.fetchMaps>>>([])
 
 const myNomination = computed(
   () =>
@@ -589,7 +593,7 @@ async function init(): Promise<void> {
   playback.value = null
   await refresh()
   if (detail.value?.pug.game_id) {
-    await gamesStore.fetchMaps(detail.value.pug.game_id).catch(() => {})
+    gameMaps.value = await gamesStore.fetchMaps(detail.value.pug.game_id).catch(() => [])
   }
   if (matchId.value) await afterMaterialized()
   if (!isTerminal.value) pugSocket.connect()

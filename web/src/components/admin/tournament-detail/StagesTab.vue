@@ -21,7 +21,7 @@
         <v-list-item-title>
           {{ stage.name }}
           <v-chip v-if="stage.status !== 'pending'" size="x-small" class="ml-2" variant="tonal">
-            {{ stage.status }}
+            {{ getStatusLabel(stageStatusMap, stage.status) }}
           </v-chip>
         </v-list-item-title>
         <v-list-item-subtitle>
@@ -131,7 +131,7 @@
 </template>
 
 <script setup lang="ts">
-import { stageFormatMap, getStatusLabel } from '@/utils/statusMaps'
+import { stageFormatMap, stageStatusMap, getStatusLabel } from '@/utils/statusMaps'
 import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTournamentsStore, MATCH_FORMATS } from '@/stores/tournaments'

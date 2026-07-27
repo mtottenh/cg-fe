@@ -256,7 +256,7 @@ const form = reactive({
 })
 
 const gameItems = computed(() =>
-  gamesStore.games.map((g) => ({ title: g.name, value: g.id }))
+  gamesStore.games.map((g) => ({ title: g.display_name, value: g.id }))
 )
 
 const sideOptions = computed(() => {

@@ -7957,6 +7957,12 @@ export interface components {
                  *     lobby UI), when they are on a team.
                  */
                 my_registration_id?: string | null;
+                /**
+                 * Format: int32
+                 * @description Captains draft: which team picks next (gathering only; the backend
+                 *     enforces the same rule on POST /draft).
+                 */
+                picking_team?: number | null;
                 players: components["schemas"]["PugPlayerResponse"][];
                 pug: components["schemas"]["PugResponse"];
                 spins: components["schemas"]["PugWheelSpinResponse"][];
@@ -14075,6 +14081,12 @@ export interface components {
              *     lobby UI), when they are on a team.
              */
             my_registration_id?: string | null;
+            /**
+             * Format: int32
+             * @description Captains draft: which team picks next (gathering only; the backend
+             *     enforces the same rule on POST /draft).
+             */
+            picking_team?: number | null;
             players: components["schemas"]["PugPlayerResponse"][];
             pug: components["schemas"]["PugResponse"];
             spins: components["schemas"]["PugWheelSpinResponse"][];

@@ -66,6 +66,15 @@ describe('computeSpinRotation', () => {
 })
 
 describe('buildSegments', () => {
+  it('sorts byte-wise, matching the Rust snapshot exactly (not localeCompare)', () => {
+    // 'Workshop_Zoo' < 'de_x' in byte order ('W'=0x57 < 'd'=0x64); a
+    // locale-aware sort would flip these and reshuffle the wheel the
+    // moment a server spin snapshot arrives.
+    const segments = buildSegments([], ['de_x', 'Workshop_Zoo'])
+    expect(segments.map((s) => s.map_id)).toEqual(['Workshop_Zoo', 'de_x'])
+  })
+
+
   it('mirrors the backend aggregation rules', () => {
     const entries = [
       { map_id: 'de_mirage', player_name: 'alice' },

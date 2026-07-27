@@ -145,7 +145,13 @@ export function buildSegments(
       byMap.set(mapId, { map_id: mapId, weight: 1, nominated_by: [] })
     }
   }
-  return [...byMap.values()].sort((a, b) => a.map_id.localeCompare(b.map_id))
+  // Byte-wise ordering, NOT localeCompare: the server sorts its segment
+  // snapshot with Rust's byte-order cmp, and geometry is part of the
+  // shared determinism contract — a locale-sensitive sort reshuffles the
+  // wheel for mixed-case/workshop map ids the moment a spin starts.
+  return [...byMap.values()].sort((a, b) =>
+    a.map_id < b.map_id ? -1 : a.map_id > b.map_id ? 1 : 0
+  )
 }
 
 /** Dark-theme-friendly categorical palette for wheel segments. */

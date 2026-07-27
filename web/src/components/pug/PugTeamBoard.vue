@@ -104,19 +104,16 @@ const props = defineProps<{
   isCreator: boolean
   /** Team changes allowed (gathering only). */
   editable: boolean
+  /** Captains draft: whose pick it is — computed by the backend (the same
+   * rule POST /draft enforces), so the button can't drift from it. */
+  pickingTeam: number | null
 }>()
 
-/**
- * Captains draft: the team with fewer players picks (tie: team 1). The
- * button shows for the picking team's captain and the creator; the backend
- * enforces the same rule.
- */
 const canDraft = computed(() => {
+  if (props.pickingTeam == null) return false
   if (props.isCreator) return true
-  const count = (team: number) => props.players.filter((p) => p.team === team).length
-  const picking = count(1) <= count(2) ? 1 : 2
   return props.players.some(
-    (p) => p.player_id === props.myPlayerId && p.is_captain && p.team === picking
+    (p) => p.player_id === props.myPlayerId && p.is_captain && p.team === props.pickingTeam
   )
 })
 

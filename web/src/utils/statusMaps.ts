@@ -138,6 +138,14 @@ export const demoStatusMap: StatusMap<S['DemoStatus']> = {
 
 // P-112: `DemoResponse.category` was `String` in front of `DemoCategory`, which
 // already derived `Serialize` + `ToSchema`. Now typed, so this map is locked.
+/** Tournament stage lifecycle (P-112-keyed: `StageStatus` is a generated union). */
+export const stageStatusMap: StatusMap<S['StageStatus']> = {
+  pending: { color: 'secondary', label: 'Pending', icon: 'mdi-clock-outline' },
+  active: { color: 'success', label: 'Active', icon: 'mdi-play-circle' },
+  completed: { color: 'primary', label: 'Completed', icon: 'mdi-flag-checkered' },
+  cancelled: { color: 'error', label: 'Cancelled', icon: 'mdi-cancel' },
+}
+
 /** PUG lobby lifecycle (P-112-keyed: `PugStatus` is a generated union). */
 export const pugStatusMap: StatusMap<S['PugStatus']> = {
   gathering: { color: 'primary', label: 'Gathering players', icon: 'mdi-account-multiple-plus' },

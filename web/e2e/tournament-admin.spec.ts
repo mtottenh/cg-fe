@@ -546,14 +546,16 @@ test.describe('Tournament Admin Flows', () => {
       // substring-based. Same `.v-select` + option-menu pattern as
       // `admin-match-overrides.spec.ts:93-98`.
       //
-      // A format MUST be picked here even though the field says "(optional)":
-      // `handleCreateStage` sends `format: newStage.format ?? ''`
-      // (StagesTab.vue:109) and the backend parses `format` into `StageFormat`
-      // (`dto/requests/tournament.rs:525-528`), so `''` is a 400. Leaving it
-      // blank is therefore not a path this test can take — that is a reported
-      // finding, not a gap in the coverage. `round_robin` is one of the five
-      // formats the enum actually accepts (`portal-core/src/types/
-      // tournament.rs:669-678`); the picker's `groups_and_playoffs` is not.
+      // `round_robin` is one of the five formats the enum actually accepts
+      // (`portal-core/src/types/tournament.rs`); the tournament-level
+      // `groups_and_playoffs` is not a stage format.
+      //
+      // BOTH pickers render human labels, not wire values — the format picker
+      // via `stageFormatMap` (P-117) and the match-format picker via the
+      // store's `MATCH_FORMATS`, so this filter matches "Best of 3", not
+      // "bo3". Selecting Round Robin also hides the "Final Match Format"
+      // select (it only shows for single elimination), which does not disturb
+      // the indices used here because it sits after both.
       const stageSelects = dialog.locator('.v-select')
       await stageSelects.nth(0).click()
       await page.locator('.v-select__content .v-list-item')
@@ -562,7 +564,7 @@ test.describe('Tournament Admin Flows', () => {
       await expect(page.locator('.v-select__content')).toHaveCount(0)
       await stageSelects.nth(1).click()
       await page.locator('.v-select__content .v-list-item')
-        .filter({ hasText: /^bo3$/ })
+        .filter({ hasText: /^Best of 3$/ })
         .click()
       await expect(page.locator('.v-select__content')).toHaveCount(0)
 

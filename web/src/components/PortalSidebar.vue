@@ -39,6 +39,13 @@
       />
 
       <v-list-item
+        prepend-icon="mdi-account-multiple-plus"
+        title="Pick-Up Games"
+        :to="{ name: 'pugs' }"
+        :active="route.name?.toString().startsWith('pug')"
+      />
+
+      <v-list-item
         prepend-icon="mdi-account-group"
         title="Players"
         :to="{ name: 'players' }"

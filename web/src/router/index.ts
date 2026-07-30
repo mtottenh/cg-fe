@@ -268,10 +268,20 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
-  // Redirect unauthenticated users to login for protected routes
+  // Redirect unauthenticated users to login for protected routes.
+  //
+  // An expired ACCESS token is not the same as a dead session: the refresh
+  // token (in memory, or the httpOnly cookie across reloads) usually still
+  // has days left. Without this, the 15-minute access token expiring was
+  // enough to bounce a signed-in user to the login page mid-session, which
+  // is what "I have to sign in every ten minutes" actually was. Only give
+  // up once a refresh has genuinely failed.
   if (to.meta.requiresAuth && !isAuthenticated) {
-    next({ name: 'login', query: { redirect: to.fullPath } })
-    return
+    const refreshed = await authStore.refreshAccessToken()
+    if (!refreshed) {
+      next({ name: 'login', query: { redirect: to.fullPath } })
+      return
+    }
   }
 
   // Redirect non-admin users away from admin routes

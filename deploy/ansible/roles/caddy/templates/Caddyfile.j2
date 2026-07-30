@@ -40,6 +40,30 @@
         }
     }
 
+    # Lobby WebSockets (veto + PUG). These MUST be matched before @api and
+    # MUST NOT carry transport read/write timeouts.
+    #
+    # Caddy applies those timeouts to the hijacked stream, so for a WebSocket
+    # they are a hard cap on the CONNECTION's lifetime, not an idle timeout —
+    # heartbeats do not reset them. Under @api's 60s they severed every veto
+    # and PUG lobby socket after exactly one minute. Omitting them entirely
+    # is the documented way to say "no timeout".
+    @ws {
+        path /v1/ws/*
+    }
+    handle @ws {
+        reverse_proxy 127.0.0.1:3000 {
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Real-IP {remote}
+            # Agent identity headers are trusted ONLY from the agents
+            # vhost (§5.4 / review C1) — never from the public site.
+            header_up -X-Client-Cert-Serial
+            header_up -X-Client-Cert-Fingerprint
+            header_up -X-Portal-Agent-Vhost
+        }
+    }
+
     # API routes — everything the backend owns. /health/* covers
     # /health/ready (db + demo-service readiness), which a bare /health
     # match let fall through to the SPA fallback.
@@ -144,11 +168,13 @@ agents.{{ portal_domain }} {
         # Trust marker: the API honors the serial only when this is set
         # (§5.4 / review C1). The public site strips it.
         header_up X-Portal-Agent-Vhost 1
-        # Long-lived agent WebSocket.
-        transport http {
-            read_timeout 300s
-            write_timeout 300s
-        }
+        # Long-lived agent WebSocket: deliberately NO transport read/write
+        # timeout. Caddy applies those to the hijacked stream, so any value
+        # is a hard cap on how long the agent may stay connected — the
+        # previous 300s severed it every five minutes on the dot. Combined
+        # with the agent's reconnect backoff that regularly exceeded the
+        # portal's 90s heartbeat-staleness window, so the server flapped
+        # offline and PUGs hung at "finding game server".
     }
 
     header {
@@ -171,11 +197,9 @@ grafana.{{ portal_domain }} {
     reverse_proxy 127.0.0.1:{{ monitoring_grafana_port | default(3001) }} {
         header_up X-Forwarded-For {remote}
         header_up X-Forwarded-Proto {scheme}
-        # Grafana Live (dashboard streaming) runs over a WebSocket.
-        transport http {
-            read_timeout 300s
-            write_timeout 300s
-        }
+        # Grafana Live (dashboard streaming) runs over a WebSocket, so no
+        # transport read/write timeout — see the agents vhost above for why
+        # these are a connection-lifetime cap rather than an idle timeout.
     }
 
     header {

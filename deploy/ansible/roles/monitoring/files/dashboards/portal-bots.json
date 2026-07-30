@@ -36,11 +36,15 @@
       "id": 3,
       "type": "timeseries",
       "title": "Steam Web API requests (by outcome) — watch auth-expired",
+      "description": "'transient' is normal background noise: it backs off and retries forever, so judge it on trend, not presence. 'rate-limited' is about our own request volume and is not charged to the token. 'auth-expired' and 'cursor-invalid' PAUSE the entry on first occurrence and never clear on their own — those need a person.",
       "gridPos": { "h": 8, "w": 10, "x": 14, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
-      "targets": [ { "refId": "A", "expr": "sum by (outcome) (rate(cs2_poller_steam_requests_total[10m]))", "legendFormat": "{{outcome}}" } ]
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome) (rate(cs2_poller_steam_requests_total[10m]))", "legendFormat": "{{outcome}}" },
+        { "refId": "B", "expr": "rate(cs2_poller_cycles_cut_short_total[10m])", "legendFormat": "cycles cut short (429)" }
+      ]
     },
     {
       "id": 4,
@@ -124,12 +128,16 @@
     {
       "id": 10,
       "type": "timeseries",
-      "title": "Rank extractions (by outcome)",
+      "title": "Demo attempts (by outcome)",
+      "description": "One point per demo fetch+parse attempt. 'unavailable' is normal shortly after a match ends — Valve publishes demos on a delay and the portal reschedules with backoff. Sustained 'failed' means the download or the parser is broken; 'gone' means Valve retired the demo.",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
-      "targets": [ { "refId": "A", "expr": "sum by (outcome) (rate(cs2_enricher_rank_extractions_total[15m]))", "legendFormat": "{{outcome}}" } ]
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome) (rate(cs2_enricher_demo_attempts_total[15m]))", "legendFormat": "{{outcome}}" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(cs2_enricher_demo_attempt_duration_seconds_bucket[30m])))", "legendFormat": "duration p95 (s)" }
+      ]
     },
     {
       "id": 11,

@@ -171,12 +171,42 @@ services (no framework, ~100 lines):
 
 Metrics: `cs2_poller_tracked_players` gauge ·
 `cs2_poller_cycles_total{outcome}` · `cs2_poller_cycle_duration_seconds` ·
-`cs2_poller_steam_requests_total{outcome}` (outcome: ok, auth-expired,
-rate-limited, error — **auth-expired per player is the top operator
-signal**: it means a player's match-sharing auth code needs refreshing) ·
+`cs2_poller_steam_requests_total{outcome}` (outcome: ok, transient,
+rate-limited, auth-expired, cursor-invalid) ·
 `cs2_poller_sharecodes_discovered_total` ·
 `cs2_poller_submissions_total{outcome}` ·
+`cs2_poller_cycles_cut_short_total` (cycles abandoned on a 429) ·
 `cs2_poller_last_success_timestamp_seconds`.
+
+Those outcome labels are the retry policy, not just telemetry, and they are
+not interchangeable:
+
+- **transient** — network, 5xx, timeouts. Backs off exponentially (1m → 6h)
+  and retries **forever**. There is deliberately no attempt ceiling: a
+  tracking entry is a standing subscription, not a unit of work, so one
+  request every six hours costs nothing and abandoning it costs a player's
+  entire match feed. Expect a nonzero rate at all times; alert on the trend,
+  not the presence.
+- **rate-limited** — ours, not the token's. Applies a flat 5-minute cooldown
+  and does **not** increment `poll_errors` or mark the entry unhealthy. A
+  sustained rate is a signal about our own request volume.
+- **auth-expired** / **cursor-invalid** — pause the entry on the FIRST
+  occurrence, because retrying a 403 or a 412 cannot succeed. **These are the
+  top operator signal**, and unlike the others they never clear on their own.
+
+The paused count lives in the portal, not the bot, because that is where the
+schedule is durable: `GET /v1/admin/pipeline/overview` reports `tracking.paused`
+split into `paused_auth_expired` and `paused_cursor_invalid`, and
+`/v1/admin/pipeline/tracking` sorts paused entries first with a
+`required_action` string on each. Recovery is
+`POST /v1/admin/pipeline/tracking/{id}/resume` (add `?reset_cursor=true` for
+`cursor_invalid`), or — for an expired auth code — the player simply supplying
+a new one, which resumes the entry automatically.
+
+This replaced a `poll_errors >= 10` skip in the bot, which was a one-way door:
+the counter only reset on a successful poll, a skipped entry never got one, and
+nothing in the system could bring it back. Alert on `tracking.paused` rising,
+never on `poll_errors`.
 
 ### 4.5 cs2-enricher
 
@@ -188,9 +218,27 @@ rate-limit — each needs a different human response) ·
 `cs2_enricher_matches_enriched_total{outcome}` ·
 `cs2_enricher_enrich_duration_seconds` ·
 `cs2_enricher_queue_depth` gauge (pending share codes from the portal) ·
-`cs2_enricher_rank_extractions_total{outcome}` ·
 `cs2_enricher_last_success_timestamp_seconds`. Same daemon-promotion
 items as the poller (it shares the loop-and-sleep shape).
+
+Demo extraction is a **separate retried stage**, not a side effect of
+enrichment, so it carries its own signals:
+`cs2_enricher_demo_attempts_total{outcome}` (succeeded · empty · unavailable
+· failed · gone) · `cs2_enricher_demo_attempt_duration_seconds` ·
+`cs2_enricher_demo_jobs_leased` gauge.
+
+Read `unavailable` as normal traffic rather than as an error rate: Valve
+publishes demos on a delay, so a match that has just ended is *expected* to
+404 and be rescheduled with backoff. The alertable shapes are a sustained
+`failed` rate (the download or the parser is broken) and a demo backlog that
+stops draining.
+
+That backlog lives in the portal, not in the bot — the attempt counters and
+schedules are database columns precisely so they survive a bot restart.
+`GET /v1/admin/pipeline/overview` reports it as `demo_extraction`, split by
+terminal state, next to the enrichment queue it used to be conflated with. A
+healthy `enriched` count beside a growing `demo_extraction.pending` localises
+a stall to the Valve CDN rather than the GC.
 
 ### 4.6 portal-server-agent — aggregate, don't scrape
 

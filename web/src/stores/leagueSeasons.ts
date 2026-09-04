@@ -18,6 +18,7 @@ export const useLeagueSeasonsStore = defineStore('leagueSeasons', () => {
   const fetchSeasonsState = createActionState()
   const createSeasonState = createActionState()
   const updateSeasonState = createActionState()
+  const archiveSeasonState = createActionState()
 
   // Computed aliases for backward compatibility
   const loading = computed(() => fetchSeasonsState.loading)
@@ -26,10 +27,15 @@ export const useLeagueSeasonsStore = defineStore('leagueSeasons', () => {
     set: (val: string | null) => { fetchSeasonsState.error = val },
   })
 
-  async function fetchSeasons(leagueId: string): Promise<LeagueSeasonResponse[]> {
+  /** `includeArchived` is for operator views: the default listing is the one
+   *  players see. */
+  async function fetchSeasons(
+    leagueId: string,
+    includeArchived = false,
+  ): Promise<LeagueSeasonResponse[]> {
     return withActionState(fetchSeasonsState, async () => {
       const result = await unwrapApi(api.GET('/v1/league-seasons', {
-        params: { query: { league_id: leagueId } },
+        params: { query: { league_id: leagueId, include_archived: includeArchived } },
       }))
       seasons.value = result.data
       return seasons.value
@@ -66,6 +72,26 @@ export const useLeagueSeasonsStore = defineStore('leagueSeasons', () => {
     }, 'Failed to update season')
   }
 
+  /** Archive or restore a season. Archiving hides it from player-facing
+   *  listings; its own status is untouched, so restoring is exact. */
+  async function setSeasonArchived(
+    seasonId: string,
+    archived: boolean,
+  ): Promise<LeagueSeasonResponse> {
+    return withActionState(archiveSeasonState, async () => {
+      const path = archived
+        ? '/v1/league-seasons/{season_id}/archive'
+        : '/v1/league-seasons/{season_id}/restore'
+      const result = await unwrapApi(api.POST(path, {
+        params: { path: { season_id: seasonId } },
+      }))
+      const updated = result.data
+      replaceById(seasons.value, updated)
+      if (currentSeason.value?.id === seasonId) currentSeason.value = updated
+      return updated
+    }, archived ? 'Failed to archive season' : 'Failed to restore season')
+  }
+
   function clearCurrent() {
     currentSeason.value = null
   }
@@ -83,12 +109,14 @@ export const useLeagueSeasonsStore = defineStore('leagueSeasons', () => {
     fetchSeasons,
     createSeason,
     updateSeason,
+    setSeasonArchived,
     clearCurrent,
     clearSeasons,
     // Per-action states
     fetchSeasonsState,
     createSeasonState,
     updateSeasonState,
+    archiveSeasonState,
   }
 })
 

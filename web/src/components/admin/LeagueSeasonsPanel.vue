@@ -38,6 +38,15 @@
         >
           {{ formatStatus(item.status) }}
         </v-chip>
+        <v-chip
+          v-if="item.archived_at"
+          color="grey"
+          size="x-small"
+          variant="outlined"
+          class="ml-1"
+        >
+          Archived
+        </v-chip>
       </template>
 
       <template v-slot:item.registration="{ item }">
@@ -85,6 +94,18 @@
         >
           <v-icon>mdi-account-group</v-icon>
         </v-btn>
+        <v-btn
+          :aria-label="item.archived_at ? 'Restore season' : 'Archive season'"
+          icon
+          size="small"
+          variant="text"
+          :title="item.archived_at
+            ? 'Restore Season'
+            : 'Archive Season (hides it from players; nothing is deleted)'"
+          @click="$emit('set-archived', item, !item.archived_at)"
+        >
+          <v-icon>{{ item.archived_at ? 'mdi-restore' : 'mdi-archive-arrow-down' }}</v-icon>
+        </v-btn>
       </template>
 
       <template v-slot:no-data>
@@ -124,6 +145,7 @@ defineEmits<{
   create: []
   edit: [season: LeagueSeason]
   'view-teams': [season: LeagueSeason]
+  'set-archived': [season: LeagueSeason, archived: boolean]
   refresh: []
 }>()
 
@@ -133,7 +155,7 @@ const headers = [
   { title: 'Registration', key: 'registration', width: '160px', sortable: false },
   { title: 'Team Size', key: 'team_size', width: '100px', sortable: false },
   { title: 'Roster', key: 'roster_lock_status', width: '100px' },
-  { title: 'Actions', key: 'actions', width: '100px', sortable: false, align: 'center' as const },
+  { title: 'Actions', key: 'actions', width: '140px', sortable: false, align: 'center' as const },
 ]
 
 const formatStatus = (status: string) => getStatusLabel(seasonStatusMap, status)

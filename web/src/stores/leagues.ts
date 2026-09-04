@@ -39,6 +39,7 @@ export const useLeaguesStore = defineStore('leagues', () => {
   const fetchLeagueBySlugState = createActionState()
   const createLeagueState = createActionState()
   const updateLeagueState = createActionState()
+  const archiveLeagueState = createActionState()
   const fetchMyLeaguesState = createActionState()
   const joinLeagueState = createActionState()
   const leaveLeagueState = createActionState()
@@ -144,6 +145,29 @@ export const useLeaguesStore = defineStore('leagues', () => {
       currentLeague.value = updatedLeague
       return updatedLeague
     }, 'Failed to update league')
+  }
+
+  /** Archive or restore a league.
+   *
+   * Archiving hides the league — and, by inheritance, its seasons, teams and
+   * tournaments — from player-facing listings. Nothing is deleted and the
+   * league's own status is untouched, so restoring is exact: a season or
+   * tournament archived in its own right stays archived.
+   */
+  async function setLeagueArchived(leagueId: string, archived: boolean): Promise<LeagueResponse> {
+    return withActionState(archiveLeagueState, async () => {
+      const path = archived
+        ? '/v1/leagues/{league_id}/archive'
+        : '/v1/leagues/{league_id}/restore'
+      const result = await unwrapApi(api.POST(path, {
+        params: { path: { league_id: leagueId } },
+      }))
+      const updated = result.data
+      replaceById(leagues.value, updated)
+      replaceById(allLeagues.value, updated)
+      if (currentLeague.value?.id === leagueId) currentLeague.value = updated
+      return updated
+    }, archived ? 'Failed to archive league' : 'Failed to restore league')
   }
 
   async function fetchMyLeagues(): Promise<UserLeagueMembership[]> {
@@ -360,6 +384,7 @@ export const useLeaguesStore = defineStore('leagues', () => {
     fetchLeagueBySlug,
     createLeague,
     updateLeague,
+    setLeagueArchived,
     fetchMyLeagues,
     joinLeague,
     leaveLeague,
@@ -392,6 +417,7 @@ export const useLeaguesStore = defineStore('leagues', () => {
     fetchLeagueBySlugState,
     createLeagueState,
     updateLeagueState,
+    archiveLeagueState,
     fetchMyLeaguesState,
     joinLeagueState,
     leaveLeagueState,

@@ -107,6 +107,27 @@
           <v-list-item-title>Cancel Tournament</v-list-item-title>
         </v-list-item>
       </template>
+
+      <!-- Archive / restore is available in every state: it says nothing
+           about the competition, only whether players can see it. -->
+      <v-divider />
+      <v-list-item prepend-icon="mdi-swap-horizontal" @click="emit('action', 'move')">
+        <v-list-item-title>Move to league…</v-list-item-title>
+      </v-list-item>
+      <v-list-item
+        v-if="tournament.archived_at"
+        prepend-icon="mdi-restore"
+        @click="emit('action', 'restore')"
+      >
+        <v-list-item-title>Restore</v-list-item-title>
+      </v-list-item>
+      <v-list-item
+        v-else
+        prepend-icon="mdi-archive-arrow-down"
+        @click="emit('action', 'archive')"
+      >
+        <v-list-item-title>Archive</v-list-item-title>
+      </v-list-item>
     </v-list>
   </v-menu>
 </template>

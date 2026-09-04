@@ -126,7 +126,12 @@ describe('League Teams Store', () => {
       const result = await store.fetchTeamsInSeason('season-1', 2, 10)
 
       expect(mockGet).toHaveBeenCalledWith('/v1/league-seasons/{season_id}/teams', {
-        params: { path: { season_id: 'season-1' }, query: { page: 2, per_page: 10 } },
+        params: {
+          path: { season_id: 'season-1' },
+          // Archived teams are opt-in, and this listing doubles as the
+          // player-facing roster — see stores/__tests__/archiving.test.ts.
+          query: { page: 2, per_page: 10, include_archived: false },
+        },
       })
       expect(result).toEqual(teams)
       expect(store.teams).toEqual(teams)

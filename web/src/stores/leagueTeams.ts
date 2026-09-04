@@ -81,10 +81,20 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
 
   // ==================== Team CRUD ====================
 
-  async function fetchTeamsInSeason(seasonId: string, page = 1, perPage = 20): Promise<LeagueTeamSummaryResponse[]> {
+  /** `includeArchived` is for operator views: the default listing is the one
+   *  players see. */
+  async function fetchTeamsInSeason(
+    seasonId: string,
+    page = 1,
+    perPage = 20,
+    includeArchived = false,
+  ): Promise<LeagueTeamSummaryResponse[]> {
     return withActionState(fetchTeamsInSeasonState, async () => {
       const result = await unwrapApi(api.GET('/v1/league-seasons/{season_id}/teams', {
-        params: { path: { season_id: seasonId }, query: { page, per_page: perPage } },
+        params: {
+          path: { season_id: seasonId },
+          query: { page, per_page: perPage, include_archived: includeArchived },
+        },
       }))
       teams.value = result.data
       pagination.value = result.pagination
@@ -152,6 +162,55 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
   // no body and flips `league_teams.status` to `disbanded` — it is a soft
   // terminal state, not a row deletion, so the team keeps its history. Local
   // state is pruned everywhere the disbanded team could still be rendered.
+  /** Archive or restore a team.
+   *
+   * Not the same as disbanding: disbanding is the team's own status saying it
+   * is over, archiving is an operator putting it away. A disbanded team that
+   * is archived and later restored comes back disbanded.
+   */
+  const archiveTeamState = createActionState()
+  async function setTeamArchived(teamId: string, archived: boolean): Promise<LeagueTeamResponse> {
+    return withActionState(archiveTeamState, async () => {
+      const path = archived
+        ? '/v1/league-teams/{team_id}/archive'
+        : '/v1/league-teams/{team_id}/restore'
+      const result = await unwrapApi(api.POST(path, {
+        params: { path: { team_id: teamId } },
+      }))
+      const updated = result.data
+      if (currentTeam.value?.id === teamId) currentTeam.value = updated
+      // The season roster listing is filtered server-side, so re-read rather
+      // than patch a row that may no longer belong in it.
+      teams.value = teams.value.filter(t => archived ? t.team_id !== teamId : true)
+      return updated
+    }, archived ? 'Failed to archive team' : 'Failed to restore team')
+  }
+
+  /** Move a team into another league, landing it in `seasonId`.
+   *
+   * Platform-admin only server-side, and refused once the team has played or
+   * entered a tournament — its history is season-scoped, and the seasons
+   * belong to the league it would be leaving.
+   */
+  const moveTeamState = createActionState()
+  async function moveTeam(
+    teamId: string,
+    leagueId: string,
+    seasonId: string,
+  ): Promise<LeagueTeamResponse> {
+    return withActionState(moveTeamState, async () => {
+      const result = await unwrapApi(api.POST('/v1/league-teams/{team_id}/move', {
+        params: { path: { team_id: teamId } },
+        body: { league_id: leagueId, season_id: seasonId },
+      }))
+      const moved = result.data
+      if (currentTeam.value?.id === teamId) currentTeam.value = moved
+      // It has left this season's roster.
+      teams.value = teams.value.filter(t => t.team_id !== teamId)
+      return moved
+    }, 'Failed to move team')
+  }
+
   const disbandTeamState = createActionState()
   async function disbandTeam(teamId: string): Promise<void> {
     return withActionState(disbandTeamState, async () => {
@@ -410,6 +469,8 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     updateTeam,
     transferOwnership,
     disbandTeam,
+    setTeamArchived,
+    moveTeam,
 
     // Season registration
     registerTeamForSeason,
@@ -455,6 +516,8 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     updateTeamState,
     transferOwnershipState,
     disbandTeamState,
+    archiveTeamState,
+    moveTeamState,
     registerTeamForSeasonState,
     fetchMembersState,
     addMemberState,

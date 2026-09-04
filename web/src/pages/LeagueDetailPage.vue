@@ -41,6 +41,13 @@
                   <v-icon start size="small">{{ accessTypeIcon }}</v-icon>
                   {{ accessTypeLabel }}
                 </v-chip>
+                <!-- An archived league is gone from every listing, but its URL
+                     still resolves — say so rather than presenting a league
+                     nobody can find as if it were running. -->
+                <v-chip v-if="league.archived_at" size="small" color="grey" variant="tonal" class="ml-1">
+                  <v-icon start size="small">mdi-archive</v-icon>
+                  Archived
+                </v-chip>
               </v-card-subtitle>
             </v-card-item>
             <v-card-text v-if="league.description">

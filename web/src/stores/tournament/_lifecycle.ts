@@ -48,6 +48,7 @@ export function createLifecycleSlice(refreshers: {
   const reopenRegistrationState = createActionState()
   const startTournamentState = createActionState()
   const cancelTournamentState = createActionState()
+  const archiveTournamentState = createActionState()
   const completeTournamentState = createActionState()
   const finalizeTournamentState = createActionState()
   const generateNextRoundState = createActionState()
@@ -60,6 +61,10 @@ export function createLifecycleSlice(refreshers: {
     search?: string
     page?: number
     per_page?: number
+    /** Operator views only — the endpoint refuses it without
+     *  `admin.tournaments.manage_any`, because archiving exists to hide
+     *  things from players. */
+    include_archived?: boolean
   }): Promise<TournamentSummaryResponse[]> {
     return withActionState(fetchTournamentsState, async () => {
       // P-191: a caller that omits per_page must get a DELIBERATE page size
@@ -193,6 +198,45 @@ export function createLifecycleSlice(refreshers: {
     }, 'Failed to cancel tournament')
   }
 
+  /** Archive or restore a tournament.
+   *
+   * Archiving hides it from player-facing listings; it is not cancelling —
+   * the tournament's own status is untouched, so a completed tournament
+   * comes back completed.
+   */
+  async function setTournamentArchived(id: string, archived: boolean): Promise<TournamentResponse> {
+    return withActionState(archiveTournamentState, async () => {
+      const path = archived
+        ? '/v1/tournaments/{tournament_id}/archive'
+        : '/v1/tournaments/{tournament_id}/restore'
+      const result = await unwrapApi(api.POST(path, {
+        params: { path: { tournament_id: id } },
+      }))
+      currentTournament.value = result.data
+      updateById(tournaments.value, id, { archived_at: result.data.archived_at })
+      return currentTournament.value
+    }, archived ? 'Failed to archive tournament' : 'Failed to restore tournament')
+  }
+
+  /** Move a tournament to another league and/or season; `null` for both
+   *  detaches it. Platform-admin only server-side, and refused once anyone
+   *  has registered — a registration is a team in its league's season. */
+  const moveTournamentState = createActionState()
+  async function moveTournament(
+    id: string,
+    leagueId: string | null,
+    seasonId: string | null,
+  ): Promise<TournamentResponse> {
+    return withActionState(moveTournamentState, async () => {
+      const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/move', {
+        params: { path: { tournament_id: id } },
+        body: { league_id: leagueId, season_id: seasonId },
+      }))
+      currentTournament.value = result.data
+      return currentTournament.value
+    }, 'Failed to move tournament')
+  }
+
   async function completeTournament(id: string): Promise<TournamentResponse> {
     return withActionState(completeTournamentState, async () => {
       const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/complete', {
@@ -254,6 +298,8 @@ export function createLifecycleSlice(refreshers: {
     reopenRegistrationState,
     startTournamentState,
     cancelTournamentState,
+    archiveTournamentState,
+    moveTournamentState,
     completeTournamentState,
     finalizeTournamentState,
     generateNextRoundState,
@@ -269,6 +315,8 @@ export function createLifecycleSlice(refreshers: {
     reopenRegistration,
     startTournament,
     cancelTournament,
+    setTournamentArchived,
+    moveTournament,
     completeTournament,
     finalizeTournament,
     generateNextRound,

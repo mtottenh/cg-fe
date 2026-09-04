@@ -52,7 +52,23 @@
             <v-divider />
             <v-card-text>
               <v-list>
-                <v-list-item>
+                <v-list-item v-if="playerProfile.steam_linked">
+                  <template v-slot:prepend>
+                    <v-icon>mdi-steam</v-icon>
+                  </template>
+                  <v-list-item-title>Steam</v-list-item-title>
+                  <v-list-item-subtitle>
+                    <a
+                      v-if="steamProfileUrl"
+                      :href="steamProfileUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >{{ playerProfile.display_name }}</a>
+                    <span v-else>{{ playerProfile.display_name }}</span>
+                  </v-list-item-subtitle>
+                </v-list-item>
+
+                <v-list-item v-if="!hasPlaceholderEmail">
                   <template v-slot:prepend>
                     <v-icon>mdi-email</v-icon>
                   </template>
@@ -190,6 +206,21 @@ const error = ref<string | null>(null)
 
 const { user } = storeToRefs(authStore)
 const { currentPlayer: playerProfile } = storeToRefs(playersStore)
+
+/** Steam sign-up mints an address the user never chose and can never use:
+ *  `steam_<id64>@steam.invalid` (portal-domain `is_reserved_placeholder_email`).
+ *  Showing it as "Email" states something untrue about the account, so the
+ *  row is dropped and the Steam identity shown instead. An account that
+ *  linked Steam to a real address keeps both. */
+const hasPlaceholderEmail = computed(() =>
+  (user.value?.email ?? '').toLowerCase().endsWith('@steam.invalid')
+)
+
+const steamProfileUrl = computed(() =>
+  playerProfile.value?.steam_id
+    ? `https://steamcommunity.com/profiles/${playerProfile.value.steam_id}`
+    : null
+)
 
 const bannerStyle = computed(() => {
   if (playerProfile.value?.banner_url) {

@@ -12,6 +12,7 @@
 - [] Ability to move a team between leagues
 - [] Ability to move a tournament between leagues and or seasons
 - [] Ability to rename a league/tournament/season
-- [] Don't show email on profile if signed up via steam (Just show steam name)
+- [x] Don't show email on profile if signed up via steam (Just show steam name)
+    - Fixed: Steam sign-up mints `steam_<id64>@steam.invalid`, which the profile printed under "Email". That row is now dropped for a placeholder address and a Steam row (persona name, linked to the Steam profile) shown instead. An account that linked Steam to a real address keeps both.
 - [x] Demo pipeline looks broken ('trying to work with closed connection?').
     - Fixed: that string is `tungstenite::Error::AlreadyClosed` — a dead Steam websocket. cs2-enricher only treated `StreamClosed` as session death, so a socket that failed on *send* was recorded as a per-match GC failure and burned each match's retry budget in turn. `GcTransportError::is_session_fatal()` now decides who pays; the enricher reconnects instead. Matches already written off are recoverable with the new "Requeue stuck" control on the admin pipeline page (`POST /v1/admin/pipeline/discovered-matches/requeue`), plus a per-row Retry.

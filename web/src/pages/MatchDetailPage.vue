@@ -315,6 +315,21 @@
           class="mb-6"
         />
 
+        <!-- Disputed: the organiser decides; no score form for either side -->
+        <v-alert
+          v-else-if="match.disputed || match.status === 'disputed'"
+          type="warning"
+          variant="tonal"
+          class="mb-6"
+          data-testid="result-disputed-notice"
+        >
+          <div class="font-weight-medium">This result is under dispute.</div>
+          <div class="text-body-2">
+            An organiser will review it and decide; the outcome appears here. Add evidence or
+            a message in the dispute thread below.
+          </div>
+        </v-alert>
+
         <!-- Show waiting message when user submitted and waiting for opponent -->
         <v-card v-else-if="showWaitingForOpponent && currentResult" class="mb-6">
           <v-card-title class="d-flex align-center">

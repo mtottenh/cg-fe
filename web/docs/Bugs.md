@@ -54,7 +54,8 @@ Functionality only; the copy, layout and IA findings live in the review itself (
     - Fixed: the field is no longer clearable: it offers an explicit "No map veto" choice and, when creating, defaults to the format matching the series length (`bo3` → `bo3_standard`) until the organiser picks otherwise.
 - [x] The match status stepper changes shape mid-match: Pick/Ban only appears once a veto session exists, because it is keyed on `veto_required`, which only session creation sets (`MatchStatusTimeline.vue:108-110`).
     - Fixed: the timeline takes `vetoConfigured` (the tournament's `default_map_veto_format`) and shows Pick/Ban from the start whenever a veto is configured.
-- [ ] After a result is disputed, both captains are shown a fresh, blank Submit Match Result form above the dispute thread: `canSubmitResult` is true whenever the claim is no longer `pending` (`useMatchDetail.ts:136-140`).
+- [x] After a result is disputed, both captains are shown a fresh, blank Submit Match Result form above the dispute thread: `canSubmitResult` is true whenever the claim is no longer `pending` (`useMatchDetail.ts:136-140`).
+    - Fixed: `canSubmitResult` is false while the match is disputed; the page shows a "This result is under dispute" notice pointing to the dispute thread instead.
 - [ ] Every `v-textarea` that sets both `label` and `placeholder` paints them on top of each other (13 components, e.g. `ResultSubmissionPanel.vue:117-120` and the dispute dialog).
 - [ ] Forfeit outcome is rendered as "Forfeited by registration <uuid>" on the match timeline for both players instead of the team name.
 - [ ] Admin dispute queue and detail modal show raw UUIDs for Match, Raised By, Original Winner and Result Claim, with no team names, tournament, or link to the match; the dispute DTO carries ids only (`AdminDisputesPage.vue:77-78, 192-196`, `DisputeDetailModal.vue:61-73`, `dto/responses/dispute.rs:19-45`).

@@ -136,6 +136,9 @@ export function useMatchDetail() {
   const canSubmitResult = computed(() => {
     if (!userRegistrationId.value) return false
     if (!match.value) return false
+    // A disputed claim is the organiser's to settle: both captains used to
+    // get a fresh, blank score form above the dispute thread.
+    if (match.value.disputed || match.value.status === 'disputed') return false
     return !currentResult.value || currentResult.value.status !== 'pending'
   })
 

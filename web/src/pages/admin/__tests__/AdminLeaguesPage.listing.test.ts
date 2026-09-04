@@ -209,6 +209,29 @@ describe('AdminLeaguesPage — which leagues the operator can see', () => {
     expect(byName.get('Someone Elses League')?.membership_type).toBe('')
   })
 
+  it('falls back to memberships when the admin listing is unavailable', async () => {
+    // Web and API deploy separately, so a frontend can be ahead of its API.
+    // An empty Leagues screen is the bug this endpoint exists to fix — it
+    // must not come back as a deploy-ordering artefact.
+    mockGet.mockImplementation((path: string) => {
+      if (path === '/v1/admin/leagues') return Promise.reject(new Error('404'))
+      if (path === '/v1/users/me/leagues') return Promise.resolve({ data: MY_MEMBERSHIPS })
+      if (path === '/v1/games') {
+        return Promise.resolve({
+          data: {
+            data: [GAME],
+            pagination: { page: 1, per_page: 100, total_items: 1, total_pages: 1 },
+          },
+        })
+      }
+      return Promise.resolve({ data: { data: [] } })
+    })
+
+    const w = await mountPage({ siteAdmin: true })
+
+    expect(tableRows(w).map((r) => r.league_name)).toEqual(['Active League'])
+  })
+
   it('does not call the admin listing for a non-admin, and falls back to memberships', async () => {
     const w = await mountPage({ siteAdmin: false })
 

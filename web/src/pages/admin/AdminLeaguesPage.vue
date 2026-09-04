@@ -303,6 +303,27 @@ const headers = [
 // Admin roles - users with these roles can manage the league
 const ADMIN_ROLES = ['owner', 'admin', 'moderator']
 
+/** Whether `/v1/admin/leagues` actually answered.
+ *
+ * Web and API ship as separate packages, so a deployed frontend can be ahead
+ * of the API it talks to — and an admin listing that 404s must not leave the
+ * operator staring at an empty Leagues screen, which is the exact bug this
+ * endpoint was added to fix. When it is unavailable we fall back to the
+ * membership-derived list: narrower, but true. */
+const adminListingLoaded = ref(false)
+
+async function loadAdminListing() {
+  adminListingLoaded.value = false
+  try {
+    await leaguesStore.fetchAllLeaguesAdmin()
+    adminListingLoaded.value = true
+  } catch {
+    // Swallowed on purpose: the fallback below is the graceful path, and
+    // surfacing this as a page error would bury a list that did load.
+    leaguesStore.fetchAllLeaguesState.error = null
+  }
+}
+
 const membershipsByLeagueId = computed(
   () => new Map(leaguesStore.myLeagues.map(m => [m.league_id, m]))
 )
@@ -321,7 +342,7 @@ const membershipsByLeagueId = computed(
 type LeagueRow = UserLeagueMembership & { archived_at: string | null }
 
 const adminLeagues = computed<LeagueRow[]>(() => {
-  if (!authStore.isAdmin) {
+  if (!authStore.isAdmin || !adminListingLoaded.value) {
     return leaguesStore.myLeagues
       .filter(l => ADMIN_ROLES.includes(l.membership_type))
       .map(l => ({ ...l, archived_at: null }))
@@ -403,7 +424,7 @@ async function fetchData() {
     await Promise.all([
       leaguesStore.fetchMyLeagues(),
       gamesStore.fetchGames(),
-      ...(authStore.isAdmin ? [leaguesStore.fetchAllLeaguesAdmin()] : []),
+      ...(authStore.isAdmin ? [loadAdminListing()] : []),
     ])
 
     // Expand all panels by default

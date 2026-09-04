@@ -34,7 +34,8 @@ Functionality only; the copy, layout and IA findings live in the review itself (
     - Fixed: `handleSubmit` posts only the games with a score entered, so a 2-0 sends two rows and the server accepts it.
 - [ ] The veto session is created, started and coin-flipped the moment the check-in window opens (15 min before kick-off), and the 30 s turn timeout then auto-bans before either captain has checked in (`portal-api/src/background/mod.rs:93, 494-510, 887-930`).
 - [ ] No action item or notification exists for a veto turn; the action-item query's status filter omits `pick_ban` (`portal-db/src/repositories/action_item.rs:80`).
-- [ ] On phones the navigation drawer opens over every page on load: the layout initialises `drawer = ref(true)` and the drawer is `temporary` below `md` (`PortalLayout.vue:46`, `PortalSidebar.vue:7-8`).
+- [x] On phones the navigation drawer opens over every page on load: the layout initialises `drawer = ref(true)` and the drawer is `temporary` below `md` (`PortalLayout.vue:46`, `PortalSidebar.vue:7-8`).
+    - Fixed: the drawer starts from the breakpoint (`useDisplay().mdAndUp`) and closes on navigation below `md`. The admin sidebar was already `permanent` and unaffected.
 - [ ] League page defaults to the newest-created season (the draft one) instead of the current one: picks `status === 'active'` else `seasons[0]`, and the list is `ORDER BY created_at DESC` (`useLeagueDetail.ts:85-94`, `portal-db/src/adapters/league_team/season.rs:177`). `leagues.current_season_id` exists with a trigger (migrations 0025:325, 0026:406) but is not exposed on `LeagueResponse`.
 - [ ] League page's Tournaments section ignores the selected season (fetched by `league_id` only, `useLeagueDetail.ts:127-136`) while Teams/Awards/Stats obey it; `GET /v1/tournaments?season_id=` already works.
 - [ ] Draft seasons appear in the public season selector for non-admin players, with no status label.

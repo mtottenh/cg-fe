@@ -56,7 +56,8 @@ Functionality only; the copy, layout and IA findings live in the review itself (
     - Fixed: the timeline takes `vetoConfigured` (the tournament's `default_map_veto_format`) and shows Pick/Ban from the start whenever a veto is configured.
 - [x] After a result is disputed, both captains are shown a fresh, blank Submit Match Result form above the dispute thread: `canSubmitResult` is true whenever the claim is no longer `pending` (`useMatchDetail.ts:136-140`).
     - Fixed: `canSubmitResult` is false while the match is disputed; the page shows a "This result is under dispute" notice pointing to the dispute thread instead.
-- [ ] Every `v-textarea` that sets both `label` and `placeholder` paints them on top of each other (13 components, e.g. `ResultSubmissionPanel.vue:117-120` and the dispute dialog).
+- [x] Every `v-textarea` that sets both `label` and `placeholder` paints them on top of each other (13 components, e.g. `ResultSubmissionPanel.vue:117-120` and the dispute dialog).
+    - Fixed: a Vuetify default (`VTextarea: { persistentPlaceholder: true }`) makes the label float above a visible placeholder in all 13 components.
 - [ ] Forfeit outcome is rendered as "Forfeited by registration <uuid>" on the match timeline for both players instead of the team name.
 - [ ] Admin dispute queue and detail modal show raw UUIDs for Match, Raised By, Original Winner and Result Claim, with no team names, tournament, or link to the match; the dispute DTO carries ids only (`AdminDisputesPage.vue:77-78, 192-196`, `DisputeDetailModal.vue:61-73`, `dto/responses/dispute.rs:19-45`).
 - [ ] Starting a tournament manually leaves `starts_at` null, so cards read "Live Now" and "Start date TBD" at once (`TournamentCard.vue:62-68`); the admin tournament header and table also never show which league or season a tournament belongs to.

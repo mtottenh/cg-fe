@@ -171,7 +171,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useLeaguesStore, type UserLeagueMembership } from '@/stores/leagues'
+import { useLeaguesStore, isLeagueLive, type UserLeagueMembership } from '@/stores/leagues'
 import { useLeagueSeasonsStore, type LeagueSeasonResponse } from '@/stores/leagueSeasons'
 import { useLeagueTeamsStore, type LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
 import LeagueTeamDetailModal from '@/components/admin/LeagueTeamDetailModal.vue'
@@ -223,9 +223,16 @@ async function fetchMyLeagues() {
   loadingLeagues.value = true
   try {
     await leaguesStore.fetchMyLeagues()
-    // Filter to only leagues where user has admin permissions
+    // Filter to leagues where the user has admin permissions AND that are
+    // still running — memberships now come back for archived/suspended
+    // leagues too, which are not somewhere to file a new team.
+    //
+    // Read as "not known to be put away" rather than "known to be active":
+    // web and API ship separately, so an older API returns no
+    // `league_status` at all, and an equality test would empty this picker
+    // on every league during a partial deploy.
     myLeagues.value = leaguesStore.myLeagues.filter(l =>
-      ADMIN_ROLES.includes(l.membership_type)
+      ADMIN_ROLES.includes(l.membership_type) && isLeagueLive(l)
     )
   } catch {
     // P-124 (unlisted instance, same defect): `leaguesStore.error` is a

@@ -50,8 +50,9 @@
       <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-trophy-outline</v-icon>
       <h3 class="text-h6 mb-2">No Leagues Found</h3>
       <p class="text-medium-emphasis mb-4">
-        You don't have admin access to any leagues yet.
-        Create your first league to get started.
+        {{ authStore.isAdmin
+          ? 'No leagues exist yet. Create your first league to get started.'
+          : "You don't have admin access to any leagues yet. Create your first league to get started." }}
       </p>
       <v-btn color="primary" prepend-icon="mdi-plus" @click="createModalOpen = true">
         Create League
@@ -104,18 +105,40 @@
                   </div>
                 </template>
 
+                <template v-slot:item.league_status="{ item }">
+                  <v-chip
+                    v-if="item.archived_at"
+                    color="grey"
+                    size="small"
+                    variant="flat"
+                  >
+                    Archived
+                  </v-chip>
+                  <v-chip
+                    v-else
+                    :color="getLeagueStatusColor(item.league_status)"
+                    size="small"
+                    variant="flat"
+                  >
+                    {{ getLeagueStatusLabel(item.league_status) }}
+                  </v-chip>
+                </template>
+
                 <template v-slot:item.membership_type="{ item }">
                   <v-chip
+                    v-if="item.membership_type"
                     :color="getRoleColor(item.membership_type)"
                     size="small"
                     variant="flat"
                   >
                     {{ formatRole(item.membership_type) }}
                   </v-chip>
+                  <span v-else class="text-medium-emphasis">Not a member</span>
                 </template>
 
                 <template v-slot:item.joined_at="{ item }">
-                  {{ formatDate(item.joined_at) }}
+                  <span v-if="item.joined_at">{{ formatDate(item.joined_at) }}</span>
+                  <span v-else class="text-medium-emphasis">—</span>
                 </template>
 
                 <template v-slot:item.actions="{ item }">
@@ -146,6 +169,18 @@
                   >
                     <v-icon>mdi-clipboard-list</v-icon>
                   </v-btn>
+                  <v-btn
+                    :aria-label="item.archived_at ? 'Restore league' : 'Archive league'"
+                    icon
+                    size="small"
+                    variant="text"
+                    :title="item.archived_at
+                      ? 'Restore League'
+                      : 'Archive League (hides it and its seasons, teams and tournaments from players)'"
+                    @click="setLeagueArchived(item, !item.archived_at)"
+                  >
+                    <v-icon>{{ item.archived_at ? 'mdi-restore' : 'mdi-archive-arrow-down' }}</v-icon>
+                  </v-btn>
                 </template>
 
                 <template v-slot:no-data>
@@ -159,6 +194,8 @@
         </v-expansion-panel>
       </v-expansion-panels>
     </template>
+
+    <ConfirmDialogHost :dialog="confirmDialog" />
 
     <!-- Modals -->
     <LeagueCreateModal
@@ -191,24 +228,28 @@
 import { ref, computed, onMounted } from 'vue'
 import { useGamesStore, type GameSummary } from '@/stores/games'
 import { useLeaguesStore, type UserLeagueMembership } from '@/stores/leagues'
+import { useAuthStore } from '@/stores/auth'
 import LeagueCreateModal from '@/components/admin/LeagueCreateModal.vue'
 import LeagueEditModal from '@/components/admin/LeagueEditModal.vue'
 import LeagueMembersModal from '@/components/admin/LeagueMembersModal.vue'
 import LeagueDetailModal from '@/components/admin/LeagueDetailModal.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import { formatDate } from '@/utils/formatters'
-import { leagueRoleMap, getStatusColor, formatRole } from '@/utils/statusMaps'
+import { leagueRoleMap, leagueStatusMap, getStatusColor, getStatusLabel, formatRole } from '@/utils/statusMaps'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 
 // Stores
 const gamesStore = useGamesStore()
 const leaguesStore = useLeaguesStore()
+const authStore = useAuthStore()
 
 // Types
 interface LeagueGroup {
   gameId: string
   game: GameSummary | null
-  leagues: UserLeagueMembership[]
+  leagues: LeagueRow[]
 }
 
 // Local state (not from stores)
@@ -226,23 +267,34 @@ const selectedLeagueForDetail = ref<UserLeagueMembership | null>(null)
 
 // Snackbar
 const snackbar = useSnackbar()
+const confirmDialog = useConfirmDialog()
 
 // Computed: loading from either store
 // P-122: `gamesStore.loading`/`.error` aliased BOTH fetch states, so this page
 // surfaced (and cleared) errors raised by AdminGamesPage's admin-only
 // `fetchAllGames`. This page only ever awaits `fetchGames`, so it reads that.
-const loading = computed(() => gamesStore.fetchGamesState.loading || leaguesStore.loading)
-const error = computed(() => gamesStore.fetchGamesState.error || leaguesStore.error)
+const loading = computed(() =>
+  gamesStore.fetchGamesState.loading ||
+  leaguesStore.loading ||
+  leaguesStore.fetchAllLeaguesState.loading
+)
+const error = computed(() =>
+  gamesStore.fetchGamesState.error ||
+  leaguesStore.error ||
+  leaguesStore.fetchAllLeaguesState.error
+)
 
 function clearError() {
   gamesStore.fetchGamesState.error = null
   leaguesStore.error = null
+  leaguesStore.fetchAllLeaguesState.error = null
 }
 
 // Table headers
 const headers = [
   { title: '', key: 'league_logo_url', width: '50px', sortable: false },
   { title: 'Name', key: 'league_name' },
+  { title: 'Status', key: 'league_status', width: '110px' },
   { title: 'Your Role', key: 'membership_type', width: '120px' },
   { title: 'Joined', key: 'joined_at', width: '140px' },
   { title: 'Actions', key: 'actions', width: '120px', sortable: false, align: 'center' as const },
@@ -251,14 +303,70 @@ const headers = [
 // Admin roles - users with these roles can manage the league
 const ADMIN_ROLES = ['owner', 'admin', 'moderator']
 
-// Computed: Filter to only leagues where user has admin permissions
-const adminLeagues = computed(() => {
-  return leaguesStore.myLeagues.filter(l => ADMIN_ROLES.includes(l.membership_type))
+/** Whether `/v1/admin/leagues` actually answered.
+ *
+ * Web and API ship as separate packages, so a deployed frontend can be ahead
+ * of the API it talks to — and an admin listing that 404s must not leave the
+ * operator staring at an empty Leagues screen, which is the exact bug this
+ * endpoint was added to fix. When it is unavailable we fall back to the
+ * membership-derived list: narrower, but true. */
+const adminListingLoaded = ref(false)
+
+async function loadAdminListing() {
+  adminListingLoaded.value = false
+  try {
+    await leaguesStore.fetchAllLeaguesAdmin()
+    adminListingLoaded.value = true
+  } catch {
+    // Swallowed on purpose: the fallback below is the graceful path, and
+    // surfacing this as a page error would bury a list that did load.
+    leaguesStore.fetchAllLeaguesState.error = null
+  }
+}
+
+const membershipsByLeagueId = computed(
+  () => new Map(leaguesStore.myLeagues.map(m => [m.league_id, m]))
+)
+
+/** The leagues this screen manages.
+ *
+ * A site admin sees **every** league. This page used to be built purely from
+ * `/v1/users/me/leagues`, so a league whose admin never joined it — or one
+ * that had been archived, which that endpoint filtered out — was simply
+ * absent from the operator's view of the site (reported live: 3 leagues
+ * existed, 2 showed). League-scoped admins still see the leagues they
+ * administer, which is all `/v1/admin/leagues` would give them anyway.
+ */
+/** A table row: a membership, plus whether the league is archived (which is
+ *  a property of the league, not of the membership). */
+type LeagueRow = UserLeagueMembership & { archived_at: string | null }
+
+const adminLeagues = computed<LeagueRow[]>(() => {
+  if (!authStore.isAdmin || !adminListingLoaded.value) {
+    return leaguesStore.myLeagues
+      .filter(l => ADMIN_ROLES.includes(l.membership_type))
+      .map(l => ({ ...l, archived_at: null }))
+  }
+  return leaguesStore.allLeagues.map(league => {
+    const membership = membershipsByLeagueId.value.get(league.id)
+    return {
+      league_id: league.id,
+      league_name: league.name,
+      league_slug: league.slug,
+      league_logo_url: league.logo_url,
+      game_id: league.game_id,
+      league_status: league.status,
+      archived_at: league.archived_at ?? null,
+      // '' when the site admin is not a member: they can still manage it.
+      membership_type: membership?.membership_type ?? '',
+      joined_at: membership?.joined_at ?? '',
+    }
+  })
 })
 
 // Computed: Group leagues by game
 const leaguesByGame = computed(() => {
-  const groups = new Map<string, UserLeagueMembership[]>()
+  const groups = new Map<string, LeagueRow[]>()
 
   for (const league of adminLeagues.value) {
     const gameId = league.game_id
@@ -305,14 +413,18 @@ const filteredGroups = computed(() => {
 
 // Helpers
 const getRoleColor = (role: string) => getStatusColor(leagueRoleMap, role)
+const getLeagueStatusColor = (status: string) => getStatusColor(leagueStatusMap, status)
+const getLeagueStatusLabel = (status: string) => getStatusLabel(leagueStatusMap, status)
 
 // API calls - now using stores
 async function fetchData() {
   try {
-    // Fetch both leagues and games in parallel using stores
+    // Memberships are still needed for the "Your Role" column even when the
+    // admin listing supplies the rows.
     await Promise.all([
       leaguesStore.fetchMyLeagues(),
       gamesStore.fetchGames(),
+      ...(authStore.isAdmin ? [loadAdminListing()] : []),
     ])
 
     // Expand all panels by default
@@ -320,6 +432,31 @@ async function fetchData() {
   } catch {
     // Errors are captured in the stores
   }
+}
+
+/** Archive or restore a league. Confirm-gated in the archiving direction:
+ *  it takes the league and everything under it out of the player-facing site
+ *  in one click. */
+function setLeagueArchived(league: LeagueRow, archived: boolean) {
+  if (!archived) {
+    void runLeagueArchive(league, false)
+    return
+  }
+  confirmDialog.confirm({
+    title: `Archive "${league.league_name}"?`,
+    message:
+      'The league stops appearing to players, and so do its seasons, teams and tournaments. ' +
+      'Nothing is deleted, none of them are modified, and restoring the league brings back ' +
+      'exactly what archiving it hid.',
+    action: 'Archive',
+    handler: () => runLeagueArchive(league, true),
+  })
+}
+
+async function runLeagueArchive(league: LeagueRow, archived: boolean) {
+  await leaguesStore.setLeagueArchived(league.league_id, archived)
+  snackbar.success(archived ? 'League archived' : 'League restored')
+  await fetchData()
 }
 
 // Modal handlers

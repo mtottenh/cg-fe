@@ -14,8 +14,21 @@ type PaginationMeta = components['schemas']['PaginationMeta']
 type LeagueMemberResponse = components['schemas']['LeagueMemberResponse']
 type LeagueInvitationResponse = components['schemas']['LeagueInvitationResponse']
 
+/** Whether a league membership points at a league that is still running.
+ *
+ * Deliberately "not known to be put away" rather than "known to be active":
+ * web and API ship as separate packages, so a frontend can be talking to an
+ * API old enough not to send `league_status` at all. An equality test would
+ * then treat every league as not-running and empty the pickers that use this.
+ */
+export function isLeagueLive(membership: { league_status?: string }): boolean {
+  return (membership.league_status ?? 'active') === 'active'
+}
+
 export const useLeaguesStore = defineStore('leagues', () => {
   const leagues = ref<LeagueResponse[]>([])
+  /** Every league on the site, any status — admin listing only. */
+  const allLeagues = ref<LeagueResponse[]>([])
   const currentLeague = ref<LeagueResponse | null>(null)
   const myLeagues = ref<UserLeagueMembership[]>([])
   const members = ref<LeagueMemberResponse[]>([])
@@ -32,10 +45,12 @@ export const useLeaguesStore = defineStore('leagues', () => {
 
   // Per-action states
   const fetchLeaguesState = createActionState()
+  const fetchAllLeaguesState = createActionState()
   const fetchLeagueState = createActionState()
   const fetchLeagueBySlugState = createActionState()
   const createLeagueState = createActionState()
   const updateLeagueState = createActionState()
+  const archiveLeagueState = createActionState()
   const fetchMyLeaguesState = createActionState()
   const joinLeagueState = createActionState()
   const leaveLeagueState = createActionState()
@@ -61,6 +76,35 @@ export const useLeaguesStore = defineStore('leagues', () => {
       leagues.value = result.data
       pagination.value = result.pagination
       return leagues.value
+    }, 'Failed to fetch leagues')
+  }
+
+  /** Every league on the site, whatever its status and whoever created it.
+   *
+   * The admin leagues screen used to be built from `fetchMyLeagues`, which
+   * shows only leagues you are a *member* of — so a league created by
+   * another operator, or one that has been archived, was missing from the
+   * operator's own view of the site. Requires `admin.leagues.manage_any`.
+   *
+   * Pages through to the end: an operator with 120 leagues must not silently
+   * see the first 100.
+   */
+  async function fetchAllLeaguesAdmin(): Promise<LeagueResponse[]> {
+    return withActionState(fetchAllLeaguesState, async () => {
+      const perPage = 100
+      const collected: LeagueResponse[] = []
+      let page = 1
+      let totalPages = 1
+      do {
+        const result = await unwrapApi(api.GET('/v1/admin/leagues', {
+          params: { query: { page, per_page: perPage } },
+        }))
+        collected.push(...result.data)
+        totalPages = result.pagination.total_pages
+        page += 1
+      } while (page <= totalPages)
+      allLeagues.value = collected
+      return allLeagues.value
     }, 'Failed to fetch leagues')
   }
 
@@ -112,6 +156,29 @@ export const useLeaguesStore = defineStore('leagues', () => {
       currentLeague.value = updatedLeague
       return updatedLeague
     }, 'Failed to update league')
+  }
+
+  /** Archive or restore a league.
+   *
+   * Archiving hides the league — and, by inheritance, its seasons, teams and
+   * tournaments — from player-facing listings. Nothing is deleted and the
+   * league's own status is untouched, so restoring is exact: a season or
+   * tournament archived in its own right stays archived.
+   */
+  async function setLeagueArchived(leagueId: string, archived: boolean): Promise<LeagueResponse> {
+    return withActionState(archiveLeagueState, async () => {
+      const path = archived
+        ? '/v1/leagues/{league_id}/archive'
+        : '/v1/leagues/{league_id}/restore'
+      const result = await unwrapApi(api.POST(path, {
+        params: { path: { league_id: leagueId } },
+      }))
+      const updated = result.data
+      replaceById(leagues.value, updated)
+      replaceById(allLeagues.value, updated)
+      if (currentLeague.value?.id === leagueId) currentLeague.value = updated
+      return updated
+    }, archived ? 'Failed to archive league' : 'Failed to restore league')
   }
 
   async function fetchMyLeagues(): Promise<UserLeagueMembership[]> {
@@ -322,10 +389,13 @@ export const useLeaguesStore = defineStore('leagues', () => {
     error,
     pagination,
     fetchLeagues,
+    allLeagues,
+    fetchAllLeaguesAdmin,
     fetchLeague,
     fetchLeagueBySlug,
     createLeague,
     updateLeague,
+    setLeagueArchived,
     fetchMyLeagues,
     joinLeague,
     leaveLeague,
@@ -353,10 +423,12 @@ export const useLeaguesStore = defineStore('leagues', () => {
     clearCurrent,
     // Per-action states
     fetchLeaguesState,
+    fetchAllLeaguesState,
     fetchLeagueState,
     fetchLeagueBySlugState,
     createLeagueState,
     updateLeagueState,
+    archiveLeagueState,
     fetchMyLeaguesState,
     joinLeagueState,
     leaveLeagueState,

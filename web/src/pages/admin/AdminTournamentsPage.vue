@@ -183,6 +183,15 @@
 
           <template v-slot:item.status="{ item }">
             <TournamentStatusChip :status="item.status" />
+            <v-chip
+              v-if="item.archived_at"
+              color="grey"
+              size="x-small"
+              variant="outlined"
+              class="ml-1"
+            >
+              Archived
+            </v-chip>
           </template>
 
           <template v-slot:item.actions="{ item }">
@@ -209,6 +218,12 @@
       @created="onTournamentCreated"
     />
 
+    <MoveTournamentModal
+      v-model="moveModalOpen"
+      :tournament="tournamentToMove"
+      @moved="onTournamentMoved"
+    />
+
     <TournamentEditModal
       v-model="editModalOpen"
       :tournament="selectedTournament"
@@ -232,6 +247,7 @@ import TournamentStatusChip from '@/components/admin/TournamentStatusChip.vue'
 import TournamentActionsMenu from '@/components/admin/TournamentActionsMenu.vue'
 import TournamentCreateModal from '@/components/admin/TournamentCreateModal.vue'
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
+import MoveTournamentModal from '@/components/admin/MoveTournamentModal.vue'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
@@ -253,6 +269,11 @@ const filters = ref<{ game_id?: string; league_id?: string; status?: string }>({
 const createModalOpen = ref(false)
 const editModalOpen = ref(false)
 const selectedTournament = ref<TournamentResponse | null>(null)
+const moveModalOpen = ref(false)
+// The move dialog works off the summary row: it only needs the identity and
+// where the tournament currently sits, and re-reading the full tournament to
+// open a two-field dialog would be a round trip for nothing.
+const tournamentToMove = ref<TournamentSummaryResponse | null>(null)
 
 // Snackbar state
 const snackbar = useSnackbar()
@@ -306,6 +327,15 @@ const TOURNAMENT_CONFIRM_ACTIONS: Record<string, {
     actionLabel: 'Cancel Tournament', color: 'error',
     run: (id) => tournamentsStore.cancelTournament(id),
     success: 'Tournament cancelled',
+  },
+  archive: {
+    title: 'Archive Tournament',
+    message:
+      'The tournament stops appearing to players. Nothing is deleted, its status and results ' +
+      'are unchanged, and you can restore it from this menu.',
+    actionLabel: 'Archive', color: 'primary',
+    run: (id) => tournamentsStore.setTournamentArchived(id, true),
+    success: 'Tournament archived',
   },
   finalize: {
     title: 'Finalize Tournament',
@@ -447,6 +477,9 @@ async function fetchData() {
         game_id: filters.value.game_id,
         league_id: filters.value.league_id,
         status: filters.value.status ?? undefined,
+        // This is the operator's list: an archived tournament has to appear
+        // here or there is nowhere to restore it from.
+        include_archived: true,
       }),
       gamesStore.fetchGames(),
       leaguesStore.fetchLeagues(1, 100), // Fetch all leagues for dropdown
@@ -497,6 +530,17 @@ async function handleAction(tournament: TournamentSummaryResponse, action: strin
   }
 
   switch (action) {
+    case 'move':
+      tournamentToMove.value = tournament
+      moveModalOpen.value = true
+      return
+    case 'restore':
+      // Restoring needs no confirmation: it only makes something visible again.
+      await feedback.run(
+        () => tournamentsStore.setTournamentArchived(tournament.id, false),
+        { success: 'Tournament restored', errorSource: tournamentsStore, after: fetchData },
+      )
+      return
     case 'edit':
       await openEditModal(tournament)
       return
@@ -519,6 +563,11 @@ async function handleAction(tournament: TournamentSummaryResponse, action: strin
     default:
       snackbar.show(`Action "${action}" not implemented yet`, 'info')
   }
+}
+
+function onTournamentMoved() {
+  snackbar.show('Tournament moved', 'success')
+  fetchData()
 }
 
 async function openEditModal(tournament: TournamentSummaryResponse) {

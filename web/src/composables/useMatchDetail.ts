@@ -13,6 +13,7 @@ import { useMatchContext } from './useMatchContext'
 import { api } from '@/api'
 import { unwrapApi } from '@/stores/helpers/apiAction'
 import { formatMapName } from '@/utils/maps'
+import { toLocalDateString } from '@/utils/formatters'
 import type { components } from '@/api/types'
 
 type SuggestedTimeResponse = components['schemas']['SuggestedTimeResponse']
@@ -225,8 +226,10 @@ export function useMatchDetail() {
         {
           params: { path: { tournament_id: tournamentId, match_id: matchId } },
           body: {
-            start_date: startDate.toISOString().split('T')[0]!,
-            end_date: endDate.toISOString().split('T')[0]!,
+            // P-93: local parts. These are calendar DATEs; toISOString would
+            // ask the backend for a window shifted a day east of Greenwich.
+            start_date: toLocalDateString(startDate),
+            end_date: toLocalDateString(endDate),
           },
         }
       ))

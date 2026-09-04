@@ -44,6 +44,7 @@
               @create="openCreateSeasonModal"
               @edit="openEditSeasonModal"
               @view-teams="viewSeasonTeams"
+              @set-archived="setSeasonArchived"
               @refresh="fetchSeasons"
             />
           </v-window-item>
@@ -56,9 +57,14 @@
               :selected-season-id="selectedSeasonId"
               :teams="teams"
               :loading="loadingTeams"
+              :include-archived="includeArchivedTeams"
               @update:selected-season-id="selectedSeasonId = $event"
+              @update:include-archived="setIncludeArchivedTeams"
               @create="openCreateTeamModal"
               @manage="openTeamDetailModal"
+              :can-move="authStore.isAdmin"
+              @set-archived="setTeamArchived"
+              @move="openMoveTeamModal"
               @refresh="fetchTeams"
             />
           </v-window-item>
@@ -99,6 +105,14 @@
       @created="onTeamCreated"
     />
 
+    <MoveTeamModal
+      v-model="moveTeamModalOpen"
+      :team="selectedTeam"
+      @moved="onTeamMoved"
+    />
+
+    <ConfirmDialogHost :dialog="confirmDialog" />
+
     <!-- Team Detail Modal -->
     <LeagueTeamDetailModal
       v-model="teamDetailModalOpen"
@@ -112,6 +126,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import { type UserLeagueMembership } from '@/stores/leagues'
 import {
   useLeagueSeasonsStore,
@@ -127,6 +143,8 @@ import LeagueSeasonCreateModal from './LeagueSeasonCreateModal.vue'
 import LeagueSeasonEditModal from './LeagueSeasonEditModal.vue'
 import LeagueTeamCreateModal from './LeagueTeamCreateModal.vue'
 import LeagueTeamDetailModal from './LeagueTeamDetailModal.vue'
+import MoveTeamModal from './MoveTeamModal.vue'
+import { useAuthStore } from '@/stores/auth'
 
 type LeagueSeason = LeagueSeasonResponse
 type LeagueTeamSummary = LeagueTeamSummaryResponse
@@ -142,6 +160,7 @@ const open = defineModel<boolean>({ required: true })
 // Stores drive the data now; local refs previously mirrored raw-fetch results.
 const leagueSeasonsStore = useLeagueSeasonsStore()
 const leagueTeamsStore = useLeagueTeamsStore()
+const authStore = useAuthStore()
 
 // State
 const activeTab = ref('seasons')
@@ -158,11 +177,17 @@ const teams = computed<LeagueTeamSummary[]>(() => leagueTeamsStore.teams)
 const loadingTeams = computed(() => leagueTeamsStore.fetchTeamsInSeasonState.loading)
 const selectedSeasonId = ref<string | null>(null)
 const selectedTeam = ref<LeagueTeamSummary | null>(null)
+/** Archived teams are hidden by default even here: this listing doubles as
+ *  the roster view. Turning it on is how an archived team is reached to be
+ *  restored. */
+const includeArchivedTeams = ref(false)
 const createTeamModalOpen = ref(false)
 const teamDetailModalOpen = ref(false)
+const moveTeamModalOpen = ref(false)
 
 // Snackbar
 const snackbar = useSnackbar()
+const confirmDialog = useConfirmDialog()
 
 // Watch for dialog opening
 watch(open, async (isOpen) => {
@@ -185,7 +210,9 @@ watch(selectedSeasonId, () => {
 async function fetchSeasons() {
   if (!props.league) return
   try {
-    await leagueSeasonsStore.fetchSeasons(props.league.league_id)
+    // Operator view: archived seasons are listed (greyed), because this is
+    // where they are restored from.
+    await leagueSeasonsStore.fetchSeasons(props.league.league_id, true)
     // Auto-select first season if available
     const list = leagueSeasonsStore.seasons
     if (list.length > 0 && !selectedSeasonId.value && list[0]) {
@@ -199,7 +226,12 @@ async function fetchSeasons() {
 async function fetchTeams() {
   if (!selectedSeasonId.value) return
   try {
-    await leagueTeamsStore.fetchTeamsInSeason(selectedSeasonId.value)
+    await leagueTeamsStore.fetchTeamsInSeason(
+      selectedSeasonId.value,
+      1,
+      20,
+      includeArchivedTeams.value,
+    )
   } catch {
     error.value = leagueTeamsStore.fetchTeamsInSeasonState.error ?? 'Failed to load teams'
   }
@@ -248,9 +280,72 @@ function onTeamCreated() {
   emit('updated')
 }
 
+function openMoveTeamModal(team: LeagueTeamSummary) {
+  selectedTeam.value = team
+  moveTeamModalOpen.value = true
+}
+
+function onTeamMoved() {
+  snackbar.show('Team moved', 'success')
+  fetchTeams()
+  emit('updated')
+}
+
 function onTeamUpdated() {
   snackbar.show('Team updated successfully', 'success')
   fetchTeams()
+  emit('updated')
+}
+
+/** Archive or restore a season. Confirm-gated in the archiving direction
+ *  only: putting something away is the direction that surprises people. */
+function setSeasonArchived(season: LeagueSeason, archived: boolean) {
+  if (!archived) {
+    void runSeasonArchive(season, false)
+    return
+  }
+  confirmDialog.confirm({
+    title: `Archive "${season.name}"?`,
+    message:
+      'The season stops appearing to players, along with its teams. Nothing is deleted, its ' +
+      'status is unchanged, and you can restore it from this panel.',
+    action: 'Archive',
+    handler: () => runSeasonArchive(season, true),
+  })
+}
+
+async function runSeasonArchive(season: LeagueSeason, archived: boolean) {
+  await leagueSeasonsStore.setSeasonArchived(season.id, archived)
+  snackbar.show(archived ? 'Season archived' : 'Season restored', 'success')
+  await fetchSeasons()
+  emit('updated')
+}
+
+function setIncludeArchivedTeams(value: boolean) {
+  includeArchivedTeams.value = value
+  fetchTeams()
+}
+
+/** Archive or restore a team. Confirm-gated in the archiving direction only. */
+function setTeamArchived(team: LeagueTeamSummary, archived: boolean) {
+  if (!archived) {
+    void runTeamArchive(team, false)
+    return
+  }
+  confirmDialog.confirm({
+    title: `Archive "${team.team_name}"?`,
+    message:
+      'The team stops appearing to players and in this roster. Nothing is deleted and the ' +
+      'team is not disbanded — turn on "Show archived" here to restore it.',
+    action: 'Archive',
+    handler: () => runTeamArchive(team, true),
+  })
+}
+
+async function runTeamArchive(team: LeagueTeamSummary, archived: boolean) {
+  await leagueTeamsStore.setTeamArchived(team.team_id, archived)
+  snackbar.show(archived ? 'Team archived' : 'Team restored', 'success')
+  await fetchTeams()
   emit('updated')
 }
 

@@ -157,6 +157,17 @@
         <v-icon size="20">mdi-transit-connection-variant</v-icon>
         Discovered Matches
         <v-spacer />
+        <v-btn
+          color="primary"
+          variant="tonal"
+          size="small"
+          prepend-icon="mdi-restore"
+          :loading="requeueDiscoveredState.loading"
+          data-testid="requeue-stuck"
+          @click="confirmRequeueStuck"
+        >
+          Requeue stuck
+        </v-btn>
         <v-select
           v-model="discoveredStatus"
           aria-label="Discovered match status"
@@ -180,50 +191,71 @@
           No discovered matches{{ discoveredStatus ? ` with status "${discoveredStatus}"` : '' }}.
           The poller writes here when a tracked player finishes a match.
         </div>
-        <div v-else class="table-scroll">
-          <v-table density="compact">
-            <thead>
-              <tr>
-                <th>Share Code</th>
-                <th>Status</th>
-                <th>Retries</th>
-                <th>Discovered</th>
-                <th>Error</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="m in discoveredMatches"
-                :key="m.id"
-                :data-testid="`discovered-row-${m.id}`"
-              >
-                <td class="text-caption">{{ m.share_code }}</td>
-                <td>
-                  <v-chip
-                    size="x-small"
-                    :color="discoveredStatusColor(m.status)"
-                    variant="flat"
-                    :data-testid="`discovered-status-${m.id}`"
-                  >
-                    {{ discoveredStatusLabel(m.status) }}
-                  </v-chip>
-                  <v-chip
-                    v-if="m.retry_exhausted"
-                    size="x-small"
-                    color="error"
-                    variant="outlined"
-                    class="ml-1"
-                  >
-                    Retries exhausted
-                  </v-chip>
-                </td>
-                <td class="text-caption">{{ m.retry_count }} / {{ m.max_retries }}</td>
-                <td class="text-caption">{{ formatRelativeTime(m.discovered_at) }}</td>
-                <td class="text-caption text-error">{{ m.error ?? '-' }}</td>
-              </tr>
-            </tbody>
-          </v-table>
-        </div>
+        <template v-else>
+          <div class="text-caption text-medium-emphasis mb-2">
+            "Requeue stuck" returns matches whose retry budget is spent to the queue with a fresh
+            budget — the repair for a worker fault that was charged to the matches rather than to
+            the connection.
+          </div>
+          <div class="table-scroll">
+            <v-table density="compact">
+              <thead>
+                <tr>
+                  <th>Share Code</th>
+                  <th>Status</th>
+                  <th>Retries</th>
+                  <th>Discovered</th>
+                  <th>Error</th>
+                  <th class="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="m in discoveredMatches"
+                  :key="m.id"
+                  :data-testid="`discovered-row-${m.id}`"
+                >
+                  <td class="text-caption">{{ m.share_code }}</td>
+                  <td>
+                    <v-chip
+                      size="x-small"
+                      :color="discoveredStatusColor(m.status)"
+                      variant="flat"
+                      :data-testid="`discovered-status-${m.id}`"
+                    >
+                      {{ discoveredStatusLabel(m.status) }}
+                    </v-chip>
+                    <v-chip
+                      v-if="m.retry_exhausted"
+                      size="x-small"
+                      color="error"
+                      variant="outlined"
+                      class="ml-1"
+                    >
+                      Retries exhausted
+                    </v-chip>
+                  </td>
+                  <td class="text-caption">{{ m.retry_count }} / {{ m.max_retries }}</td>
+                  <td class="text-caption">{{ formatRelativeTime(m.discovered_at) }}</td>
+                  <td class="text-caption text-error">{{ m.error ?? '-' }}</td>
+                  <td class="text-right">
+                    <v-btn
+                      v-if="m.status === 'failed'"
+                      size="x-small"
+                      variant="text"
+                      prepend-icon="mdi-restore"
+                      :loading="requeueDiscoveredState.loading"
+                      :data-testid="`requeue-${m.id}`"
+                      @click="requeueOne(m.id)"
+                    >
+                      Retry
+                    </v-btn>
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
+        </template>
       </v-card-text>
     </v-card>
 
@@ -383,6 +415,8 @@
         </v-card>
       </v-col>
     </v-row>
+
+    <ConfirmDialogHost :dialog="confirmDialog" />
   </div>
 </template>
 
@@ -410,6 +444,8 @@ import { useDemosStore } from '@/stores/demos'
 import { usePlayersStore, type PlayerRatingHistory } from '@/stores/players'
 import { useGamesStore } from '@/stores/games'
 import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import { formatRelativeTime, formatDateTime } from '@/utils/formatters'
 import UserSearchAutocomplete from '@/components/admin/UserSearchAutocomplete.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
@@ -435,6 +471,7 @@ const demosStore = useDemosStore()
 const playersStore = usePlayersStore()
 const gamesStore = useGamesStore()
 const snackbar = useSnackbar()
+const confirmDialog = useConfirmDialog()
 
 const {
   pipelineOverview: overview,
@@ -444,6 +481,7 @@ const {
   fetchPipelineOverviewState,
   fetchTrackingHealthState,
   fetchDiscoveredMatchesState,
+  requeueDiscoveredState,
   processUnlinkedState,
 } = storeToRefs(demosStore)
 
@@ -588,6 +626,41 @@ async function loadAll() {
     demosStore.fetchTrackingHealth({ game: selectedGame.value, limit: 25 }),
     loadDiscovered(),
   ])
+}
+
+/** Bulk requeue. Gated because it rewrites the retry state of every stuck
+ *  row for the selected game at once. */
+function confirmRequeueStuck() {
+  confirmDialog.confirm({
+    title: 'Requeue stuck matches',
+    message:
+      'Matches whose retry budget is spent will be returned to the enrichment queue with a ' +
+      'fresh budget, staggered over the next few minutes. Matches that are still retrying are ' +
+      'left alone.',
+    action: 'Requeue',
+    handler: async () => {
+      const requeued = await demosStore.requeueDiscoveredMatches({
+        game: selectedGame.value,
+        onlyExhausted: true,
+      })
+      snackbar.success(
+        requeued === 0
+          ? 'No matches were stuck — nothing to requeue'
+          : `Requeued ${requeued} ${requeued === 1 ? 'match' : 'matches'}`,
+      )
+      await loadAll()
+    },
+  })
+}
+
+async function requeueOne(id: string) {
+  try {
+    await demosStore.requeueDiscoveredMatch(id)
+    snackbar.success('Match requeued')
+    await demosStore.fetchPipelineOverview(selectedGame.value)
+  } catch {
+    snackbar.error(requeueDiscoveredState.value.error ?? 'Failed to requeue the match')
+  }
 }
 
 async function runBackfill() {

@@ -641,6 +641,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/leagues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every league, for administrators.
+         * @description The public listing hides everything that is not `active`, and
+         *     `/v1/users/me/leagues` only ever returns leagues you are a *member* of.
+         *     Neither is a usable source for the admin leagues screen: a league whose
+         *     admin never joined it, or one that has been archived, simply vanished
+         *     from the operator's view of the site.
+         */
+        get: operations["admin_list_leagues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/matches/{match_id}/progression/process": {
         parameters: {
             query?: never;
@@ -743,6 +767,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/pipeline/discovered-matches/requeue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Return failed discovered matches to the enrichment queue (admin).
+         * @description The repair for a worker that spent retry budgets on something that was
+         *     never the match's fault — a dead Steam websocket reported as a per-match
+         *     GC failure, which filled this queue with matches recorded as having failed
+         *     enrichment when nothing had ever been asked of Valve. A match whose budget
+         *     is spent is excluded from the enricher's queue by design, so without this
+         *     the only way back is SQL against production.
+         */
+        post: operations["requeue_pipeline_discovered_matches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/pipeline/discovered-matches/{id}/requeue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return one discovered match to the enrichment queue (admin). */
+        post: operations["requeue_pipeline_discovered_match"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/pipeline/overview": {
         parameters: {
             query?: never;
@@ -780,6 +846,34 @@ export interface paths {
         get: operations["list_pipeline_tracking"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/pipeline/tracking/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume a paused or backing-off tracking entry (admin).
+         * @description The operator escape hatch. Until this existed, an entry parked by the old
+         *     `poll_errors >= 10` cliff could only be recovered with a hand-written
+         *     UPDATE against production, because nothing in the system could bring the
+         *     counter back down.
+         *
+         *     Pass `reset_cursor=true` for a `cursor_invalid` pause: Steam is rejecting
+         *     the stored share code, so resuming without dropping it just reproduces the
+         *     same 412 on the next poll. The player then re-supplies a recent share code
+         *     to restart the walk.
+         */
+        post: operations["resume_pipeline_tracking"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1748,6 +1842,27 @@ export interface paths {
         patch: operations["update_season"];
         trace?: never;
     };
+    "/v1/league-seasons/{season_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a season.
+         * @description It stops appearing in player-facing listings; nothing is deleted and its
+         *     own status is untouched, so restoring is exact.
+         */
+        post: operations["archive_season"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/league-seasons/{season_id}/awards": {
         parameters: {
             query?: never;
@@ -1829,6 +1944,23 @@ export interface paths {
         get: operations["get_season_leaderboard"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/league-seasons/{season_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore an archived season. */
+        post: operations["restore_season"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2140,6 +2272,28 @@ export interface paths {
         patch: operations["update_team"];
         trace?: never;
     };
+    "/v1/league-teams/{team_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a team.
+         * @description It stops appearing in player-facing listings. Distinct from disbanding,
+         *     which is the team's own status saying it is over: a disbanded team that is
+         *     archived and later restored comes back disbanded.
+         */
+        post: operations["archive_team"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/league-teams/{team_id}/banner": {
         parameters: {
             query?: never;
@@ -2168,6 +2322,49 @@ export interface paths {
         put?: never;
         /** Upload league-team logo. */
         post: operations["upload_team_logo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/league-teams/{team_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a team into another league.
+         * @description The repair for a team filed under the wrong league. A platform-level
+         *     action (`admin.teams.manage_any`): it takes a team out of one league's
+         *     competition and puts it into another's, which is not a decision either
+         *     league's own admins can make alone.
+         *
+         *     Narrow by design — see `LeagueTeamService::move_team_to_league` for what
+         *     it refuses and why.
+         */
+        post: operations["move_team"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/league-teams/{team_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore an archived team. */
+        post: operations["restore_team"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2312,6 +2509,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/leagues/{league_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a league.
+         * @description It disappears from every player-facing listing, and so do its seasons,
+         *     teams and tournaments — none of which are written to, so restoring the
+         *     league restores exactly what archiving it hid. The league's own status is
+         *     untouched, and nothing is deleted.
+         */
+        post: operations["archive_league"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leagues/{league_id}/invitations": {
         parameters: {
             query?: never;
@@ -2397,6 +2617,27 @@ export interface paths {
         head?: never;
         /** Update a member's role. */
         patch: operations["update_member_role"];
+        trace?: never;
+    };
+    "/v1/leagues/{league_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore an archived league.
+         * @description A season, team or tournament that was archived in its own right stays
+         *     archived — this undoes exactly the archiving of the league.
+         */
+        post: operations["restore_league"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/leagues/{league_id}/teams/{team_id}/seasons/{season_id}/veto-delegates": {
@@ -3811,6 +4052,28 @@ export interface paths {
         patch: operations["update_tournament"];
         trace?: never;
     };
+    "/v1/tournaments/{tournament_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a tournament.
+         * @description It stops appearing in player-facing listings; nothing is deleted and its
+         *     own status is untouched, so a completed tournament comes back completed.
+         *     Distinct from cancelling, which is a statement about the competition.
+         */
+        post: operations["archive_tournament"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tournaments/{tournament_id}/awards": {
         parameters: {
             query?: never;
@@ -4461,6 +4724,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tournaments/{tournament_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a tournament to another league and/or season.
+         * @description The repair for a tournament filed under the wrong league. A platform-level
+         *     action (`admin.tournaments.manage_any`): it moves a tournament between two
+         *     leagues' competitions, which is not a decision either league's admins make
+         *     alone. Refused once anyone has registered — see
+         *     `TournamentService::move_tournament`.
+         */
+        post: operations["move_tournament"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tournaments/{tournament_id}/open-registration": {
         parameters: {
             query?: never;
@@ -4752,6 +5039,23 @@ export interface paths {
         put?: never;
         /** Reopen registration for a tournament. */
         post: operations["reopen_registration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tournaments/{tournament_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore an archived tournament. */
+        post: operations["restore_tournament"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6662,6 +6966,33 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_DiscoveredMatchAdminResponse: {
+            /**
+             * @description One discovered match, as the operator needs to see it.
+             *
+             *     `gc_data` and the raw `demo_url` are omitted: they are large, and the
+             *     operator question is "did this get through, and if not why".
+             */
+            data: {
+                discovered_at: string;
+                enriched_at?: string | null;
+                error?: string | null;
+                /** @description Whether enrichment produced a demo URL for the scanner to fetch. */
+                has_demo_url: boolean;
+                id: string;
+                /** Format: int32 */
+                max_retries: number;
+                /** Format: int32 */
+                retry_count: number;
+                /** @description True once the retry budget is spent — the enricher stops retrying. */
+                retry_exhausted: boolean;
+                share_code: string;
+                status: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_DisputeListResponse: {
             /** @description Paginated list of disputes. */
             data: {
@@ -7093,6 +7424,13 @@ export interface components {
             /** @description Response DTO for a league. */
             data: {
                 access_type: string;
+                /**
+                 * Format: date-time
+                 * @description When the league was archived, or absent while it is live. Archived
+                 *     leagues are hidden from player-facing listings, along with their
+                 *     seasons, teams and tournaments.
+                 */
+                archived_at?: string | null;
                 /** Format: date-time */
                 created_at: string;
                 created_by: string;
@@ -7126,6 +7464,13 @@ export interface components {
                  *     refuse (P-199 enforces the same list server-side).
                  */
                 allowed_status_transitions: components["schemas"]["SeasonStatus"][];
+                /**
+                 * Format: date-time
+                 * @description When this was archived, or absent while it is live. Archived rows are
+                 *     hidden from player-facing listings; nothing is deleted and the status
+                 *     above is untouched.
+                 */
+                archived_at?: string | null;
                 /** Format: date-time */
                 created_at: string;
                 created_by: string;
@@ -7209,6 +7554,13 @@ export interface components {
         DataResponse_LeagueTeamResponse: {
             /** @description Response DTO for a league team (persistent identity). */
             data: {
+                /**
+                 * Format: date-time
+                 * @description When this was archived, or absent while it is live. Archived rows are
+                 *     hidden from player-facing listings; nothing is deleted and the status
+                 *     above is untouched.
+                 */
+                archived_at?: string | null;
                 banner_url?: string | null;
                 /** Format: date-time */
                 created_at: string;
@@ -7614,6 +7966,11 @@ export interface components {
                  *     run while it is off, so the operator must see it next to the button.
                  */
                 auto_link_enabled: boolean;
+                /**
+                 * @description Stage 2b — demo fetch + rank extraction, retried independently of the
+                 *     GC call that produced the URL.
+                 */
+                demo_extraction: components["schemas"]["DemoExtractionQueueResponse"];
                 /** @description Stage 3 — the demo catalog (scanner → stats service). */
                 demos: components["schemas"]["DemoStatusCountsResponse"];
                 /** @description Stage 2 — the discovered-match queue (poller → enricher). */
@@ -8029,6 +8386,19 @@ export interface components {
                 refresh_token: string;
                 /** @description The created user. */
                 user: components["schemas"]["UserResponse"];
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_RequeueDiscoveredMatchesResponse: {
+            /** @description Result of a bulk enrichment requeue. */
+            data: {
+                /**
+                 * Format: int64
+                 * @description How many rows were returned to the enrichment queue.
+                 */
+                requeued: number;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -8707,6 +9077,13 @@ export interface components {
         DataResponse_TournamentResponse: {
             /** @description Response DTO for a tournament. */
             data: {
+                /**
+                 * Format: date-time
+                 * @description When this was archived, or absent while it is live. Archived rows are
+                 *     hidden from player-facing listings; nothing is deleted and the status
+                 *     above is untouched.
+                 */
+                archived_at?: string | null;
                 banner_url?: string | null;
                 /** Format: date-time */
                 check_in_end?: string | null;
@@ -8791,6 +9168,45 @@ export interface components {
                 tournament_id: string;
                 /** Format: date-time */
                 updated_at: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_TrackingHealthEntryResponse: {
+            /** @description One tracking token, with the player it belongs to. */
+            data: {
+                created_at: string;
+                game_id: string;
+                game_slug: string;
+                /** @description Whether a share-code cursor has been recorded yet. */
+                has_share_code: boolean;
+                id: string;
+                is_active: boolean;
+                /**
+                 * @description True for the two paused states — the poller has stopped working this
+                 *     entry and will not resume without a person.
+                 */
+                is_paused: boolean;
+                last_error?: string | null;
+                last_poll_at?: string | null;
+                /**
+                 * @description When the poller will next try this entry (ISO 8601). Meaningless while
+                 *     paused, since nothing is scheduled.
+                 */
+                next_poll_at: string;
+                paused_at?: string | null;
+                /** @description Named, not a truncated UUID (P-115). */
+                player_display_name: string;
+                player_id: string;
+                /** Format: int32 */
+                poll_errors: number;
+                /** @description `ok` · `backoff` · `auth_expired` · `cursor_invalid`. */
+                poll_state: string;
+                /** @description What a person has to do, when `is_paused`. Null otherwise. */
+                required_action?: string | null;
+                /** @description The tracked SteamID64. Not a secret — it is public on the profile. */
+                steam_id_64: string;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -9478,6 +9894,13 @@ export interface components {
                  *     refuse (P-199 enforces the same list server-side).
                  */
                 allowed_status_transitions: components["schemas"]["SeasonStatus"][];
+                /**
+                 * Format: date-time
+                 * @description When this was archived, or absent while it is live. Archived rows are
+                 *     hidden from player-facing listings; nothing is deleted and the status
+                 *     above is untouched.
+                 */
+                archived_at?: string | null;
                 /** Format: date-time */
                 created_at: string;
                 created_by: string;
@@ -10570,13 +10993,28 @@ export interface components {
                 has_share_code: boolean;
                 id: string;
                 is_active: boolean;
+                /**
+                 * @description True for the two paused states — the poller has stopped working this
+                 *     entry and will not resume without a person.
+                 */
+                is_paused: boolean;
                 last_error?: string | null;
                 last_poll_at?: string | null;
+                /**
+                 * @description When the poller will next try this entry (ISO 8601). Meaningless while
+                 *     paused, since nothing is scheduled.
+                 */
+                next_poll_at: string;
+                paused_at?: string | null;
                 /** @description Named, not a truncated UUID (P-115). */
                 player_display_name: string;
                 player_id: string;
                 /** Format: int32 */
                 poll_errors: number;
+                /** @description `ok` · `backoff` · `auth_expired` · `cursor_invalid`. */
+                poll_state: string;
+                /** @description What a person has to do, when `is_paused`. Null otherwise. */
+                required_action?: string | null;
                 /** @description The tracked SteamID64. Not a secret — it is public on the profile. */
                 steam_id_64: string;
             }[];
@@ -10910,6 +11348,47 @@ export interface components {
             s3_bucket: string;
             /** @description S3 key. */
             s3_key: string;
+        };
+        /**
+         * @description Depth of the demo-extraction stage, by `demo_status`.
+         *
+         *     Enrichment succeeding does not mean the match is complete: the demo carries
+         *     the rank updates and usually the map name, and it is fetched separately with
+         *     its own retry budget. A healthy `enriched` count next to a growing `pending`
+         *     here localises the stall to the Valve CDN rather than the GC.
+         */
+        DemoExtractionQueueResponse: {
+            /**
+             * Format: int64
+             * @description Parsed cleanly with no rank updates — casual and deathmatch demos are
+             *     legitimately empty. A success, not a failure.
+             */
+            empty: number;
+            /**
+             * Format: int64
+             * @description Downloaded but could not be decompressed or parsed. Terminal.
+             */
+            failed: number;
+            /**
+             * Format: int64
+             * @description GC returned no demo URL; there was never anything to fetch.
+             */
+            not_applicable: number;
+            /**
+             * Format: int64
+             * @description Awaiting a first or subsequent attempt.
+             */
+            pending: number;
+            /**
+             * Format: int64
+             * @description Parsed, rank updates extracted.
+             */
+            succeeded: number;
+            /**
+             * Format: int64
+             * @description Never published, or past Valve's retention window. Terminal.
+             */
+            unavailable: number;
         };
         /** @description Response for paginated demo list. */
         DemoListResponse: {
@@ -12372,6 +12851,13 @@ export interface components {
         /** @description Response DTO for a league. */
         LeagueResponse: {
             access_type: string;
+            /**
+             * Format: date-time
+             * @description When the league was archived, or absent while it is live. Archived
+             *     leagues are hidden from player-facing listings, along with their
+             *     seasons, teams and tournaments.
+             */
+            archived_at?: string | null;
             /** Format: date-time */
             created_at: string;
             created_by: string;
@@ -12400,6 +12886,13 @@ export interface components {
              *     refuse (P-199 enforces the same list server-side).
              */
             allowed_status_transitions: components["schemas"]["SeasonStatus"][];
+            /**
+             * Format: date-time
+             * @description When this was archived, or absent while it is live. Archived rows are
+             *     hidden from player-facing listings; nothing is deleted and the status
+             *     above is untouched.
+             */
+            archived_at?: string | null;
             /** Format: date-time */
             created_at: string;
             created_by: string;
@@ -12525,6 +13018,13 @@ export interface components {
         };
         /** @description Response DTO for a league team (persistent identity). */
         LeagueTeamResponse: {
+            /**
+             * Format: date-time
+             * @description When this was archived, or absent while it is live. Archived rows are
+             *     hidden from player-facing listings; nothing is deleted and the status
+             *     above is untouched.
+             */
+            archived_at?: string | null;
             banner_url?: string | null;
             /** Format: date-time */
             created_at: string;
@@ -12594,6 +13094,11 @@ export interface components {
         LeagueTeamSummaryResponse: {
             /** Format: int64 */
             active_member_count: number;
+            /**
+             * Format: date-time
+             * @description When the team was archived, or absent while it is live.
+             */
+            archived_at?: string | null;
             /** Format: int64 */
             captain_count: number;
             league_id: string;
@@ -13190,6 +13695,28 @@ export interface components {
              */
             timestamp: string;
         };
+        /** @description Request to move a team into another league. */
+        MoveTeamRequest: {
+            /** @description League to move the team into. */
+            league_id: string;
+            /**
+             * @description Season in that league to register the team for. Required: a team's
+             *     participation and its roster are season-scoped, so a move with no
+             *     destination season would land the team in a league with no way to
+             *     play in it.
+             */
+            season_id: string;
+        };
+        /** @description Request to move a tournament to another league and/or season. */
+        MoveTournamentRequest: {
+            /** @description Target league, or `null` to detach the tournament from any league. */
+            league_id?: string | null;
+            /**
+             * @description Target season within that league, or `null` for none. A season
+             *     without a league is refused.
+             */
+            season_id?: string | null;
+        };
         /** @description Query parameters for listing the current user's tournament matches. */
         MyMatchesQuery: {
             /**
@@ -13315,6 +13842,13 @@ export interface components {
             /** @description The list of items. */
             data: {
                 access_type: string;
+                /**
+                 * Format: date-time
+                 * @description When the league was archived, or absent while it is live. Archived
+                 *     leagues are hidden from player-facing listings, along with their
+                 *     seasons, teams and tournaments.
+                 */
+                archived_at?: string | null;
                 /** Format: date-time */
                 created_at: string;
                 created_by: string;
@@ -13345,6 +13879,11 @@ export interface components {
             data: {
                 /** Format: int64 */
                 active_member_count: number;
+                /**
+                 * Format: date-time
+                 * @description When the team was archived, or absent while it is live.
+                 */
+                archived_at?: string | null;
                 /** Format: int64 */
                 captain_count: number;
                 league_id: string;
@@ -13447,6 +13986,13 @@ export interface components {
         PaginatedResponse_TournamentSummaryResponse: {
             /** @description The list of items. */
             data: {
+                /**
+                 * Format: date-time
+                 * @description When this was archived, or absent while it is live. Archived rows are
+                 *     hidden from player-facing listings; nothing is deleted and the status
+                 *     above is untouched.
+                 */
+                archived_at?: string | null;
                 format: string;
                 game_id: string;
                 id: string;
@@ -13593,6 +14139,11 @@ export interface components {
              *     run while it is off, so the operator must see it next to the button.
              */
             auto_link_enabled: boolean;
+            /**
+             * @description Stage 2b — demo fetch + rank extraction, retried independently of the
+             *     GC call that produced the URL.
+             */
+            demo_extraction: components["schemas"]["DemoExtractionQueueResponse"];
             /** @description Stage 3 — the demo catalog (scanner → stats service). */
             demos: components["schemas"]["DemoStatusCountsResponse"];
             /** @description Stage 2 — the discovered-match queue (poller → enricher). */
@@ -14389,6 +14940,26 @@ export interface components {
             proposal_id: string;
             /** @description Optional reason for the rejection, shown to the proposer. */
             reason?: string | null;
+        };
+        /** @description Body for a bulk enrichment requeue. */
+        RequeueDiscoveredMatchesRequest: {
+            /** @description Restrict to one game, by slug (e.g. `cs2`) or UUID. Omit for all games. */
+            game?: string | null;
+            /**
+             * @description Only requeue rows whose retry budget is spent — the ones the enricher
+             *     will never pick up again on its own. Defaults to true, which is the
+             *     conservative reading of "unstick the pipeline": a match that is still
+             *     backing off is already going to be retried.
+             */
+            only_exhausted?: boolean;
+        };
+        /** @description Result of a bulk enrichment requeue. */
+        RequeueDiscoveredMatchesResponse: {
+            /**
+             * Format: int64
+             * @description How many rows were returned to the enrichment queue.
+             */
+            requeued: number;
         };
         /**
          * @description Lifecycle status of a server reservation.
@@ -15455,6 +16026,13 @@ export interface components {
         TournamentRegistrationStatus: "pending" | "approved" | "checked_in" | "active" | "eliminated" | "disqualified" | "withdrawn" | "no_show";
         /** @description Response DTO for a tournament. */
         TournamentResponse: {
+            /**
+             * Format: date-time
+             * @description When this was archived, or absent while it is live. Archived rows are
+             *     hidden from player-facing listings; nothing is deleted and the status
+             *     above is untouched.
+             */
+            archived_at?: string | null;
             banner_url?: string | null;
             /** Format: date-time */
             check_in_end?: string | null;
@@ -15575,6 +16153,13 @@ export interface components {
         TournamentStatus: "draft" | "published" | "registration" | "scheduled" | "in_progress" | "completed" | "finalized" | "cancelled";
         /** @description Summary response for listing tournaments. */
         TournamentSummaryResponse: {
+            /**
+             * Format: date-time
+             * @description When this was archived, or absent while it is live. Archived rows are
+             *     hidden from player-facing listings; nothing is deleted and the status
+             *     above is untouched.
+             */
+            archived_at?: string | null;
             format: string;
             game_id: string;
             id: string;
@@ -15600,13 +16185,28 @@ export interface components {
             has_share_code: boolean;
             id: string;
             is_active: boolean;
+            /**
+             * @description True for the two paused states — the poller has stopped working this
+             *     entry and will not resume without a person.
+             */
+            is_paused: boolean;
             last_error?: string | null;
             last_poll_at?: string | null;
+            /**
+             * @description When the poller will next try this entry (ISO 8601). Meaningless while
+             *     paused, since nothing is scheduled.
+             */
+            next_poll_at: string;
+            paused_at?: string | null;
             /** @description Named, not a truncated UUID (P-115). */
             player_display_name: string;
             player_id: string;
             /** Format: int32 */
             poll_errors: number;
+            /** @description `ok` · `backoff` · `auth_expired` · `cursor_invalid`. */
+            poll_state: string;
+            /** @description What a person has to do, when `is_paused`. Null otherwise. */
+            required_action?: string | null;
             /** @description The tracked SteamID64. Not a secret — it is public on the profile. */
             steam_id_64: string;
         };
@@ -15629,6 +16229,27 @@ export interface components {
              * @description Active entries the poller has never touched.
              */
             never_polled: number;
+            /**
+             * Format: int64
+             * @description Active entries the poller has stopped working pending a person.
+             *
+             *     Counted apart from `with_errors` because the required response
+             *     differs: an entry that is backing off recovers on its own, whereas
+             *     these stay stopped until someone acts. This is the number that used to
+             *     be invisible — parked entries looked identical to healthy ones except
+             *     for a counter nothing explained.
+             */
+            paused: number;
+            /**
+             * Format: int64
+             * @description Of `paused`, those needing the player to supply a new auth code.
+             */
+            paused_auth_expired: number;
+            /**
+             * Format: int64
+             * @description Of `paused`, those needing the share-code cursor reset.
+             */
+            paused_cursor_invalid: number;
             /**
              * Format: int64
              * @description Active entries not polled within [`TRACKING_STALE_AFTER_HOURS`].
@@ -16096,6 +16717,13 @@ export interface components {
             league_logo_url?: string | null;
             league_name: string;
             league_slug: string;
+            /**
+             * @description Status of the league itself. Memberships are returned for every
+             *     status — a league admin has to be able to see (and restore) a league
+             *     that has been archived. Typed as the enum so clients get a union
+             *     rather than `string` (as `LeagueResponse::status` already is).
+             */
+            league_status: components["schemas"]["LeagueStatus"];
             membership_type: string;
         };
         /** @description User response DTO. */
@@ -18522,6 +19150,63 @@ export interface operations {
             };
         };
     };
+    admin_list_leagues: {
+        parameters: {
+            query?: {
+                /** @description Filter by game ID. */
+                game_id?: string | null;
+                /** @description Case-insensitive substring match on the league name. */
+                search?: string | null;
+                /**
+                 * @description Filter by league status (`active`, `archived`, `suspended`).
+                 *     Omit for every status — which is the point of this endpoint.
+                 */
+                status?: string | null;
+                /**
+                 * @description Include archived leagues. Defaults to true: an operator listing that
+                 *     hid archived leagues would hide the ones needing restoration.
+                 */
+                include_archived?: boolean;
+                /** @description Page number (1-based). */
+                page?: number;
+                /** @description Items per page. */
+                per_page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All leagues */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse_LeagueResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing required permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     process_progression: {
         parameters: {
             query?: never;
@@ -18806,6 +19491,107 @@ export interface operations {
             };
         };
     };
+    requeue_pipeline_discovered_matches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequeueDiscoveredMatchesRequest"];
+            };
+        };
+        responses: {
+            /** @description Matches requeued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_RequeueDiscoveredMatchesResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Game not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    requeue_pipeline_discovered_match: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Discovered match ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Match requeued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_DiscoveredMatchAdminResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Discovered match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     get_pipeline_overview: {
         parameters: {
             query?: {
@@ -18904,6 +19690,59 @@ export interface operations {
                 };
             };
             /** @description Game not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    resume_pipeline_tracking: {
+        parameters: {
+            query?: {
+                /** @description Also clear the stored share-code cursor */
+                reset_cursor?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Steam tracking entry ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Entry resumed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TrackingHealthEntryResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tracking entry not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -21824,6 +22663,14 @@ export interface operations {
             query: {
                 /** @description League ID to list seasons for. */
                 league_id: string;
+                /**
+                 * @description Include archived seasons.
+                 *
+                 *     Permission-gated: archiving exists to hide something from players, so
+                 *     asking for the hidden rows requires `league.seasons.manage` on the
+                 *     league (which platform admins hold everywhere).
+                 */
+                include_archived?: boolean;
             };
             header?: never;
             path?: never;
@@ -21842,6 +22689,15 @@ export interface operations {
             };
             /** @description Invalid league ID */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing required permission */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21996,6 +22852,56 @@ export interface operations {
                 };
             };
             /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Season not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    archive_season: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Season ID */
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Season archived */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_LeagueSeasonResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing required permission */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -22406,6 +23312,56 @@ export interface operations {
             };
         };
     };
+    restore_season: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Season ID */
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Season restored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_LeagueSeasonResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing required permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Season not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     get_season_player_stats: {
         parameters: {
             query?: {
@@ -22469,6 +23425,14 @@ export interface operations {
                 page?: number;
                 /** @description Items per page. */
                 per_page?: number;
+                /**
+                 * @description Include archived teams.
+                 *
+                 *     Permission-gated: archiving exists to hide something from players, so
+                 *     asking for the hidden rows requires `league.settings.manage` on the
+                 *     league that owns the season (which platform admins hold everywhere).
+                 */
+                include_archived?: boolean;
             };
             header?: never;
             path: {
@@ -23548,6 +24512,56 @@ export interface operations {
             };
         };
     };
+    archive_team: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team ID */
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Team archived */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_LeagueTeamResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing required permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Team not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     upload_team_banner: {
         parameters: {
             query?: never;
@@ -23674,6 +24688,128 @@ export interface operations {
             };
         };
     };
+    move_team: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team ID */
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveTeamRequest"];
+            };
+        };
+        responses: {
+            /** @description Team moved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_LeagueTeamResponse"];
+                };
+            };
+            /** @description Invalid target, or the team cannot be moved */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing required permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Team or season not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Name or tag already taken in the target league */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    restore_team: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team ID */
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Team restored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_LeagueTeamResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing required permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Team not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     transfer_ownership: {
         parameters: {
             query?: never;
@@ -23742,6 +24878,12 @@ export interface operations {
             query?: {
                 /** @description Filter by game ID. */
                 game_id?: string | null;
+                /**
+                 * @description Case-insensitive substring match on the league name. The frontend has
+                 *     always sent this; until it was declared here serde dropped it and the
+                 *     search box filtered nothing.
+                 */
+                search?: string | null;
                 /** @description Page number (1-based). */
                 page?: number;
                 /** @description Items per page. */
@@ -24157,6 +25299,56 @@ export interface operations {
             };
         };
     };
+    archive_league: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description League ID */
+                league_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description League archived */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_LeagueResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing required permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description League not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     list_invitations: {
         parameters: {
             query?: {
@@ -24538,6 +25730,56 @@ export interface operations {
                 };
             };
             /** @description League or member not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    restore_league: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description League ID */
+                league_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description League restored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_LeagueResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing required permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description League not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -28229,6 +29471,8 @@ export interface operations {
                 page?: number;
                 /** @description Items per page */
                 per_page?: number;
+                /** @description Include archived tournaments (requires admin.tournaments.manage_any) */
+                include_archived?: boolean;
             };
             header?: never;
             path?: never;
@@ -28243,6 +29487,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaginatedResponse_TournamentSummaryResponse"];
+                };
+            };
+            /** @description Missing required permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };
@@ -28394,6 +29647,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    archive_tournament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tournament archived */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentResponse"];
                 };
             };
             /** @description Unauthorized */
@@ -30446,6 +31749,69 @@ export interface operations {
             };
         };
     };
+    move_tournament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveTournamentRequest"];
+            };
+        };
+        responses: {
+            /** @description Tournament moved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentResponse"];
+                };
+            };
+            /** @description Invalid target, or the tournament cannot be moved */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     open_registration: {
         parameters: {
             query?: never;
@@ -31258,6 +32624,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    restore_tournament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tournament restored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentResponse"];
                 };
             };
             /** @description Unauthorized */

@@ -17,15 +17,25 @@
           hide-details
         />
       </div>
-      <v-btn
-        color="primary"
-        variant="tonal"
-        prepend-icon="mdi-plus"
-        :disabled="!selectedSeasonId"
-        @click="$emit('create')"
-      >
-        Create Team
-      </v-btn>
+      <div class="d-flex align-center ga-4">
+        <v-switch
+          :model-value="includeArchived"
+          @update:model-value="$emit('update:include-archived', !!$event)"
+          label="Show archived"
+          density="compact"
+          hide-details
+          color="primary"
+        />
+        <v-btn
+          color="primary"
+          variant="tonal"
+          prepend-icon="mdi-plus"
+          :disabled="!selectedSeasonId"
+          @click="$emit('create')"
+        >
+          Create Team
+        </v-btn>
+      </div>
     </div>
 
     <v-alert v-if="!selectedSeasonId" type="info" variant="tonal" class="mb-4">
@@ -65,6 +75,15 @@
         >
           {{ formatStatus(item.team_status) }}
         </v-chip>
+        <v-chip
+          v-if="item.archived_at"
+          color="grey"
+          size="x-small"
+          variant="outlined"
+          class="ml-1"
+        >
+          Archived
+        </v-chip>
       </template>
 
       <template v-slot:item.roster="{ item }">
@@ -103,6 +122,29 @@
         >
           <v-icon>mdi-cog</v-icon>
         </v-btn>
+        <v-btn
+          v-if="canMove"
+          aria-label="Move team to another league"
+          icon
+          size="small"
+          variant="text"
+          title="Move to another league"
+          @click="$emit('move', item)"
+        >
+          <v-icon>mdi-swap-horizontal</v-icon>
+        </v-btn>
+        <v-btn
+          :aria-label="item.archived_at ? 'Restore team' : 'Archive team'"
+          icon
+          size="small"
+          variant="text"
+          :title="item.archived_at
+            ? 'Restore Team'
+            : 'Archive Team (hides it from players; nothing is deleted)'"
+          @click="$emit('set-archived', item, !item.archived_at)"
+        >
+          <v-icon>{{ item.archived_at ? 'mdi-restore' : 'mdi-archive-arrow-down' }}</v-icon>
+        </v-btn>
       </template>
 
       <template v-slot:no-data>
@@ -138,12 +180,19 @@ defineProps<{
   selectedSeasonId: string | null
   teams: LeagueTeamSummary[]
   loading: boolean
+  includeArchived: boolean
+  /** Moving a team between leagues is a platform-admin action; the control
+   *  is hidden for everyone else rather than 403-ing on click. */
+  canMove: boolean
 }>()
 
 defineEmits<{
   'update:selected-season-id': [value: string | null]
+  'update:include-archived': [value: boolean]
   create: []
   manage: [team: LeagueTeamSummary]
+  'set-archived': [team: LeagueTeamSummary, archived: boolean]
+  move: [team: LeagueTeamSummary]
   refresh: []
 }>()
 
@@ -153,7 +202,7 @@ const headers = [
   { title: 'Status', key: 'team_status', width: '120px' },
   { title: 'Roster', key: 'roster', width: '140px', sortable: false },
   { title: 'Breakdown', key: 'breakdown', width: '140px', sortable: false },
-  { title: 'Actions', key: 'actions', width: '80px', sortable: false, align: 'center' as const },
+  { title: 'Actions', key: 'actions', width: '160px', sortable: false, align: 'center' as const },
 ]
 
 const formatStatus = (status: string) => getStatusLabel(teamStatusMap, status)

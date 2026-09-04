@@ -3,7 +3,9 @@ import { storeToRefs } from 'pinia'
 import { useCaptainActionsStore } from '@/stores/captainActions'
 import { useAuthStore } from '@/stores/auth'
 
-const POLL_MS = 60_000
+// A veto turn expires in 30 seconds; a minute between polls could never
+// surface it in time. 30 s matches the turn clock and the lifecycle tick.
+const POLL_MS = 30_000
 
 /**
  * Composable that manages polling lifecycle for captain action items.

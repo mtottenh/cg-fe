@@ -204,7 +204,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useLeagueTeamsStore, type PlayerLeagueTeamMembershipResponse } from '@/stores/leagueTeams'
-import { useLeaguesStore } from '@/stores/leagues'
+import { useLeaguesStore, isLeagueLive } from '@/stores/leagues'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
@@ -253,7 +253,7 @@ const teamsByLeague = computed((): LeagueGroup[] => {
 const leaguesWithoutTeams = computed(() => {
   const leagueIdsWithTeams = new Set(leagueTeamsStore.myTeams.map(t => t.league_id))
   return leaguesStore.myLeagues.filter(
-    m => !leagueIdsWithTeams.has(m.league_id) && m.league_status === 'active'
+    m => !leagueIdsWithTeams.has(m.league_id) && isLeagueLive(m)
   )
 })
 

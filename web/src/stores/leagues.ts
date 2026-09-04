@@ -14,6 +14,17 @@ type PaginationMeta = components['schemas']['PaginationMeta']
 type LeagueMemberResponse = components['schemas']['LeagueMemberResponse']
 type LeagueInvitationResponse = components['schemas']['LeagueInvitationResponse']
 
+/** Whether a league membership points at a league that is still running.
+ *
+ * Deliberately "not known to be put away" rather than "known to be active":
+ * web and API ship as separate packages, so a frontend can be talking to an
+ * API old enough not to send `league_status` at all. An equality test would
+ * then treat every league as not-running and empty the pickers that use this.
+ */
+export function isLeagueLive(membership: { league_status?: string }): boolean {
+  return (membership.league_status ?? 'active') === 'active'
+}
+
 export const useLeaguesStore = defineStore('leagues', () => {
   const leagues = ref<LeagueResponse[]>([])
   /** Every league on the site, any status — admin listing only. */

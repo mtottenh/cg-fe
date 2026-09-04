@@ -30,6 +30,8 @@
         :loading="registering"
         :has-eligible-teams="hasEligibleTeams"
         :is-invited="isInvited"
+        :signed-out="!isAuthenticated"
+        :redirect-path="route.fullPath"
         class="mb-6"
         @register="handleRegister"
         @withdraw="handleWithdraw"

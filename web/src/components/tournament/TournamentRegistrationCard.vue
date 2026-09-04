@@ -12,12 +12,12 @@
 
         <v-col cols="auto">
           <!-- Signed out: the page is public, the action is not -->
-          <template v-if="!isAuthenticated && tournament.is_registration_open">
+          <template v-if="signedOut && tournament.is_registration_open">
             <v-btn
               color="primary"
               size="large"
               prepend-icon="mdi-steam"
-              :to="{ name: 'login', query: { redirect: route.fullPath } }"
+              :to="{ name: 'login', query: { redirect: redirectPath } }"
               data-testid="register-sign-in"
             >
               Sign in to register
@@ -166,14 +166,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 import type { TournamentResponse, TournamentRegistrationResponse } from '@/stores/tournaments'
 import { formatDateTime } from '@/utils/formatters'
-
-const route = useRoute()
-const authStore = useAuthStore()
-const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 const props = withDefaults(
   defineProps<{
@@ -181,6 +175,10 @@ const props = withDefaults(
     myRegistration: TournamentRegistrationResponse | null | undefined
     loading?: boolean
     hasEligibleTeams?: boolean
+    /** The viewer is signed out: the page is public, registering is not. */
+    signedOut?: boolean
+    /** Where to send them back to after sign-in. */
+    redirectPath?: string
     /**
      * P-51: whether THIS viewer holds a pending invitation to an invite-only
      * tournament. `true` -> the invite-only gate opens (register affordance).
@@ -196,7 +194,7 @@ const props = withDefaults(
      */
     isInvited?: boolean
   }>(),
-  { isInvited: undefined },
+  { isInvited: undefined, signedOut: false, redirectPath: '/' },
 )
 
 defineEmits<{

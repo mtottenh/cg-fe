@@ -7,18 +7,37 @@
 
     <!-- Content -->
     <template v-else-if="match && tournament">
-      <!-- Breadcrumb -->
-      <v-breadcrumbs :items="breadcrumbs" class="pa-0 mb-4" />
+      <!-- Breadcrumb: league › season › cup › match, and the rare actions -->
+      <div class="d-flex align-center justify-space-between mb-4 ga-2">
+        <v-breadcrumbs :items="breadcrumbs" class="pa-0" />
+        <v-menu v-if="canForfeit">
+          <template v-slot:activator="{ props: menuProps }">
+            <v-btn v-bind="menuProps" icon variant="text" size="small" aria-label="More actions" data-testid="match-more-actions">
+              <v-icon>mdi-dots-horizontal</v-icon>
+            </v-btn>
+          </template>
+          <v-list density="compact">
+            <v-list-item
+              prepend-icon="mdi-flag"
+              base-color="error"
+              title="Forfeit match"
+              subtitle="Your opponent is declared the winner"
+              data-testid="forfeit-match"
+              @click="handleForfeit"
+            />
+          </v-list>
+        </v-menu>
+      </div>
 
-      <!-- Match Header -->
-      <v-card class="mb-6">
+      <!-- Match Header: the two teams, when, and where the night is up to -->
+      <v-card class="mb-6" data-testid="match-header">
         <v-card-text>
           <v-row align="center">
             <!-- Participant 1 -->
-            <v-col cols="12" sm="5" class="text-center">
-              <v-avatar size="64" rounded="lg" class="mb-2">
+            <v-col cols="12" sm="4" class="text-center">
+              <v-avatar size="56" rounded="lg" class="mb-2" color="surface-variant">
                 <v-img :alt="match.participant1_name ?? 'Participant 1'" v-if="match.participant1_logo_url" :src="match.participant1_logo_url" />
-                <v-icon v-else size="32">mdi-account</v-icon>
+                <v-icon v-else size="28">mdi-shield-outline</v-icon>
               </v-avatar>
               <h3 class="text-h6" :class="{ 'font-weight-bold text-success': isWinner(match.participant1_registration_id) }">
                 <v-icon v-if="isWinner(match.participant1_registration_id)" size="small" color="success" aria-label="Winner">mdi-trophy</v-icon>
@@ -29,38 +48,38 @@
               </v-chip>
             </v-col>
 
-            <!-- Score / Status -->
-            <v-col cols="12" sm="2" class="text-center">
+            <!-- Score / when / status -->
+            <v-col cols="12" sm="4" class="text-center">
               <template v-if="match.status === 'completed'">
                 <div class="text-h3 font-weight-bold">
                   {{ match.participant1_score }} - {{ match.participant2_score }}
                 </div>
-                <v-chip color="success" size="small" class="mt-2">
-                  Final
-                </v-chip>
               </template>
               <template v-else-if="match.status === 'in_progress'">
                 <div class="text-h3 font-weight-bold text-primary">
                   {{ match.participant1_score }} - {{ match.participant2_score }}
                 </div>
-                <v-chip color="primary" size="small" class="mt-2">
-                  <v-icon start size="small">mdi-circle</v-icon>
-                  Live
-                </v-chip>
               </template>
-              <template v-else>
-                <div class="text-h4 text-medium-emphasis">VS</div>
-                <v-chip :color="getMatchStatusColor(match.status)" size="small" class="mt-2">
-                  {{ getMatchStatusLabel(match.status) }}
-                </v-chip>
-              </template>
+              <div v-else class="text-h5 text-medium-emphasis">VS</div>
+              <div class="text-subtitle-1 mt-1" data-testid="match-when">{{ whenLine }}</div>
+              <div class="text-caption text-medium-emphasis">Round {{ match.round }} · Match #{{ match.match_number }}</div>
+              <v-chip
+                v-if="match.status === 'completed'" color="success" size="small" class="mt-2"
+              >Final</v-chip>
+              <v-chip v-else-if="match.status === 'in_progress'" color="primary" size="small" class="mt-2">
+                <v-icon start size="small">mdi-circle</v-icon>
+                Live
+              </v-chip>
+              <v-chip v-else :color="getMatchStatusColor(match.status)" size="small" class="mt-2">
+                {{ getMatchStatusLabel(match.status) }}
+              </v-chip>
             </v-col>
 
             <!-- Participant 2 -->
-            <v-col cols="12" sm="5" class="text-center">
-              <v-avatar size="64" rounded="lg" class="mb-2">
+            <v-col cols="12" sm="4" class="text-center">
+              <v-avatar size="56" rounded="lg" class="mb-2" color="surface-variant">
                 <v-img :alt="match.participant2_name ?? 'Participant 2'" v-if="match.participant2_logo_url" :src="match.participant2_logo_url" />
-                <v-icon v-else size="32">mdi-account</v-icon>
+                <v-icon v-else size="28">mdi-shield-outline</v-icon>
               </v-avatar>
               <h3 class="text-h6" :class="{ 'font-weight-bold text-success': isWinner(match.participant2_registration_id) }">
                 <v-icon v-if="isWinner(match.participant2_registration_id)" size="small" color="success" aria-label="Winner">mdi-trophy</v-icon>
@@ -79,38 +98,23 @@
             :maps="vetoPickedMaps"
           />
 
-          <!-- Match Info -->
+          <!-- Where the night is up to. P-66: `history` feeds the stepper
+               the real transition log. -->
           <v-divider class="my-4" />
-          <div class="d-flex justify-center ga-4 flex-wrap">
-            <v-chip variant="tonal">
-              <v-icon start size="small">mdi-tournament</v-icon>
-              Match #{{ match.match_number }}
-            </v-chip>
-            <v-chip variant="tonal">
-              <v-icon start size="small">mdi-layers</v-icon>
-              Round {{ match.round }}
-            </v-chip>
-            <v-chip variant="tonal">
-              <v-icon start size="small">mdi-sword-cross</v-icon>
-              {{ formatMatchFormat(match.match_format) }}
-            </v-chip>
-            <v-chip v-if="match.scheduled_at" variant="tonal">
-              <v-icon start size="small">mdi-calendar</v-icon>
-              {{ formatDateTime(match.scheduled_at) }}
-            </v-chip>
-          </div>
+          <MatchStatusTimeline
+            :match="match"
+            :scheduling-mode="tournament.scheduling_mode as 'live' | 'self_scheduled' | 'hybrid'"
+            :history="statusHistory"
+            :veto-configured="!!tournament.default_map_veto_format"
+            embedded
+          />
         </v-card-text>
       </v-card>
 
-      <!-- Match Status Timeline -->
-      <!-- P-66: `history` feeds the timeline the real transition log. -->
-      <MatchStatusTimeline
-        :match="match"
-        :scheduling-mode="tournament.scheduling_mode as 'live' | 'self_scheduled' | 'hybrid'"
-        :history="statusHistory"
-        :veto-configured="!!tournament.default_map_veto_format"
-        class="mb-6"
-      />
+      <!-- Now: the one thing this phase asks of the viewer, first and framed -->
+      <div v-if="nowHeading" class="now-card mb-6" data-testid="now-card">
+        <div class="text-caption text-uppercase font-weight-medium now-eyebrow">Now</div>
+        <h2 class="text-h5 mb-4">{{ nowHeading }}</h2>
 
       <!-- Scheduling Panel (for self-scheduled matches, includes calendar overlay) -->
       <MatchSchedulingPanel
@@ -211,19 +215,6 @@
         </v-card-text>
       </v-card>
 
-      <!-- Lineups (who played) — provisional declaration + demo-derived,
-           opponent-visible once locked. -->
-      <LineupPanel
-        v-if="match.participant1_registration_id || match.participant2_registration_id"
-        :tournament-id="tournament.id"
-        :match-id="match.id"
-        :participant1-registration-id="match.participant1_registration_id"
-        :participant2-registration-id="match.participant2_registration_id"
-        :participant1-name="match.participant1_name"
-        :participant2-name="match.participant2_name"
-        class="mb-6"
-      />
-
       <!-- Lobby Presence Bar (shown during live lobby states) -->
       <LobbyPresenceBar
         v-if="showVetoPanel && lobbyParticipants.length > 0"
@@ -243,43 +234,6 @@
         :participant1-name="match.participant1_name || 'Team 1'"
         :participant2-name="match.participant2_name || 'Team 2'"
       />
-
-      <!-- Lobby Chat Panel (shown during live lobby states) -->
-      <LobbyChatPanel
-        v-if="showVetoPanel && lobbyConnected"
-        :messages="lobbyChatMessages"
-        :connected="lobbyConnected"
-        @send="handleChatSend"
-      />
-
-      <!-- Game server (MatchZy integration §7.2) -->
-      <MatchServerPanel
-        v-if="matchIdRef"
-        :match-id="matchIdRef"
-        :is-admin="authStore.isAdmin"
-      />
-
-      <!-- Forfeit Button -->
-      <v-card v-if="canForfeit" class="mb-6" variant="outlined" color="error">
-        <v-card-text class="d-flex align-center justify-space-between">
-          <div>
-            <div class="text-body-2 font-weight-medium">Forfeit Match</div>
-            <div class="text-caption text-medium-emphasis">
-              Forfeit this match. Your opponent will be declared the winner.
-            </div>
-          </div>
-          <v-btn
-            color="error"
-            variant="outlined"
-            size="small"
-            :loading="tournamentsStore.forfeitMatchState.loading"
-            @click="handleForfeit"
-          >
-            <v-icon start size="small">mdi-flag</v-icon>
-            Forfeit
-          </v-btn>
-        </v-card-text>
-      </v-card>
 
       <!-- Result Submission/Confirmation Panel -->
       <template v-if="showResultPanel">
@@ -358,6 +312,39 @@
           </v-card-text>
         </v-card>
       </template>
+      </div>
+
+      <!-- Who's playing, and the lobby chat, side by side -->
+      <v-row v-if="showLineups || showChat" class="mb-2">
+        <v-col v-if="showLineups" cols="12" :md="showChat ? 6 : 12">
+          <!-- Lineups (who played) — provisional declaration + demo-derived,
+               opponent-visible once locked. -->
+          <LineupPanel
+            :tournament-id="tournament.id"
+            :match-id="match.id"
+            :participant1-registration-id="match.participant1_registration_id"
+            :participant2-registration-id="match.participant2_registration_id"
+            :participant1-name="match.participant1_name"
+            :participant2-name="match.participant2_name"
+            class="h-100"
+          />
+        </v-col>
+        <v-col v-if="showChat" cols="12" :md="showLineups ? 6 : 12">
+          <LobbyChatPanel
+            :messages="lobbyChatMessages"
+            :connected="lobbyConnected"
+            class="h-100"
+            @send="handleChatSend"
+          />
+        </v-col>
+      </v-row>
+
+      <!-- Game server (MatchZy integration §7.2) -->
+      <MatchServerPanel
+        v-if="matchIdRef"
+        :match-id="matchIdRef"
+        :is-admin="authStore.isAdmin"
+      />
 
       <!-- Result Review Alert (admin-flagged review) -->
       <ResultReviewAlert
@@ -449,8 +436,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { api } from '@/api'
 import { getProposalStatusColor, getProposalStatusLabel } from '@/stores/matchScheduling'
 import type { ResultClaimResponse } from '@/stores/matchResults'
 import { useTournamentsStore } from '@/stores/tournaments'
@@ -480,7 +468,7 @@ import ResultReviewAlert from '@/components/match/results/ResultReviewAlert.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
-import { formatDateTime } from '@/utils/formatters'
+import { formatDateTime, formatWhen } from '@/utils/formatters'
 import {
   getMatchStatusColor, getMatchStatusLabel, formatMatchFormat,
 } from '@/utils/matchStatus'
@@ -580,14 +568,76 @@ const canForfeit = computed(() => {
   return ['scheduled', 'checking_in', 'ready', 'pick_ban', 'in_progress', 'awaiting_result'].includes(match.value.status)
 })
 
-const breadcrumbs = computed(() => [
-  { title: 'Tournaments', to: { name: 'tournaments' } },
-  {
-    title: tournament.value?.name || 'Tournament',
-    to: { name: 'tournament-detail', params: { slug: route.params.tournamentSlug } },
+// League › Season › Cup › Match, by name. A cup outside any league falls
+// back to the global list.
+const scope = ref<{ leagueName: string | null; seasonName: string | null }>({ leagueName: null, seasonName: null })
+watch(
+  () => [tournament.value?.league_id, tournament.value?.season_id] as const,
+  async ([leagueId, seasonId]) => {
+    if (!leagueId) { scope.value = { leagueName: null, seasonName: null }; return }
+    const [league, season] = await Promise.all([
+      api.GET('/v1/leagues/{league_id}', { params: { path: { league_id: leagueId } } }).catch(() => null),
+      seasonId ? api.GET('/v1/league-seasons/{season_id}', { params: { path: { season_id: seasonId } } }).catch(() => null) : null,
+    ])
+    scope.value = { leagueName: league?.data?.data?.name ?? null, seasonName: season?.data?.data?.name ?? null }
   },
-  { title: `Match #${match.value?.match_number || ''}`, disabled: true },
-])
+  { immediate: true },
+)
+const breadcrumbs = computed(() => {
+  const items: Array<{ title: string; to?: object; disabled?: boolean }> = []
+  const t = tournament.value
+  if (t?.league_id) {
+    items.push({ title: scope.value.leagueName ?? 'League', to: { name: 'league-detail', params: { id: t.league_id } } })
+    if (t.season_id) {
+      items.push({
+        title: scope.value.seasonName ?? 'Season',
+        to: { name: 'league-detail', params: { id: t.league_id }, query: { season: t.season_id, tab: 'tournaments' } },
+      })
+    }
+  } else {
+    items.push({ title: 'Tournaments', to: { name: 'tournaments' } })
+  }
+  items.push({ title: t?.name || 'Tournament', to: { name: 'tournament-detail', params: { slug: route.params.tournamentSlug } } })
+  items.push({ title: `Round ${match.value?.round ?? ''} · Match ${match.value?.match_number ?? ''}`, disabled: true })
+  return items
+})
+
+/** "Tonight 19:30 · Best of 3" — when, then what. */
+const whenLine = computed(() => {
+  if (!match.value) return ''
+  const when = formatWhen(match.value.scheduled_at)
+  const format = formatMatchFormat(match.value.match_format)
+  return when ? `${when} · ${format}` : `${format} · Time to be agreed`
+})
+
+/**
+ * The one thing this phase asks of the viewer. Null once the match is over
+ * (the header carries the score) or when no panel would render.
+ */
+const nowHeading = computed(() => {
+  const m = match.value
+  if (!m) return null
+  const mine = !!userRegistrationId.value
+  switch (m.status) {
+    case 'pending': return 'Waiting for both teams to be decided'
+    case 'ready': return showSchedulingPanel.value ? 'Agree a time with your opponent' : 'Waiting for the check-in window'
+    case 'scheduled': return showSchedulingPanel.value ? 'Agree a time with your opponent' : 'Check-in opens before the start'
+    case 'checking_in': return mine ? 'Check in for the match' : 'Teams are checking in'
+    case 'pick_ban': return 'Pick and ban maps'
+    case 'in_progress': return canSubmitResult.value ? 'Report the result when the series ends' : 'The match is live'
+    case 'awaiting_result':
+      if (showConfirmationPanel.value) return 'Confirm the result your opponent reported'
+      if (canSubmitResult.value) return 'Report the result'
+      return 'Waiting for the result'
+    case 'disputed': return 'Result under dispute'
+    default: return null
+  }
+})
+
+const showLineups = computed(() =>
+  !!match.value && !!(match.value.participant1_registration_id || match.value.participant2_registration_id),
+)
+const showChat = computed(() => showVetoPanel.value && lobbyConnected.value)
 
 // Active dispute for this match (fetched via GET /tournaments/{id}/matches/{id}/dispute)
 const activeDisputeId = computed(() => disputesStore.matchDispute?.id ?? null)
@@ -795,3 +845,17 @@ watch(
 
 onMounted(() => { fetchAll() })
 </script>
+
+<style scoped>
+.now-card {
+  border: 2px solid rgb(var(--v-theme-primary));
+  border-radius: 8px;
+  padding: 20px 24px 8px;
+  background: rgba(var(--v-theme-primary), 0.04);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.now-eyebrow {
+  color: rgb(var(--v-theme-primary));
+  letter-spacing: 0.1em;
+}
+</style>

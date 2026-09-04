@@ -54,6 +54,12 @@ const props = defineProps<{
    * three-timestamp inference below; absent, the old static rendering holds.
    */
   history?: MatchStatusLogResponse[]
+  /**
+   * The tournament (or stage) configures a map veto. `match.veto_required`
+   * is only set once a session exists, which made the stepper grow a
+   * Pick/Ban step mid-match; this keeps it there from the start.
+   */
+  vetoConfigured?: boolean
 }>()
 
 interface Step {
@@ -104,8 +110,8 @@ const steps = computed<Step[]>(() => {
     filtered = [...allSteps]
   }
 
-  // Only show pick_ban step if this match requires veto
-  if (!props.match.veto_required) {
+  // Only show pick_ban step if this match has (or will have) a veto
+  if (!props.match.veto_required && !props.vetoConfigured) {
     filtered = filtered.filter(s => s.status !== 'pick_ban')
   }
 

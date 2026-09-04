@@ -108,6 +108,7 @@
         :match="match"
         :scheduling-mode="tournament.scheduling_mode as 'live' | 'self_scheduled' | 'hybrid'"
         :history="statusHistory"
+        :veto-configured="!!tournament.default_map_veto_format"
         class="mb-6"
       />
 

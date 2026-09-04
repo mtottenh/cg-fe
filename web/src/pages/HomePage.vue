@@ -13,11 +13,49 @@
       <v-row class="mb-6">
         <v-col>
           <h1 class="text-h4">
-            Welcome back{{ authStore.player?.display_name ? `, ${authStore.player.display_name}` : '' }}!
+            Welcome{{ isNewHere ? '' : ' back' }}{{ authStore.player?.display_name ? `, ${authStore.player.display_name}` : '' }}!
           </h1>
-          <p class="text-body-1 text-medium-emphasis">Choose a game to get started</p>
+          <p class="text-body-1 text-medium-emphasis">
+            {{ welcomeLine }}
+          </p>
         </v-col>
       </v-row>
+
+      <!-- Get playing: the path to a roster, with the next step lit -->
+      <v-card v-if="!loadingTeams && myTeams.length === 0" variant="outlined" class="mb-8 get-playing" data-testid="get-playing">
+        <v-card-title class="text-subtitle-1">Get playing</v-card-title>
+        <v-divider />
+        <v-card-text>
+          <v-row>
+            <v-col v-for="(step, i) in playSteps" :key="step.title" cols="12" md="4" class="d-flex ga-3">
+              <v-avatar
+                size="32"
+                :color="step.state === 'done' ? 'success' : step.state === 'current' ? 'primary' : undefined"
+                :variant="step.state === 'pending' ? 'outlined' : 'flat'"
+              >
+                <v-icon v-if="step.state === 'done'" size="18">mdi-check</v-icon>
+                <span v-else class="text-body-2 font-weight-medium">{{ i + 1 }}</span>
+              </v-avatar>
+              <div class="flex-grow-1">
+                <div class="text-subtitle-2" :class="{ 'text-medium-emphasis': step.state === 'pending' }">{{ step.title }}</div>
+                <div class="text-body-2 text-medium-emphasis">{{ step.text }}</div>
+                <div v-if="step.state === 'current'" class="d-flex ga-2 mt-2 flex-wrap">
+                  <v-btn
+                    v-for="action in step.actions"
+                    :key="action.label"
+                    :color="action.primary ? 'primary' : undefined"
+                    :variant="action.primary ? 'flat' : 'text'"
+                    size="small"
+                    :to="action.to"
+                  >
+                    {{ action.label }}
+                  </v-btn>
+                </div>
+              </div>
+            </v-col>
+          </v-row>
+        </v-card-text>
+      </v-card>
 
       <!-- Game Selection Grid -->
       <v-row class="mb-8">
@@ -95,8 +133,11 @@
               <div v-else class="text-center py-4">
                 <v-icon size="32" color="grey">mdi-account-group-outline</v-icon>
                 <p class="text-caption text-medium-emphasis mt-2">No teams yet</p>
-                <v-btn variant="tonal" size="small" :to="{ name: 'leagues' }" class="mt-2">
-                  Browse Leagues
+                <v-btn v-if="myLeagues.length > 0" variant="tonal" size="small" :to="{ name: 'find-team' }" class="mt-2">
+                  Find a team
+                </v-btn>
+                <v-btn v-else variant="tonal" size="small" :to="{ name: 'leagues' }" class="mt-2">
+                  Find a league
                 </v-btn>
               </div>
             </v-card-text>
@@ -217,91 +258,60 @@
       </v-row>
     </template>
 
-    <!-- Guest View -->
-    <template v-else>
-      <!-- Hero Section -->
-      <v-row justify="center" class="mb-8">
-        <v-col cols="12" md="8" class="text-center">
-          <h1 class="text-h2 font-weight-bold mb-4">CS2 10 Mans</h1>
-          <p class="text-h6 text-medium-emphasis mb-6">
-            Competitive gaming platform for teams and players
-          </p>
-          <v-row justify="center">
-            <v-col cols="auto">
-              <!-- Steam is the only sign-in method (accounts ARE Steam
-                   identities) — send guests straight there. -->
-              <v-btn color="primary" size="large" to="/login">
-                <v-icon start>mdi-steam</v-icon>
-                Sign in through Steam
-              </v-btn>
+    <!-- Guest View: what is on, then how to get in -->
+    <div v-else class="landing mx-auto">
+      <div class="mb-10" style="max-width: 640px">
+        <h1 class="text-h3 font-weight-bold mb-4">CS2 10 Mans</h1>
+        <p class="text-h6 font-weight-regular text-medium-emphasis mb-6" style="line-height: 1.5">
+          Amateur five-a-side leagues and cups, run by the people who play in them.
+          Watch tonight's bracket first; sign in when you want to enter.
+        </p>
+        <div class="d-flex align-center ga-2 flex-wrap">
+          <!-- Steam is the only sign-in method (accounts ARE Steam
+               identities) — send guests straight there. -->
+          <v-btn color="primary" size="large" to="/login" prepend-icon="mdi-steam" data-testid="landing-sign-in">
+            Sign in with Steam
+          </v-btn>
+          <v-btn variant="text" size="large" :to="{ name: 'leagues' }">Browse leagues</v-btn>
+        </div>
+      </div>
+
+      <v-progress-linear v-if="loadingLanding" indeterminate class="mb-6" />
+      <div v-else class="d-flex flex-column ga-3 mb-10" data-testid="landing-rows">
+        <v-card v-for="row in landingRows" :key="row.kind" :to="row.to" hover>
+          <v-card-text class="d-flex align-center ga-5">
+            <v-avatar size="48" rounded="lg" color="surface-variant" class="flex-shrink-0">
+              <v-icon>{{ row.icon }}</v-icon>
+            </v-avatar>
+            <div class="flex-grow-1" style="min-width: 0">
+              <div class="text-caption text-uppercase landing-eyebrow">{{ row.eyebrow }}</div>
+              <div class="text-h6">{{ row.title }}</div>
+              <div class="text-body-2 text-medium-emphasis">{{ row.text }}</div>
+            </div>
+            <v-btn variant="tonal" class="flex-shrink-0">{{ row.action }}</v-btn>
+          </v-card-text>
+        </v-card>
+        <v-card v-if="landingRows.length === 0" variant="outlined">
+          <v-card-text class="text-body-2 text-medium-emphasis">
+            Nothing is running right now. Leagues and cups appear here as soon as one opens.
+          </v-card-text>
+        </v-card>
+      </div>
+
+      <v-card variant="outlined">
+        <v-card-title class="text-subtitle-1">How it works</v-card-title>
+        <v-divider />
+        <v-card-text>
+          <v-row>
+            <v-col v-for="(step, i) in HOW_IT_WORKS" :key="step.title" cols="6" md="3">
+              <div class="text-h5 font-weight-medium text-primary">{{ i + 1 }}</div>
+              <div class="text-subtitle-2">{{ step.title }}</div>
+              <div class="text-body-2 text-medium-emphasis">{{ step.text }}</div>
             </v-col>
           </v-row>
-        </v-col>
-      </v-row>
-
-      <!-- Game Selection Grid (Guest) -->
-      <v-row class="mb-8">
-        <v-col cols="12">
-          <h2 class="text-h6 mb-4 text-center">
-            <v-icon start>mdi-gamepad-variant</v-icon>
-            Available Games
-          </h2>
-        </v-col>
-        <v-col v-if="gamesStore.fetchGamesState.loading" cols="12" class="text-center py-8">
-          <v-progress-circular indeterminate color="primary" />
-        </v-col>
-        <template v-else>
-          <v-col v-for="game in activeGames" :key="game.id" cols="6" sm="4" md="3" lg="2">
-            <v-card class="game-card text-center pa-4" hover @click="promptLogin">
-              <v-avatar size="64" class="mb-2" rounded="lg">
-                <v-img alt="" v-if="game.icon_url" :src="game.icon_url" />
-                <v-icon v-else size="32">mdi-gamepad-variant</v-icon>
-              </v-avatar>
-              <div class="text-subtitle-2 font-weight-medium">{{ game.display_name }}</div>
-            </v-card>
-          </v-col>
-        </template>
-      </v-row>
-
-      <!-- Feature Cards -->
-      <v-row>
-        <v-col cols="12" md="4">
-          <v-card class="pa-6 text-center" height="100%">
-            <v-icon size="48" color="primary" class="mb-4">mdi-trophy</v-icon>
-            <h3 class="text-h5 mb-2">Compete</h3>
-            <p class="text-body-2 text-medium-emphasis">
-              Join tournaments and leagues across multiple games
-            </p>
-          </v-card>
-        </v-col>
-        <v-col cols="12" md="4">
-          <v-card class="pa-6 text-center" height="100%">
-            <v-icon size="48" color="secondary" class="mb-4">mdi-account-group</v-icon>
-            <h3 class="text-h5 mb-2">Team Up</h3>
-            <p class="text-body-2 text-medium-emphasis">
-              Create or join teams and build your roster
-            </p>
-          </v-card>
-        </v-col>
-        <v-col cols="12" md="4">
-          <v-card class="pa-6 text-center" height="100%">
-            <v-icon size="48" color="accent" class="mb-4">mdi-chart-line</v-icon>
-            <h3 class="text-h5 mb-2">Track Stats</h3>
-            <p class="text-body-2 text-medium-emphasis">
-              Monitor your performance and climb the rankings
-            </p>
-          </v-card>
-        </v-col>
-      </v-row>
-    </template>
-
-    <!-- Login Prompt Snackbar -->
-    <v-snackbar v-model="showLoginPrompt" timeout="3000">
-      Sign in to browse leagues and join teams
-      <template v-slot:actions>
-        <v-btn color="primary" variant="text" to="/login">Sign In</v-btn>
-      </template>
-    </v-snackbar>
+        </v-card-text>
+      </v-card>
+    </div>
   </v-container>
 </template>
 
@@ -318,8 +328,28 @@ import type { components } from '@/api/types'
 import CaptainActionsWidget from '@/components/CaptainActionsWidget.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import { matchStatusMap, teamRoleMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import { formatMatchFormat } from '@/utils/matchStatus'
 
 type TournamentMatchResponse = components['schemas']['TournamentMatchResponse']
+type TournamentResponse = components['schemas']['TournamentResponse']
+
+/** One line of the signed-out landing: what is on, and where it leads. */
+interface LandingRow {
+  kind: 'live' | 'open' | 'league'
+  eyebrow: string
+  icon: string
+  title: string
+  text: string
+  action: string
+  to: object
+}
+
+const HOW_IT_WORKS = [
+  { title: 'Sign in with Steam', text: 'No separate password.' },
+  { title: 'Join a league', text: 'Open leagues take anyone.' },
+  { title: 'Make or join a team', text: 'Rosters are per season, five a side.' },
+  { title: 'Enter a cup', text: 'Check in, veto maps, play, report.' },
+]
 
 interface UpcomingMatch {
   match: TournamentMatchResponse
@@ -332,11 +362,12 @@ const gamesStore = useGamesStore()
 const leagueTeamsStore = useLeagueTeamsStore()
 const leaguesStore = useLeaguesStore()
 
-const loadingTeams = ref(false)
+const loadingTeams = ref(true)
 const loadingInvitations = ref(false)
 const loadingMatches = ref(false)
-const showLoginPrompt = ref(false)
+const loadingLanding = ref(false)
 const upcomingMatches = ref<UpcomingMatch[]>([])
+const landingRows = ref<LandingRow[]>([])
 
 /**
  * Match statuses that mean the match is OVER — nothing left for the player to
@@ -359,6 +390,50 @@ const ACTIVE_MATCH_STATUSES = Object.keys(matchStatusMap).filter(
 
 const activeGames = computed(() => gamesStore.games.filter(g => g.status === 'active'))
 const { myTeams, myInvitations } = storeToRefs(leagueTeamsStore)
+const { myLeagues } = storeToRefs(leaguesStore)
+
+/** Nothing joined yet: greet, don't welcome back. */
+const isNewHere = computed(() => !loadingTeams.value && myTeams.value.length === 0 && myLeagues.value.length === 0)
+const welcomeLine = computed(() => {
+  if (loadingTeams.value || myTeams.value.length > 0) return 'Choose a game to get started'
+  if (myLeagues.value.length === 0) return 'Three steps and you are on a roster.'
+  return `You are in ${myLeagues.value[0]!.league_name}. Next: join or make a team.`
+})
+
+/**
+ * The three steps to a roster, with the next one lit. Only shown while the
+ * player has no team; a captain sees the action widget instead.
+ */
+const playSteps = computed(() => {
+  const inLeague = myLeagues.value.length > 0
+  const league = myLeagues.value[0]
+  const createTeam = league
+    ? { name: 'league-detail', params: { id: league.league_id }, query: { tab: 'teams' } }
+    : { name: 'leagues' }
+  return [
+    {
+      title: 'Join a league',
+      text: 'Open leagues take anyone.',
+      state: inLeague ? 'done' : 'current',
+      actions: [{ label: 'Find a league', to: { name: 'leagues' }, primary: true }],
+    },
+    {
+      title: 'Join or make a team',
+      text: 'Rosters are per season, five a side.',
+      state: inLeague ? 'current' : 'pending',
+      actions: [
+        { label: 'Find a team', to: { name: 'find-team' }, primary: true },
+        { label: 'Create a team', to: createTeam, primary: false },
+      ],
+    },
+    {
+      title: 'Enter a cup',
+      text: 'Check in, veto maps, play, report.',
+      state: 'pending',
+      actions: [],
+    },
+  ] as const
+})
 
 onMounted(async () => {
   // Fetch games for all users
@@ -373,6 +448,7 @@ onMounted(async () => {
       await Promise.all([
         leagueTeamsStore.fetchMyTeams(),
         leagueTeamsStore.fetchMyInvitations(),
+        leaguesStore.fetchMyLeagues(),
         leaguesStore.fetchLeagues(1, 100), // Fetch leagues to count per game
       ])
     } catch {
@@ -384,8 +460,117 @@ onMounted(async () => {
 
     // Fetch upcoming matches (non-blocking, uses API directly to avoid overwriting store state)
     fetchUpcomingMatches()
+  } else {
+    loadingTeams.value = false
+    fetchLanding()
   }
 })
+
+/**
+ * What a visitor is shown: a live cup, a cup taking entries, and the leagues
+ * behind them — each with the one fact that makes it worth a click. All from
+ * public endpoints; nothing here needs an account.
+ */
+async function fetchLanding() {
+  loadingLanding.value = true
+  const rows: LandingRow[] = []
+  const shortDate = (iso: string | null | undefined) =>
+    iso ? new Date(iso).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) : null
+  const nameOfLeague = new Map<string, string>()
+  const leagueName = async (id: string | null | undefined) => {
+    if (!id) return null
+    if (!nameOfLeague.has(id)) {
+      const r = await api.GET('/v1/leagues/{league_id}', { params: { path: { league_id: id } } }).catch(() => null)
+      nameOfLeague.set(id, r?.data?.data?.name ?? '')
+    }
+    return nameOfLeague.get(id) || null
+  }
+  // The list gives summaries; the two cups shown need their full record for
+  // the registration window and the match format.
+  const fullCup = async (id: string | undefined): Promise<TournamentResponse | undefined> => {
+    if (!id) return undefined
+    const r = await api.GET('/v1/tournaments/{tournament_id}', { params: { path: { tournament_id: id } } }).catch(() => null)
+    return r?.data?.data
+  }
+  try {
+    const [live, open, leagues] = await Promise.all([
+      api.GET('/v1/tournaments', { params: { query: { status: 'in_progress', per_page: 3 } } }).catch(() => null),
+      api.GET('/v1/tournaments', { params: { query: { status: 'registration', per_page: 5 } } }).catch(() => null),
+      api.GET('/v1/leagues', { params: { query: { per_page: 3 } } }).catch(() => null),
+    ])
+
+    const liveCup = await fullCup(live?.data?.data?.[0]?.id)
+    if (liveCup) {
+      const league = await leagueName(liveCup.league_id)
+      rows.push({
+        kind: 'live', eyebrow: 'Tonight', icon: 'mdi-play-circle-outline',
+        title: liveCup.name,
+        text: [league, formatMatchFormat(liveCup.default_match_format), 'Live now'].filter(Boolean).join(' · '),
+        action: 'Watch bracket',
+        to: { name: 'tournament-detail', params: { slug: liveCup.slug } },
+      })
+    }
+
+    // Of the cups taking entries, the one closing soonest is the one to show.
+    const openCups = (await Promise.all(
+      (open?.data?.data ?? []).filter(t => t.is_registration_open).map(t => fullCup(t.id)),
+    )).filter((t): t is TournamentResponse => !!t)
+    const openCup = openCups.sort((a, b) => {
+      const ta = a.registration_end ? new Date(a.registration_end).getTime() : Infinity
+      const tb = b.registration_end ? new Date(b.registration_end).getTime() : Infinity
+      return ta - tb
+    })[0]
+    if (openCup) {
+      const [league, counts] = await Promise.all([
+        leagueName(openCup.league_id),
+        api.GET('/v1/tournaments/{tournament_id}/registrations/counts', { params: { path: { tournament_id: openCup.id } } }).catch(() => null),
+      ])
+      const entered = counts?.data?.data?.active
+      const closes = shortDate(openCup.registration_end)
+      rows.push({
+        kind: 'open', eyebrow: 'Open for entry', icon: 'mdi-trophy-outline',
+        title: league ? `${openCup.name} · ${league}` : openCup.name,
+        text: [
+          entered != null ? `${entered} of ${openCup.max_participants} teams in` : null,
+          closes ? `closes ${closes}` : null,
+          formatMatchFormat(openCup.default_match_format),
+        ].filter(Boolean).join(' · '),
+        action: 'See the cup',
+        to: { name: 'tournament-detail', params: { slug: openCup.slug } },
+      })
+    }
+
+    for (const league of (leagues?.data?.data ?? []).slice(0, 2)) {
+      let text = 'Open to join'
+      let title = league.name
+      if (league.current_season_id) {
+        const [season, teams] = await Promise.all([
+          api.GET('/v1/league-seasons/{season_id}', { params: { path: { season_id: league.current_season_id } } }).catch(() => null),
+          api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: league.current_season_id } } }).catch(() => null),
+        ])
+        const s = season?.data?.data
+        if (s) {
+          title = `${league.name} · ${s.name}`
+          const n = teams?.data?.data?.length ?? 0
+          const parts = [
+            s.status === 'registration' && s.registration_end ? `Registration open until ${shortDate(s.registration_end)}` : null,
+            `${n} ${n === 1 ? 'team' : 'teams'}`,
+            s.season_start && s.season_end ? `plays ${shortDate(s.season_start)} – ${shortDate(s.season_end)}` : null,
+          ]
+          text = parts.filter(Boolean).join(' · ')
+        }
+      }
+      rows.push({
+        kind: 'league', eyebrow: 'Leagues', icon: 'mdi-shield-outline',
+        title, text, action: 'See the league',
+        to: { name: 'league-detail', params: { id: league.id } },
+      })
+    }
+  } finally {
+    landingRows.value = rows
+    loadingLanding.value = false
+  }
+}
 
 /**
  * P-190: this used to scan 5 in-progress tournaments' registration lists at
@@ -467,13 +652,20 @@ function formatMatchTime(dateStr: string): string {
 function getLeagueCountForGame(gameId: string): number {
   return leaguesStore.leagues.filter(l => l.game_id === gameId).length
 }
-
-function promptLogin() {
-  showLoginPrompt.value = true
-}
 </script>
 
 <style scoped>
+.landing {
+  max-width: 1040px;
+  padding: 32px 0;
+}
+.landing-eyebrow {
+  color: rgb(var(--v-theme-primary));
+  letter-spacing: 0.1em;
+}
+.get-playing {
+  border-color: rgba(var(--v-theme-primary), 0.5);
+}
 .game-card {
   transition: transform 0.2s, box-shadow 0.2s;
 }

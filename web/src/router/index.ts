@@ -106,6 +106,12 @@ const router = createRouter({
 
     // Authenticated user routes - use PortalLayout
     {
+      path: '/find-a-team',
+      name: 'find-team',
+      component: () => import('@/pages/FindTeamPage.vue'),
+      meta: { requiresAuth: true, layout: 'portal' },
+    },
+    {
       path: '/my-teams',
       name: 'my-teams',
       component: () => import('@/pages/MyLeagueTeamsPage.vue'),

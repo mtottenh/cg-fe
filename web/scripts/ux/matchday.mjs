@@ -100,6 +100,18 @@ for (const [name, tag] of [
     method: 'POST',
     body: { name: `${name} ${stamp}`, tag: tag + stamp.slice(0, 2).toUpperCase() },
   })
+  // A five-a-side cup refuses a roster smaller than five (the review's
+  // thin-roster finding), so field a full team: four more league members
+  // added by the captain.
+  for (let i = 0; i < 4; i++) {
+    const mate = await makePlayer(`${tag.toLowerCase()}${i}`)
+    await api(`/v1/leagues/${world.league.id}/join`, { token: mate.token, method: 'POST' })
+    await api(`/v1/league-team-seasons/${made.team_season.id}/members`, {
+      token: captain.token,
+      method: 'POST',
+      body: { player_id: mate.playerId },
+    })
+  }
   const { data: reg } = await api(`/v1/tournaments/${cup.id}/registrations/team`, {
     token: captain.token,
     method: 'POST',

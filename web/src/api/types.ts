@@ -767,6 +767,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/pipeline/discovered-matches/requeue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Return failed discovered matches to the enrichment queue (admin).
+         * @description The repair for a worker that spent retry budgets on something that was
+         *     never the match's fault — a dead Steam websocket reported as a per-match
+         *     GC failure, which filled this queue with matches recorded as having failed
+         *     enrichment when nothing had ever been asked of Valve. A match whose budget
+         *     is spent is excluded from the enricher's queue by design, so without this
+         *     the only way back is SQL against production.
+         */
+        post: operations["requeue_pipeline_discovered_matches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/pipeline/discovered-matches/{id}/requeue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return one discovered match to the enrichment queue (admin). */
+        post: operations["requeue_pipeline_discovered_match"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/pipeline/overview": {
         parameters: {
             query?: never;
@@ -6714,6 +6756,33 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_DiscoveredMatchAdminResponse: {
+            /**
+             * @description One discovered match, as the operator needs to see it.
+             *
+             *     `gc_data` and the raw `demo_url` are omitted: they are large, and the
+             *     operator question is "did this get through, and if not why".
+             */
+            data: {
+                discovered_at: string;
+                enriched_at?: string | null;
+                error?: string | null;
+                /** @description Whether enrichment produced a demo URL for the scanner to fetch. */
+                has_demo_url: boolean;
+                id: string;
+                /** Format: int32 */
+                max_retries: number;
+                /** Format: int32 */
+                retry_count: number;
+                /** @description True once the retry budget is spent — the enricher stops retrying. */
+                retry_exhausted: boolean;
+                share_code: string;
+                status: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_DisputeListResponse: {
             /** @description Paginated list of disputes. */
             data: {
@@ -8086,6 +8155,19 @@ export interface components {
                 refresh_token: string;
                 /** @description The created user. */
                 user: components["schemas"]["UserResponse"];
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_RequeueDiscoveredMatchesResponse: {
+            /** @description Result of a bulk enrichment requeue. */
+            data: {
+                /**
+                 * Format: int64
+                 * @description How many rows were returned to the enrichment queue.
+                 */
+                requeued: number;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -14547,6 +14629,26 @@ export interface components {
             /** @description Optional reason for the rejection, shown to the proposer. */
             reason?: string | null;
         };
+        /** @description Body for a bulk enrichment requeue. */
+        RequeueDiscoveredMatchesRequest: {
+            /** @description Restrict to one game, by slug (e.g. `cs2`) or UUID. Omit for all games. */
+            game?: string | null;
+            /**
+             * @description Only requeue rows whose retry budget is spent — the ones the enricher
+             *     will never pick up again on its own. Defaults to true, which is the
+             *     conservative reading of "unstick the pipeline": a match that is still
+             *     backing off is already going to be retried.
+             */
+            only_exhausted?: boolean;
+        };
+        /** @description Result of a bulk enrichment requeue. */
+        RequeueDiscoveredMatchesResponse: {
+            /**
+             * Format: int64
+             * @description How many rows were returned to the enrichment queue.
+             */
+            requeued: number;
+        };
         /**
          * @description Lifecycle status of a server reservation.
          * @enum {string}
@@ -19048,6 +19150,107 @@ export interface operations {
                 };
             };
             /** @description Game not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    requeue_pipeline_discovered_matches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequeueDiscoveredMatchesRequest"];
+            };
+        };
+        responses: {
+            /** @description Matches requeued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_RequeueDiscoveredMatchesResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Game not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    requeue_pipeline_discovered_match: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Discovered match ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Match requeued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_DiscoveredMatchAdminResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Discovered match not found */
             404: {
                 headers: {
                     [name: string]: unknown;

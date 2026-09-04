@@ -82,6 +82,7 @@ export const useDemosStore = defineStore('demos', () => {
   const fetchPipelineOverviewState = createActionState()
   const fetchTrackingHealthState = createActionState()
   const fetchDiscoveredMatchesState = createActionState()
+  const requeueDiscoveredState = createActionState()
   const processUnlinkedState = createActionState()
 
   async function fetchDemos(filters: DemoFilters = {}) {
@@ -377,6 +378,37 @@ export const useDemosStore = defineStore('demos', () => {
   }
 
   /**
+   * Return failed discovered matches to the enrichment queue.
+   *
+   * The repair for retry budgets that were spent on something other than the
+   * match — the enricher used to record a dead Steam websocket ("Trying to
+   * work with closed connection") as a per-match enrichment failure. Once a
+   * budget is spent the enricher will never offer that match again, so
+   * fixing the worker does not by itself recover the matches it wrote off.
+   */
+  async function requeueDiscoveredMatches(
+    params: { game?: string; onlyExhausted?: boolean } = {},
+  ): Promise<number> {
+    return withActionState(requeueDiscoveredState, async () => {
+      const result = await unwrapApi(api.POST('/v1/admin/pipeline/discovered-matches/requeue', {
+        body: { game: params.game, only_exhausted: params.onlyExhausted ?? true },
+      }))
+      return result.data.requeued
+    }, 'Failed to requeue discovered matches')
+  }
+
+  /** Requeue one discovered match, whatever state it is in. */
+  async function requeueDiscoveredMatch(id: string): Promise<DiscoveredMatchAdminResponse> {
+    return withActionState(requeueDiscoveredState, async () => {
+      const result = await unwrapApi(api.POST('/v1/admin/pipeline/discovered-matches/{id}/requeue', {
+        params: { path: { id } },
+      }))
+      replaceById(discoveredMatches.value, result.data)
+      return result.data
+    }, 'Failed to requeue the match')
+  }
+
+  /**
    * P-64: run the demo→match auto-link backfill.
    *
    * The endpoint has existed since the auto-linker landed; the admin page had
@@ -434,6 +466,7 @@ export const useDemosStore = defineStore('demos', () => {
     fetchPipelineOverviewState,
     fetchTrackingHealthState,
     fetchDiscoveredMatchesState,
+    requeueDiscoveredState,
     processUnlinkedState,
     // Actions
     fetchDemos,
@@ -458,6 +491,8 @@ export const useDemosStore = defineStore('demos', () => {
     fetchPipelineOverview,
     fetchTrackingHealth,
     fetchDiscoveredMatches,
+    requeueDiscoveredMatches,
+    requeueDiscoveredMatch,
     processUnlinkedDemos,
     clearCurrent,
   }

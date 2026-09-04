@@ -12016,6 +12016,16 @@ export interface components {
         };
         /** @description Response DTO for a dispute. */
         DisputeResponse: {
+            /** @description Tournament the disputed match belongs to; absent when the match could not be loaded. */
+            tournament_id?: string;
+            tournament_slug?: string;
+            tournament_name?: string;
+            participant1_name?: string;
+            participant2_name?: string;
+            /** @description Team that raised the dispute. */
+            disputed_by_name?: string;
+            /** @description Team the disputed claim named as winner. */
+            original_winner_name?: string;
             /**
              * @description Admin who took the dispute for review (P-80); absent until assigned.
              *     Clients compare against their own user id for "assigned to me" —

@@ -439,7 +439,7 @@ test.describe('Tournament Public Flows', () => {
 
       // Tabs MUST be visible (TournamentDetailPage.vue:41-51)
       await expect(page.getByRole('tab', { name: 'Overview' })).toBeVisible()
-      await expect(page.getByRole('tab', { name: /Participants/ })).toBeVisible()
+      await expect(page.getByRole('tab', { name: /Players|Teams/ })).toBeVisible()
       await expect(page.getByRole('tab', { name: 'Bracket' })).toBeVisible()
       await expect(page.getByRole('tab', { name: 'Matches' })).toBeVisible()
     })
@@ -456,7 +456,7 @@ test.describe('Tournament Public Flows', () => {
       await page.goto(`/tournaments/${tournament.slug}`)
       await expect(page.getByRole('heading', { name: tournament.name })).toBeVisible()
 
-      await page.getByRole('tab', { name: /Participants/ }).click()
+      await page.getByRole('tab', { name: /Players|Teams/ }).click()
 
       // The seeded registration MUST be listed in the participants table.
       await expect(page.locator('table')).toBeVisible()
@@ -562,7 +562,7 @@ test.describe('Tournament Public Flows', () => {
       await expect(card.getByRole('button', { name: 'Register Now' })).toHaveCount(0)
 
       // UI: and the participant shows up in the participants table.
-      await page.getByRole('tab', { name: /Participants/ }).click()
+      await page.getByRole('tab', { name: /Players|Teams/ }).click()
       await expect(page.getByText(participantName)).toBeVisible()
 
       // Backend: the row really exists, owned by this player, in `pending`.

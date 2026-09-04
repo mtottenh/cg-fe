@@ -331,8 +331,8 @@ test.describe('Match browsing and navigation', () => {
     await loginAsAdmin(page)
     await page.goto(`/tournaments/${scenario.tournamentSlug}`)
 
-    // Overview tab info card: "Participants 2 / 4" for our two approved players.
-    await expect(page.getByText('2 / 4')).toBeVisible({ timeout: 15000 })
+    // Header and "Players in" card both count our two approved players.
+    await expect(page.getByText('2 / 4').first()).toBeVisible({ timeout: 15000 })
   })
 })
 

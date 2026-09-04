@@ -24,6 +24,46 @@
             </v-btn>
           </template>
 
+          <!-- Not in the league: teams come from it -->
+          <template v-else-if="teamGate === 'not_member'">
+            <v-btn
+              color="primary"
+              size="large"
+              :to="leagueId ? { name: 'league-detail', params: { id: leagueId } } : { name: 'leagues' }"
+              data-testid="join-league-gate"
+            >
+              Join {{ leagueName ?? 'the league' }}
+            </v-btn>
+          </template>
+
+          <!-- Member without a team in this season -->
+          <template v-else-if="teamGate === 'no_team'">
+            <div class="d-flex align-center ga-2 flex-wrap justify-end">
+              <v-btn variant="text" :to="{ name: 'find-team' }">Find a team</v-btn>
+              <v-btn
+                color="primary"
+                size="large"
+                :to="leagueId ? { name: 'league-detail', params: { id: leagueId }, query: { ...(seasonId ? { season: seasonId } : {}), tab: 'teams' } } : { name: 'leagues' }"
+                data-testid="create-team-gate"
+              >
+                Create a team
+              </v-btn>
+            </div>
+          </template>
+
+          <!-- Captain with a roster that is too short -->
+          <template v-else-if="teamGate === 'short' && myTeam">
+            <div class="d-flex align-center ga-3 flex-wrap justify-end">
+              <v-btn color="primary" size="large" prepend-icon="mdi-account-plus" :to="{ path: `/teams/${myTeam.teamId}`, query: { season: myTeam.teamSeasonId } }">
+                Invite players
+              </v-btn>
+              <div class="d-flex flex-column align-end">
+                <v-btn size="large" disabled data-testid="register-short-roster">Register team</v-btn>
+                <span class="text-caption text-medium-emphasis mt-1">{{ myTeam.rosterMax - myTeam.rosterCount }} more {{ myTeam.rosterMax - myTeam.rosterCount === 1 ? 'player' : 'players' }} needed</span>
+              </div>
+            </div>
+          </template>
+
           <!-- Not Registered - Show Register Button -->
           <template v-else-if="!myRegistration && canRegister">
             <v-btn
@@ -179,6 +219,16 @@ const props = withDefaults(
     signedOut?: boolean
     /** Where to send them back to after sign-in. */
     redirectPath?: string
+    /** Membership of the league this cup runs in; undefined while unknown. */
+    isLeagueMember?: boolean
+    leagueId?: string | null
+    leagueName?: string | null
+    seasonId?: string | null
+    seasonName?: string | null
+    /** The viewer's own team in this league season, with its roster. */
+    myTeam?: { teamId: string; teamSeasonId: string; name: string; rosterCount: number; rosterMax: number } | null
+    /** Live entries, for the closed state's "8 teams entered". */
+    enteredCount?: number | null
     /**
      * P-51: whether THIS viewer holds a pending invitation to an invite-only
      * tournament. `true` -> the invite-only gate opens (register affordance).
@@ -194,7 +244,29 @@ const props = withDefaults(
      */
     isInvited?: boolean
   }>(),
-  { isInvited: undefined, signedOut: false, redirectPath: '/' },
+  {
+    isInvited: undefined, signedOut: false, redirectPath: '/',
+    isLeagueMember: undefined, leagueId: null, leagueName: null, seasonId: null, seasonName: null,
+    myTeam: null, enteredCount: null,
+  },
+)
+
+/**
+ * Why a team captain cannot register yet — one cause, so the strip can say
+ * it and offer the way out. `null` when none of these apply (the existing
+ * register / registered / closed states take over).
+ */
+const teamGate = computed<'not_member' | 'no_team' | 'short' | null>(() => {
+  if (!isTeamTournament.value || props.signedOut) return null
+  if (!props.tournament.is_registration_open || props.myRegistration) return null
+  if (props.isLeagueMember === false) return 'not_member'
+  if (props.isLeagueMember && !props.myTeam) return 'no_team'
+  if (props.myTeam && props.myTeam.rosterCount < props.myTeam.rosterMax) return 'short'
+  return null
+})
+
+const closesSentence = computed(() =>
+  props.tournament.registration_end ? ` Registration closes ${formatDateTime(props.tournament.registration_end)}.` : '',
 )
 
 defineEmits<{
@@ -206,6 +278,7 @@ defineEmits<{
 const canRegister = computed(() => {
   if (!props.tournament.is_registration_open) return false
   if (props.myRegistration) return false
+  if (teamGate.value) return false
   if (isTeamTournament.value && props.hasEligibleTeams === false) return false
   // Invite-only entry is conditional on an invite list. P-51: when the viewer's
   // own invitation is known to exist (`isInvited === true`) the gate opens and
@@ -276,6 +349,8 @@ const canWithdraw = computed(() => {
 })
 
 const cardColor = computed(() => {
+  if (teamGate.value === 'short') return 'warning'
+  if (teamGate.value) return 'info'
   if (props.myRegistration?.checked_in) return 'success'
   if (props.myRegistration?.status === 'approved') return 'primary'
   if (props.myRegistration?.status === 'pending') return 'warning'
@@ -286,6 +361,8 @@ const cardColor = computed(() => {
 })
 
 const iconColor = computed(() => {
+  if (teamGate.value === 'short') return 'warning'
+  if (teamGate.value) return 'info'
   if (props.myRegistration?.checked_in) return 'success'
   if (props.myRegistration?.status === 'approved') return 'primary'
   if (props.myRegistration?.status === 'pending') return 'warning'
@@ -296,6 +373,9 @@ const iconColor = computed(() => {
 })
 
 const icon = computed(() => {
+  if (teamGate.value === 'short') return 'mdi-account-alert-outline'
+  if (teamGate.value === 'no_team') return 'mdi-account-group-outline'
+  if (teamGate.value === 'not_member') return 'mdi-trophy-outline'
   if (props.myRegistration?.checked_in) return 'mdi-check-circle'
   if (props.myRegistration?.status === 'approved' && canCheckIn.value) return 'mdi-checkbox-marked-circle-outline'
   if (props.myRegistration?.status === 'approved') return 'mdi-check'
@@ -307,9 +387,16 @@ const icon = computed(() => {
 })
 
 const title = computed(() => {
+  if (teamGate.value === 'not_member') return `Teams in this cup come from ${props.leagueName ?? 'its league'}.`
+  if (teamGate.value === 'no_team') return `You need a ${props.seasonName ?? 'league'} team to enter.`
+  if (teamGate.value === 'short' && props.myTeam) {
+    return `${props.myTeam.name} has ${props.myTeam.rosterCount} of ${props.myTeam.rosterMax} players. Cups need ${props.myTeam.rosterMax}.`
+  }
+  if (props.signedOut && props.tournament.is_registration_open) return 'Sign in to register a team.'
   if (props.myRegistration?.checked_in) return "You're All Set!"
   if (props.myRegistration?.status === 'approved' && canCheckIn.value) return 'Check-in Now Open'
-  if (props.myRegistration?.status === 'approved') return "You're Registered"
+  if (props.myRegistration?.status === 'approved') return `${props.myTeam?.name ?? 'You'} ${props.myTeam ? 'is' : 'are'} in.`
+  if (!props.myRegistration && canRegister.value && props.myTeam) return `Register ${props.myTeam.name} for ${props.tournament.name}.`
   if (props.myRegistration?.status === 'pending') return 'Registration Pending'
   if (needsInvitation.value) return 'Invitation Required'
   if (props.tournament.is_registration_open) return 'Join This Tournament'
@@ -318,9 +405,18 @@ const title = computed(() => {
 })
 
 const subtitle = computed(() => {
+  if (teamGate.value === 'not_member') return 'Join the league first, then create or join a team.'
+  if (teamGate.value === 'no_team') return 'Create one and invite players, or ask a team with an open slot.'
+  if (teamGate.value === 'short') return `Register opens as soon as the roster is full.${closesSentence.value}`
+  if (props.signedOut && props.tournament.is_registration_open) return 'Brackets and teams are open to everyone; entering needs an account.'
   if (props.myRegistration?.checked_in) return 'Good luck in the tournament!'
   if (props.myRegistration?.status === 'approved' && canCheckIn.value) return 'Check in now to confirm your participation'
-  if (props.myRegistration?.status === 'approved') return 'Check-in will open before the tournament starts'
+  if (props.myRegistration?.status === 'approved') {
+    return props.tournament.check_in_start
+      ? `Check-in opens ${formatDateTime(props.tournament.check_in_start)}.`
+      : 'Check-in will open before the tournament starts'
+  }
+  if (!props.myRegistration && canRegister.value && props.myTeam) return `${props.myTeam.rosterMax} players on the roster.${closesSentence.value}`
   if (props.myRegistration?.status === 'pending') return 'Your registration is awaiting admin approval'
   if (needsInvitation.value) {
     return isTeamTournament.value
@@ -335,6 +431,10 @@ const subtitle = computed(() => {
       return `Registration opens ${formatDateTime(props.tournament.registration_start)}`
     }
     return 'Registration will open soon'
+  }
+  if (props.enteredCount != null) {
+    const n = props.enteredCount
+    return `Registration closed. ${n} ${isTeamTournament.value ? (n === 1 ? 'team' : 'teams') : (n === 1 ? 'player' : 'players')} entered.`
   }
   return 'Registration for this tournament has closed'
 })

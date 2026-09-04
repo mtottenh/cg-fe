@@ -165,6 +165,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useAvailabilityStore, formatTime, DAY_NAMES_SHORT, type DateAvailability } from '@/stores/availability'
+import { buildCalendarDays } from '@/utils/availabilityCalendar'
 
 const props = defineProps<{
   playerId?: string
@@ -179,45 +180,19 @@ const dayAvailability = ref<Record<string, DateAvailability>>({})
 const today = new Date()
 today.setHours(0, 0, 0, 0)
 
-const startOfPeriod = computed(() => {
-  const start = new Date(today)
-  // Start from beginning of current week (Sunday)
-  start.setDate(start.getDate() - start.getDay() + periodOffset.value * 14)
-  return start
-})
+/** The 14 days on screen. Built by a shared helper so the local-date keying
+ *  (P-93) stays testable — see utils/availabilityCalendar. */
+const periodDays = computed(() =>
+  buildCalendarDays(today, periodOffset.value).map((day) => ({
+    ...day,
+    dayName: DAY_NAMES_SHORT[day.dayIndex],
+  }))
+)
 
-function createDayInfo(date: Date) {
-  const dayOfWeek = date.getDay()
-  return {
-    dayName: DAY_NAMES_SHORT[dayOfWeek],
-    date: date.getDate(),
-    dateStr: date.toISOString().split('T')[0]!,
-    isToday: date.toDateString() === today.toDateString(),
-    fullDate: new Date(date),
-  }
-}
+const week1Days = computed(() => periodDays.value.slice(0, 7))
+const week2Days = computed(() => periodDays.value.slice(7))
 
-const week1Days = computed(() => {
-  const days = []
-  for (let i = 0; i < 7; i++) {
-    const date = new Date(startOfPeriod.value)
-    date.setDate(date.getDate() + i)
-    days.push(createDayInfo(date))
-  }
-  return days
-})
-
-const week2Days = computed(() => {
-  const days = []
-  for (let i = 7; i < 14; i++) {
-    const date = new Date(startOfPeriod.value)
-    date.setDate(date.getDate() + i)
-    days.push(createDayInfo(date))
-  }
-  return days
-})
-
-const allDays = computed(() => [...week1Days.value, ...week2Days.value])
+const allDays = computed(() => periodDays.value)
 
 const periodRangeLabel = computed(() => {
   const start = week1Days.value[0]!.fullDate

@@ -1,5 +1,6 @@
 import { ref, computed, type Ref } from 'vue'
 import { useAvailabilityStore, type DateAvailability } from '@/stores/availability'
+import { toLocalDateString } from '@/utils/formatters'
 import { api } from '@/api'
 import { unwrapApi } from '@/stores/helpers/apiAction'
 import type { components } from '@/api/types'
@@ -106,7 +107,7 @@ export function useAvailabilityOverlay(
     for (const s of items) {
       const start = new Date(s.suggested_start)
       const end = new Date(s.suggested_end)
-      const dateStr = localDateStr(start)
+      const dateStr = toLocalDateString(start)
       const startMin = start.getHours() * 60 + start.getMinutes()
       const endMin = end.getHours() * 60 + end.getMinutes()
       for (let m = startMin; m < endMin; m += 30) {
@@ -120,7 +121,7 @@ export function useAvailabilityOverlay(
   const overlayData = computed<OverlayGrid>(() => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const todayStr = localDateStr(today)
+    const todayStr = toLocalDateString(today)
 
     const suggestionBuckets = discretizeSuggestions(suggestions.value)
     const days: OverlayDay[] = []
@@ -128,7 +129,7 @@ export function useAvailabilityOverlay(
     for (let i = 0; i < 7; i++) {
       const date = new Date(currentWeekStart.value)
       date.setDate(date.getDate() + i)
-      const dateStr = localDateStr(date)
+      const dateStr = toLocalDateString(date)
 
       const myData = myAvailability.value[dateStr]
       const oppData = opponentAvailability.value[dateStr]
@@ -187,7 +188,7 @@ export function useAvailabilityOverlay(
       for (let i = 0; i < 7; i++) {
         const d = new Date(currentWeekStart.value)
         d.setDate(d.getDate() + i)
-        dates.push(localDateStr(d))
+        dates.push(toLocalDateString(d))
       }
 
       // Fetch both players' availability in parallel (7 days × 2 players)
@@ -265,9 +266,3 @@ function minutesToKey(minutes: number): string {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
 }
 
-function localDateStr(date: Date): string {
-  const y = date.getFullYear()
-  const m = (date.getMonth() + 1).toString().padStart(2, '0')
-  const d = date.getDate().toString().padStart(2, '0')
-  return `${y}-${m}-${d}`
-}

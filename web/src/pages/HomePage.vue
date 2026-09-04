@@ -546,7 +546,7 @@ async function fetchLanding() {
       if (league.current_season_id) {
         const [season, teams] = await Promise.all([
           api.GET('/v1/league-seasons/{season_id}', { params: { path: { season_id: league.current_season_id } } }).catch(() => null),
-          api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: league.current_season_id } } }).catch(() => null),
+          api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: league.current_season_id }, query: { per_page: 100 } } }).catch(() => null),
         ])
         const s = season?.data?.data
         if (s) {

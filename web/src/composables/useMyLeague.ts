@@ -67,7 +67,7 @@ export function useMyLeague() {
       let tournamentsCount: number | null = null
       if (season) {
         const [teams, tournaments] = await Promise.all([
-          api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: season.id } } }).catch(() => null),
+          api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: season.id }, query: { per_page: 100 } } }).catch(() => null),
           api.GET('/v1/tournaments', { params: { query: { league_id: leagueId, per_page: 50 } } }).catch(() => null),
         ])
         teamsCount = teams?.data?.data?.length ?? null

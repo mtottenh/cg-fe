@@ -162,7 +162,7 @@ async function load() {
         null
       let teams: LeagueTeamSummary[] = []
       if (season) {
-        const { data: teamsRes } = await api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: season.id } } })
+        const { data: teamsRes } = await api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: season.id }, query: { per_page: 100 } } })
         teams = teamsRes?.data ?? []
       }
       out.push({

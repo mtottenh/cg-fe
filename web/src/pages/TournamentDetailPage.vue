@@ -528,7 +528,7 @@ async function loadScope(t: TournamentResponse) {
   const [league, season, teams] = await Promise.all([
     t.league_id ? api.GET('/v1/leagues/{league_id}', { params: { path: { league_id: t.league_id } } }).catch(() => null) : null,
     t.season_id ? api.GET('/v1/league-seasons/{season_id}', { params: { path: { season_id: t.season_id } } }).catch(() => null) : null,
-    t.season_id ? api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: t.season_id } } }).catch(() => null) : null,
+    t.season_id ? api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: t.season_id }, query: { per_page: 100 } } }).catch(() => null) : null,
   ])
   scope.value = { leagueName: league?.data?.data?.name ?? null, seasonName: season?.data?.data?.name ?? null }
   seasonTeams.value = teams?.data?.data ?? []

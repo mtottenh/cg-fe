@@ -52,6 +52,45 @@
                 density="comfortable"
               />
             </v-col>
+            <v-col cols="12" class="pb-0">
+              <div class="text-subtitle-2 text-medium-emphasis">Dates (optional)</div>
+            </v-col>
+            <v-col cols="6">
+              <v-text-field
+                v-model="form.registration_start"
+                label="Registration opens"
+                type="datetime-local"
+                variant="outlined"
+                density="comfortable"
+              />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field
+                v-model="form.registration_end"
+                label="Registration closes"
+                type="datetime-local"
+                variant="outlined"
+                density="comfortable"
+              />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field
+                v-model="form.season_start"
+                label="Season starts"
+                type="datetime-local"
+                variant="outlined"
+                density="comfortable"
+              />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field
+                v-model="form.season_end"
+                label="Season ends"
+                type="datetime-local"
+                variant="outlined"
+                density="comfortable"
+              />
+            </v-col>
 
             <v-col cols="6">
               <v-text-field
@@ -161,7 +200,16 @@ const form = ref({
   team_size_max: 5,
   max_substitutes: 2,
   max_teams: null as number | null,
+  registration_start: '',
+  registration_end: '',
+  season_start: '',
+  season_end: '',
 })
+
+/** `datetime-local` value → ISO instant, or null when blank. */
+function toIso(local: string): string | null {
+  return local ? new Date(local).toISOString() : null
+}
 
 const rules = {
   ...useFormRules(),
@@ -196,6 +244,10 @@ watch(open, (isOpen) => {
       team_size_max: 5,
       max_substitutes: 2,
       max_teams: null,
+      registration_start: '',
+      registration_end: '',
+      season_start: '',
+      season_end: '',
     }
     error.value = null
   }
@@ -221,6 +273,10 @@ async function save() {
   if (form.value.team_size_max) body.team_size_max = form.value.team_size_max
   if (form.value.max_substitutes !== null) body.max_substitutes = form.value.max_substitutes
   if (form.value.max_teams) body.max_teams = form.value.max_teams
+  for (const key of ['registration_start', 'registration_end', 'season_start', 'season_end'] as const) {
+    const iso = toIso(form.value[key])
+    if (iso) body[key] = iso
+  }
 
   try {
     await leagueSeasonsStore.createSeason(body)

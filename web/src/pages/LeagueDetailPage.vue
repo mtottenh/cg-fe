@@ -243,6 +243,13 @@
         </v-col>
       </v-row>
 
+      <!-- Season dates: what the selected season is doing, and when -->
+      <v-row v-if="seasonDatesLine" class="mt-n4 mb-2">
+        <v-col cols="12" class="text-body-2 text-medium-emphasis" data-testid="season-dates">
+          <v-icon size="small" start>mdi-calendar-range</v-icon>{{ seasonDatesLine }}
+        </v-col>
+      </v-row>
+
       <!-- Tournaments Section -->
       <v-row class="mb-4">
         <v-col cols="12">
@@ -540,6 +547,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useGamesStore } from '@/stores/games'
 import { useLeagueSeasonsStore } from '@/stores/leagueSeasons'
 import { useFormRules } from '@/composables/useFormRules'
+import { formatDate } from '@/utils/formatters'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import TournamentCreateModal from '@/components/admin/TournamentCreateModal.vue'
 import TournamentCard from '@/components/tournament/TournamentCard.vue'
@@ -578,6 +586,18 @@ const gamesStore = useGamesStore()
 const seasonsStore = useLeagueSeasonsStore()
 
 const canCreateTournament = computed(() => authStore.isAdmin)
+
+const seasonDatesLine = computed(() => {
+  const s = selectedSeason.value
+  if (!s) return null
+  const span = (a?: string | null, b?: string | null) =>
+    a || b ? `${a ? formatDate(a) : '…'} – ${b ? formatDate(b) : '…'}` : null
+  const parts = [
+    span(s.registration_start, s.registration_end) && `Registration ${span(s.registration_start, s.registration_end)}`,
+    span(s.season_start, s.season_end) && `Plays ${span(s.season_start, s.season_end)}`,
+  ].filter(Boolean)
+  return parts.length ? parts.join(' · ') : null
+})
 const showCreateTournamentModal = ref(false)
 
 const gamesForModal = computed(() => gamesStore.games.filter(g => g.status === 'active'))

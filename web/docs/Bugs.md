@@ -58,7 +58,8 @@ Functionality only; the copy, layout and IA findings live in the review itself (
     - Fixed: `canSubmitResult` is false while the match is disputed; the page shows a "This result is under dispute" notice pointing to the dispute thread instead.
 - [x] Every `v-textarea` that sets both `label` and `placeholder` paints them on top of each other (13 components, e.g. `ResultSubmissionPanel.vue:117-120` and the dispute dialog).
     - Fixed: a Vuetify default (`VTextarea: { persistentPlaceholder: true }`) makes the label float above a visible placeholder in all 13 components.
-- [ ] Forfeit outcome is rendered as "Forfeited by registration <uuid>" on the match timeline for both players instead of the team name.
+- [x] Forfeit outcome is rendered as "Forfeited by registration <uuid>" on the match timeline for both players instead of the team name.
+    - Fixed: (api) the transition reason reads "Forfeited by <team name>".
 - [ ] Admin dispute queue and detail modal show raw UUIDs for Match, Raised By, Original Winner and Result Claim, with no team names, tournament, or link to the match; the dispute DTO carries ids only (`AdminDisputesPage.vue:77-78, 192-196`, `DisputeDetailModal.vue:61-73`, `dto/responses/dispute.rs:19-45`).
 - [ ] Starting a tournament manually leaves `starts_at` null, so cards read "Live Now" and "Start date TBD" at once (`TournamentCard.vue:62-68`); the admin tournament header and table also never show which league or season a tournament belongs to.
 - [ ] Season dates (`registration_start/end`, `season_start/end`) exist in the schema and the DTO but nothing sets or displays them: the admin seasons panel shows "-" under Registration and the public page has no dates (migration 0025:34-37, `dto/responses/league_team.rs:32-38`).

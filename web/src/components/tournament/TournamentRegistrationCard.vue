@@ -11,8 +11,21 @@
         </v-col>
 
         <v-col cols="auto">
+          <!-- Signed out: the page is public, the action is not -->
+          <template v-if="!isAuthenticated && tournament.is_registration_open">
+            <v-btn
+              color="primary"
+              size="large"
+              prepend-icon="mdi-steam"
+              :to="{ name: 'login', query: { redirect: route.fullPath } }"
+              data-testid="register-sign-in"
+            >
+              Sign in to register
+            </v-btn>
+          </template>
+
           <!-- Not Registered - Show Register Button -->
-          <template v-if="!myRegistration && canRegister">
+          <template v-else-if="!myRegistration && canRegister">
             <v-btn
               color="success"
               size="large"
@@ -153,8 +166,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import type { TournamentResponse, TournamentRegistrationResponse } from '@/stores/tournaments'
 import { formatDateTime } from '@/utils/formatters'
+
+const route = useRoute()
+const authStore = useAuthStore()
+const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 const props = withDefaults(
   defineProps<{

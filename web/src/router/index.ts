@@ -31,19 +31,22 @@ const router = createRouter({
       meta: { layout: 'default' },
     },
 
-    // Browse routes — members only: the community decided tournaments,
-    // leagues, and player profiles are not for logged-out visitors.
+    // Leagues and tournaments are readable signed out: a shared bracket or
+    // league link is how people arrive, and the API already serves these
+    // reads anonymously. Actions (join, register, check in) prompt sign-in
+    // with ?redirect=. Player profiles stay members-only, as the community
+    // decided.
     {
       path: '/leagues',
       name: 'leagues',
       component: () => import('@/pages/LeaguesPage.vue'),
-      meta: { requiresAuth: true, layout: 'dynamic' },
+      meta: { layout: 'dynamic' },
     },
     {
       path: '/leagues/:id',
       name: 'league-detail',
       component: () => import('@/pages/LeagueDetailPage.vue'),
-      meta: { requiresAuth: true, layout: 'dynamic' },
+      meta: { layout: 'dynamic' },
     },
     {
       path: '/players',
@@ -58,18 +61,18 @@ const router = createRouter({
       meta: { requiresAuth: true, layout: 'dynamic' },
     },
 
-    // Tournament routes — members only (see above)
+    // Tournament routes — public reads (see above)
     {
       path: '/tournaments',
       name: 'tournaments',
       component: () => import('@/pages/TournamentsPage.vue'),
-      meta: { requiresAuth: true, layout: 'dynamic' },
+      meta: { layout: 'dynamic' },
     },
     {
       path: '/tournaments/:slug',
       name: 'tournament-detail',
       component: () => import('@/pages/TournamentDetailPage.vue'),
-      meta: { requiresAuth: true, layout: 'dynamic' },
+      meta: { layout: 'dynamic' },
     },
 
     // Pick-up games. The join route is public on purpose: it renders the

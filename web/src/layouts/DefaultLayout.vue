@@ -2,13 +2,13 @@
   <v-app>
     <AppHeader title="CS2 10 Mans">
       <template #append>
-        <!-- Browse routes require auth — don't dangle links guests can't use. -->
+        <!-- Leagues and tournaments are public; player profiles are members-only. -->
+        <v-btn variant="text" to="/tournaments">Tournaments</v-btn>
+        <v-btn variant="text" to="/leagues">Leagues</v-btn>
         <template v-if="isLoggedIn">
-          <v-btn variant="text" to="/tournaments">Tournaments</v-btn>
-          <v-btn variant="text" to="/leagues">Leagues</v-btn>
           <v-btn variant="text" to="/players">Players</v-btn>
-          <v-divider vertical class="mx-2" />
         </template>
+        <v-divider vertical class="mx-2" />
         <template v-if="!isLoggedIn">
           <v-btn variant="text" to="/login" prepend-icon="mdi-steam">Sign in</v-btn>
         </template>

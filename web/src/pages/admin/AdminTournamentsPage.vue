@@ -160,6 +160,11 @@
             </div>
           </template>
 
+          <template v-slot:item.league_id="{ item }">
+            <span v-if="item.league_id">{{ leagueName(item.league_id) }}</span>
+            <span v-else class="text-medium-emphasis">—</span>
+          </template>
+
           <template v-slot:item.format="{ item }">
             <v-chip size="small" variant="tonal">
               {{ formatTournamentFormat(item.format) }}
@@ -427,11 +432,16 @@ const filteredTournaments = computed(() => {
   return result
 })
 
+function leagueName(leagueId: string): string {
+  return leaguesStore.leagues.find(l => l.id === leagueId)?.name ?? leagueId.slice(0, 8) + '…'
+}
+
 // Table headers
 const headers = [
   { title: '', key: 'logo_url', width: '50px', sortable: false },
   { title: 'Name', key: 'name' },
   { title: 'Game', key: 'game_id', width: '150px' },
+  { title: 'League', key: 'league_id', width: '170px' },
   { title: 'Format', key: 'format', width: '150px' },
   { title: 'Type', key: 'participant_type', width: '120px' },
   { title: 'Max', key: 'max_participants', width: '80px' },

@@ -13,6 +13,10 @@
             <span>{{ formatTournamentFormat(tournament.format) }}</span>
             <span class="mx-2">|</span>
             <span>{{ getGame(tournament.game_id)?.display_name || 'Unknown Game' }}</span>
+            <template v-if="scopeLabel">
+              <span class="mx-2">|</span>
+              <span data-testid="tournament-scope">{{ scopeLabel }}</span>
+            </template>
           </div>
         </div>
       </div>
@@ -278,6 +282,8 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useGamesStore, type GameSummary } from '@/stores/games'
+import { useLeaguesStore } from '@/stores/leagues'
+import { useLeagueSeasonsStore } from '@/stores/leagueSeasons'
 import {
   useTournamentsStore,
   formatTournamentFormat,
@@ -308,6 +314,18 @@ import type { TournamentRegistrationResponse } from '@/stores/tournaments'
 const route = useRoute()
 const router = useRouter()
 const gamesStore = useGamesStore()
+const leaguesStore = useLeaguesStore()
+const leagueSeasonsStore = useLeagueSeasonsStore()
+
+// Which league and season this tournament belongs to — the one thing the
+// organiser's header used to leave out.
+const scopeLabel = computed(() => {
+  const t = tournamentsStore.currentTournament
+  if (!t?.league_id) return null
+  const league = leaguesStore.leagues.find(l => l.id === t.league_id) ?? (leaguesStore.currentLeague?.id === t.league_id ? leaguesStore.currentLeague : null)
+  const season = t.season_id ? leagueSeasonsStore.seasons.find(s => s.id === t.season_id) : null
+  return [league?.name, season?.name].filter(Boolean).join(' · ') || null
+})
 const tournamentsStore = useTournamentsStore()
 
 // State
@@ -583,6 +601,13 @@ async function fetchData() {
       tournamentsStore.fetchSeeding(id).catch(() => []),
       gamesStore.fetchGames(),
     ])
+    const t = tournamentsStore.currentTournament
+    if (t?.league_id) {
+      await Promise.all([
+        leaguesStore.fetchLeague(t.league_id).catch(() => {}),
+        leagueSeasonsStore.fetchSeasons(t.league_id).catch(() => {}),
+      ])
+    }
   } catch {
     // Errors are captured in store
   }

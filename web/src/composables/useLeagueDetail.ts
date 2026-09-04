@@ -38,7 +38,15 @@ export function useLeagueDetail() {
   const league = computed(() => leaguesStore.currentLeague)
   const seasons = computed(() => seasonsStore.seasons)
   const teams = computed(() => teamsStore.teams)
-  const tournaments = computed(() => tournamentsStore.tournaments)
+
+  // Tournaments obey the season selector like every other section on the
+  // page. The store holds the whole league's list (a tournament may be tied
+  // to no season at all); those unscoped ones stay visible under every season.
+  const tournaments = computed(() =>
+    tournamentsStore.tournaments.filter(
+      t => !t.season_id || t.season_id === selectedSeasonId.value,
+    ),
+  )
 
   const gameName = computed(() => {
     if (!league.value) return ''
@@ -68,6 +76,43 @@ export function useLeagueDetail() {
     return teamsStore.myTeams.some(t => t.season_id === selectedSeasonId.value)
   })
 
+  // Draft seasons are the organiser's workbench: players never see them in
+  // the selector, and never land on one by default.
+  const canSeeDraftSeasons = computed(
+    () => authStore.isAdmin || ['admin', 'moderator'].includes(membershipType.value ?? ''),
+  )
+  const visibleSeasons = computed(() =>
+    canSeeDraftSeasons.value ? seasons.value : seasons.value.filter(s => s.status !== 'draft'),
+  )
+  const selectedSeason = computed(
+    () => seasons.value.find(s => s.id === selectedSeasonId.value) ?? null,
+  )
+  /** Teams can be created only while the selected season is taking registrations. */
+  const canCreateTeamInSeason = computed(
+    () => isLeagueMember.value && selectedSeason.value?.status === 'registration' && !hasTeamInSeason.value,
+  )
+
+  const LIVE_SEASON_STATUSES = ['active', 'playoffs', 'registration']
+
+  /**
+   * The season a league opens on: the league's own `current_season_id`
+   * (trigger-maintained), else the first live one, else the most recent
+   * completed one. Never a draft. The old rule ("active, else first in the
+   * list") opened a league with an open season and a draft next season on
+   * the empty draft, because the list is newest-created-first.
+   */
+  function defaultSeasonId(): string | null {
+    const visible = visibleSeasons.value
+    const current = league.value?.current_season_id
+    const pick =
+      (current ? visible.find(s => s.id === current) : undefined) ??
+      visible.find(s => LIVE_SEASON_STATUSES.includes(s.status)) ??
+      visible.find(s => s.status === 'completed') ??
+      visible[0] ??
+      seasons.value[0]
+    return pick?.id ?? null
+  }
+
   // Data fetching
   async function fetchAll() {
     const leagueId = route.params.id as string
@@ -82,16 +127,7 @@ export function useLeagueDetail() {
         await seasonsStore.fetchSeasons(leagueId)
         loadingSeasons.value = false
 
-        // Auto-select active season or first available
-        const activeSeason = seasons.value.find(s => s.status === 'active')
-        if (activeSeason) {
-          selectedSeasonId.value = activeSeason.id
-        } else if (seasons.value.length > 0) {
-          const firstSeason = seasons.value[0]
-          if (firstSeason) {
-            selectedSeasonId.value = firstSeason.id
-          }
-        }
+        selectedSeasonId.value = defaultSeasonId()
 
         if (authStore.isAuthenticated) {
           // These are non-critical — don't let failures block the page
@@ -264,6 +300,9 @@ export function useLeagueDetail() {
     // State
     league,
     seasons,
+    visibleSeasons,
+    selectedSeason,
+    canCreateTeamInSeason,
     teams,
     tournaments,
     gameName,

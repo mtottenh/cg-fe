@@ -192,7 +192,7 @@
           <v-select
           aria-label="Select Season"
             v-model="selectedSeasonId"
-            :items="seasons"
+            :items="visibleSeasons"
             item-title="name"
             item-value="id"
             label="Select Season"
@@ -221,7 +221,7 @@
             Create Tournament
           </v-btn>
           <v-btn
-            v-if="isLeagueMember && selectedSeasonId && !hasTeamInSeason"
+            v-if="canCreateTeamInSeason"
             color="primary"
             prepend-icon="mdi-plus"
             @click="showCreateTeamModal = true"
@@ -231,6 +231,14 @@
           <v-chip v-else-if="hasTeamInSeason" color="success" variant="tonal">
             <v-icon start>mdi-check</v-icon>
             You have a team in this season
+          </v-chip>
+          <v-chip
+            v-else-if="isLeagueMember && selectedSeason"
+            variant="tonal"
+            data-testid="season-team-registration-closed"
+          >
+            <v-icon start>mdi-lock-outline</v-icon>
+            {{ selectedSeason.status === 'draft' ? 'Team registration has not opened for this season' : 'Team registration is closed for this season' }}
           </v-chip>
         </v-col>
       </v-row>
@@ -331,7 +339,7 @@
       >
         <template #action>
           <v-btn
-            v-if="isLeagueMember"
+            v-if="canCreateTeamInSeason"
             color="primary"
             prepend-icon="mdi-plus"
             class="mt-4"
@@ -554,7 +562,8 @@ const router = useRouter()
 const route = useRoute()
 
 const {
-  league, seasons, teams, tournaments, gameName, hasTeamInSeason,
+  league, seasons, visibleSeasons, selectedSeason, canCreateTeamInSeason,
+  teams, tournaments, gameName, hasTeamInSeason,
   isLeagueMember, membershipType, hasPendingApplication,
   selectedSeasonId, selectedTeam, teamMembers,
   loading, loadingSeasons, loadingTeams, loadingTournaments, loadingMembers, creatingTeam,
@@ -679,8 +688,9 @@ watch(
     if (stillLoading) return
     if (typeof querySeason !== 'string') return
     if (querySeason === selectedSeasonId.value) return
-    // Only accept season ids that belong to this league.
-    if (seasons.value.some((s) => s.id === querySeason)) {
+    // Only accept season ids that belong to this league and that this
+    // viewer may see (a player linked to a draft stays on the default).
+    if (visibleSeasons.value.some((s) => s.id === querySeason)) {
       selectedSeasonId.value = querySeason
     }
   },

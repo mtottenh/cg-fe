@@ -12851,6 +12851,8 @@ export interface components {
         /** @description Response DTO for a league. */
         LeagueResponse: {
             access_type: string;
+            /** @description The season the league is currently running, or null until it has one. */
+            current_season_id?: string | null;
             /**
              * Format: date-time
              * @description When the league was archived, or absent while it is live. Archived

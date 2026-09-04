@@ -88,7 +88,30 @@ node scripts/ux/walk.mjs player      # signed in, no league, no team
 node scripts/ux/walk.mjs captain     # owns a team, has to field it
 node scripts/ux/walk.mjs organiser   # runs the competition
 node scripts/ux/walk.mjs all
+
+node scripts/ux/matchday.mjs         # check-in, map veto, result reporting
 ```
+
+`matchday.mjs` is its own script rather than a journey in `walk.mjs`, because it
+is the only walk that needs **two** browsers driven against each other. Almost
+everything on match day is a negotiation — one side checks in and waits, one
+bans and the other picks, one reports a score and the other agrees or does not —
+and a screenshot of one side alone hides half of it. It builds a throwaway
+tournament per run (`ux-matchday-<stamp>`) so repeated runs never fight over one
+bracket, and its shots land in `scripts/ux/shots/matchday/`.
+
+Three things it does deliberately, which you should preserve if you edit it:
+
+- **Organiser plumbing goes through the API; every captain step is clicked.**
+  Scheduling, opening the check-in window and moving a match into play are
+  set-up. Checking in, banning a map and filling the score form are what is
+  under review.
+- **It creates the veto session at check-in-window-open, not later.** That is
+  where the real lifecycle pass does it, and doing it later would flatter the
+  product — see the match-day findings.
+- **Failures log rather than being swallowed.** An early version wrapped the
+  set-up calls in `.catch(() => {})` and spent a run photographing a match that
+  had silently failed to start.
 
 Screens land in `scripts/ux/shots/<journey>/`. Every journey uses a **fresh
 account**, so you see what a new arrival sees rather than what your dev account
@@ -137,9 +160,15 @@ Two things worth doing explicitly:
   breadcrumbs and that eligibility was hidden in a modal; the screenshots showed
   both were wrong. Publishing the corrections beside the findings is what makes
   the rest credible.
-- **Say what you did not look at.** That pass never covered match day —
-  check-in, map veto, result reporting — or any phone viewport. Naming the gap
-  stops a reader assuming coverage you did not have.
+- **Say what you did not look at.** The first pass never covered match day; the
+  match-day pass that followed never covered a phone viewport, forfeits and
+  no-shows, or the organiser's side of a dispute. Naming the gap stops a reader
+  assuming coverage you did not have.
+- **Read the API behind the screen.** The strongest match-day finding — every
+  standard veto format silently dropping its last action — was invisible in the
+  browser. It surfaced only from `GET /v1/matches/{id}/veto` on a *finished*
+  session, which still listed the decider as `available` with no game number.
+  When a screen looks subtly wrong, fetch the object it is drawing.
 
 The September 2026 write-up, for reference on depth and structure:
 <https://claude.ai/code/artifact/aa445df9-817c-4a66-9432-b62ea34b3349>
@@ -160,3 +189,8 @@ Each of these was hit on the first pass.
 | `409 league slug '…' is already taken` on a re-run | The seed is idempotent by design; if you extend it, look each entity up before creating it. |
 | `cargo` fails with "error communicating with database" | `portal-db` has compile-time query macros. `SQLX_OFFLINE=true` on every cargo command when Postgres is not up. |
 | Screens show a league you already joined | You reused an account. Every journey should mint a new one. |
+| Map tiles photograph as black rectangles | Not a defect — the artwork is not preloaded and the shot caught it mid-load. Re-shoot before writing it up; this cost a false finding on the match-day pass. |
+| A match jumps check-in → in progress with no veto | The tournament has no `default_map_veto_format`. Nothing at bracket generation sets `veto_required`; only creating a veto session does. |
+| `400 Insufficient participants for tournament` on start | Tournament-level check-in is `POST /v1/tournaments/{id}/registrations/{regId}/admin-check-in` — a different thing from the match-level check-in, and a different path from the one under `/v1/admin/`. |
+| A veto has auto-banned four maps and nobody touched it | Working as built. Turn timeout is 30s and the session starts when the check-in window opens, 15 minutes before kick-off. |
+| `getByRole('button')` finds no ban/pick control | A map tile is a `v-card` with a click handler. Use `.map-card-selectable`, then `[data-testid="veto-confirm-action"]` for the second, committing tap. |

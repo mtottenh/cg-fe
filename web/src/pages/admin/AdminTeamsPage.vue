@@ -223,9 +223,11 @@ async function fetchMyLeagues() {
   loadingLeagues.value = true
   try {
     await leaguesStore.fetchMyLeagues()
-    // Filter to only leagues where user has admin permissions
+    // Filter to leagues where the user has admin permissions AND that are
+    // still running — memberships now come back for archived/suspended
+    // leagues too, which are not somewhere to file a new team.
     myLeagues.value = leaguesStore.myLeagues.filter(l =>
-      ADMIN_ROLES.includes(l.membership_type)
+      ADMIN_ROLES.includes(l.membership_type) && l.league_status === 'active'
     )
   } catch {
     // P-124 (unlisted instance, same defect): `leaguesStore.error` is a

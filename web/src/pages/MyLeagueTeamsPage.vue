@@ -246,10 +246,15 @@ const teamsByLeague = computed((): LeagueGroup[] => {
   )
 })
 
-// Leagues where user is a member but has no team
+// Leagues where user is a member but has no team.
+// Memberships are returned for archived and suspended leagues too (a league
+// admin has to be able to restore one) — but you cannot form a team in a
+// league that is not running, so they are not offered here.
 const leaguesWithoutTeams = computed(() => {
   const leagueIdsWithTeams = new Set(leagueTeamsStore.myTeams.map(t => t.league_id))
-  return leaguesStore.myLeagues.filter(m => !leagueIdsWithTeams.has(m.league_id))
+  return leaguesStore.myLeagues.filter(
+    m => !leagueIdsWithTeams.has(m.league_id) && m.league_status === 'active'
+  )
 })
 
 function formatJoinDate(dateStr: string): string {

@@ -641,6 +641,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/leagues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every league, for administrators.
+         * @description The public listing hides everything that is not `active`, and
+         *     `/v1/users/me/leagues` only ever returns leagues you are a *member* of.
+         *     Neither is a usable source for the admin leagues screen: a league whose
+         *     admin never joined it, or one that has been archived, simply vanished
+         *     from the operator's view of the site.
+         */
+        get: operations["admin_list_leagues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/matches/{match_id}/progression/process": {
         parameters: {
             query?: never;
@@ -780,6 +804,34 @@ export interface paths {
         get: operations["list_pipeline_tracking"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/pipeline/tracking/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume a paused or backing-off tracking entry (admin).
+         * @description The operator escape hatch. Until this existed, an entry parked by the old
+         *     `poll_errors >= 10` cliff could only be recovered with a hand-written
+         *     UPDATE against production, because nothing in the system could bring the
+         *     counter back down.
+         *
+         *     Pass `reset_cursor=true` for a `cursor_invalid` pause: Steam is rejecting
+         *     the stored share code, so resuming without dropping it just reproduces the
+         *     same 412 on the next poll. The player then re-supplies a recent share code
+         *     to restart the walk.
+         */
+        post: operations["resume_pipeline_tracking"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7614,6 +7666,11 @@ export interface components {
                  *     run while it is off, so the operator must see it next to the button.
                  */
                 auto_link_enabled: boolean;
+                /**
+                 * @description Stage 2b — demo fetch + rank extraction, retried independently of the
+                 *     GC call that produced the URL.
+                 */
+                demo_extraction: components["schemas"]["DemoExtractionQueueResponse"];
                 /** @description Stage 3 — the demo catalog (scanner → stats service). */
                 demos: components["schemas"]["DemoStatusCountsResponse"];
                 /** @description Stage 2 — the discovered-match queue (poller → enricher). */
@@ -8791,6 +8848,45 @@ export interface components {
                 tournament_id: string;
                 /** Format: date-time */
                 updated_at: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_TrackingHealthEntryResponse: {
+            /** @description One tracking token, with the player it belongs to. */
+            data: {
+                created_at: string;
+                game_id: string;
+                game_slug: string;
+                /** @description Whether a share-code cursor has been recorded yet. */
+                has_share_code: boolean;
+                id: string;
+                is_active: boolean;
+                /**
+                 * @description True for the two paused states — the poller has stopped working this
+                 *     entry and will not resume without a person.
+                 */
+                is_paused: boolean;
+                last_error?: string | null;
+                last_poll_at?: string | null;
+                /**
+                 * @description When the poller will next try this entry (ISO 8601). Meaningless while
+                 *     paused, since nothing is scheduled.
+                 */
+                next_poll_at: string;
+                paused_at?: string | null;
+                /** @description Named, not a truncated UUID (P-115). */
+                player_display_name: string;
+                player_id: string;
+                /** Format: int32 */
+                poll_errors: number;
+                /** @description `ok` · `backoff` · `auth_expired` · `cursor_invalid`. */
+                poll_state: string;
+                /** @description What a person has to do, when `is_paused`. Null otherwise. */
+                required_action?: string | null;
+                /** @description The tracked SteamID64. Not a secret — it is public on the profile. */
+                steam_id_64: string;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -10570,13 +10666,28 @@ export interface components {
                 has_share_code: boolean;
                 id: string;
                 is_active: boolean;
+                /**
+                 * @description True for the two paused states — the poller has stopped working this
+                 *     entry and will not resume without a person.
+                 */
+                is_paused: boolean;
                 last_error?: string | null;
                 last_poll_at?: string | null;
+                /**
+                 * @description When the poller will next try this entry (ISO 8601). Meaningless while
+                 *     paused, since nothing is scheduled.
+                 */
+                next_poll_at: string;
+                paused_at?: string | null;
                 /** @description Named, not a truncated UUID (P-115). */
                 player_display_name: string;
                 player_id: string;
                 /** Format: int32 */
                 poll_errors: number;
+                /** @description `ok` · `backoff` · `auth_expired` · `cursor_invalid`. */
+                poll_state: string;
+                /** @description What a person has to do, when `is_paused`. Null otherwise. */
+                required_action?: string | null;
                 /** @description The tracked SteamID64. Not a secret — it is public on the profile. */
                 steam_id_64: string;
             }[];
@@ -10910,6 +11021,47 @@ export interface components {
             s3_bucket: string;
             /** @description S3 key. */
             s3_key: string;
+        };
+        /**
+         * @description Depth of the demo-extraction stage, by `demo_status`.
+         *
+         *     Enrichment succeeding does not mean the match is complete: the demo carries
+         *     the rank updates and usually the map name, and it is fetched separately with
+         *     its own retry budget. A healthy `enriched` count next to a growing `pending`
+         *     here localises the stall to the Valve CDN rather than the GC.
+         */
+        DemoExtractionQueueResponse: {
+            /**
+             * Format: int64
+             * @description Parsed cleanly with no rank updates — casual and deathmatch demos are
+             *     legitimately empty. A success, not a failure.
+             */
+            empty: number;
+            /**
+             * Format: int64
+             * @description Downloaded but could not be decompressed or parsed. Terminal.
+             */
+            failed: number;
+            /**
+             * Format: int64
+             * @description GC returned no demo URL; there was never anything to fetch.
+             */
+            not_applicable: number;
+            /**
+             * Format: int64
+             * @description Awaiting a first or subsequent attempt.
+             */
+            pending: number;
+            /**
+             * Format: int64
+             * @description Parsed, rank updates extracted.
+             */
+            succeeded: number;
+            /**
+             * Format: int64
+             * @description Never published, or past Valve's retention window. Terminal.
+             */
+            unavailable: number;
         };
         /** @description Response for paginated demo list. */
         DemoListResponse: {
@@ -13593,6 +13745,11 @@ export interface components {
              *     run while it is off, so the operator must see it next to the button.
              */
             auto_link_enabled: boolean;
+            /**
+             * @description Stage 2b — demo fetch + rank extraction, retried independently of the
+             *     GC call that produced the URL.
+             */
+            demo_extraction: components["schemas"]["DemoExtractionQueueResponse"];
             /** @description Stage 3 — the demo catalog (scanner → stats service). */
             demos: components["schemas"]["DemoStatusCountsResponse"];
             /** @description Stage 2 — the discovered-match queue (poller → enricher). */
@@ -15600,13 +15757,28 @@ export interface components {
             has_share_code: boolean;
             id: string;
             is_active: boolean;
+            /**
+             * @description True for the two paused states — the poller has stopped working this
+             *     entry and will not resume without a person.
+             */
+            is_paused: boolean;
             last_error?: string | null;
             last_poll_at?: string | null;
+            /**
+             * @description When the poller will next try this entry (ISO 8601). Meaningless while
+             *     paused, since nothing is scheduled.
+             */
+            next_poll_at: string;
+            paused_at?: string | null;
             /** @description Named, not a truncated UUID (P-115). */
             player_display_name: string;
             player_id: string;
             /** Format: int32 */
             poll_errors: number;
+            /** @description `ok` · `backoff` · `auth_expired` · `cursor_invalid`. */
+            poll_state: string;
+            /** @description What a person has to do, when `is_paused`. Null otherwise. */
+            required_action?: string | null;
             /** @description The tracked SteamID64. Not a secret — it is public on the profile. */
             steam_id_64: string;
         };
@@ -15629,6 +15801,27 @@ export interface components {
              * @description Active entries the poller has never touched.
              */
             never_polled: number;
+            /**
+             * Format: int64
+             * @description Active entries the poller has stopped working pending a person.
+             *
+             *     Counted apart from `with_errors` because the required response
+             *     differs: an entry that is backing off recovers on its own, whereas
+             *     these stay stopped until someone acts. This is the number that used to
+             *     be invisible — parked entries looked identical to healthy ones except
+             *     for a counter nothing explained.
+             */
+            paused: number;
+            /**
+             * Format: int64
+             * @description Of `paused`, those needing the player to supply a new auth code.
+             */
+            paused_auth_expired: number;
+            /**
+             * Format: int64
+             * @description Of `paused`, those needing the share-code cursor reset.
+             */
+            paused_cursor_invalid: number;
             /**
              * Format: int64
              * @description Active entries not polled within [`TRACKING_STALE_AFTER_HOURS`].
@@ -16096,6 +16289,13 @@ export interface components {
             league_logo_url?: string | null;
             league_name: string;
             league_slug: string;
+            /**
+             * @description Status of the league itself. Memberships are returned for every
+             *     status — a league admin has to be able to see (and restore) a league
+             *     that has been archived. Typed as the enum so clients get a union
+             *     rather than `string` (as `LeagueResponse::status` already is).
+             */
+            league_status: components["schemas"]["LeagueStatus"];
             membership_type: string;
         };
         /** @description User response DTO. */
@@ -18522,6 +18722,58 @@ export interface operations {
             };
         };
     };
+    admin_list_leagues: {
+        parameters: {
+            query?: {
+                /** @description Filter by game ID. */
+                game_id?: string | null;
+                /** @description Case-insensitive substring match on the league name. */
+                search?: string | null;
+                /**
+                 * @description Filter by league status (`active`, `archived`, `suspended`).
+                 *     Omit for every status — which is the point of this endpoint.
+                 */
+                status?: string | null;
+                /** @description Page number (1-based). */
+                page?: number;
+                /** @description Items per page. */
+                per_page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All leagues */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse_LeagueResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing required permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     process_progression: {
         parameters: {
             query?: never;
@@ -18904,6 +19156,59 @@ export interface operations {
                 };
             };
             /** @description Game not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    resume_pipeline_tracking: {
+        parameters: {
+            query?: {
+                /** @description Also clear the stored share-code cursor */
+                reset_cursor?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Steam tracking entry ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Entry resumed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TrackingHealthEntryResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tracking entry not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -23742,6 +24047,12 @@ export interface operations {
             query?: {
                 /** @description Filter by game ID. */
                 game_id?: string | null;
+                /**
+                 * @description Case-insensitive substring match on the league name. The frontend has
+                 *     always sent this; until it was declared here serde dropped it and the
+                 *     search box filtered nothing.
+                 */
+                search?: string | null;
                 /** @description Page number (1-based). */
                 page?: number;
                 /** @description Items per page. */

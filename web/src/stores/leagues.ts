@@ -16,6 +16,8 @@ type LeagueInvitationResponse = components['schemas']['LeagueInvitationResponse'
 
 export const useLeaguesStore = defineStore('leagues', () => {
   const leagues = ref<LeagueResponse[]>([])
+  /** Every league on the site, any status — admin listing only. */
+  const allLeagues = ref<LeagueResponse[]>([])
   const currentLeague = ref<LeagueResponse | null>(null)
   const myLeagues = ref<UserLeagueMembership[]>([])
   const members = ref<LeagueMemberResponse[]>([])
@@ -32,6 +34,7 @@ export const useLeaguesStore = defineStore('leagues', () => {
 
   // Per-action states
   const fetchLeaguesState = createActionState()
+  const fetchAllLeaguesState = createActionState()
   const fetchLeagueState = createActionState()
   const fetchLeagueBySlugState = createActionState()
   const createLeagueState = createActionState()
@@ -61,6 +64,35 @@ export const useLeaguesStore = defineStore('leagues', () => {
       leagues.value = result.data
       pagination.value = result.pagination
       return leagues.value
+    }, 'Failed to fetch leagues')
+  }
+
+  /** Every league on the site, whatever its status and whoever created it.
+   *
+   * The admin leagues screen used to be built from `fetchMyLeagues`, which
+   * shows only leagues you are a *member* of — so a league created by
+   * another operator, or one that has been archived, was missing from the
+   * operator's own view of the site. Requires `admin.leagues.manage_any`.
+   *
+   * Pages through to the end: an operator with 120 leagues must not silently
+   * see the first 100.
+   */
+  async function fetchAllLeaguesAdmin(): Promise<LeagueResponse[]> {
+    return withActionState(fetchAllLeaguesState, async () => {
+      const perPage = 100
+      const collected: LeagueResponse[] = []
+      let page = 1
+      let totalPages = 1
+      do {
+        const result = await unwrapApi(api.GET('/v1/admin/leagues', {
+          params: { query: { page, per_page: perPage } },
+        }))
+        collected.push(...result.data)
+        totalPages = result.pagination.total_pages
+        page += 1
+      } while (page <= totalPages)
+      allLeagues.value = collected
+      return allLeagues.value
     }, 'Failed to fetch leagues')
   }
 
@@ -322,6 +354,8 @@ export const useLeaguesStore = defineStore('leagues', () => {
     error,
     pagination,
     fetchLeagues,
+    allLeagues,
+    fetchAllLeaguesAdmin,
     fetchLeague,
     fetchLeagueBySlug,
     createLeague,
@@ -353,6 +387,7 @@ export const useLeaguesStore = defineStore('leagues', () => {
     clearCurrent,
     // Per-action states
     fetchLeaguesState,
+    fetchAllLeaguesState,
     fetchLeagueState,
     fetchLeagueBySlugState,
     createLeagueState,

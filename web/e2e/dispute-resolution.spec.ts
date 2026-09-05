@@ -228,7 +228,7 @@ async function buildConfirmedResultDispute(
     disputeId: dispute!.id,
     participant1RegistrationId: first!.registrationId,
     participant2RegistrationId: second!.registrationId,
-    participant1Name: match!.participant1_name ?? '',
+    participant1Name: String(match!.participant1_name ?? ''),
   }
 }
 

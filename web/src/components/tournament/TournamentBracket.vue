@@ -23,18 +23,33 @@
           <v-chip v-if="stage.status === 'active'" size="x-small" color="primary" class="ml-2" variant="tonal">
             Live
           </v-chip>
+          <v-icon v-else-if="stage.status === 'completed'" size="x-small" class="ml-2" aria-label="Completed">
+            mdi-check
+          </v-icon>
         </v-tab>
       </v-tabs>
+
+      <v-alert
+        v-if="champion"
+        type="success"
+        variant="tonal"
+        density="compact"
+        icon="mdi-trophy"
+        class="mb-4"
+        data-testid="champion-callout"
+      >
+        Champion: <strong>{{ champion }}</strong>
+      </v-alert>
 
       <EmptyState
         v-if="visibleMatches.length === 0"
         icon="mdi-timer-sand"
         title="Stage Not Started"
-        subtitle="Matches for this stage will appear once the previous stage completes."
+        :subtitle="pendingStageHint"
         variant="text"
       />
 
-      <div v-else class="bracket-wrapper">
+      <div v-else class="bracket-wrapper" :class="{ 'bracket-scroll': !isGroupLayout }">
         <!-- Single Elimination Bracket -->
         <template v-if="bracketType === 'single_elimination' || bracketType === 'winners'">
           <div class="bracket">
@@ -147,85 +162,113 @@
           </div>
         </template>
 
-        <!-- Round Robin / Swiss / Group stage: one section per bracket, so a
-             four-group stage renders four labelled grids instead of one
-             interleaved round soup. -->
-        <template v-if="bracketType === 'round_robin' || bracketType === 'swiss'">
-          <div
+        <!-- Round Robin / Swiss / Group stage: one section per bracket with
+             its standings beside its matches. A round robin is a table, not
+             a progression, so no round columns or connector stubs here. -->
+        <template v-if="isGroupLayout">
+          <section
             v-for="section in groupSections"
             :key="section.bracket.id"
-            class="mb-6"
+            class="group-section"
+            :data-testid="`group-${section.bracket.group_number ?? section.bracket.id}`"
           >
-            <h3 v-if="groupSections.length > 1" class="text-subtitle-1 font-weight-bold mb-2">
+            <h3 v-if="groupSections.length > 1" class="text-subtitle-1 font-weight-bold mb-3">
               {{ section.bracket.name }}
+              <span class="text-caption text-medium-emphasis font-weight-regular ml-2">
+                {{ section.played }}/{{ section.total }} played
+              </span>
             </h3>
-            <div class="bracket">
-              <div
-                v-for="(round, roundIndex) in section.rounds"
-                :key="roundIndex"
-                class="round"
-              >
-                <div class="round-header">
-                  <span class="text-subtitle-2 font-weight-bold">Round {{ roundIndex + 1 }}</span>
+            <div class="group-layout">
+              <div class="group-standings">
+                <div class="column-title text-caption text-medium-emphasis text-uppercase font-weight-bold">
+                  Standings
                 </div>
-                <div class="round-matches">
-                  <div
-                    v-for="match in round"
-                    :key="match.id"
-                    class="match-wrapper"
-                    :class="{ 'my-match': isMyMatch(match) }"
-                  >
-                    <TournamentMatchCard
-                      :match="match"
-                      compact
-                      @click="$emit('match-click', match)"
-                    />
+                <v-table
+                  v-if="section.standings.length > 0"
+                  density="compact"
+                  class="standings-table"
+                >
+                  <thead>
+                    <tr>
+                      <th class="text-left">#</th>
+                      <th class="text-left">Team</th>
+                      <th class="text-right">W-L</th>
+                      <th class="text-right" title="Game differential">Diff</th>
+                      <th v-if="section.swiss" class="text-right">Buchholz</th>
+                      <th class="text-right">Pts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="row in section.standings"
+                      :key="row.registration_id"
+                      :class="{
+                        qualifies: advancePerGroup > 0 && row.position <= advancePerGroup,
+                        'cut-line':
+                          advancePerGroup > 0 &&
+                          row.position === advancePerGroup &&
+                          row.position < section.standings.length,
+                        'is-me': row.registration_id === highlightRegistrationId,
+                      }"
+                    >
+                      <td class="text-medium-emphasis tabular">{{ row.position }}</td>
+                      <td class="standings-name text-truncate">{{ row.participant_name }}</td>
+                      <td class="text-right tabular">
+                        {{ row.matches_won }}-{{ row.matches_lost }}<span v-if="row.matches_drawn">-{{ row.matches_drawn }}</span>
+                      </td>
+                      <td class="text-right tabular">
+                        {{ row.game_differential > 0 ? '+' : '' }}{{ row.game_differential }}
+                      </td>
+                      <td v-if="section.swiss" class="text-right tabular">
+                        {{ row.buchholz_score != null ? row.buchholz_score.toFixed(1) : '—' }}
+                      </td>
+                      <td class="text-right tabular font-weight-bold">{{ row.points }}</td>
+                    </tr>
+                  </tbody>
+                </v-table>
+                <div v-else class="text-caption text-medium-emphasis">
+                  Standings appear after the first result.
+                </div>
+                <div class="text-caption text-medium-emphasis mt-2">
+                  <template v-if="advancePerGroup > 0">Top {{ advancePerGroup }} advance. </template>
+                  <template v-if="section.swiss">Ordered by points, then Buchholz, then game differential.</template>
+                  <template v-else>Ordered by points, then game differential.</template>
+                </div>
+              </div>
+
+              <div class="group-matches">
+                <div class="column-title text-caption text-medium-emphasis text-uppercase font-weight-bold">
+                  Matches
+                </div>
+                <div
+                  v-for="(round, roundIndex) in section.rounds"
+                  :key="roundIndex"
+                  class="group-round"
+                >
+                  <div class="group-round-title text-caption text-medium-emphasis text-uppercase font-weight-bold">
+                    Round {{ roundIndex + 1 }}
+                  </div>
+                  <div class="group-round-matches">
+                    <div
+                      v-for="match in round"
+                      :key="match.id"
+                      class="match-wrapper"
+                      :class="{ 'my-match': isMyMatch(match) }"
+                    >
+                      <TournamentMatchCard
+                        :match="match"
+                        compact
+                        @click="$emit('match-click', match)"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         </template>
       </div>
     </div>
-
-    <!-- Standings tables (Swiss/Round Robin) — one per bracket, so every
-         group in a group stage gets its own table. -->
-    <v-card
-      v-for="section in standingsSections"
-      :key="section.bracketId"
-      class="mt-6"
-      variant="outlined"
-    >
-      <v-card-title class="text-subtitle-1">
-        <v-icon start size="small">mdi-podium</v-icon>
-        {{ section.title }}
-      </v-card-title>
-      <v-data-table
-        :headers="standingsHeaders"
-        :items="section.rows"
-        :items-per-page="-1"
-        :sort-by="[{ key: 'position', order: 'asc' }]"
-        density="compact"
-        class="elevation-0"
-      >
-        <template v-slot:item.position="{ item }">
-          <strong>#{{ item.position }}</strong>
-        </template>
-        <template v-slot:item.matches_won="{ item }">
-          {{ item.matches_won }}-{{ item.matches_lost }}<span v-if="item.matches_drawn">-{{ item.matches_drawn }}</span>
-        </template>
-        <template v-slot:item.buchholz_score="{ item }">
-          {{ item.buchholz_score != null ? item.buchholz_score.toFixed(1) : '—' }}
-        </template>
-        <template v-slot:item.game_differential="{ item }">
-          {{ item.game_differential > 0 ? '+' : '' }}{{ item.game_differential }}
-        </template>
-      </v-data-table>
-      <div class="text-caption text-medium-emphasis px-4 pb-2">
-        Ordered by points; ties broken by Buchholz (Swiss) and game differential.
-      </div>
-    </v-card>
   </div>
 </template>
 
@@ -302,7 +345,33 @@ const visibleMatches = computed(() => {
   return props.matches.filter((m) => m.stage_id === selectedStageId.value)
 })
 
+const selectedStage = computed(() =>
+  stageTabs.value.find((s) => s.id === selectedStageId.value) ?? null,
+)
+
+/** How many from each group go through — drawn as the cut line. */
+const advancePerGroup = computed(() => {
+  const stage = selectedStage.value
+  if (!stage || stage.format !== 'group_stage') return 0
+  return stage.advancement_count ?? 0
+})
+
+/** What a not-yet-started stage is waiting on. */
+const pendingStageHint = computed(() => {
+  const stage = selectedStage.value
+  const previous = stage
+    ? stageTabs.value.find((s) => s.stage_order === stage.stage_order - 1)
+    : undefined
+  const n = previous?.format === 'group_stage' ? previous.advancement_count : null
+  if (n) return `The top ${n} from each group advance once the group stage completes.`
+  return 'Matches for this stage will appear once the previous stage completes.'
+})
+
 // --- Bracket layout ---
+
+const isGroupLayout = computed(
+  () => bracketType.value === 'round_robin' || bracketType.value === 'swiss',
+)
 
 const bracketType = computed(() => {
   if (visibleBrackets.value.length === 0) return 'single_elimination'
@@ -370,12 +439,40 @@ const grandFinalMatches = computed(() => {
     .sort((a, b) => a.match_number - b.match_number)
 })
 
-/** RR/Swiss brackets of the visible stage — one section per group. */
+/** Who won the visible elimination stage, once its deciding match is in. */
+const champion = computed<string | null>(() => {
+  if (isGroupLayout.value || totalRounds.value === 0) return null
+  const gf = grandFinalMatches.value
+  const candidates = gf.length
+    ? gf
+    : visibleMatches.value.filter((m) => m.round === totalRounds.value && !isLoserMatch(m))
+  const decider = [...candidates].sort((a, b) => b.match_number - a.match_number)[0]
+  if (!decider || decider.status !== 'completed' || !decider.winner_registration_id) return null
+  return decider.winner_registration_id === decider.participant1_registration_id
+    ? decider.participant1_name ?? null
+    : decider.participant2_name ?? null
+})
+
+/** RR/Swiss brackets of the visible stage — one section per group, each
+ * carrying its rounds, its standings and how far through it is. */
 const groupSections = computed(() => {
   return visibleBrackets.value
     .filter((b) => b.bracket_type === 'round_robin' || b.bracket_type === 'swiss')
     .sort((a, b) => (a.group_number ?? 0) - (b.group_number ?? 0))
-    .map((bracket) => ({ bracket, rounds: roundsForBracket(bracket.id) }))
+    .map((bracket) => {
+      const rounds = roundsForBracket(bracket.id)
+      const all = rounds.flat()
+      return {
+        bracket,
+        rounds,
+        swiss: bracket.bracket_type === 'swiss',
+        standings: [...(standingsByBracket.value[bracket.id] ?? [])].sort(
+          (a, b) => a.position - b.position,
+        ),
+        played: all.filter((m) => m.status === 'completed').length,
+        total: all.length,
+      }
+    })
 })
 
 function isLoserMatch(match: TournamentMatchResponse): boolean {
@@ -393,17 +490,6 @@ function getRoundName(round: number, total: number): string {
 // --- Standings (Swiss / Round Robin), one table per bracket ---
 
 const standingsByBracket = ref<Record<string, BracketStandingsRow[]>>({})
-
-// Every key maps to a REAL row field — a header keyed to a non-existent
-// field silently sorts on `undefined` and scrambles the perceived ranking.
-const standingsHeaders = [
-  { title: '#', key: 'position', width: '56px' },
-  { title: 'Participant', key: 'participant_name' },
-  { title: 'Record', key: 'matches_won', width: '100px' },
-  { title: 'Game Diff', key: 'game_differential', width: '100px', align: 'end' as const },
-  { title: 'Buchholz', key: 'buchholz_score', width: '100px', align: 'end' as const },
-  { title: 'Points', key: 'points', width: '80px', align: 'end' as const },
-]
 
 // Fetch standings for every Swiss/RR bracket in the whole tournament (not
 // just the visible stage, so switching tabs doesn't refetch). Sequenced so a
@@ -440,22 +526,11 @@ watch(() => props.brackets, async (brackets) => {
   if (seq !== standingsSeq) return
   standingsByBracket.value = Object.fromEntries(results)
 }, { immediate: true })
-
-const standingsSections = computed(() => {
-  const sections = visibleBrackets.value
-    .filter((b) => b.bracket_type === 'swiss' || b.bracket_type === 'round_robin')
-    .sort((a, b) => (a.group_number ?? 0) - (b.group_number ?? 0))
-    .map((b) => ({
-      bracketId: b.id,
-      title: visibleBrackets.value.length > 1 ? `${b.name} Standings` : 'Standings',
-      rows: standingsByBracket.value[b.id] ?? [],
-    }))
-  return sections.filter((s) => s.rows.length > 0)
-})
 </script>
 
 <style scoped>
-.bracket-container {
+/* Elimination grids scroll sideways; group tables never need to. */
+.bracket-scroll {
   overflow-x: auto;
   padding: 16px 0;
   /* Scroll affordance: edge shadows appear only while content extends
@@ -469,13 +544,81 @@ const standingsSections = computed(() => {
   background-attachment: local, local, scroll, scroll;
 }
 
-.bracket-wrapper {
-  min-width: fit-content;
-}
-
 .bracket {
   display: flex;
   gap: 32px;
+  min-width: fit-content;
+}
+
+/* --- Group stage: standings beside the group's matches --- */
+.group-section + .group-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(var(--v-border-color), 0.12);
+}
+
+.group-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 5fr) 7fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 959px) {
+  .group-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.standings-table :deep(.v-table__wrapper > table > * > tr > *) {
+  white-space: nowrap;
+  /* Vuetify's compact cells pad 16px a side; five numeric columns of that
+     leave a phone-width table nothing for the team name. */
+  padding: 0 8px;
+}
+
+.standings-name {
+  /* Take the remaining width and ellipsise, instead of stretching the
+     table — but never below a readable name. */
+  max-width: 0;
+  width: 100%;
+  min-width: 7rem;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.standings-table :deep(tr.qualifies td:first-child) {
+  box-shadow: inset 3px 0 0 rgb(var(--v-theme-success));
+}
+
+.standings-table :deep(tr.cut-line td) {
+  border-bottom: 2px dashed rgba(var(--v-theme-success), 0.7) !important;
+}
+
+.standings-table :deep(tr.is-me td) {
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+
+.column-title {
+  margin-bottom: 8px;
+  letter-spacing: 0.08em;
+}
+
+.group-round + .group-round {
+  margin-top: 12px;
+}
+
+.group-round-title {
+  margin-bottom: 6px;
+  letter-spacing: 0.06em;
+}
+
+.group-round-matches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
 }
 
 .round {

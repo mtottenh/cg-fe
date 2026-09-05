@@ -2332,6 +2332,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/league-team-seasons/{team_season_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Aggregate CS2 skill and match history for a team's roster this season.
+         * @description The rating figures are over the roster's CS2 Premier ratings (from each
+         *     member's game profile); members without a profile are excluded and
+         *     reported as `member_count - rated_count`. Past games are read off the
+         *     team's per-season match tallies — this season, and summed across every
+         *     season the team has played.
+         */
+        get: operations["get_team_season_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/league-teams/{team_id}": {
         parameters: {
             query?: never;
@@ -9189,6 +9213,49 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_TeamSeasonStatsResponse: {
+            /** @description Aggregate CS2 skill and match history for a team's roster in a season. */
+            data: {
+                /**
+                 * Format: int32
+                 * @description The highest CS2 Premier rating on the roster; `null` when none is rated.
+                 */
+                max_rating?: number | null;
+                /**
+                 * Format: double
+                 * @description Median CS2 Premier rating across rated members; `null` when none is rated.
+                 */
+                median_rating?: number | null;
+                /**
+                 * Format: int32
+                 * @description Roster size this season (current members).
+                 */
+                member_count: number;
+                /**
+                 * Format: int64
+                 * @description Completed matches this team has played across every season.
+                 */
+                past_games_all_time: number;
+                /**
+                 * Format: int32
+                 * @description Completed matches this team has played this season.
+                 */
+                past_games_season: number;
+                /**
+                 * Format: int32
+                 * @description How many of them have a CS2 profile that fed the rating figures.
+                 */
+                rated_count: number;
+                /**
+                 * Format: int64
+                 * @description Sum of the rated members' CS2 Premier ratings.
+                 */
+                total_rating: number;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_TeamSizeConfig: {
             /** @description Team size configuration. */
             data: {
@@ -14738,7 +14805,7 @@ export interface components {
              */
             wins: number;
         };
-        /** @description Response DTO for a player's league team membership. */
+        /** @description A player's membership of a league team. */
         PlayerLeagueTeamMembershipResponse: {
             /** Format: date-time */
             joined_at: string;
@@ -16265,6 +16332,44 @@ export interface components {
             suggested_start: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        /** @description Aggregate CS2 skill and match history for a team's roster in a season. */
+        TeamSeasonStatsResponse: {
+            /**
+             * Format: int32
+             * @description The highest CS2 Premier rating on the roster; `null` when none is rated.
+             */
+            max_rating?: number | null;
+            /**
+             * Format: double
+             * @description Median CS2 Premier rating across rated members; `null` when none is rated.
+             */
+            median_rating?: number | null;
+            /**
+             * Format: int32
+             * @description Roster size this season (current members).
+             */
+            member_count: number;
+            /**
+             * Format: int64
+             * @description Completed matches this team has played across every season.
+             */
+            past_games_all_time: number;
+            /**
+             * Format: int32
+             * @description Completed matches this team has played this season.
+             */
+            past_games_season: number;
+            /**
+             * Format: int32
+             * @description How many of them have a CS2 profile that fed the rating figures.
+             */
+            rated_count: number;
+            /**
+             * Format: int64
+             * @description Sum of the rated members' CS2 Premier ratings.
+             */
+            total_rating: number;
         };
         /** @description Team size configuration. */
         TeamSizeConfig: {
@@ -25048,6 +25153,38 @@ export interface operations {
                 };
             };
             /** @description Team season or member not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_team_season_stats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team Season ID */
+                team_season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Team season stats */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TeamSeasonStatsResponse"];
+                };
+            };
+            /** @description Team season not found */
             404: {
                 headers: {
                     [name: string]: unknown;

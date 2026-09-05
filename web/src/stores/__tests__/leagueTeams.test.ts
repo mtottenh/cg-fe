@@ -286,4 +286,34 @@ describe('League Teams Store', () => {
       expect(store.error).toBe('Upstream timeout')
     })
   })
+  describe('fetchTeamStats', () => {
+    it('reads the team season stats and returns the data payload', async () => {
+      const stats = {
+        member_count: 5,
+        rated_count: 4,
+        median_rating: 14250.5,
+        total_rating: 57000,
+        max_rating: 18000,
+        past_games_season: 3,
+        past_games_all_time: 12,
+      }
+      mockGet.mockResolvedValue({ data: { data: stats, meta: { request_id: 't' } }, error: undefined })
+      const store = useLeagueTeamsStore()
+
+      const result = await store.fetchTeamStats('ts-1')
+
+      expect(mockGet).toHaveBeenCalledWith('/v1/league-team-seasons/{team_season_id}/stats', {
+        params: { path: { team_season_id: 'ts-1' } },
+      })
+      expect(result).toEqual(stats)
+    })
+
+    it('surfaces a failure through its own action state', async () => {
+      mockGet.mockResolvedValue(apiError(404, 'Team season not found'))
+      const store = useLeagueTeamsStore()
+
+      await expect(store.fetchTeamStats('missing')).rejects.toThrow(ApiError)
+      expect(store.fetchTeamStatsState.error).toBe('Team season not found')
+    })
+  })
 })

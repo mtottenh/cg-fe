@@ -7885,6 +7885,44 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_MovedTeamResponse: {
+            /**
+             * @description The team after a cross-league move, plus the cups it was withdrawn from.
+             *     The team's own fields are flattened so the shape stays a `LeagueTeamResponse`.
+             */
+            data: {
+                /**
+                 * Format: date-time
+                 * @description When this was archived, or absent while it is live. Archived rows are
+                 *     hidden from player-facing listings; nothing is deleted and the status
+                 *     above is untouched.
+                 */
+                archived_at?: string | null;
+                banner_url?: string | null;
+                /** Format: date-time */
+                created_at: string;
+                description?: string | null;
+                /** Format: date-time */
+                disbanded_at?: string | null;
+                id: string;
+                league_id: string;
+                logo_url?: string | null;
+                name: string;
+                owner_player_id: string;
+                primary_color?: string | null;
+                secondary_color?: string | null;
+                status: components["schemas"]["LeagueTeamStatus"];
+                tag: string;
+                /** Format: date-time */
+                updated_at: string;
+            } & {
+                /** @description Entries in cups that had not started, dropped by the move. */
+                withdrawn_from: components["schemas"]["WithdrawnEntryResponse"][];
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_MyTournamentRegistrationsResponse: {
             /**
              * @description Every registration in one tournament that the caller speaks for.
@@ -13757,6 +13795,39 @@ export interface components {
              */
             season_id?: string | null;
         };
+        /**
+         * @description The team after a cross-league move, plus the cups it was withdrawn from.
+         *     The team's own fields are flattened so the shape stays a `LeagueTeamResponse`.
+         */
+        MovedTeamResponse: {
+            /**
+             * Format: date-time
+             * @description When this was archived, or absent while it is live. Archived rows are
+             *     hidden from player-facing listings; nothing is deleted and the status
+             *     above is untouched.
+             */
+            archived_at?: string | null;
+            banner_url?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            description?: string | null;
+            /** Format: date-time */
+            disbanded_at?: string | null;
+            id: string;
+            league_id: string;
+            logo_url?: string | null;
+            name: string;
+            owner_player_id: string;
+            primary_color?: string | null;
+            secondary_color?: string | null;
+            status: components["schemas"]["LeagueTeamStatus"];
+            tag: string;
+            /** Format: date-time */
+            updated_at: string;
+        } & {
+            /** @description Entries in cups that had not started, dropped by the move. */
+            withdrawn_from: components["schemas"]["WithdrawnEntryResponse"][];
+        };
         /** @description Query parameters for listing the current user's tournament matches. */
         MyMatchesQuery: {
             /**
@@ -17101,6 +17172,11 @@ export interface components {
             matches_forfeited: number;
             /** @description Registration ID that was withdrawn. */
             registration_id: string;
+        };
+        /** @description A cup the team was withdrawn from by a cross-league move. */
+        WithdrawnEntryResponse: {
+            tournament_id: string;
+            tournament_name: string;
         };
         /** @description Steam Workshop item details, for prefilling the admin map form. */
         WorkshopMapDetailsResponse: {
@@ -24750,13 +24826,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Team moved */
+            /** @description Team moved; `withdrawn_from` names cups it left */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DataResponse_LeagueTeamResponse"];
+                    "application/json": components["schemas"]["DataResponse_MovedTeamResponse"];
                 };
             };
             /** @description Invalid target, or the team cannot be moved */

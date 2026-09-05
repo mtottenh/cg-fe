@@ -113,40 +113,48 @@
       </template>
 
       <template v-slot:item.actions="{ item }">
-        <v-btn aria-label="Manage team"
-          icon
-          size="small"
-          variant="text"
-          @click="$emit('manage', item)"
-          title="Manage Team"
-        >
-          <v-icon>mdi-cog</v-icon>
-        </v-btn>
-        <v-btn
-          v-if="canMove"
-          aria-label="Move team to another league"
-          icon
-          size="small"
-          variant="text"
-          title="Move to another league"
-          @click="$emit('move', item)"
-        >
-          <v-icon>mdi-swap-horizontal</v-icon>
-        </v-btn>
-        <v-btn
-          :aria-label="item.archived_at ? 'Restore team' : 'Archive team'"
-          icon
-          size="small"
-          variant="text"
-          :title="item.archived_at
-            ? 'Restore Team'
-            : 'Archive Team (hides it from players; nothing is deleted)'"
-          @click="$emit('set-archived', item, !item.archived_at)"
-        >
-          <v-icon>{{ item.archived_at ? 'mdi-restore' : 'mdi-archive-arrow-down' }}</v-icon>
-        </v-btn>
+        <div class="d-flex align-center justify-end ga-1 flex-nowrap">
+          <v-btn
+            aria-label="Manage team"
+            title="Manage Team"
+            size="small"
+            variant="text"
+            prepend-icon="mdi-cog"
+            data-testid="team-manage"
+            @click="$emit('manage', item)"
+          >
+            Manage
+          </v-btn>
+          <v-btn
+            v-if="canMove"
+            aria-label="Move team to another league"
+            title="Move to another league"
+            size="small"
+            variant="text"
+            prepend-icon="mdi-swap-horizontal"
+            data-testid="team-move"
+            @click="$emit('move', item)"
+          >
+            Move
+          </v-btn>
+          <v-menu location="bottom end">
+            <template v-slot:activator="{ props: menuProps }">
+              <v-btn v-bind="menuProps" aria-label="More actions" icon size="small" variant="text" data-testid="team-more">
+                <v-icon>mdi-dots-vertical</v-icon>
+              </v-btn>
+            </template>
+            <v-list density="compact">
+              <v-list-item
+                :prepend-icon="item.archived_at ? 'mdi-restore' : 'mdi-archive-arrow-down'"
+                :title="item.archived_at ? 'Restore team' : 'Archive team'"
+                :subtitle="item.archived_at ? 'Players see it again' : 'Hides it from players; nothing is deleted'"
+                :data-testid="item.archived_at ? 'team-restore' : 'team-archive'"
+                @click="$emit('set-archived', item, !item.archived_at)"
+              />
+            </v-list>
+          </v-menu>
+        </div>
       </template>
-
       <template v-slot:no-data>
         <div class="text-center pa-8">
           <v-icon size="48" color="grey-lighten-1">mdi-account-group-outline</v-icon>
@@ -202,7 +210,7 @@ const headers = [
   { title: 'Status', key: 'team_status', width: '120px' },
   { title: 'Roster', key: 'roster', width: '140px', sortable: false },
   { title: 'Breakdown', key: 'breakdown', width: '140px', sortable: false },
-  { title: 'Actions', key: 'actions', width: '160px', sortable: false, align: 'center' as const },
+  { title: 'Actions', key: 'actions', width: '280px', sortable: false, align: 'end' as const },
 ]
 
 const formatStatus = (status: string) => getStatusLabel(teamStatusMap, status)

@@ -136,6 +136,7 @@ import {
 import {
   useLeagueTeamsStore,
   type LeagueTeamSummaryResponse,
+  type MovedTeamResponse,
 } from '@/stores/leagueTeams'
 import LeagueSeasonsPanel from './LeagueSeasonsPanel.vue'
 import LeagueTeamsPanel from './LeagueTeamsPanel.vue'
@@ -285,8 +286,12 @@ function openMoveTeamModal(team: LeagueTeamSummary) {
   moveTeamModalOpen.value = true
 }
 
-function onTeamMoved() {
-  snackbar.show('Team moved', 'success')
+function onTeamMoved(result: MovedTeamResponse) {
+  const left = result.withdrawn_from.map(w => w.tournament_name)
+  snackbar.show(
+    left.length ? `Team moved. Withdrawn from ${left.join(', ')}.` : 'Team moved',
+    left.length ? 'warning' : 'success',
+  )
   fetchTeams()
   emit('updated')
 }

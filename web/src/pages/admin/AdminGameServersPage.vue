@@ -81,6 +81,22 @@
             <span class="text-caption">{{ item.last_gamestate ?? '—' }}</span>
           </template>
 
+          <template #[`item.map`]="{ item }">
+            <span
+              class="text-caption"
+              :title="item.last_status_at ? `From status at ${new Date(item.last_status_at).toLocaleString()}` : 'This agent does not report status'"
+              data-testid="server-map"
+            >
+              {{ item.last_map ?? '—' }}
+            </span>
+          </template>
+
+          <template #[`item.players`]="{ item }">
+            <span class="text-caption" data-testid="server-players">
+              {{ item.last_player_count ?? '—' }}
+            </span>
+          </template>
+
           <template #[`item.match`]="{ item }">
             <router-link
               v-if="item.current_match_id"
@@ -107,58 +123,84 @@
           </template>
 
           <template #[`item.actions`]="{ item }">
-            <v-btn
-              aria-label="Edit server"
-              title="Edit server"
-              icon
-              size="small"
-              variant="text"
-              @click="openEditModal(item)"
-            >
-              <v-icon>mdi-pencil</v-icon>
-            </v-btn>
-            <v-btn
-              aria-label="Enrollment token"
-              title="Enrollment token"
-              icon
-              size="small"
-              variant="text"
-              @click="openEnrollModal(item)"
-            >
-              <v-icon>mdi-key</v-icon>
-            </v-btn>
-            <v-btn
-              aria-label="Bookings"
-              title="Bookings"
-              icon
-              size="small"
-              variant="text"
-              @click="openBookingsModal(item)"
-            >
-              <v-icon>mdi-calendar-lock</v-icon>
-            </v-btn>
-            <v-btn
-              aria-label="Revoke agent certificates"
-              title="Revoke agent certificates"
-              icon
-              size="small"
-              variant="text"
-              :disabled="!item.agent_cert_expires_at"
-              @click="confirmRevoke(item)"
-            >
-              <v-icon>mdi-key-remove</v-icon>
-            </v-btn>
-            <v-btn
-              aria-label="Delete server"
-              title="Delete server"
-              icon
-              size="small"
-              variant="text"
-              color="error"
-              @click="confirmDelete(item)"
-            >
-              <v-icon>mdi-delete</v-icon>
-            </v-btn>
+            <div class="d-flex align-center justify-end ga-1 flex-nowrap">
+              <v-btn
+                aria-label="Open console"
+                title="Open console"
+                size="small"
+                variant="text"
+                prepend-icon="mdi-console"
+                data-testid="server-console-open"
+                @click="openConsoleModal(item)"
+              >
+                Console
+              </v-btn>
+              <v-btn
+                aria-label="Edit server"
+                title="Edit server"
+                size="small"
+                variant="text"
+                prepend-icon="mdi-pencil"
+                data-testid="server-edit"
+                @click="openEditModal(item)"
+              >
+                Edit
+              </v-btn>
+              <v-btn
+                aria-label="Enrollment token"
+                title="Enrollment token"
+                size="small"
+                variant="text"
+                prepend-icon="mdi-key"
+                data-testid="server-enroll"
+                @click="openEnrollModal(item)"
+              >
+                Enroll
+              </v-btn>
+              <v-btn
+                aria-label="Bookings"
+                title="Bookings"
+                size="small"
+                variant="text"
+                prepend-icon="mdi-calendar-lock"
+                data-testid="server-bookings"
+                @click="openBookingsModal(item)"
+              >
+                Bookings
+              </v-btn>
+              <v-menu location="bottom end">
+                <template #activator="{ props: menuProps }">
+                  <v-btn
+                    v-bind="menuProps"
+                    aria-label="More actions"
+                    icon
+                    size="small"
+                    variant="text"
+                    data-testid="server-more"
+                  >
+                    <v-icon>mdi-dots-vertical</v-icon>
+                  </v-btn>
+                </template>
+                <v-list density="compact">
+                  <v-list-item
+                    prepend-icon="mdi-key-remove"
+                    title="Revoke agent certificates"
+                    subtitle="Disconnects the agent until it re-enrolls"
+                    :disabled="!item.agent_cert_expires_at"
+                    data-testid="server-revoke"
+                    @click="confirmRevoke(item)"
+                  />
+                  <v-list-item
+                    prepend-icon="mdi-delete"
+                    title="Delete server"
+                    subtitle="Refused while a match is on it"
+                    base-color="error"
+                    data-testid="server-delete"
+                    @click="confirmDelete(item)"
+                  />
+                </v-list>
+              </v-menu>
+            </div>
           </template>
 
           <template #no-data>
@@ -175,6 +217,7 @@
     <GameServerEditModal v-model="editModalOpen" :server="selectedServer" @saved="onSaved" />
     <GameServerEnrollModal v-model="enrollModalOpen" :server="selectedServer" />
     <GameServerBookingsModal v-model="bookingsModalOpen" :server="selectedServer" />
+    <ServerConsoleModal v-model="consoleModalOpen" :server="selectedServer" @changed="refresh" />
     <ConfirmDialogHost :dialog="confirmDialog" />
     <AppSnackbar v-model="snackbar.open" :text="snackbar.text" :color="snackbar.color" />
   </div>
@@ -190,6 +233,7 @@ import ErrorAlert from '@/components/ErrorAlert.vue'
 import GameServerEditModal from '@/components/admin/GameServerEditModal.vue'
 import GameServerEnrollModal from '@/components/admin/GameServerEnrollModal.vue'
 import GameServerBookingsModal from '@/components/admin/GameServerBookingsModal.vue'
+import ServerConsoleModal from '@/components/admin/ServerConsoleModal.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useGameServersStore } from '@/stores/gameServers'
 import type { GameServer } from '@/stores/gameServers'
@@ -203,6 +247,7 @@ const search = ref('')
 const editModalOpen = ref(false)
 const enrollModalOpen = ref(false)
 const bookingsModalOpen = ref(false)
+const consoleModalOpen = ref(false)
 const selectedServer = ref<GameServer | null>(null)
 const snackbar = ref({ open: false, text: '', color: 'success' })
 
@@ -213,6 +258,8 @@ const headers = [
   { title: 'Status', key: 'status' },
   { title: 'Agent', key: 'agent', sortable: false },
   { title: 'Gamestate', key: 'gamestate', sortable: false },
+  { title: 'Map', key: 'map', sortable: false },
+  { title: 'Players', key: 'players', sortable: false, align: 'end' as const },
   { title: 'Match', key: 'match', sortable: false },
   { title: 'Certificate', key: 'cert', sortable: false },
   { title: 'Actions', key: 'actions', sortable: false, align: 'center' as const },
@@ -272,6 +319,11 @@ function openEnrollModal(server: GameServer) {
 function openBookingsModal(server: GameServer) {
   selectedServer.value = server
   bookingsModalOpen.value = true
+}
+
+function openConsoleModal(server: GameServer) {
+  selectedServer.value = server
+  consoleModalOpen.value = true
 }
 
 function onSaved(server: GameServer) {

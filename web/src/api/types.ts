@@ -593,10 +593,89 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Run a console command on a server via its agent (admin passthrough).
-         * @description Every invocation is logged with the acting admin (audit trail).
+         * Run a raw console command on a server via its agent (the escape hatch).
+         * @description One line per request; the portal's own controls (RCON password,
+         *     webhook and demo settings, process lifetime) and `exec`/`alias` are
+         *     refused here and again at the agent. Every invocation is audited with
+         *     the acting admin.
          */
         post: operations["send_command"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}/console": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The console snapshot: agent, gamestate, `status` (stored or live), the
+         *     live reservation and any holds.
+         */
+        get: operations["get_console"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}/console/action": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run one action from the console's table. */
+        post: operations["run_action"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}/console/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Console commands sent to this server, newest first. */
+        get: operations["get_console_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}/console/map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change the map. Catalogue maps with a workshop id load through
+         *     `host_workshop_map`, everything else through `changelevel`. Refused
+         *     with 409 under a live reservation unless `force`, which cancels the
+         *     reservation first. Places a short allocator hold either way.
+         */
+        post: operations["change_map"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5531,6 +5610,21 @@ export interface components {
              */
             scheduled_at: string;
         };
+        /** @description One audited console command. */
+        AdminServerCommandResponse: {
+            admin_user_id: string;
+            admin_username?: string | null;
+            command: string;
+            created_at: string;
+            force: boolean;
+            id: string;
+            /** @description `raw`, `map_change`, or `action:<name>`. */
+            kind: string;
+            ok: boolean;
+            output?: string | null;
+            reservation_id?: string | null;
+            server_id: string;
+        };
         /** @description Response for winner advancement. */
         AdvancementResponse: {
             /**
@@ -5944,6 +6038,125 @@ export interface components {
          * @enum {string}
          */
         ClaimStatus: "pending" | "confirmed" | "disputed" | "superseded" | "cancelled";
+        /**
+         * @description The console's action table.
+         * @enum {string}
+         */
+        ConsoleAction: "pause" | "unpause" | "force_start" | "end_match" | "restart_warmup" | "kick_bots" | "broadcast" | "kick_player" | "practice_start" | "practice_stop";
+        /** @description Arguments for the actions that take any. */
+        ConsoleActionArgs: {
+            message?: string | null;
+            reason?: string | null;
+            /**
+             * Format: date-time
+             * @description End of a practice hold.
+             */
+            until?: string | null;
+            /** Format: int32 */
+            userid?: number | null;
+        };
+        /** @description Run one action from the table. */
+        ConsoleActionRequest: {
+            action: components["schemas"]["ConsoleAction"];
+            args?: components["schemas"]["ConsoleActionArgs"];
+            /** @description Required for `end_match` and `kick_player`. */
+            confirm?: boolean;
+        };
+        /** @description Result of an action. */
+        ConsoleActionResponse: {
+            action: components["schemas"]["ConsoleAction"];
+            cancelled_match_id?: string | null;
+            /** @description Console lines sent, in order. */
+            commands: string[];
+            hold_until?: string | null;
+            ok: boolean;
+            output: string;
+        };
+        /** @description The agent's side of the connection. */
+        ConsoleAgentInfo: {
+            connected: boolean;
+            heartbeat_at?: string | null;
+            /**
+             * @description Whether the agent could reach RCON at its last heartbeat; absent
+             *     before the first heartbeat.
+             */
+            rcon_ok?: boolean | null;
+            /** @description Whether this agent reports CS2's `status` (agent 0.2.0+). */
+            reports_status: boolean;
+            version?: string | null;
+        };
+        /** @description A booking covering right now (a practice night, a map-change hold). */
+        ConsoleHold: {
+            ends_at: string;
+            id: string;
+            reason?: string | null;
+            starts_at: string;
+            tournament_id?: string | null;
+        };
+        /** @description One row of CS2's `status`. */
+        ConsolePlayer: {
+            bot: boolean;
+            /** Format: int32 */
+            connected_secs?: number | null;
+            /** Format: int32 */
+            loss?: number | null;
+            name: string;
+            /** Format: int32 */
+            ping?: number | null;
+            player?: null | components["schemas"]["ConsolePlayerLink"];
+            state?: string | null;
+            /** @description Steam ID64 as a string (JSON numbers lose precision above 2^53). */
+            steam_id64?: string | null;
+            /** Format: int32 */
+            userid: number;
+        };
+        /** @description A portal player matched to a connected Steam account. */
+        ConsolePlayerLink: {
+            display_name: string;
+            id: string;
+        };
+        /** @description The live reservation on the server, if any. */
+        ConsoleReservation: {
+            id: string;
+            kind: components["schemas"]["ReservationKind"];
+            match_id: string;
+            /** Format: int64 */
+            matchzy_id: number;
+            status: components["schemas"]["ReservationStatus"];
+        };
+        /** @description Everything the console modal shows at once. */
+        ConsoleSnapshotResponse: {
+            agent: components["schemas"]["ConsoleAgentInfo"];
+            /** @description MatchZy gamestate from the last heartbeat. */
+            gamestate?: string | null;
+            holds: components["schemas"]["ConsoleHold"][];
+            /** @description Whether `status` was fetched just now rather than read from the store. */
+            live: boolean;
+            /** @description Why a requested live fetch fell back to stored data. */
+            live_error?: string | null;
+            /** @description The `status` text the parse came from, addresses redacted. */
+            raw_status?: string | null;
+            reservation?: null | components["schemas"]["ConsoleReservation"];
+            server_id: string;
+            server_name: string;
+            server_status: components["schemas"]["GameServerStatus"];
+            status?: null | components["schemas"]["ConsoleStatus"];
+            /** @description When `status` was captured. */
+            status_at?: string | null;
+        };
+        /** @description What `status` said about the server. */
+        ConsoleStatus: {
+            /** Format: int32 */
+            bots?: number | null;
+            hostname?: string | null;
+            /** Format: int32 */
+            humans?: number | null;
+            /** @description Engine map name, e.g. `de_mirage`. */
+            map?: string | null;
+            /** Format: int32 */
+            max_players?: number | null;
+            players: components["schemas"]["ConsolePlayer"][];
+        };
         /** @description Request to counter-propose new times. */
         CounterProposeRequest: {
             /** @description Optional message to the opponent about the counter-proposal. */
@@ -6670,6 +6883,46 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_ConsoleActionResponse: {
+            /** @description Result of an action. */
+            data: {
+                action: components["schemas"]["ConsoleAction"];
+                cancelled_match_id?: string | null;
+                /** @description Console lines sent, in order. */
+                commands: string[];
+                hold_until?: string | null;
+                ok: boolean;
+                output: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_ConsoleSnapshotResponse: {
+            /** @description Everything the console modal shows at once. */
+            data: {
+                agent: components["schemas"]["ConsoleAgentInfo"];
+                /** @description MatchZy gamestate from the last heartbeat. */
+                gamestate?: string | null;
+                holds: components["schemas"]["ConsoleHold"][];
+                /** @description Whether `status` was fetched just now rather than read from the store. */
+                live: boolean;
+                /** @description Why a requested live fetch fell back to stored data. */
+                live_error?: string | null;
+                /** @description The `status` text the parse came from, addresses redacted. */
+                raw_status?: string | null;
+                reservation?: null | components["schemas"]["ConsoleReservation"];
+                server_id: string;
+                server_name: string;
+                server_status: components["schemas"]["GameServerStatus"];
+                status?: null | components["schemas"]["ConsoleStatus"];
+                /** @description When `status` was captured. */
+                status_at?: string | null;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_DateAvailabilityResponse: {
             /** @description Response for availability on a specific date. */
             data: {
@@ -7345,6 +7598,18 @@ export interface components {
                 /** @description MatchZy gamestate from the last heartbeat. */
                 last_gamestate?: string | null;
                 last_heartbeat_at?: string | null;
+                /**
+                 * @description Engine map name from the last heartbeat that carried CS2's `status`
+                 *     (agent 0.2.0+); absent for older agents.
+                 */
+                last_map?: string | null;
+                /**
+                 * Format: int32
+                 * @description Humans plus bots at that heartbeat.
+                 */
+                last_player_count?: number | null;
+                /** @description When the last `status` arrived; absent when the agent sends none. */
+                last_status_at?: string | null;
                 name: string;
                 /** Format: int32 */
                 port: number;
@@ -7685,6 +7950,22 @@ export interface components {
                  * @example true
                  */
                 logged_out: boolean;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_MapChangeResponse: {
+            /** @description Result of a map change. */
+            data: {
+                /** @description Match whose reservation `force` cancelled. */
+                cancelled_match_id?: string | null;
+                command: string;
+                /** @description Until when the allocator keeps off the server. */
+                hold_until?: string | null;
+                ok: boolean;
+                output: string;
+                target: components["schemas"]["MapTarget"];
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -8820,9 +9101,11 @@ export interface components {
         };
         /** @description Wrapper for single-item responses. */
         DataResponse_SendCommandResponse: {
-            /** @description Console output from the server. */
+            /** @description Output of a console command. */
             data: {
-                /** @description Raw console output. */
+                /** @description Whether the agent reported success. */
+                ok: boolean;
+                /** @description The server's reply (or the agent's error). */
                 output: string;
             };
             /** @description Response metadata. */
@@ -9447,6 +9730,25 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_AdminServerCommandResponse: {
+            data: {
+                admin_user_id: string;
+                admin_username?: string | null;
+                command: string;
+                created_at: string;
+                force: boolean;
+                id: string;
+                /** @description `raw`, `map_change`, or `action:<name>`. */
+                kind: string;
+                ok: boolean;
+                output?: string | null;
+                reservation_id?: string | null;
+                server_id: string;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_Vec_AvailabilityOverrideResponse: {
             data: {
                 /** Format: date-time */
@@ -9906,6 +10208,18 @@ export interface components {
                 /** @description MatchZy gamestate from the last heartbeat. */
                 last_gamestate?: string | null;
                 last_heartbeat_at?: string | null;
+                /**
+                 * @description Engine map name from the last heartbeat that carried CS2's `status`
+                 *     (agent 0.2.0+); absent for older agents.
+                 */
+                last_map?: string | null;
+                /**
+                 * Format: int32
+                 * @description Humans plus bots at that heartbeat.
+                 */
+                last_player_count?: number | null;
+                /** @description When the last `status` arrived; absent when the agent sends none. */
+                last_status_at?: string | null;
                 name: string;
                 /** Format: int32 */
                 port: number;
@@ -12651,6 +12965,18 @@ export interface components {
             /** @description MatchZy gamestate from the last heartbeat. */
             last_gamestate?: string | null;
             last_heartbeat_at?: string | null;
+            /**
+             * @description Engine map name from the last heartbeat that carried CS2's `status`
+             *     (agent 0.2.0+); absent for older agents.
+             */
+            last_map?: string | null;
+            /**
+             * Format: int32
+             * @description Humans plus bots at that heartbeat.
+             */
+            last_player_count?: number | null;
+            /** @description When the last `status` arrived; absent when the agent sends none. */
+            last_status_at?: string | null;
             name: string;
             /** Format: int32 */
             port: number;
@@ -13413,6 +13739,26 @@ export interface components {
             /** @description List of seed assignments (registration_id, seed_number). */
             seeds: components["schemas"]["SeedAssignment"][];
         };
+        /** @description A map change: a catalogue entry or a free-form target. */
+        MapChangeRequest: {
+            /** @description A map name, a workshop id, or a workshop link. */
+            custom?: string | null;
+            /** @description Cancel a live reservation first (participants are notified). */
+            force?: boolean;
+            /** @description Id of a map in the game's catalogue. */
+            map_id?: string | null;
+        };
+        /** @description Result of a map change. */
+        MapChangeResponse: {
+            /** @description Match whose reservation `force` cancelled. */
+            cancelled_match_id?: string | null;
+            command: string;
+            /** @description Until when the allocator keeps off the server. */
+            hold_until?: string | null;
+            ok: boolean;
+            output: string;
+            target: components["schemas"]["MapTarget"];
+        };
         /** @description Map information. */
         MapInfoResponse: {
             /**
@@ -13484,6 +13830,14 @@ export interface components {
             picked_by_registration_id?: string | null;
             /** @description Current status (available, banned, picked, decider). */
             status: string;
+        };
+        /** @description What the map change resolved to. */
+        MapTarget: {
+            display_name?: string | null;
+            /** @description What the server was told to load: an engine name or a workshop id. */
+            engine_name: string;
+            map_id?: string | null;
+            workshop: boolean;
         };
         /** @description Request to mark a demo's stats processing as failed. */
         MarkDemoFailedRequest: {
@@ -15079,6 +15433,12 @@ export interface components {
             requeued: number;
         };
         /**
+         * @description What kind of consumer holds a server reservation (§6.7's anticipated
+         *     `reservation_kind` extension).
+         * @enum {string}
+         */
+        ReservationKind: "match" | "pug";
+        /**
          * @description Lifecycle status of a server reservation.
          * @enum {string}
          */
@@ -15544,14 +15904,16 @@ export interface components {
             /** @description Selected side (e.g., "ct", "t"). */
             side: string;
         };
-        /** @description Request body for the console passthrough. */
+        /** @description Request to run a raw console command. */
         SendCommandRequest: {
-            /** @description Console command to execute (e.g. `css_pause`, `mp_pause_match`). */
+            /** @description One console line, e.g. `css_pause`. No `;`, no control characters. */
             command: string;
         };
-        /** @description Console output from the server. */
+        /** @description Output of a console command. */
         SendCommandResponse: {
-            /** @description Raw console output. */
+            /** @description Whether the agent reported success. */
+            ok: boolean;
+            /** @description The server's reply (or the agent's error). */
             output: string;
         };
         /** @description A server booking. */
@@ -19188,6 +19550,15 @@ export interface operations {
                     "application/json": components["schemas"]["DataResponse_SendCommandResponse"];
                 };
             };
+            /** @description Command refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Missing admin.servers.manage */
             403: {
                 headers: {
@@ -19198,6 +19569,202 @@ export interface operations {
                 };
             };
             /** @description Agent not connected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_console: {
+        parameters: {
+            query?: {
+                /** @description Run `status` on the server now instead of reading the last heartbeat. */
+                live?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Console snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_ConsoleSnapshotResponse"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    run_action: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsoleActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Action sent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_ConsoleActionResponse"];
+                };
+            };
+            /** @description Missing argument or confirmation */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Agent not connected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_console_history: {
+        parameters: {
+            query?: {
+                /** @description Rows to return, newest first (default 50, at most 200). */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Audit rows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_AdminServerCommandResponse"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    change_map: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MapChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Map change sent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_MapChangeResponse"];
+                };
+            };
+            /** @description No such map or bad target */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Agent not connected, or a live reservation without force */
             409: {
                 headers: {
                     [name: string]: unknown;

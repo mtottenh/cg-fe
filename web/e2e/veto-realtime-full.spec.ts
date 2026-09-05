@@ -170,8 +170,9 @@ test.describe('Map Veto Real-time (full sequence, late-join, spectator)', () => 
       const finalSession = await getVetoSession(scenario.p1.token, scenario.matchId)
       expect(finalSession.status).toBe('completed')
       // bo1: exactly one map survives — the decider.
-      expect(finalSession.remaining_maps.length).toBe(1)
-      const deciderId = finalSession.remaining_maps[0]
+      // The trailing decider runs by itself and selects the last map.
+      expect(finalSession.remaining_maps.length).toBe(0)
+      const deciderId = finalSession.selected_maps.at(-1)
 
       const maps = await getVetoMaps(scenario.p1.token, scenario.matchId)
       const deciderMap = maps.find((m) => m.map_id === deciderId)

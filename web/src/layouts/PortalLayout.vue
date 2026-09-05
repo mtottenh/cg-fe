@@ -33,8 +33,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useDisplay } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
 import AppHeader from '@/components/AppHeader.vue'
 import PortalSidebar from '@/components/PortalSidebar.vue'
@@ -42,9 +43,19 @@ import CaptainActionsBell from '@/components/CaptainActionsBell.vue'
 
 const authStore = useAuthStore()
 const router = useRouter()
+const route = useRoute()
+const { mdAndUp } = useDisplay()
 
-const drawer = ref(true)
+// Below `md` the sidebar is a temporary overlay (PortalSidebar), so it must
+// start closed there: `ref(true)` opened the menu over every page on a
+// phone, on every navigation, until the user dismissed it.
+const drawer = ref(mdAndUp.value)
 const rail = ref(false)
+
+// A phone user who picks a destination expects the overlay to go away.
+watch(() => route.fullPath, () => {
+  if (!mdAndUp.value) drawer.value = false
+})
 
 function handleLogout() {
   authStore.logout()

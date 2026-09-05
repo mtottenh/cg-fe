@@ -7077,6 +7077,8 @@ export interface components {
                 created_at: string;
                 /** @description Detailed description. */
                 description: string;
+                /** @description Team that raised the dispute. */
+                disputed_by_name?: string | null;
                 /** @description Registration ID of who raised the dispute. */
                 disputed_by_registration_id: string;
                 /** @description User ID of who raised the dispute. */
@@ -7097,8 +7099,12 @@ export interface components {
                  * @description Original participant 2 score.
                  */
                 original_participant2_score?: number | null;
+                /** @description Team the disputed claim named as winner. */
+                original_winner_name?: string | null;
                 /** @description Original winner (if any). */
                 original_winner_registration_id?: string | null;
+                participant1_name?: string | null;
+                participant2_name?: string | null;
                 /** @description Priority level. */
                 priority: components["schemas"]["DisputePriority"];
                 /** @description Reason for the dispute. */
@@ -7115,6 +7121,14 @@ export interface components {
                 result_claim_id?: string | null;
                 /** @description Current status. */
                 status: components["schemas"]["DisputeStatus"];
+                /**
+                 * @description Match context — the names an organiser recognises. The dispute row
+                 *     carries ids only, and the admin queue read as a table of UUIDs.
+                 *     Absent when the match could not be loaded.
+                 */
+                tournament_id?: string | null;
+                tournament_name?: string | null;
+                tournament_slug?: string | null;
                 /**
                  * Format: date-time
                  * @description Last update timestamp.
@@ -7434,6 +7448,12 @@ export interface components {
                 /** Format: date-time */
                 created_at: string;
                 created_by: string;
+                /**
+                 * @description The season the league is currently running (maintained by trigger as
+                 *     seasons open and close). Absent until the league has one. Clients open
+                 *     the league on this season rather than the newest-created one.
+                 */
+                current_season_id?: string | null;
                 description?: string | null;
                 eligibility_restrictions?: null | components["schemas"]["EligibilityRestrictionsResponse"];
                 game_id: string;
@@ -12029,6 +12049,8 @@ export interface components {
             created_at: string;
             /** @description Detailed description. */
             description: string;
+            /** @description Team that raised the dispute. */
+            disputed_by_name?: string | null;
             /** @description Registration ID of who raised the dispute. */
             disputed_by_registration_id: string;
             /** @description User ID of who raised the dispute. */
@@ -12049,8 +12071,12 @@ export interface components {
              * @description Original participant 2 score.
              */
             original_participant2_score?: number | null;
+            /** @description Team the disputed claim named as winner. */
+            original_winner_name?: string | null;
             /** @description Original winner (if any). */
             original_winner_registration_id?: string | null;
+            participant1_name?: string | null;
+            participant2_name?: string | null;
             /** @description Priority level. */
             priority: components["schemas"]["DisputePriority"];
             /** @description Reason for the dispute. */
@@ -12067,6 +12093,14 @@ export interface components {
             result_claim_id?: string | null;
             /** @description Current status. */
             status: components["schemas"]["DisputeStatus"];
+            /**
+             * @description Match context — the names an organiser recognises. The dispute row
+             *     carries ids only, and the admin queue read as a table of UUIDs.
+             *     Absent when the match could not be loaded.
+             */
+            tournament_id?: string | null;
+            tournament_name?: string | null;
+            tournament_slug?: string | null;
             /**
              * Format: date-time
              * @description Last update timestamp.
@@ -12861,6 +12895,12 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             created_by: string;
+            /**
+             * @description The season the league is currently running (maintained by trigger as
+             *     seasons open and close). Absent until the league has one. Clients open
+             *     the league on this season rather than the newest-created one.
+             */
+            current_season_id?: string | null;
             description?: string | null;
             eligibility_restrictions?: null | components["schemas"]["EligibilityRestrictionsResponse"];
             game_id: string;
@@ -13852,6 +13892,12 @@ export interface components {
                 /** Format: date-time */
                 created_at: string;
                 created_by: string;
+                /**
+                 * @description The season the league is currently running (maintained by trigger as
+                 *     seasons open and close). Absent until the league has one. Clients open
+                 *     the league on this season rather than the newest-created one.
+                 */
+                current_season_id?: string | null;
                 description?: string | null;
                 eligibility_restrictions?: null | components["schemas"]["EligibilityRestrictionsResponse"];
                 game_id: string;

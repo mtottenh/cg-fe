@@ -47,6 +47,45 @@
                 density="comfortable"
               />
             </v-col>
+            <v-col cols="12" class="pb-0">
+              <div class="text-subtitle-2 text-medium-emphasis">Dates (optional)</div>
+            </v-col>
+            <v-col cols="6">
+              <v-text-field
+                v-model="form.registration_start"
+                label="Registration opens"
+                type="datetime-local"
+                variant="outlined"
+                density="comfortable"
+              />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field
+                v-model="form.registration_end"
+                label="Registration closes"
+                type="datetime-local"
+                variant="outlined"
+                density="comfortable"
+              />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field
+                v-model="form.season_start"
+                label="Season starts"
+                type="datetime-local"
+                variant="outlined"
+                density="comfortable"
+              />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field
+                v-model="form.season_end"
+                label="Season ends"
+                type="datetime-local"
+                variant="outlined"
+                density="comfortable"
+              />
+            </v-col>
 
             <v-col cols="6">
               <v-text-field
@@ -188,7 +227,22 @@ const form = ref({
   max_teams: null as number | null,
   status: 'draft',
   roster_lock_status: 'open',
+  registration_start: '',
+  registration_end: '',
+  season_start: '',
+  season_end: '',
 })
+
+/** ISO instant → `datetime-local` value in the browser's zone ('' when unset). */
+function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+function toIso(local: string): string | null {
+  return local ? new Date(local).toISOString() : null
+}
 
 // ---------------------------------------------------------------------------
 // Option lists (COVERAGE-PLAN §9b P-17)
@@ -276,6 +330,10 @@ watch(open, (isOpen) => {
       max_teams: props.season.max_teams ?? null,
       status: props.season.status,
       roster_lock_status: props.season.roster_lock_status,
+      registration_start: toLocalInput(props.season.registration_start),
+      registration_end: toLocalInput(props.season.registration_end),
+      season_start: toLocalInput(props.season.season_start),
+      season_end: toLocalInput(props.season.season_end),
     }
     error.value = null
   }
@@ -310,6 +368,9 @@ async function save() {
     body.max_teams = form.value.max_teams
   }
   if (form.value.status !== props.season.status) body.status = form.value.status
+  for (const key of ['registration_start', 'registration_end', 'season_start', 'season_end'] as const) {
+    if (form.value[key] !== toLocalInput(props.season[key])) body[key] = toIso(form.value[key])
+  }
   if (form.value.roster_lock_status !== props.season.roster_lock_status) {
     body.roster_lock_status = form.value.roster_lock_status
   }

@@ -238,6 +238,16 @@ async function buildConfirmedResultDispute(
  * dispute's detail modal. The server-side `match_id` filter guarantees the
  * table holds exactly the one dispute we seeded, so the row is unambiguous.
  */
+/**
+ * The queue's match cell names the two sides ("A vs B") since the admin
+ * disputes fix; the truncated UUID only shows for a match with no names.
+ * Every caller has already filtered the queue to one match id, so the rows
+ * that name a match ARE that dispute.
+ */
+function disputeRow(page: Page): Locator {
+  return page.getByRole('row').filter({ hasText: ' vs ' })
+}
+
 async function openDisputeModal(page: Page, matchId: string): Promise<Locator> {
   await page.goto('/admin/disputes')
   await page.waitForLoadState('networkidle')
@@ -247,10 +257,7 @@ async function openDisputeModal(page: Page, matchId: string): Promise<Locator> {
   await page.getByRole('textbox', { name: 'Match ID' }).press('Enter')
   await page.waitForLoadState('networkidle')
 
-  const row = page
-    .getByRole('row')
-    .filter({ hasText: `${matchId.slice(0, 8)}...` })
-    .first()
+  const row = disputeRow(page).first()
   await expect(row).toBeVisible({ timeout: 10000 })
   await row.click()
 
@@ -279,16 +286,12 @@ async function openResolutionPanel(
  * queue. `/v1/admin/disputes` with no status filter returns only
  * pending/under_review disputes, so a resolved one must disappear.
  */
-async function closeModalAndExpectQueueEmpty(
-  page: Page,
-  modal: Locator,
-  matchId: string,
-) {
+async function closeModalAndExpectQueueEmpty(page: Page, modal: Locator) {
   await modal.locator('.v-card-title').getByRole('button').first().click()
   await expect(modal).toBeHidden({ timeout: 10000 })
   await page.waitForLoadState('networkidle')
   await expect(
-    page.getByRole('row').filter({ hasText: `${matchId.slice(0, 8)}...` }),
+    disputeRow(page),
   ).toHaveCount(0, { timeout: 10000 })
 }
 
@@ -317,14 +320,12 @@ test.describe('Admin Dispute Resolution', () => {
     await expect(page.getByRole('heading', { name: 'Disputes' })).toBeVisible()
 
     // Filter by match ID to isolate the row we care about. The column only
-    // shows the first 8 chars (`match_id.slice(0, 8)...`), so check for
-    // that truncated form.
+    // names the two sides ("A vs B") — see disputeRow.
     await page.getByRole('textbox', { name: 'Match ID' }).fill(matchId)
     await page.getByRole('textbox', { name: 'Match ID' }).press('Enter')
     await page.waitForLoadState('networkidle')
 
-    const truncatedMatch = `${matchId.slice(0, 8)}...`
-    const row = page.getByRole('row').filter({ hasText: truncatedMatch }).first()
+    const row = disputeRow(page).first()
     await expect(row).toBeVisible({ timeout: 10000 })
     // Claim-path disputes carry the structured reason `other` (the free text
     // is the description, shown only in the modal).
@@ -403,7 +404,7 @@ test.describe('Admin Dispute Resolution', () => {
     // queue, and are reachable via the Resolved status filter -------------
     await page.waitForLoadState('networkidle')
     await expect(
-      page.getByRole('row').filter({ hasText: truncatedMatch })
+      disputeRow(page)
     ).toHaveCount(0, { timeout: 10000 })
 
     // The Status v-select is `clearable`, so getByLabel('Status') can
@@ -412,7 +413,7 @@ test.describe('Admin Dispute Resolution', () => {
     await page.getByRole('option', { name: 'Resolved' }).click()
     await page.waitForLoadState('networkidle')
     await expect(
-      page.getByRole('row').filter({ hasText: truncatedMatch }).first()
+      disputeRow(page).first()
     ).toBeVisible({ timeout: 10000 })
 
     const updatedMatch = await getMatch(
@@ -454,8 +455,7 @@ test.describe('Admin Dispute Resolution', () => {
     await page.getByRole('textbox', { name: 'Match ID' }).press('Enter')
     await page.waitForLoadState('networkidle')
 
-    const truncatedMatch = `${matchId.slice(0, 8)}...`
-    const row = page.getByRole('row').filter({ hasText: truncatedMatch }).first()
+    const row = disputeRow(page).first()
     await expect(row).toBeVisible({ timeout: 10000 })
 
     await row.click()
@@ -497,7 +497,7 @@ test.describe('Admin Dispute Resolution', () => {
       .click()
     await expect(modal).toBeHidden({ timeout: 10000 })
     await expect(
-      page.getByRole('row').filter({ hasText: truncatedMatch })
+      disputeRow(page)
     ).toHaveCount(0, { timeout: 10000 })
 
     // --- Verification: winner + scores flipped ---------------------------
@@ -676,7 +676,7 @@ test.describe('Admin Dispute Resolution', () => {
     await expect(modal.getByText('Upheld', { exact: true })).toBeVisible()
     await expect(modal.getByText('Resolve Dispute')).toHaveCount(0)
 
-    await closeModalAndExpectQueueEmpty(page, modal, built.matchId)
+    await closeModalAndExpectQueueEmpty(page, modal)
 
     // --- API cross-check: the match is completed again, untouched ---------
     const after = await getMatch(adminToken, built.tournamentId, built.matchId)
@@ -738,7 +738,7 @@ test.describe('Admin Dispute Resolution', () => {
       modal.locator('tr').filter({ hasText: 'New Winner' }),
     ).toContainText(built.participant2RegistrationId)
 
-    await closeModalAndExpectQueueEmpty(page, modal, built.matchId)
+    await closeModalAndExpectQueueEmpty(page, modal)
 
     // --- API cross-check: the confirmed result really was rewritten -------
     const after = await getMatch(adminToken, built.tournamentId, built.matchId)
@@ -783,7 +783,7 @@ test.describe('Admin Dispute Resolution', () => {
     await expect(modal.getByText('Resolution')).toBeVisible({ timeout: 10000 })
     await expect(modal.getByText('Rematch', { exact: true })).toBeVisible()
 
-    await closeModalAndExpectQueueEmpty(page, modal, scenario.matchId)
+    await closeModalAndExpectQueueEmpty(page, modal)
 
     // --- API cross-check: the match is replayable again -------------------
     const after = await getMatch(adminToken, scenario.tournamentId, scenario.matchId)
@@ -833,7 +833,7 @@ test.describe('Admin Dispute Resolution', () => {
     await expect(modal.getByText('Resolution')).toBeVisible({ timeout: 10000 })
     await expect(modal.getByText('Double Dq', { exact: true })).toBeVisible()
 
-    await closeModalAndExpectQueueEmpty(page, modal, scenario.matchId)
+    await closeModalAndExpectQueueEmpty(page, modal)
 
     // --- API cross-check: neither side keeps the match ---------------------
     const after = await getMatch(adminToken, scenario.tournamentId, scenario.matchId)

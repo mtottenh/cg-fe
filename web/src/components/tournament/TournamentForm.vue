@@ -293,14 +293,13 @@
       <v-col cols="12" md="6">
         <v-select
           aria-label="Map Veto Format"
-          v-model="form.default_map_veto_format"
-          :items="vetoFormatOptions"
+          v-model="vetoFormatModel"
+          :items="vetoFormatItems"
           item-title="title"
           item-value="value"
           label="Map Veto Format"
           variant="outlined"
           density="comfortable"
-          clearable
           :disabled="isCreate && (!form.game_id || loadingGameDetail)"
           :loading="loadingGameDetail"
           :hint="selectedVetoDescription || vetoFormatHint"
@@ -649,7 +648,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, toRef, watch } from 'vue'
+import { computed, ref, toRef, watch } from 'vue'
 import {
   TOURNAMENT_FORMATS,
   PARTICIPANT_TYPES,
@@ -775,6 +774,45 @@ const vetoFormatHint = computed(() =>
   isCreate.value ? 'Select a game first to see available formats' : 'No veto format selected',
 )
 
+// The veto field used to be optional, blank by default and clearable, and
+// a tournament created with it blank ran its matches with no veto at all —
+// with nothing telling the organiser. "No map veto" is now a visible choice,
+// and in create mode the field defaults to the format that matches the
+// series length until the organiser chooses otherwise.
+const NO_VETO = '__none__'
+const vetoFormatItems = computed(() => [
+  {
+    title: 'No map veto',
+    value: NO_VETO,
+    description: 'Matches go straight from check-in to play; captains agree maps themselves',
+  },
+  ...vetoFormatOptions.value,
+])
+const vetoChoiceMade = ref(false)
+const vetoFormatModel = computed({
+  get: () => form.default_map_veto_format ?? NO_VETO,
+  set: (v: string | null) => {
+    vetoChoiceMade.value = true
+    form.default_map_veto_format = v && v !== NO_VETO ? v : null
+  },
+})
+function defaultVetoFor(matchFormat: string): string | null {
+  const ids = vetoFormatOptions.value.map((o) => o.value)
+  return (
+    ids.find((id) => id === `${matchFormat}_standard`) ??
+    ids.find((id) => id.startsWith(`${matchFormat}_`)) ??
+    null
+  )
+}
+watch(
+  () => [vetoFormatOptions.value, form.default_match_format] as const,
+  ([options, matchFormat]) => {
+    if (!isCreate.value || vetoChoiceMade.value || !options.length) return
+    form.default_map_veto_format = defaultVetoFor(matchFormat)
+  },
+  { immediate: true },
+)
+
 // Reset league/season + veto when game changes (the gameDetail composable
 // handles the map-pool reset itself).
 watch(() => form.game_id, () => {
@@ -782,6 +820,7 @@ watch(() => form.game_id, () => {
   form.league_id = null
   form.season_id = null
   form.default_map_veto_format = null
+  vetoChoiceMade.value = false
 })
 
 // Reset season when league cleared

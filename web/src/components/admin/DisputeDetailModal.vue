@@ -58,8 +58,21 @@
             <v-table density="compact">
               <tbody>
                 <tr>
-                  <td class="text-medium-emphasis" width="180">Match ID</td>
-                  <td><code>{{ dispute.match_id }}</code></td>
+                  <td class="text-medium-emphasis" width="180">Match</td>
+                  <td>
+                    <template v-if="dispute.participant1_name || dispute.participant2_name">
+                      <router-link
+                        v-if="dispute.tournament_slug"
+                        :to="`/tournaments/${dispute.tournament_slug}/matches/${dispute.match_id}`"
+                        target="_blank"
+                      >
+                        {{ dispute.participant1_name ?? 'TBD' }} vs {{ dispute.participant2_name ?? 'TBD' }}
+                      </router-link>
+                      <span v-else>{{ dispute.participant1_name ?? 'TBD' }} vs {{ dispute.participant2_name ?? 'TBD' }}</span>
+                      <span v-if="dispute.tournament_name" class="text-medium-emphasis"> · {{ dispute.tournament_name }}</span>
+                    </template>
+                    <code v-else>{{ dispute.match_id }}</code>
+                  </td>
                 </tr>
                 <tr v-if="dispute.original_participant1_score != null">
                   <td class="text-medium-emphasis">Original Score</td>
@@ -67,11 +80,17 @@
                 </tr>
                 <tr v-if="dispute.original_winner_registration_id">
                   <td class="text-medium-emphasis">Original Winner</td>
-                  <td><code>{{ dispute.original_winner_registration_id }}</code></td>
+                  <td>
+                    <span v-if="dispute.original_winner_name">{{ dispute.original_winner_name }}</span>
+                    <code v-else>{{ dispute.original_winner_registration_id }}</code>
+                  </td>
                 </tr>
                 <tr>
                   <td class="text-medium-emphasis">Raised By</td>
-                  <td><code>{{ dispute.disputed_by_user_id }}</code></td>
+                  <td>
+                    <span v-if="dispute.disputed_by_name">{{ dispute.disputed_by_name }}</span>
+                    <code v-else>{{ dispute.disputed_by_user_id }}</code>
+                  </td>
                 </tr>
                 <tr>
                   <td class="text-medium-emphasis">Created</td>

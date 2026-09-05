@@ -314,7 +314,7 @@ test.describe('Match browsing and navigation', () => {
     await expect(page.getByText(/Match #\d/).first()).toBeVisible()
 
     // Status timeline card renders for every match.
-    await expect(page.getByText('Match Status').first()).toBeVisible()
+    await expect(page.getByTestId('match-stepper')).toBeVisible()
   })
 
   test('shows Registration Closed once the tournament is underway', async ({ page }) => {
@@ -331,8 +331,8 @@ test.describe('Match browsing and navigation', () => {
     await loginAsAdmin(page)
     await page.goto(`/tournaments/${scenario.tournamentSlug}`)
 
-    // Overview tab info card: "Participants 2 / 4" for our two approved players.
-    await expect(page.getByText('2 / 4')).toBeVisible({ timeout: 15000 })
+    // Header and "Players in" card both count our two approved players.
+    await expect(page.getByText('2 / 4').first()).toBeVisible({ timeout: 15000 })
   })
 })
 
@@ -944,7 +944,7 @@ test.describe('Match check-in', () => {
     await expect(page.getByRole('button', { name: /^Check In$/i })).toBeVisible()
 
     // The status timeline accompanies the check-in phase.
-    await expect(page.getByText('Match Status').first()).toBeVisible()
+    await expect(page.getByTestId('match-stepper')).toBeVisible()
   })
 })
 

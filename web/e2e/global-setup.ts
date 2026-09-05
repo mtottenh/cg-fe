@@ -8,6 +8,12 @@ import { writeFileSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { testUsers, CS2_MAP_POOL } from './fixtures/test-data'
+import {
+  getTeamMembers,
+  joinLeague,
+  registerAsRosterUser,
+} from './fixtures/team-roster.fixture'
+import { acceptInvitation, invitePlayer } from './fixtures/team-member.fixture'
 import { SEEDED_STATE_PATH } from './seeded-state-path'
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
@@ -385,11 +391,14 @@ async function seedTeamForAdmin(
   if (myTeamsResponse.ok) {
     const myTeamsData = await myTeamsResponse.json()
     const myTeams: PlayerLeagueTeamMembership[] = myTeamsData.data || []
-    if (myTeams.length > 0) {
-      console.log('Admin already has a team, using existing')
+    // The admin's team in THIS season — specs create admin teams in other
+    // leagues, so on a reused database the first membership is not it.
+    const inSeason = myTeams.find((t) => t.season_id === seasonId)
+    if (inSeason) {
+      console.log('Admin already has a team in the seeded season, using existing')
       return {
-        teamId: myTeams[0].team_id,
-        teamSeasonId: myTeams[0].team_season_id,
+        teamId: inSeason.team_id,
+        teamSeasonId: inSeason.team_season_id,
       }
     }
   }
@@ -429,8 +438,53 @@ async function seedTeamForAdmin(
   return { teamId, teamSeasonId }
 }
 
-async function seedTeamTournament(token: string, leagueId: string, teamSeasonId: string): Promise<void> {
+/** The roster size the seeded team tournament asks for (`team_size` below). */
+const TEAM_TOURNAMENT_TEAM_SIZE = 5
+
+/**
+ * Bring the admin's team up to `teamSize` active players. Team registration
+ * refuses a roster smaller than the tournament's team size (cg v0.6.0), and
+ * the admin's seeded team starts with the admin alone. Each extra player is
+ * a fresh user who joins the league and accepts the admin's invitation, the
+ * same shape as `createTeamWithMembers`.
+ */
+async function fillRoster(
+  token: string,
+  leagueId: string,
+  seasonId: string,
+  teamSeasonId: string,
+  teamSize: number
+): Promise<void> {
+  const members = await getTeamMembers(teamSeasonId, token)
+  // Status casing follows the API enum; compare loosely, as the specs do.
+  const active = members.filter((m) => m.status.toLowerCase() === 'active').length
+  if (active >= teamSize) {
+    console.log(`Admin team roster already has ${active} players`)
+    return
+  }
+  console.log(`Filling admin team roster: ${active} → ${teamSize} players`)
+  for (let i = active; i < teamSize; i++) {
+    const member = await registerAsRosterUser()
+    await joinLeague(member.token, leagueId)
+    const invitation = await invitePlayer(token, seasonId, teamSeasonId, member.playerId)
+    if (!invitation) {
+      throw new Error(`Could not invite ${member.username} to the admin team`)
+    }
+    const accepted = await acceptInvitation(member.token, invitation.id)
+    if (!accepted) {
+      throw new Error(`${member.username} could not accept the admin team invitation`)
+    }
+  }
+}
+
+async function seedTeamTournament(
+  token: string,
+  leagueId: string,
+  seasonId: string,
+  teamSeasonId: string
+): Promise<void> {
   console.log('Seeding team-based tournament...')
+  await fillRoster(token, leagueId, seasonId, teamSeasonId, TEAM_TOURNAMENT_TEAM_SIZE)
 
   // Try to fetch the team tournament directly by slug first
   const checkResponse = await fetch(`${API_URL}/v1/tournaments/by-slug/e2e-team-tournament`)
@@ -476,11 +530,12 @@ async function seedTeamTournament(token: string, leagueId: string, teamSeasonId:
     participant_type: 'team',
     min_participants: 2,
     max_participants: 8,
-    team_size: 5,
+    team_size: TEAM_TOURNAMENT_TEAM_SIZE,
     registration_type: 'open',
     scheduling_mode: 'live',
     default_match_format: 'bo1',
     league_id: leagueId,
+    season_id: seasonId,
     description: 'Team-based tournament for E2E testing',
   }
 
@@ -790,7 +845,7 @@ async function globalSetup(): Promise<void> {
     }
 
     // Seed team-based tournament
-    await seedTeamTournament(adminToken, leagueId, team.teamSeasonId)
+    await seedTeamTournament(adminToken, leagueId, seasonId, team.teamSeasonId)
 
     // Persist seeded state for test specs
     persistSeededState({

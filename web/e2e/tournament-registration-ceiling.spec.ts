@@ -123,13 +123,8 @@ async function createOverCapacityScenario(adminToken: string): Promise<CeilingSc
  * "not found" instead of telling us which state rendered.
  */
 function registrationCard(page: Page) {
-  return page
-    .locator('.v-card')
-    .filter({
-      hasText:
-        /Join This Tournament|Registration Pending|You're Registered|Check-in Now Open|You're All Set!|Registration Opens Soon|Registration Closed/,
-    })
-    .first()
+  // The card carries a test id: its title changes with the viewer's situation.
+  return page.getByTestId('registration-card').first()
 }
 
 /**
@@ -231,15 +226,16 @@ test.describe.serial('Registration identity past the page ceiling (P-167)', () =
 
     // The capacity read is a real count too: "20 / 64" told an organiser there
     // were 44 free slots when there were 39.
-    await expect(page.getByText(`${PARTICIPANTS} / ${MAX_PARTICIPANTS}`)).toBeVisible()
+    // The header's "x / y in" and the overview's "Players in" chip both count.
+    await expect(page.getByText(`${PARTICIPANTS} / ${MAX_PARTICIPANTS}`).first()).toBeVisible()
 
     // The participants table is paged by the server, and page 2 is reachable —
     // before this the tab rendered 20 rows and offered no way to see the rest.
-    await page.getByRole('tab', { name: /Participants/ }).click()
-    await expect(page.getByText(scenario.subjectName)).toHaveCount(0)
+    await page.getByRole('tab', { name: /Players|Teams/ }).click()
+    await expect(page.getByRole('table').getByText(scenario.subjectName)).toHaveCount(0)
     await page.getByTestId('participants-pagination').getByRole('button', { name: 'Go to page 2' }).click()
     await expect(
-      page.getByText(scenario.subjectName),
+      page.getByRole('table').getByText(scenario.subjectName),
       'the 25th registrant must be reachable in the participants table',
     ).toBeVisible({ timeout: 15_000 })
   })

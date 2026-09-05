@@ -10,8 +10,15 @@
       <!-- Breadcrumb: the league → tournament chain is navigable upward -->
       <v-breadcrumbs :items="breadcrumbs" class="pa-0 mb-4" />
 
-      <!-- Header -->
-      <TournamentHeader :tournament="tournament" :game="game" class="mb-6" />
+      <!-- Header: names the league and season this cup runs in -->
+      <TournamentHeader
+        :tournament="tournament"
+        :game="game"
+        :league-name="scope.leagueName"
+        :season-name="scope.seasonName"
+        :entered-count="participantCount"
+        class="mb-6"
+      />
 
       <!-- Organizer Toolbar (inline management for organizers) -->
       <OrganizerToolbar
@@ -30,6 +37,15 @@
         :loading="registering"
         :has-eligible-teams="hasEligibleTeams"
         :is-invited="isInvited"
+        :signed-out="!isAuthenticated"
+        :redirect-path="route.fullPath"
+        :is-league-member="isLeagueMember"
+        :league-id="tournament.league_id"
+        :league-name="scope.leagueName"
+        :season-id="tournament.season_id"
+        :season-name="scope.seasonName"
+        :my-team="myTeamForCard"
+        :entered-count="participantCount"
         class="mb-6"
         @register="handleRegister"
         @withdraw="handleWithdraw"
@@ -82,7 +98,7 @@
         <v-tabs v-model="activeTab" bg-color="transparent">
           <v-tab value="overview">Overview</v-tab>
           <v-tab value="participants">
-            Participants
+            {{ isTeamTournament ? 'Teams' : 'Players' }}
             <v-chip size="x-small" class="ml-2" variant="tonal">
               {{ participantCount }}
             </v-chip>
@@ -109,6 +125,36 @@
                     </div>
                   </div>
 
+                  <!-- Who is in, with roster counts when the season knows them -->
+                  <v-card variant="outlined" class="mb-6" data-testid="teams-in">
+                    <v-card-title class="text-subtitle-1 d-flex align-center">
+                      {{ isTeamTournament ? 'Teams in' : 'Players in' }}
+                      <v-chip size="small" variant="tonal" class="ml-2">{{ participantCount }} / {{ tournament.max_participants }}</v-chip>
+                      <v-spacer />
+                      <v-btn variant="text" size="small" color="primary" @click="activeTab = 'participants'">See all</v-btn>
+                    </v-card-title>
+                    <v-divider />
+                    <v-list v-if="liveRegistrations.length" density="compact">
+                      <v-list-item v-for="reg in liveRegistrations" :key="reg.id" :title="reg.participant_name">
+                        <template v-slot:prepend>
+                          <v-avatar size="28" rounded="sm" color="surface-variant">
+                            <v-img v-if="reg.participant_logo_url" alt="" :src="reg.participant_logo_url" />
+                            <v-icon v-else size="16">{{ isTeamTournament ? 'mdi-shield-outline' : 'mdi-account' }}</v-icon>
+                          </v-avatar>
+                        </template>
+                        <template v-slot:append>
+                          <v-chip v-if="rosterFor(reg)" size="small" variant="tonal" :color="rosterFor(reg)!.full ? 'success' : 'warning'">
+                            {{ rosterFor(reg)!.count }} of {{ rosterFor(reg)!.max }}
+                          </v-chip>
+                          <v-chip v-else-if="reg.status !== 'approved'" size="small" variant="tonal" :color="registrationStatusColor(reg.status)">
+                            {{ registrationStatusLabel(reg.status) }}
+                          </v-chip>
+                        </template>
+                      </v-list-item>
+                    </v-list>
+                    <v-card-text v-else class="text-body-2 text-medium-emphasis">Nobody has entered yet.</v-card-text>
+                  </v-card>
+
                   <!-- Rules (creator-supplied URL — only http/https ever
                        reaches the DOM) -->
                   <div v-if="isHttpUrl(tournament.rules_url)" class="mb-6">
@@ -128,7 +174,7 @@
                 <v-col cols="12" md="4">
                   <!-- Tournament Info Card -->
                   <v-card variant="outlined">
-                    <v-card-title class="text-subtitle-1">Tournament Details</v-card-title>
+                    <v-card-title class="text-subtitle-1">Details</v-card-title>
                     <v-divider />
                     <v-list density="compact">
                       <v-list-item>
@@ -151,17 +197,17 @@
                         <template v-slot:prepend>
                           <v-icon size="small">{{ participantIcon }}</v-icon>
                         </template>
-                        <v-list-item-title>Participant Type</v-list-item-title>
-                        <v-list-item-subtitle>{{ participantTypeLabel }}</v-list-item-subtitle>
+                        <v-list-item-title>{{ isTeamTournament ? 'Teams' : 'Entry' }}</v-list-item-title>
+                        <v-list-item-subtitle>{{ isTeamTournament ? `Teams of ${tournament.team_size ?? '?'}` : 'Solo' }}</v-list-item-subtitle>
                       </v-list-item>
 
                       <v-list-item>
                         <template v-slot:prepend>
                           <v-icon size="small">mdi-account-multiple</v-icon>
                         </template>
-                        <v-list-item-title>Participants</v-list-item-title>
+                        <v-list-item-title>Entered</v-list-item-title>
                         <v-list-item-subtitle>
-                          {{ participantCount }} / {{ tournament.max_participants }}
+                          {{ participantCount }} of {{ tournament.max_participants }}
                         </v-list-item-subtitle>
                       </v-list-item>
 
@@ -187,6 +233,14 @@
                         </template>
                         <v-list-item-title>Tournament Starts</v-list-item-title>
                         <v-list-item-subtitle>{{ formatDateTime(tournament.starts_at) }}</v-list-item-subtitle>
+                      </v-list-item>
+
+                      <v-list-item>
+                        <template v-slot:prepend>
+                          <v-icon size="small">mdi-checkbox-marked-circle-outline</v-icon>
+                        </template>
+                        <v-list-item-title>Check-in</v-list-item-title>
+                        <v-list-item-subtitle>{{ tournament.check_in_required ? 'Required before each match' : 'Not required' }}</v-list-item-subtitle>
                       </v-list-item>
 
                       <v-list-item>
@@ -412,7 +466,6 @@ import {
   useTournamentsStore,
   formatTournamentFormat,
   formatSchedulingMode,
-  formatParticipantType,
   participantTypeIcon,
   type TournamentMatchResponse,
 } from '@/stores/tournaments'
@@ -432,6 +485,10 @@ import { rulesFromResponse, hasAnyRules } from '@/composables/useEligibilityRule
 import { useEligibilityCheck } from '@/composables/useEligibilityCheck'
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
 import { useLeagueTeamsStore } from '@/stores/leagueTeams'
+import { useLeaguesStore } from '@/stores/leagues'
+import { api } from '@/api'
+import type { LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
+import type { TournamentResponse } from '@/stores/tournaments'
 import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
@@ -447,6 +504,7 @@ const gamesStore = useGamesStore()
 const authStore = useAuthStore()
 const tournamentsStore = useTournamentsStore()
 const leagueTeamsStore = useLeagueTeamsStore()
+const leaguesStore = useLeaguesStore()
 
 // Store-backed reactive refs (tournament must be resolved before useTournamentContext).
 const {
@@ -458,22 +516,64 @@ const {
 } = storeToRefs(tournamentsStore)
 
 const {
-  isOrganizer, isTeamTournament, myRegistration, hasEligibleTeams, isInvited,
+  isOrganizer, isTeamTournament, myRegistration, hasEligibleTeams, isInvited, myTeamInSeason,
   loadOrganizerRoles,
 } = useTournamentContext(tournament)
 
+// The league and season this cup runs in, and the season's rosters — for the
+// header, the breadcrumb, the join strip ("1 of 5 players") and "Teams in".
+const scope = ref<{ leagueName: string | null; seasonName: string | null }>({ leagueName: null, seasonName: null })
+const seasonTeams = ref<LeagueTeamSummaryResponse[]>([])
+async function loadScope(t: TournamentResponse) {
+  const [league, season, teams] = await Promise.all([
+    t.league_id ? api.GET('/v1/leagues/{league_id}', { params: { path: { league_id: t.league_id } } }).catch(() => null) : null,
+    t.season_id ? api.GET('/v1/league-seasons/{season_id}', { params: { path: { season_id: t.season_id } } }).catch(() => null) : null,
+    t.season_id ? api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: t.season_id }, query: { per_page: 100 } } }).catch(() => null) : null,
+  ])
+  scope.value = { leagueName: league?.data?.data?.name ?? null, seasonName: season?.data?.data?.name ?? null }
+  seasonTeams.value = teams?.data?.data ?? []
+}
+const isLeagueMember = computed((): boolean | undefined => {
+  if (!authStore.isAuthenticated || !tournament.value?.league_id) return undefined
+  return leaguesStore.myLeagues.some(m => m.league_id === tournament.value!.league_id)
+})
+function rosterFor(reg: { team_season_id?: string | null }) {
+  if (!reg.team_season_id) return null
+  const t = seasonTeams.value.find(s => s.team_season_id === reg.team_season_id)
+  if (!t) return null
+  const max = t.team_size_max ?? tournament.value?.team_size ?? 5
+  return { count: t.active_member_count, max, full: t.active_member_count >= max }
+}
+const myTeamForCard = computed(() => {
+  const mine = myTeamInSeason.value
+  if (!mine) return null
+  const roster = rosterFor({ team_season_id: mine.team_season_id })
+  const max = roster?.max ?? tournament.value?.team_size ?? 5
+  // Unknown roster (a cup outside a season) is unknown, not one player.
+  return { teamId: mine.team_id, teamSeasonId: mine.team_season_id, name: mine.team_name, rosterCount: roster?.count ?? null, rosterMax: max }
+})
+const liveRegistrations = computed(() =>
+  allRegistrations.value.filter(r => r.status !== 'withdrawn' && r.status !== 'disqualified').slice(0, 8),
+)
+
 // State
+// League › Season › Cup, by name. A cup outside any league falls back to the
+// global list.
 const breadcrumbs = computed(() => {
-  const items: Array<{ title: string; to?: object; disabled?: boolean }> = [
-    { title: 'Tournaments', to: { name: 'tournaments' } },
-  ]
-  if (tournament.value?.league_id) {
-    items.unshift({
-      title: 'League',
-      to: { name: 'league-detail', params: { id: tournament.value.league_id } },
-    })
+  const items: Array<{ title: string; to?: object; disabled?: boolean }> = []
+  const t = tournament.value
+  if (t?.league_id) {
+    items.push({ title: scope.value.leagueName ?? 'League', to: { name: 'league-detail', params: { id: t.league_id } } })
+    if (t.season_id) {
+      items.push({
+        title: scope.value.seasonName ?? 'Season',
+        to: { name: 'league-detail', params: { id: t.league_id }, query: { season: t.season_id, tab: 'tournaments' } },
+      })
+    }
+  } else {
+    items.push({ title: 'Tournaments', to: { name: 'tournaments' } })
   }
-  items.push({ title: tournament.value?.name ?? 'Tournament', disabled: true })
+  items.push({ title: t?.name ?? 'Tournament', disabled: true })
   return items
 })
 
@@ -576,11 +676,6 @@ const matchFormatLabel = computed(() =>
   tournament.value ? formatMatchFormat(tournament.value.default_match_format) : ''
 )
 const participantIcon = computed(() => participantTypeIcon(tournament.value?.participant_type))
-const participantTypeLabel = computed(() =>
-  tournament.value
-    ? formatParticipantType(tournament.value.participant_type, tournament.value.team_size)
-    : ''
-)
 const schedulingModeLabel = computed(() =>
   tournament.value ? formatSchedulingMode(tournament.value.scheduling_mode) : ''
 )
@@ -820,7 +915,9 @@ async function fetchData() {
       // depend on where the caller's row happens to sort (P-167).
       if (authStore.isAuthenticated) {
         fetchPromises.push(tournamentsStore.fetchMyRegistrations(id).catch(() => []))
+        fetchPromises.push(leaguesStore.fetchMyLeagues().catch(() => []))
       }
+      fetchPromises.push(loadScope(tournamentsStore.currentTournament))
 
       // Fetch user's teams for team tournaments when authenticated
       if (

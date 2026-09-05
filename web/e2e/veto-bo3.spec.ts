@@ -243,7 +243,8 @@ test.describe('Map Veto (bo3) — picks + side selection over WebSocket', () => 
       const picks = state.actions.filter((a) => a.action_type === 'pick')
       expect(bans.length).toBe(4)
       expect(picks.length).toBe(2)
-      expect(state.session.selected_maps.length).toBe(2)
+      // Two picks and the decider, which runs by itself after the last ban.
+      expect(state.session.selected_maps.length).toBe(3)
     } finally {
       await contextA.close()
       await contextB.close()
@@ -294,7 +295,9 @@ test.describe('Map Veto (bo3) — picks + side selection over WebSocket', () => 
 
       const ctButton = (p: Page) => p.getByRole('button', { name: 'CT', exact: true })
       const tButton = (p: Page) => p.getByRole('button', { name: 'T', exact: true })
-      const waitingChip = (p: Page) => p.getByText(/Waiting for .+ side/i)
+      // The exact copy: a looser regex used to match a whole container whose text
+      // ran from the stepper's "Waiting for teams" to the side-select card.
+      const waitingChip = (p: Page) => p.getByText(/Waiting for (your|the) opponent to select a side/i)
 
       await expect
         .poll(async () => (await ctButton(pageA).count()) + (await ctButton(pageB).count()), {

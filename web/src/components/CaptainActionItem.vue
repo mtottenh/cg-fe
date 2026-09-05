@@ -50,6 +50,7 @@ const ACTION_META: Record<string, { icon: string; color: string; label: string }
   schedule_match: { icon: 'mdi-calendar-clock', color: 'info', label: 'Schedule your match' },
   respond_proposal: { icon: 'mdi-calendar-question', color: 'info', label: 'Respond to schedule proposal' },
   check_in: { icon: 'mdi-checkbox-marked-circle-outline', color: 'warning', label: 'Check-in required' },
+  veto_turn: { icon: 'mdi-map-marker-radius', color: 'error', label: 'Your turn in the map veto' },
   submit_result: { icon: 'mdi-scoreboard-outline', color: 'primary', label: 'Submit match result' },
   confirm_result: { icon: 'mdi-check-decagram', color: 'warning', label: 'Confirm or dispute result' },
   acknowledge_review: { icon: 'mdi-clipboard-check-outline', color: 'error', label: 'Acknowledge result review' },

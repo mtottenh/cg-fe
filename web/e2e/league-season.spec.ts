@@ -42,12 +42,13 @@ test.describe('League Season Lifecycle', () => {
       // The list is paginated server-side (ordered by name, no server search),
       // so a fresh league is not guaranteed to sit on page 1 of a long-lived
       // dev DB — navigate to the league detail page directly by id.
-      await page.goto(`/leagues/${scenario.leagueId}`)
+      await page.goto(`/leagues/${scenario.leagueId}?season=${scenario.seasonId}`)
       await page.waitForLoadState('networkidle')
 
       await expect(page.getByText(scenario.leagueName).first()).toBeVisible()
 
-      // Season selector MUST be visible with our season auto-selected.
+      // The page opens on the league's current season (the auto-created
+      // Season 1) unless the URL addresses one, so the selector MUST show ours.
       const seasonSelect = page.locator('.v-select').first()
       await expect(seasonSelect).toBeVisible()
       await expect(seasonSelect).toContainText(scenario.seasonName)
@@ -90,23 +91,24 @@ test.describe('League Season Lifecycle', () => {
 
     test('should show team creation during registration phase', async ({ page }) => {
       await loginAsAdmin(page)
-      await page.goto(`/leagues/${scenario.leagueId}`)
+      await page.goto(`/leagues/${scenario.leagueId}?season=${scenario.seasonId}`)
       await page.waitForLoadState('networkidle')
 
       // The admin created the league (league admin member) and has no team in
       // the season, so the Create Team CTA MUST be available.
-      await expect(page.getByRole('button', { name: /Create Team/i }).first()).toBeVisible()
+      await expect(page.getByRole('button', { name: /Create a team/i }).first()).toBeVisible()
     })
 
     test('should show teams registered for the season', async ({ page }) => {
       await loginAsAdmin(page)
-      await page.goto(`/leagues/${scenario.leagueId}`)
+      // Teams live on the Teams tab, addressed by the URL.
+      await page.goto(`/leagues/${scenario.leagueId}?season=${scenario.seasonId}&tab=teams`)
       await page.waitForLoadState('networkidle')
 
-      // The registered team MUST appear as a card with its member count chip.
+      // The registered team MUST appear as a card with its roster-count chip.
       const teamCard = page.locator('.v-card').filter({ hasText: roster.teamName }).first()
       await expect(teamCard).toBeVisible()
-      await expect(teamCard.getByText(/members/i)).toBeVisible()
+      await expect(teamCard.getByText(/\d+ of \d+/)).toBeVisible()
       await expect(teamCard.getByText(`[${roster.teamTag}]`)).toBeVisible()
     })
   })

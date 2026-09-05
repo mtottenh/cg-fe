@@ -69,6 +69,11 @@ test.describe('Admin demo detail — association', () => {
 
     const leagueInput = card.getByRole('combobox', { name: 'Associated league' })
     await expect(leagueInput).toBeVisible()
+    // Focus first: the autocomplete writes the current league's name into the
+    // input on focus, after a bare fill() has already selected the (empty)
+    // text, so the typed name would be appended to it.
+    await leagueInput.click()
+    await leagueInput.clear()
     await leagueInput.fill(rightLeague.leagueName)
     await page.getByRole('option', { name: rightLeague.leagueName }).click()
 

@@ -114,3 +114,20 @@ export function formatRelativeTime(dateStr: string | null | undefined): string {
     year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
   })
 }
+
+/**
+ * When a match is, the way people say it: "Tonight 19:30", "Today 14:00",
+ * "Tomorrow 20:00", otherwise the weekday and date. Evening starts at 17:00.
+ */
+export function formatWhen(dateStr: string | null | undefined, now: Date = new Date()): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (Number.isNaN(d.getTime())) return ''
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  const dayOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const days = Math.round((dayOf(d) - dayOf(now)) / 86_400_000)
+  if (days === 0) return `${d.getHours() >= 17 ? 'Tonight' : 'Today'} ${time}`
+  if (days === 1) return `Tomorrow ${time}`
+  if (days === -1) return `Yesterday ${time}`
+  return d.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}

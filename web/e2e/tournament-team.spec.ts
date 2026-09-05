@@ -97,7 +97,8 @@ async function createTeamRegistrationScenario(
   const roster = await createTeamWithMembers({
     leagueId: ls.leagueId,
     seasonId: ls.seasonId,
-    memberCount: 0,
+    // cg v0.6.0 refuses a roster smaller than team_size: field a full team.
+    memberCount: TEAM_SIZE - 1,
     teamNamePrefix: 'E2E Reg Team',
   })
 
@@ -185,13 +186,8 @@ async function registerTeamViaApi(
  * card keeps chip/button assertions away from the header and the tabs card.
  */
 function registrationCard(page: Page) {
-  return page
-    .locator('.v-card')
-    .filter({
-      hasText:
-        /Join This Tournament|Registration Pending|You're Registered|Check-in Now Open|You're All Set!|Registration Opens Soon|Registration Closed/,
-    })
-    .first()
+  // The card carries a test id: its title changes with the viewer's situation.
+  return page.getByTestId('registration-card').first()
 }
 
 test.describe('Team Tournament Registration', () => {
@@ -213,14 +209,15 @@ test.describe('Team Tournament Registration', () => {
     // formatParticipantType(participant_type, team_size)
     // (TournamentHeader.vue:59, stores/tournaments.ts:199-205). It also
     // appears in the Overview details list, hence `.first()`.
-    await expect(page.getByText(`Teams (${TEAM_SIZE} players)`).first()).toBeVisible()
+    await expect(page.getByText(`Teams of ${TEAM_SIZE}`).first()).toBeVisible()
 
     // Registration is open, and the card offers the TEAM call-to-action
     // ("Register Team", not "Register Now" — TournamentRegistrationCard.vue:23)
     // with the team-specific subtitle (`:213`).
     const card = registrationCard(page)
-    await expect(card.getByText('Join This Tournament')).toBeVisible()
-    await expect(card.getByText('Register your team to compete')).toBeVisible()
+    // The strip names the team and the cup for an eligible captain.
+    await expect(card.getByText(/^Register .+ for .+\.$/)).toBeVisible()
+    await expect(card.getByText(/players on the roster/)).toBeVisible()
     await expect(card.getByRole('button', { name: 'Register Team' })).toBeVisible()
     await expect(card.getByRole('button', { name: 'Register Now' })).toHaveCount(0)
 
@@ -321,14 +318,14 @@ test.describe('Team Tournament Registration', () => {
     // Approval". The organiser-approval path is covered by the Organizer test
     // below, which asks for an `approval` tournament so a pending row exists.
     const card = registrationCard(page)
-    await expect(card.getByText("You're Registered")).toBeVisible({ timeout: 15_000 })
+    await expect(card.getByText(/ is in\.$/)).toBeVisible({ timeout: 15_000 })
     await expect(card.locator('.v-chip').filter({ hasText: 'Registered' })).toBeVisible()
     await expect(card.getByText('Awaiting Approval')).toHaveCount(0)
     await expect(card.getByRole('button', { name: 'Register Team' })).toHaveCount(0)
 
     // UI: and the team shows up in the Participants tab under the name we
     // typed, with the mapped status label (TournamentDetailPage.vue:185-189).
-    await page.getByRole('tab', { name: /Participants/ }).click()
+    await page.getByRole('tab', { name: /^Teams/ }).click()
     const participantRow = page.locator('tr').filter({ hasText: participantName })
     await expect(participantRow).toBeVisible()
     await expect(participantRow.locator('.v-chip').filter({ hasText: 'Approved' })).toBeVisible()
@@ -341,7 +338,7 @@ test.describe('Team Tournament Registration', () => {
     expect(regs[0]?.status).toBe('approved')
   })
 
-  test('should show "No Eligible Teams" to a user who captains no team', async ({ page }) => {
+  test('sends a user outside the league to join it before anything else', async ({ page }) => {
     test.setTimeout(120_000)
 
     const adminToken = await getAdminToken()
@@ -360,7 +357,10 @@ test.describe('Team Tournament Registration', () => {
     // explanatory chip (TournamentRegistrationCard.vue:91-96, driven by
     // useTournamentContext.ts:46-60).
     const card = registrationCard(page)
-    await expect(card.locator('.v-chip').filter({ hasText: 'No Eligible Teams' })).toBeVisible()
+    // Teams come from the league: an outsider is offered the league, not a
+    // register button and not a dead-end chip.
+    await expect(card.getByText(/^Teams in this cup come from /)).toBeVisible()
+    await expect(card.getByTestId('join-league-gate')).toBeVisible()
     await expect(card.getByRole('button', { name: 'Register Team' })).toHaveCount(0)
 
     expect(await listRegistrations(adminToken, scenario.tournamentId)).toHaveLength(0)
@@ -394,7 +394,7 @@ test.describe('Team Tournament Registration', () => {
     // branch with the Withdraw affordance (TournamentRegistrationCard.vue:70-88;
     // `canWithdraw` at `:163-167`). Check-in is not open, so no Check In button.
     const card = registrationCard(page)
-    await expect(card.getByText("You're Registered")).toBeVisible({ timeout: 15_000 })
+    await expect(card.getByText(/ is in\.$/)).toBeVisible({ timeout: 15_000 })
     await expect(card.locator('.v-chip').filter({ hasText: 'Registered' })).toBeVisible()
     await expect(card.getByRole('button', { name: 'Withdraw' })).toBeVisible()
     await expect(card.getByRole('button', { name: 'Register Team' })).toHaveCount(0)
@@ -418,13 +418,13 @@ test.describe('Team Tournament Registration', () => {
       timeout: 15_000,
     })
 
-    // A league-scoped tournament gets a League crumb ahead of Tournaments
+    // A league-scoped tournament reads League › Season › Cup, by name
     // (TournamentDetailPage.vue:391-403). Clicking it MUST reach that league.
     const breadcrumbs = page.locator('.v-breadcrumbs')
-    await expect(breadcrumbs.getByText('Tournaments')).toBeVisible()
+    await expect(breadcrumbs.getByText(scenario.leagueName)).toBeVisible()
     await expect(breadcrumbs.getByText(scenario.tournamentName)).toBeVisible()
 
-    await breadcrumbs.getByText('League', { exact: true }).click()
+    await breadcrumbs.getByText(scenario.leagueName).click()
     await expect(page).toHaveURL(new RegExp(`/leagues/${scenario.leagueId}`))
     // LeagueDetailPage renders the name in a v-card-title, not a heading
     // element (LeagueDetailPage.vue:31), so match on text.
@@ -465,7 +465,7 @@ test.describe('Team Tournament Organizer', () => {
 
     // Approve through the participants table's organizer-only Actions column
     // (TournamentDetailPage.vue:202-223 → handleApproveRegistration `:594`).
-    await page.getByRole('tab', { name: /Participants/ }).click()
+    await page.getByRole('tab', { name: /^Teams/ }).click()
     const row = page.locator('tr').filter({ hasText: participantName })
     await expect(row).toBeVisible()
     await expect(row.locator('.v-chip').filter({ hasText: 'Pending' })).toBeVisible()

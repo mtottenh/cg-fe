@@ -50,11 +50,15 @@
       </template>
 
       <template v-slot:item.registration="{ item }">
-        <div v-if="item.registration_start || item.registration_end" class="text-caption">
-          <div v-if="item.registration_start">Start: {{ formatDate(item.registration_start) }}</div>
-          <div v-if="item.registration_end">End: {{ formatDate(item.registration_end) }}</div>
+        <div v-if="item.registration_start || item.registration_end || item.season_start || item.season_end" class="text-caption">
+          <div v-if="item.registration_start || item.registration_end">
+            Registration: {{ formatDate(item.registration_start) }} – {{ formatDate(item.registration_end) }}
+          </div>
+          <div v-if="item.season_start || item.season_end">
+            Plays: {{ formatDate(item.season_start) }} – {{ formatDate(item.season_end) }}
+          </div>
         </div>
-        <span v-else class="text-grey-lighten-1">-</span>
+        <span v-else class="text-warning" title="No dates set — nobody can plan around this season">No dates</span>
       </template>
 
       <template v-slot:item.team_size="{ item }">
@@ -152,7 +156,7 @@ defineEmits<{
 const headers = [
   { title: 'Name', key: 'name' },
   { title: 'Status', key: 'status', width: '120px' },
-  { title: 'Registration', key: 'registration', width: '160px', sortable: false },
+  { title: 'Dates', key: 'registration', width: '220px', sortable: false },
   { title: 'Team Size', key: 'team_size', width: '100px', sortable: false },
   { title: 'Roster', key: 'roster_lock_status', width: '100px' },
   { title: 'Actions', key: 'actions', width: '140px', sortable: false, align: 'center' as const },

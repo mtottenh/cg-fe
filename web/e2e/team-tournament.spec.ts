@@ -110,10 +110,10 @@ test.describe('5v5 Swiss team tournament', () => {
 
     // Overview: format is Swiss, participant type surfaces the 5v5 team size.
     await expect(page.getByText('Swiss').first()).toBeVisible()
-    await expect(page.getByText(`Teams (${TEAM_SIZE} players)`)).toBeVisible()
+    await expect(page.getByText(`Teams of ${TEAM_SIZE}`).first()).toBeVisible()
 
-    // Participants tab lists the registered TEAMS by their participant names.
-    await page.getByRole('tab', { name: /participant/i }).click()
+    // The Teams tab lists the registered TEAMS by their participant names.
+    await page.getByRole('tab', { name: /^Teams/i }).click()
     for (const team of scenario.teams) {
       await expect(page.getByText(team.participantName).first()).toBeVisible()
     }

@@ -1,12 +1,14 @@
 <template>
-  <v-card variant="outlined">
-    <v-card-title class="d-flex align-center">
-      <v-icon start>mdi-timeline-clock</v-icon>
-      Match Status
-    </v-card-title>
-    <v-divider />
-    <v-card-text>
-      <div class="status-timeline">
+  <component :is="embedded ? 'div' : VCard" :variant="embedded ? undefined : 'outlined'">
+    <template v-if="!embedded">
+      <v-card-title class="d-flex align-center">
+        <v-icon start>mdi-timeline-clock</v-icon>
+        Match Status
+      </v-card-title>
+      <v-divider />
+    </template>
+    <component :is="embedded ? 'div' : VCardText">
+      <div class="status-timeline" data-testid="match-stepper">
         <div
           v-for="(step, index) in steps"
           :key="step.status"
@@ -25,7 +27,7 @@
               {{ step.label }}
             </div>
             <div v-if="getStepTimestamp(step)" class="text-caption text-medium-emphasis">
-              {{ formatDateTime(getStepTimestamp(step)!) }}
+              {{ formatWhen(getStepTimestamp(step)!) }}
             </div>
             <div v-if="getStepNote(step)" class="text-caption text-medium-emphasis font-italic">
               {{ getStepNote(step) }}
@@ -33,15 +35,16 @@
           </div>
         </div>
       </div>
-    </v-card-text>
-  </v-card>
+    </component>
+  </component>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { VCard, VCardText } from 'vuetify/components'
 import type { TournamentMatchResponse } from '@/stores/tournaments'
 import type { components } from '@/api/types'
-import { formatDateTime } from '@/utils/formatters'
+import { formatWhen } from '@/utils/formatters'
 
 type MatchStatusLogResponse = components['schemas']['MatchStatusLogResponse']
 
@@ -54,6 +57,14 @@ const props = defineProps<{
    * three-timestamp inference below; absent, the old static rendering holds.
    */
   history?: MatchStatusLogResponse[]
+  /**
+   * The tournament (or stage) configures a map veto. `match.veto_required`
+   * is only set once a session exists, which made the stepper grow a
+   * Pick/Ban step mid-match; this keeps it there from the start.
+   */
+  vetoConfigured?: boolean
+  /** Render the steps alone, for a host that already provides the card. */
+  embedded?: boolean
 }>()
 
 interface Step {
@@ -62,15 +73,16 @@ interface Step {
   icon: string
 }
 
+// Labels are the night as a player lives it, not the state machine.
 const allSteps: Step[] = [
-  { status: 'pending', label: 'Awaiting Participants', icon: 'mdi-account-clock' },
+  { status: 'pending', label: 'Waiting for teams', icon: 'mdi-account-clock' },
   { status: 'ready', label: 'Ready', icon: 'mdi-account-check' },
   { status: 'scheduled', label: 'Scheduled', icon: 'mdi-calendar-check' },
   { status: 'checking_in', label: 'Check-in', icon: 'mdi-checkbox-marked-circle-outline' },
-  { status: 'pick_ban', label: 'Pick/Ban', icon: 'mdi-sword-cross' },
-  { status: 'in_progress', label: 'In Progress', icon: 'mdi-play-circle' },
-  { status: 'awaiting_result', label: 'Awaiting Result', icon: 'mdi-clock-check' },
-  { status: 'completed', label: 'Completed', icon: 'mdi-trophy' },
+  { status: 'pick_ban', label: 'Pick / Ban', icon: 'mdi-sword-cross' },
+  { status: 'in_progress', label: 'Play', icon: 'mdi-play-circle' },
+  { status: 'awaiting_result', label: 'Report', icon: 'mdi-clock-check' },
+  { status: 'completed', label: 'Done', icon: 'mdi-trophy' },
 ]
 
 const liveSteps = new Set(['pending', 'ready', 'pick_ban', 'in_progress', 'awaiting_result', 'completed'])
@@ -104,8 +116,8 @@ const steps = computed<Step[]>(() => {
     filtered = [...allSteps]
   }
 
-  // Only show pick_ban step if this match requires veto
-  if (!props.match.veto_required) {
+  // Only show pick_ban step if this match has (or will have) a veto
+  if (!props.match.veto_required && !props.vetoConfigured) {
     filtered = filtered.filter(s => s.status !== 'pick_ban')
   }
 

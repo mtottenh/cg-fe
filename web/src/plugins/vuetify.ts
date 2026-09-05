@@ -45,5 +45,11 @@ export default createVuetify({
       variant: 'outlined',
       density: 'comfortable',
     },
+    // Thirteen textareas set both a label and a placeholder, and the two
+    // painted on top of each other while the field was empty. A persistent
+    // placeholder forces the label to float, so both read.
+    VTextarea: {
+      persistentPlaceholder: true,
+    },
   },
 })

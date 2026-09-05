@@ -87,20 +87,26 @@ export function useTournamentContext(tournament: Ref<TournamentResponse | null>)
    * so a captain was offered a team that was already in — and got an
    * unexplained duplicate-registration rejection from the API.
    */
+  /** Teams the viewer captains or manages in this tournament's league season. */
+  const myTeamsInSeason = computed(() => {
+    if (!isTeamTournament.value || !tournament.value || !authStore.isAuthenticated) return []
+    return leagueTeamsStore.myTeams.filter(team => {
+      if (!['captain', 'manager'].includes(team.role)) return false
+      if (tournament.value!.league_id && team.league_id !== tournament.value!.league_id) return false
+      if (tournament.value!.season_id && team.season_id !== tournament.value!.season_id) return false
+      return team.status === 'active'
+    })
+  })
+  /** The team the join strip talks about, registered or not. */
+  const myTeamInSeason = computed(() => myTeamsInSeason.value[0] ?? null)
+
   const hasEligibleTeams = computed((): boolean | undefined => {
     if (!isTeamTournament.value || !tournament.value) return undefined
     if (!authStore.isAuthenticated) return false
     const registeredIds = tournamentsStore.myRegistrations
       .filter(isLive)
       .map(r => r.team_season_id)
-    return leagueTeamsStore.myTeams.some(team => {
-      if (!['captain', 'manager'].includes(team.role)) return false
-      if (registeredIds.includes(team.team_season_id)) return false
-      if (tournament.value!.league_id && team.league_id !== tournament.value!.league_id) return false
-      if (tournament.value!.season_id && team.season_id !== tournament.value!.season_id) return false
-      if (team.status !== 'active') return false
-      return true
-    })
+    return myTeamsInSeason.value.some(team => !registeredIds.includes(team.team_season_id))
   })
 
   // --- Organizer ---
@@ -173,6 +179,7 @@ export function useTournamentContext(tournament: Ref<TournamentResponse | null>)
     isParticipant,
     isInvited,
     hasEligibleTeams,
+    myTeamInSeason,
 
     // Organizer
     isOrganizer,

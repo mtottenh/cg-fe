@@ -15,8 +15,8 @@
       <div class="scores-section mb-4">
         <div v-for="(game, index) in gamesView" :key="game.gameNumber">
           <v-select
-          aria-label="`Map for game ${game.gameNumber}`"
-            v-if="!maps?.length && selectableMaps?.length"
+            v-if="!maps?.[index] && selectableMaps?.length"
+            :aria-label="`Map for game ${game.gameNumber}`"
             :model-value="game.mapId"
             :items="selectableMaps"
             item-title="name"
@@ -139,7 +139,15 @@
       </v-alert>
     </v-card-text>
 
-    <v-card-actions>
+    <v-card-actions class="flex-wrap ga-2">
+      <span
+        v-if="submitBlockedReason"
+        class="text-caption text-medium-emphasis"
+        data-testid="submit-blocked-reason"
+        aria-live="polite"
+      >
+        {{ submitBlockedReason }}
+      </span>
       <v-spacer />
       <v-btn
         color="primary"
@@ -390,26 +398,29 @@ const seriesScore = computed(() => {
   return `${teamASeriesWins.value} - ${teamBSeriesWins.value}`
 })
 
-const isValidSubmission = computed(() => {
-  // Must have a series winner
-  if (!seriesWinner.value) return false
+const isPlayed = (game: GameData) => game.teamAScore > 0 || game.teamBScore > 0
 
+/**
+ * Why Submit is disabled, in the captain's terms — or null when it is
+ * enabled. A disabled button with no reason was the whole of the "2-1 cannot
+ * be reported" complaint; the check that refuses must also say which field.
+ */
+const submitBlockedReason = computed<string | null>(() => {
+  if (!hasScores.value) return 'Enter the score of each map that was played.'
+  for (const game of games.value) {
+    if (game.teamAScore < 0 || game.teamBScore < 0) return `Game ${game.gameNumber}: scores cannot be negative.`
+    if (isPlayed(game) && game.teamAScore === game.teamBScore) return `Game ${game.gameNumber}: a map cannot end in a tie.`
+  }
   // Every game that was actually played needs a real map: map_id is
   // validated against the tournament pool / veto picks server-side.
   for (const game of games.value) {
-    const played = game.teamAScore > 0 || game.teamBScore > 0
-    if (played && !game.mapId) return false
+    if (isPlayed(game) && !game.mapId) return `Select the map that was played for game ${game.gameNumber}.`
   }
-
-  // All played games must have valid scores
-  for (const game of games.value) {
-    if (game.teamAScore < 0 || game.teamBScore < 0) return false
-    // Can't be a tie (in CS2 etc.)
-    if (game.teamAScore === game.teamBScore && game.teamAScore > 0) return false
-  }
-
-  return true
+  if (!seriesWinner.value) return `Enter scores until one team has won ${winsNeeded.value} maps.`
+  return null
 })
+
+const isValidSubmission = computed(() => submitBlockedReason.value === null)
 
 // Methods
 function updateGameMap(index: number, mapId: string) {
@@ -432,8 +443,10 @@ function updateGameScore(index: number, team: 'teamA' | 'teamB', score: number) 
 async function handleSubmit() {
   if (!isValidSubmission.value || !seriesWinnerRegistrationId.value) return
 
-  // Convert games to GameResultInput format, attaching per-game demo links
-  const gameResults: GameResultInput[] = games.value.map((g) => {
+  // Convert games to GameResultInput format, attaching per-game demo links.
+  // Only games that were played: a 2-0 Bo3 must not post a 0-0 third row,
+  // which the server rejects ("Game scores don't sum to series score").
+  const gameResults: GameResultInput[] = games.value.filter(isPlayed).map((g) => {
     const linkedDemo = linkedDemoByGame.value.get(g.gameNumber)
     return {
       game_number: g.gameNumber,

@@ -75,7 +75,19 @@
           hover
         >
           <template v-slot:item.match_id="{ item }">
-            <code class="text-caption">{{ item.match_id.slice(0, 8) }}...</code>
+            <div v-if="item.participant1_name || item.participant2_name">
+              <router-link
+                v-if="item.tournament_slug"
+                :to="`/tournaments/${item.tournament_slug}/matches/${item.match_id}`"
+                class="text-decoration-none"
+                @click.stop
+              >
+                {{ item.participant1_name ?? 'TBD' }} vs {{ item.participant2_name ?? 'TBD' }}
+              </router-link>
+              <span v-else>{{ item.participant1_name ?? 'TBD' }} vs {{ item.participant2_name ?? 'TBD' }}</span>
+              <div v-if="item.tournament_name" class="text-caption text-medium-emphasis">{{ item.tournament_name }}</div>
+            </div>
+            <code v-else class="text-caption">{{ item.match_id.slice(0, 8) }}...</code>
           </template>
 
           <template v-slot:item.status="{ item }">
@@ -103,7 +115,8 @@
           </template>
 
           <template v-slot:item.disputed_by_user_id="{ item }">
-            <code class="text-caption">{{ item.disputed_by_user_id.slice(0, 8) }}...</code>
+            <span v-if="item.disputed_by_name">{{ item.disputed_by_name }}</span>
+            <code v-else class="text-caption">{{ item.disputed_by_user_id.slice(0, 8) }}...</code>
           </template>
 
           <template v-slot:item.created_at="{ item }">
@@ -189,7 +202,7 @@ const priorityOptions = [
 ]
 
 const headers = [
-  { title: 'Match', key: 'match_id', width: '120px' },
+  { title: 'Match', key: 'match_id', width: '260px' },
   { title: 'Status', key: 'status', width: '130px' },
   { title: 'Priority', key: 'priority', width: '110px' },
   { title: 'Reason', key: 'reason' },

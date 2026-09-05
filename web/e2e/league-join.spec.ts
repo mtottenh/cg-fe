@@ -128,9 +128,9 @@ async function listLeagueApplications(
   return jsonOrThrow<LeagueApplicationRow[]>(resp, 'List league applications')
 }
 
-/** The membership banner at LeagueDetailPage.vue:57-72. */
+/** The member strip on the league page: what a member sees instead of the join CTA. */
 function membershipBanner(page: Page) {
-  return page.getByText(/You are a\s+member\s+of this league/)
+  return page.getByTestId('member-strip')
 }
 
 async function openLeaguePage(page: Page, leagueId: string): Promise<void> {
@@ -158,7 +158,7 @@ test.describe('League join / apply', () => {
         timeout: 10_000,
       })
       await expect(membershipBanner(page)).toHaveCount(0)
-      await expect(page.getByRole('button', { name: 'Create Team' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Create a team' })).toHaveCount(0)
 
       await page.getByRole('button', { name: 'Join League' }).click()
 
@@ -171,7 +171,7 @@ test.describe('League join / apply', () => {
 
       // UI assertion 2: membership unlocked something — the member-only
       // "Create Team" CTA for the registration-phase season.
-      await expect(page.getByRole('button', { name: 'Create Team' }).first()).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Create a team' }).first()).toBeVisible()
 
       // UI assertion 3: it survives a reload (the membership is server-side,
       // not just local store state).
@@ -255,7 +255,7 @@ test.describe('League join / apply', () => {
 
       // Applying is NOT joining: still no membership banner, still no CTA.
       await expect(membershipBanner(applicantPage)).toHaveCount(0)
-      await expect(applicantPage.getByRole('button', { name: 'Create Team' })).toHaveCount(0)
+      await expect(applicantPage.getByRole('button', { name: 'Create a team' })).toHaveCount(0)
 
       // Backend assertion: a pending application carrying the typed message.
       const applications = await listLeagueApplications(adminToken, league.leagueId)
@@ -305,7 +305,7 @@ test.describe('League join / apply', () => {
       await expect(
         applicantPage.getByText('This league requires an application to join.'),
       ).toHaveCount(0)
-      await expect(applicantPage.getByRole('button', { name: 'Create Team' }).first()).toBeVisible()
+      await expect(applicantPage.getByRole('button', { name: 'Create a team' }).first()).toBeVisible()
 
       // Backend: membership created, application no longer pending.
       const members = await listLeagueMembers(adminToken, league.leagueId)
@@ -339,7 +339,7 @@ test.describe('League join / apply', () => {
       await expect(page.getByText('This league is invite-only.')).toBeVisible({ timeout: 10_000 })
       await expect(page.getByRole('button', { name: 'Join League' })).toHaveCount(0)
       await expect(page.getByRole('button', { name: 'Apply to Join' })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: 'Create Team' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Create a team' })).toHaveCount(0)
 
       // The missing button is not merely cosmetic: the backend refuses the
       // join it would have sent (`LeagueService::join_league`,

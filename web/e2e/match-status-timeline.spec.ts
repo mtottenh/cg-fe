@@ -70,7 +70,7 @@ test.describe('Match status timeline', () => {
     await page.goto(`/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`)
     await page.waitForLoadState('networkidle')
 
-    const timeline = page.locator('.v-card').filter({ hasText: 'Match Status' }).first()
+    const timeline = page.getByTestId('match-stepper')
     await expect(timeline).toBeVisible({ timeout: 10000 })
 
     // The terminal outcome is the step the match is ON …
@@ -93,7 +93,7 @@ test.describe('Match status timeline', () => {
     await page.goto(`/tournaments/${scenario.tournamentSlug}/matches/${scenario.matchId}`)
     await page.waitForLoadState('networkidle')
 
-    const timeline = page.locator('.v-card').filter({ hasText: 'Match Status' }).first()
+    const timeline = page.getByTestId('match-stepper')
     await expect(timeline).toBeVisible({ timeout: 10000 })
 
     await expect(timeline.locator('.step.current .step-title')).toHaveText('Disputed')

@@ -25,7 +25,7 @@
 
       <div class="d-flex flex-column align-end ga-1 flex-shrink-0">
         <div class="d-flex align-center ga-2">
-          <v-chip :color="statusColor" :variant="tournament.status === 'in_progress' ? 'flat' : 'tonal'">
+          <v-chip :color="statusColor" :variant="tournament.status === 'in_progress' ? 'flat' : 'tonal'" class="status-badge">
             <v-icon v-if="tournament.status === 'in_progress'" start size="small">mdi-circle</v-icon>
             {{ statusLabel }}<template v-if="closesLabel"> · {{ closesLabel }}</template>
           </v-chip>

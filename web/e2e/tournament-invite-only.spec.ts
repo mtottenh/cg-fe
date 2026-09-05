@@ -83,7 +83,8 @@ async function createInviteOnlyScenario(adminToken: string): Promise<InviteOnlyS
   const roster = await createTeamWithMembers({
     leagueId: ls.leagueId,
     seasonId: ls.seasonId,
-    memberCount: 0,
+    // cg v0.6.0 refuses a roster smaller than team_size: field a full team.
+    memberCount: TEAM_SIZE - 1,
     teamNamePrefix: 'E2E Invite Team',
   })
 
@@ -142,13 +143,8 @@ async function createInviteOnlyScenario(adminToken: string): Promise<InviteOnlyS
 
 /** The `TournamentRegistrationCard` root — same locator as tournament-team.spec.ts. */
 function registrationCard(page: Page) {
-  return page
-    .locator('.v-card')
-    .filter({
-      hasText:
-        /Join This Tournament|Invitation Required|Registration Pending|You're Registered|Check-in Now Open|You're All Set!|Registration Opens Soon|Registration Closed/,
-    })
-    .first()
+  // The card carries a test id: its title changes with the viewer's situation.
+  return page.getByTestId('registration-card').first()
 }
 
 async function openTournament(page: Page, scenario: InviteOnlyScenario): Promise<void> {

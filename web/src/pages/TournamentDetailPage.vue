@@ -549,7 +549,8 @@ const myTeamForCard = computed(() => {
   if (!mine) return null
   const roster = rosterFor({ team_season_id: mine.team_season_id })
   const max = roster?.max ?? tournament.value?.team_size ?? 5
-  return { teamId: mine.team_id, teamSeasonId: mine.team_season_id, name: mine.team_name, rosterCount: roster?.count ?? 1, rosterMax: max }
+  // Unknown roster (a cup outside a season) is unknown, not one player.
+  return { teamId: mine.team_id, teamSeasonId: mine.team_season_id, name: mine.team_name, rosterCount: roster?.count ?? null, rosterMax: max }
 })
 const liveRegistrations = computed(() =>
   allRegistrations.value.filter(r => r.status !== 'withdrawn' && r.status !== 'disqualified').slice(0, 8),

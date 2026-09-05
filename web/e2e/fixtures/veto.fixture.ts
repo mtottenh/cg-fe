@@ -30,6 +30,8 @@ export interface VetoSession {
   status: string
   map_pool: string[]
   remaining_maps: string[]
+  /** Picks and the decider, in game order. */
+  selected_maps: string[]
   current_action_number: number
   actions?: Array<Record<string, unknown>>
   [key: string]: unknown

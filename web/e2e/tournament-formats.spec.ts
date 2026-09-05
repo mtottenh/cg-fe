@@ -242,7 +242,8 @@ async function assertDetailUi(
     await expect(page.getByText('Losers Bracket')).toBeVisible()
   } else if (fmt.format === 'round_robin' || fmt.format === 'swiss') {
     // RR/Swiss render a standings table on the bracket view.
-    await expect(page.getByText('Standings')).toBeVisible({ timeout: 10_000 })
+    // The sidebar rail links to Standings too; the bracket's own card is in main.
+    await expect(page.getByRole('main').getByText('Standings')).toBeVisible({ timeout: 10_000 })
   }
 }
 

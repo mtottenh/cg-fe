@@ -1,5 +1,5 @@
 <template>
-  <v-card :color="cardColor" variant="tonal">
+  <v-card :color="cardColor" variant="tonal" data-testid="registration-card">
     <v-card-text>
       <v-row align="center">
         <v-col>
@@ -59,7 +59,7 @@
               </v-btn>
               <div class="d-flex flex-column align-end">
                 <v-btn size="large" disabled data-testid="register-short-roster">Register team</v-btn>
-                <span class="text-caption text-medium-emphasis mt-1">{{ myTeam.rosterMax - myTeam.rosterCount }} more {{ myTeam.rosterMax - myTeam.rosterCount === 1 ? 'player' : 'players' }} needed</span>
+                <span class="text-caption text-medium-emphasis mt-1">{{ myTeam.rosterMax - (myTeam.rosterCount ?? 0) }} more {{ myTeam.rosterMax - (myTeam.rosterCount ?? 0) === 1 ? 'player' : 'players' }} needed</span>
               </div>
             </div>
           </template>
@@ -226,7 +226,8 @@ const props = withDefaults(
     seasonId?: string | null
     seasonName?: string | null
     /** The viewer's own team in this league season, with its roster. */
-    myTeam?: { teamId: string; teamSeasonId: string; name: string; rosterCount: number; rosterMax: number } | null
+    /** `rosterCount` is null when the season's roster is not known here. */
+    myTeam?: { teamId: string; teamSeasonId: string; name: string; rosterCount: number | null; rosterMax: number } | null
     /** Live entries, for the closed state's "8 teams entered". */
     enteredCount?: number | null
     /**
@@ -259,9 +260,11 @@ const props = withDefaults(
 const teamGate = computed<'not_member' | 'no_team' | 'short' | null>(() => {
   if (!isTeamTournament.value || props.signedOut) return null
   if (!props.tournament.is_registration_open || props.myRegistration) return null
+  // Not invited to an invite-only cup: nothing about the team matters yet.
+  if (invitationHardBlock.value) return null
   if (props.isLeagueMember === false) return 'not_member'
   if (props.isLeagueMember && !props.myTeam) return 'no_team'
-  if (props.myTeam && props.myTeam.rosterCount < props.myTeam.rosterMax) return 'short'
+  if (props.myTeam && props.myTeam.rosterCount != null && props.myTeam.rosterCount < props.myTeam.rosterMax) return 'short'
   return null
 })
 
@@ -390,7 +393,7 @@ const title = computed(() => {
   if (teamGate.value === 'not_member') return `Teams in this cup come from ${props.leagueName ?? 'its league'}.`
   if (teamGate.value === 'no_team') return `You need a ${props.seasonName ?? 'league'} team to enter.`
   if (teamGate.value === 'short' && props.myTeam) {
-    return `${props.myTeam.name} has ${props.myTeam.rosterCount} of ${props.myTeam.rosterMax} players. Cups need ${props.myTeam.rosterMax}.`
+    return `${props.myTeam.name} has ${props.myTeam.rosterCount ?? 0} of ${props.myTeam.rosterMax} players. Cups need ${props.myTeam.rosterMax}.`
   }
   if (props.signedOut && props.tournament.is_registration_open) return 'Sign in to register a team.'
   if (props.myRegistration?.checked_in) return "You're All Set!"

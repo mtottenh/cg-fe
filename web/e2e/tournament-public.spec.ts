@@ -61,13 +61,8 @@ import {
  * and the tabs card.
  */
 function registrationCard(page: Page) {
-  return page
-    .locator('.v-card')
-    .filter({
-      hasText:
-        /Join This Tournament|Registration Pending|You're Registered|Check-in Now Open|You're All Set!|Registration Opens Soon|Registration Closed/,
-    })
-    .first()
+  // The card carries a test id: its title changes with the viewer's situation.
+  return page.getByTestId('registration-card').first()
 }
 
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
@@ -460,24 +455,22 @@ test.describe('Tournament Public Flows', () => {
 
       // The seeded registration MUST be listed in the participants table.
       await expect(page.locator('table')).toBeVisible()
-      await expect(page.getByText(participantName)).toBeVisible()
+      // The overview's "Players in" list names them too; look in the table.
+      await expect(page.getByRole('table').getByText(participantName)).toBeVisible()
       await expect(page.getByText('No participants registered yet')).toHaveCount(0)
     })
   })
 
   test.describe('Tournament Registration - Individual', () => {
-    test('should redirect to login when not authenticated', async ({ page }) => {
+    test('renders for a visitor and asks them to sign in to register', async ({ page }) => {
       const adminToken = await getAdminToken()
       const tournament = await createOpenRegistrationTournament(adminToken)
-
-      // Anonymous visitor: the ROUTE bounces before any content renders —
-      // tournament pages are members-only (router meta.requiresAuth).
       await clearAuthState(page)
       await page.goto(`/tournaments/${tournament.slug}`)
-      await expect(page).toHaveURL(new RegExp(`/login\\?redirect=.*${tournament.slug}`))
-      await expect(page.getByTestId('steam-login-button')).toBeVisible()
-
-      // ...and nothing was registered on the way out.
+      // The page is public; only the action needs an account.
+      await expect(page).toHaveURL(new RegExp(`/tournaments/${tournament.slug}`))
+      await expect(page.getByRole('heading', { name: tournament.name })).toBeVisible()
+      await expect(registrationCard(page).getByTestId('register-sign-in')).toBeVisible()
       expect(await listRegistrations(adminToken, tournament.id)).toHaveLength(0)
     })
 
@@ -563,7 +556,7 @@ test.describe('Tournament Public Flows', () => {
 
       // UI: and the participant shows up in the participants table.
       await page.getByRole('tab', { name: /Players|Teams/ }).click()
-      await expect(page.getByText(participantName)).toBeVisible()
+      await expect(page.getByRole('table').getByText(participantName)).toBeVisible()
 
       // Backend: the row really exists, owned by this player, in `pending`.
       const registrations = await listRegistrations(adminToken, tournament.id)

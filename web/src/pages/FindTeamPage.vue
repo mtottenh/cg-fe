@@ -24,6 +24,7 @@
           v-model="leagueFilter"
           :items="leagueItems"
           label="League"
+          aria-label="League"
           hide-details
           density="compact"
           style="min-width: 200px; max-width: 280px"
@@ -33,6 +34,7 @@
           v-model="seasonFilter"
           :items="seasonItems"
           label="Season"
+          aria-label="Season"
           hide-details
           density="compact"
           style="min-width: 220px; max-width: 320px"

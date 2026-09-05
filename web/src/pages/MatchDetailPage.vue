@@ -115,6 +115,9 @@
       <div v-if="nowHeading" class="now-card mb-6" data-testid="now-card">
         <div class="text-caption text-uppercase font-weight-medium now-eyebrow">Now</div>
         <h2 class="text-h5 mb-4">{{ nowHeading }}</h2>
+        <p v-if="nowNote" class="text-body-2 text-medium-emphasis mb-4" data-testid="now-note">
+          {{ nowNote }}
+        </p>
 
       <!-- Scheduling Panel (for self-scheduled matches, includes calendar overlay) -->
       <MatchSchedulingPanel
@@ -621,7 +624,7 @@ const nowHeading = computed(() => {
   switch (m.status) {
     case 'pending': return 'Waiting for both teams to be decided'
     case 'ready': return showSchedulingPanel.value ? 'Agree a time with your opponent' : 'Waiting for the check-in window'
-    case 'scheduled': return showSchedulingPanel.value ? 'Agree a time with your opponent' : 'Check-in opens before the start'
+    case 'scheduled': return m.scheduled_at ? `Match set for ${formatWhen(m.scheduled_at)}` : 'Check-in opens before the start'
     case 'checking_in': return mine ? 'Check in for the match' : 'Teams are checking in'
     case 'pick_ban': return 'Pick and ban maps'
     case 'in_progress': return canSubmitResult.value ? 'Report the result when the series ends' : 'The match is live'
@@ -631,6 +634,23 @@ const nowHeading = computed(() => {
       return 'Waiting for the result'
     case 'disputed': return 'Result under dispute'
     default: return null
+  }
+})
+
+/**
+ * What the viewer is waiting on when the phase has no panel of its own —
+ * a Now card with a heading and nothing under it read as broken.
+ */
+const nowNote = computed(() => {
+  const m = match.value
+  if (!m) return null
+  switch (m.status) {
+    case 'ready':
+      return showSchedulingPanel.value ? null : 'The organiser sets the time; check-in opens here before it.'
+    case 'scheduled':
+      return "Check-in opens here shortly before the start. A team that doesn't check in can be forfeited as a no-show."
+    default:
+      return null
   }
 })
 

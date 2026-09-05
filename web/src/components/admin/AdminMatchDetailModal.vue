@@ -33,6 +33,7 @@
             <MatchOverviewTab
               :match="match"
               :tournament-id="tournamentId"
+              :tournament-slug="tournamentSlug"
               @updated="emit('updated')"
             />
           </v-tabs-window-item>
@@ -83,6 +84,7 @@ import MatchAdminActionsTab from './match-detail/MatchAdminActionsTab.vue'
 const props = defineProps<{
   matchId: string | null
   tournamentId: string
+  tournamentSlug?: string | null
 }>()
 
 const emit = defineEmits<{

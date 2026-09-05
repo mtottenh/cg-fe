@@ -263,6 +263,7 @@
       v-model="matchDetailModalOpen"
       :match-id="selectedMatchId"
       :tournament-id="(route.params.id as string)"
+      :tournament-slug="tournament?.slug"
       @updated="fetchData"
     />
 

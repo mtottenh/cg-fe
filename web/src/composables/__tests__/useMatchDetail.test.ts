@@ -144,11 +144,11 @@ describe('useMatchDetail panel-visibility computeds', () => {
     expect(composable.showSchedulingPanel.value).toBe(false)
   })
 
-  it('showCheckInPanel is true for scheduled and checking_in', () => {
-    for (const status of ['scheduled', 'checking_in'] as const) {
-      const { composable } = setup({ status })
-      expect(composable.showCheckInPanel.value, `status=${status}`).toBe(true)
-    }
+  it('showCheckInPanel is true only while the check-in window is open', () => {
+    // A scheduled match two days out used to render the card with a Check In
+    // button the API refuses; the window opens when the match is checking_in.
+    expect(setup({ status: 'checking_in' }).composable.showCheckInPanel.value).toBe(true)
+    expect(setup({ status: 'scheduled' }).composable.showCheckInPanel.value).toBe(false)
   })
 
   it('showCheckInPanel is false when user is not a participant', () => {

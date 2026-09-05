@@ -15,6 +15,7 @@
       :items="matches"
       :loading="loading"
       :items-per-page="-1"
+      hide-default-footer
       density="comfortable"
     >
       <!-- P-85: rows carried no stable identity, so tests could only address

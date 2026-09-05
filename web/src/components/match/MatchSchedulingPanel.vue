@@ -74,6 +74,7 @@
         <ProposalCard
           :proposal="activeProposal"
           :is-proposer="isProposer"
+          :from-name="proposerName"
           :loading="loading"
           @accept="(time) => $emit('accept', time)"
           @reject="(reason) => $emit('reject', reason)"
@@ -181,6 +182,19 @@ const viewMode = ref<'calendar' | 'manual'>(props.opponentPlayerId ? 'calendar' 
 function formatScheduledTime(iso: string): string {
   return formatDateTimeLongWithWeekday(iso)
 }
+
+/** The team that sent the active proposal, for the card header. */
+const proposerName = computed(() => {
+  const p = props.activeProposal
+  if (!p) return null
+  if (p.proposed_by_registration_id === props.match.participant1_registration_id) {
+    return props.match.participant1_name ?? null
+  }
+  if (p.proposed_by_registration_id === props.match.participant2_registration_id) {
+    return props.match.participant2_name ?? null
+  }
+  return null
+})
 
 const emit = defineEmits<{
   propose: [times: string[], notes?: string]

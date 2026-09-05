@@ -9,7 +9,7 @@
           </v-avatar>
           <div>
             <div class="text-subtitle-2">
-              {{ isProposer ? 'Your Proposal' : 'Proposal from opponent' }}
+              {{ isProposer ? 'Your proposal' : `Proposal from ${fromName || 'your opponent'}` }}
             </div>
             <div class="text-caption text-medium-emphasis">
               Sent {{ formatDateTime(proposal.created_at) }}
@@ -236,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { ScheduleProposalResponse } from '@/stores/matchScheduling'
 import { formatDateTime } from '@/utils/formatters'
 import {
@@ -251,6 +251,8 @@ const props = defineProps<{
   proposal: ScheduleProposalResponse
   isProposer: boolean
   loading?: boolean
+  /** Who sent it, for the header. */
+  fromName?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -261,6 +263,16 @@ const emit = defineEmits<{
 }>()
 
 const selectedTime = ref<string | null>(null)
+// One offered time needs no choosing — Accept used to sit disabled, with no
+// hint that the lone radio had to be ticked first.
+watch(
+  () => props.proposal.proposed_times,
+  (times) => {
+    if (times.length === 1) selectedTime.value = times[0] ?? null
+    else if (selectedTime.value && !times.includes(selectedTime.value)) selectedTime.value = null
+  },
+  { immediate: true },
+)
 const rejectDialogOpen = ref(false)
 const rejectReason = ref('')
 const withdrawDialogOpen = ref(false)

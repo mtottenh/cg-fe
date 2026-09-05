@@ -8,14 +8,14 @@
             <div class="text-h6" :class="{ 'font-weight-bold text-success': match.winner_registration_id === match.participant1_registration_id }">
               {{ match.participant1_name || 'TBD' }}
             </div>
-            <div class="text-h4 font-weight-bold">{{ match.participant1_score ?? '-' }}</div>
+            <div v-if="hasScore" class="text-h4 font-weight-bold">{{ match.participant1_score ?? '-' }}</div>
           </div>
           <div class="text-medium-emphasis text-h6">vs</div>
           <div class="text-center">
             <div class="text-h6" :class="{ 'font-weight-bold text-success': match.winner_registration_id === match.participant2_registration_id }">
               {{ match.participant2_name || 'TBD' }}
             </div>
-            <div class="text-h4 font-weight-bold">{{ match.participant2_score ?? '-' }}</div>
+            <div v-if="hasScore" class="text-h4 font-weight-bold">{{ match.participant2_score ?? '-' }}</div>
           </div>
         </div>
         <div class="text-center">
@@ -29,9 +29,18 @@
     <!-- Match Metadata -->
     <v-table density="compact">
       <tbody>
+        <tr v-if="tournamentSlug">
+          <td class="text-medium-emphasis" width="180">Public page</td>
+          <td>
+            <router-link :to="`/tournaments/${tournamentSlug}/matches/${match.id}`" target="_blank">
+              Open the match page
+              <v-icon size="x-small" class="ml-1">mdi-open-in-new</v-icon>
+            </router-link>
+          </td>
+        </tr>
         <tr>
           <td class="text-medium-emphasis" width="180">Match ID</td>
-          <td><code>{{ match.id }}</code></td>
+          <td><code class="text-caption">{{ match.id }}</code></td>
         </tr>
         <tr v-if="match.round">
           <td class="text-medium-emphasis">Round</td>
@@ -88,7 +97,16 @@ import {
 const props = defineProps<{
   match: TournamentMatchResponse | null
   tournamentId: string
+  /** For the link to the public match page. */
+  tournamentSlug?: string | null
 }>()
+
+// A scheduled match showed "0 – 0" as if a result existed; scores only mean
+// something once play has started.
+const hasScore = computed(() =>
+  !!props.match &&
+  ['in_progress', 'awaiting_result', 'completed', 'disputed', 'forfeit'].includes(props.match.status),
+)
 
 const emit = defineEmits<{
   updated: []

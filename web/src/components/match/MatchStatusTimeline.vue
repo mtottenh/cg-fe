@@ -76,7 +76,7 @@ interface Step {
 // Labels are the night as a player lives it, not the state machine.
 const allSteps: Step[] = [
   { status: 'pending', label: 'Waiting for teams', icon: 'mdi-account-clock' },
-  { status: 'ready', label: 'Ready', icon: 'mdi-account-check' },
+  { status: 'ready', label: 'Opponent set', icon: 'mdi-account-check' },
   { status: 'scheduled', label: 'Scheduled', icon: 'mdi-calendar-check' },
   { status: 'checking_in', label: 'Check-in', icon: 'mdi-checkbox-marked-circle-outline' },
   { status: 'pick_ban', label: 'Pick / Ban', icon: 'mdi-sword-cross' },
@@ -85,7 +85,9 @@ const allSteps: Step[] = [
   { status: 'completed', label: 'Done', icon: 'mdi-trophy' },
 ]
 
-const liveSteps = new Set(['pending', 'ready', 'pick_ban', 'in_progress', 'awaiting_result', 'completed'])
+// `checking_in` is a real phase of a live-scheduled night too; leaving it out
+// meant the stepper highlighted nothing while both teams were checking in.
+const liveSteps = new Set(['pending', 'ready', 'checking_in', 'pick_ban', 'in_progress', 'awaiting_result', 'completed'])
 const selfScheduledSteps = new Set(['pending', 'ready', 'scheduled', 'checking_in', 'pick_ban', 'in_progress', 'awaiting_result', 'completed'])
 
 /**
@@ -222,7 +224,7 @@ function getStepNote(step: Step): string | null {
   if (!isStepComplete(step) && !isStepCurrent(step)) return null
   const logged = logEntryFor(step)
   if (!logged) return null
-  if (logged.is_admin_override) return 'admin override'
+  if (logged.is_admin_override) return 'set by an organiser'
   return logged.transition_reason ?? null
 }
 

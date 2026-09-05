@@ -12,7 +12,7 @@
            finished match wears it as plain text so the live ones stand out. -->
       <div class="match-header d-flex justify-space-between align-center">
         <span class="text-caption text-medium-emphasis">
-          #{{ match.match_number }}<template v-if="match.match_format"> · {{ formatMatchFormatShort(match.match_format) }}</template>
+          #{{ match.match_number }}<template v-if="compact && match.match_format"> · {{ formatMatchFormatShort(match.match_format) }}</template>
         </span>
         <v-chip :color="statusColor" size="x-small" :variant="statusVariant" class="status-chip">
           {{ statusLabel }}

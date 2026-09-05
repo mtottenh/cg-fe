@@ -104,9 +104,11 @@ export function useMatchDetail() {
   // cannot check in (captain/owner/delegate/player only), and showing the
   // panel to them produced a silent 403. Both conditions: the panel needs
   // the registration id to POST with, and the authorization to offer it.
+  // Only while the window is open: two days out the card offered a Check In
+  // button that the API refuses, under a "match starts in 47h" banner.
   const showCheckInPanel = computed(() => {
     if (!match.value || !userRegistrationId.value || !canCheckIn.value) return false
-    return ['scheduled', 'checking_in'].includes(match.value.status)
+    return match.value.status === 'checking_in'
   })
 
   const isProposer = computed(() => {

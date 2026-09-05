@@ -325,7 +325,7 @@ test.describe('Team Tournament Registration', () => {
 
     // UI: and the team shows up in the Participants tab under the name we
     // typed, with the mapped status label (TournamentDetailPage.vue:185-189).
-    await page.getByRole('tab', { name: /Participants/ }).click()
+    await page.getByRole('tab', { name: /^Teams/ }).click()
     const participantRow = page.locator('tr').filter({ hasText: participantName })
     await expect(participantRow).toBeVisible()
     await expect(participantRow.locator('.v-chip').filter({ hasText: 'Approved' })).toBeVisible()

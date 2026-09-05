@@ -316,4 +316,29 @@ describe('League Teams Store', () => {
       expect(store.fetchTeamStatsState.error).toBe('Team season not found')
     })
   })
+  describe('clearTeamImage', () => {
+    it('DELETEs the logo and replaces the current team', async () => {
+      const mockDelete = api.DELETE as unknown as Mock
+      const cleared = { id: 'team-1', name: 'T', tag: 'T', logo_url: null, banner_url: 'https://x/b.png' }
+      mockDelete.mockResolvedValue({ data: { data: cleared, meta: { request_id: 't' } }, error: undefined })
+      const store = useLeagueTeamsStore()
+      store.currentTeam = { id: 'team-1', logo_url: 'https://x/l.png' } as unknown as LeagueTeamResponse
+
+      const result = await store.clearTeamImage('team-1', 'logo')
+
+      expect(mockDelete).toHaveBeenCalledWith('/v1/league-teams/{team_id}/logo', {
+        params: { path: { team_id: 'team-1' } },
+      })
+      expect(result.logo_url).toBeNull()
+      expect(store.currentTeam?.logo_url).toBeNull()
+    })
+
+    it('surfaces a 403 through its own state', async () => {
+      const mockDelete = api.DELETE as unknown as Mock
+      mockDelete.mockResolvedValue(apiError(403, 'Forbidden'))
+      const store = useLeagueTeamsStore()
+      await expect(store.clearTeamImage('team-1', 'banner')).rejects.toThrow(ApiError)
+      expect(store.clearTeamImageState.error).toBe('Forbidden')
+    })
+  })
 })

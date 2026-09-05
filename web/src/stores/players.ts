@@ -38,6 +38,8 @@ export const usePlayersStore = defineStore('players', () => {
   const fetchPlayerState = createActionState()
   const fetchMyProfileState = createActionState()
   const updateMyProfileState = createActionState()
+  const clearMyImageState = createActionState()
+  const adminClearPlayerImageState = createActionState()
   const fetchMyMatchesState = createActionState()
   const submitPlayerRatingState = createActionState()
   const fetchRatingHistoryState = createActionState()
@@ -100,6 +102,29 @@ export const usePlayersStore = defineStore('players', () => {
       currentPlayer.value = result.data
       return currentPlayer.value
     }, 'Failed to fetch profile')
+  }
+
+  /** Remove your own avatar or banner. */
+  async function clearMyImage(image: 'avatar' | 'banner') {
+    return withActionState(clearMyImageState, async () => {
+      const call = image === 'avatar'
+        ? api.DELETE('/v1/players/me/avatar')
+        : api.DELETE('/v1/players/me/banner')
+      const result = await unwrapApi(call)
+      currentPlayer.value = result.data
+      return currentPlayer.value
+    }, `Failed to remove your ${image}`)
+  }
+
+  /** Admin: take down another player's avatar or banner. */
+  async function adminClearPlayerImage(playerId: string, image: 'avatar' | 'banner') {
+    return withActionState(adminClearPlayerImageState, async () => {
+      const call = image === 'avatar'
+        ? api.DELETE('/v1/admin/players/{player_id}/avatar', { params: { path: { player_id: playerId } } })
+        : api.DELETE('/v1/admin/players/{player_id}/banner', { params: { path: { player_id: playerId } } })
+      const result = await unwrapApi(call)
+      return result.data
+    }, `Failed to remove the player's ${image}`)
   }
 
   async function updateMyProfile(profileData: UpdateProfileRequest) {
@@ -190,6 +215,10 @@ export const usePlayersStore = defineStore('players', () => {
     fetchPlayerTeams,
     fetchMyProfile,
     updateMyProfile,
+    clearMyImage,
+    clearMyImageState,
+    adminClearPlayerImage,
+    adminClearPlayerImageState,
     fetchMyMatches,
     fetchMyMatchesState,
     submitPlayerRating,

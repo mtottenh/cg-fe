@@ -24,11 +24,11 @@
       `currentTeam` changes underneath us (e.g. ownership transferred in
       another tab, or a route change reusing this component).
     -->
-    <v-alert v-if="!loading && team && !isOwner" type="warning" class="mb-4">
-      Only the team owner can edit team settings
+    <v-alert v-if="!loading && team && !canEdit" type="warning" class="mb-4">
+      Only the team owner or a platform admin can edit team settings
     </v-alert>
 
-    <template v-if="team && isOwner">
+    <template v-if="team && canEdit">
       <v-row>
         <v-col cols="12" md="8">
           <v-card class="mb-4">
@@ -92,6 +92,19 @@
                       response-field="logo_url"
                       @upload-complete="onLogoUploaded"
                       @upload-error="onUploadError"
+                      @remove="removeImage('logo')"
+                    />
+                    <v-text-field
+                      v-model="form.logo_url"
+                      class="mt-3"
+                      aria-label="Logo URL"
+                      label="Or link a logo (URL)"
+                      placeholder="https://…/logo.png"
+                      :rules="[rules.url]"
+                      variant="outlined"
+                      density="compact"
+                      clearable
+                      data-testid="team-logo-url"
                     />
                   </v-col>
                   <v-col cols="12" sm="6">
@@ -101,12 +114,25 @@
                       placeholder="Upload banner"
                       placeholder-icon="mdi-panorama-wide-angle"
                       shape="banner"
-                      :aspect-ratio="3"
+                      :aspect-ratio="4"
                       path="/v1/league-teams/{team_id}/banner"
                       :path-params="{ team_id: teamId }"
                       response-field="banner_url"
                       @upload-complete="onBannerUploaded"
                       @upload-error="onUploadError"
+                      @remove="removeImage('banner')"
+                    />
+                    <v-text-field
+                      v-model="form.banner_url"
+                      class="mt-3"
+                      aria-label="Banner URL"
+                      label="Or link a banner (URL)"
+                      placeholder="https://…/banner.png"
+                      :rules="[rules.url]"
+                      variant="outlined"
+                      density="compact"
+                      clearable
+                      data-testid="team-banner-url"
                     />
                   </v-col>
                 </v-row>
@@ -262,6 +288,9 @@ const { currentTeam: team } = storeToRefs(leagueTeamsStore)
 // Check if current user is the team owner
 const { playerId: currentPlayerId } = storeToRefs(authStore)
 const isOwner = computed(() => team.value?.owner_player_id === currentPlayerId.value)
+// A platform admin edits any team's settings (the API honours
+// admin.teams.manage_any), which is how problematic branding gets taken down.
+const canEdit = computed(() => isOwner.value || authStore.isAdmin)
 
 const form = reactive({
   name: '',
@@ -302,7 +331,7 @@ onMounted(async () => {
     // ownership notice instead of the form. `error` is reserved for genuine
     // load failures — using it here produced two competing messages once the
     // notice became its own alert.
-    if (!isOwner.value) {
+    if (!canEdit.value) {
       return
     }
 
@@ -345,12 +374,23 @@ async function handleSubmit() {
   error.value = null
 
   try {
+    // Linked images travel with the save; an emptied field means "remove",
+    // which the API only does through DELETE.
+    const original = originalForm.value
+    const removals: Array<'logo' | 'banner'> = []
+    if (original?.logo_url && !form.logo_url) removals.push('logo')
+    if (original?.banner_url && !form.banner_url) removals.push('banner')
+    for (const image of removals) {
+      await leagueTeamsStore.clearTeamImage(teamId.value, image)
+    }
     await leagueTeamsStore.updateTeam(teamId.value, {
       name: form.name,
       tag: form.tag,
       description: form.description || undefined,
       primary_color: form.primary_color || undefined,
       secondary_color: form.secondary_color || undefined,
+      logo_url: form.logo_url && form.logo_url !== original?.logo_url ? form.logo_url : undefined,
+      banner_url: form.banner_url && form.banner_url !== original?.banner_url ? form.banner_url : undefined,
     })
 
     // Update original form to reflect saved state
@@ -384,6 +424,23 @@ function onBannerUploaded(url: string) {
 
 function onUploadError(errorMsg: string) {
   error.value = errorMsg
+}
+
+/** The uploader's Remove: clear the image on the server, not just the preview. */
+async function removeImage(image: 'logo' | 'banner') {
+  error.value = null
+  try {
+    await leagueTeamsStore.clearTeamImage(teamId.value, image)
+    if (image === 'logo') form.logo_url = null
+    else form.banner_url = null
+    if (originalForm.value) {
+      originalForm.value = { ...originalForm.value, [`${image}_url`]: null }
+    }
+    successMessage.value = image === 'logo' ? 'Logo removed' : 'Banner removed'
+    showSuccess.value = true
+  } catch {
+    error.value = leagueTeamsStore.clearTeamImageState.error || `Failed to remove ${image}`
+  }
 }
 </script>
 

@@ -70,6 +70,7 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
   const registerTeamForSeasonState = createActionState()
   const fetchMembersState = createActionState()
   const fetchTeamStatsState = createActionState()
+  const clearTeamImageState = createActionState()
   const addMemberState = createActionState()
   const removeMemberState = createActionState()
   const promoteToCaptainState = createActionState()
@@ -256,6 +257,18 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
       members.value = result.data
       return members.value
     }, 'Failed to fetch team members')
+  }
+
+  /** Remove a team's logo or banner (owner, captain, or a platform admin). */
+  async function clearTeamImage(teamId: string, image: 'logo' | 'banner'): Promise<LeagueTeamResponse> {
+    return withActionState(clearTeamImageState, async () => {
+      const call = image === 'logo'
+        ? api.DELETE('/v1/league-teams/{team_id}/logo', { params: { path: { team_id: teamId } } })
+        : api.DELETE('/v1/league-teams/{team_id}/banner', { params: { path: { team_id: teamId } } })
+      const result = await unwrapApi(call)
+      if (currentTeam.value?.id === teamId) currentTeam.value = result.data
+      return result.data
+    }, `Failed to remove the team ${image}`)
   }
 
   /** Roster CS2-rating aggregates and past-games tallies for a team season. */
@@ -494,6 +507,8 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     fetchMembers,
     fetchTeamStats,
     fetchTeamStatsState,
+    clearTeamImage,
+    clearTeamImageState,
     addMember,
     removeMember,
     promoteToCaptain,

@@ -959,6 +959,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/players/{player_id}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Take down a player's avatar (admin). */
+        delete: operations["admin_delete_player_avatar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/players/{player_id}/banner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Take down a player's banner (admin). */
+        delete: operations["admin_delete_player_banner"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/result-reviews": {
         parameters: {
             query?: never;
@@ -2341,9 +2375,10 @@ export interface paths {
         };
         /**
          * Aggregate CS2 skill and match history for a team's roster this season.
-         * @description The rating figures are over the roster's CS2 Premier ratings (from each
-         *     member's game profile); members without a profile are excluded and
-         *     reported as `member_count - rated_count`. Past games are read off the
+         * @description The rating figures are over the roster's CS2 Premier ratings — each
+         *     member's most recent non-zero rating-history entry, the same number the
+         *     profile page shows. Members with no history are excluded and reported
+         *     as `member_count - rated_count`. Past games are read off the
          *     team's per-season match tallies — this season, and summed across every
          *     season the team has played.
          */
@@ -2408,7 +2443,8 @@ export interface paths {
         put?: never;
         /** Upload league-team banner. */
         post: operations["upload_team_banner"];
-        delete?: never;
+        /** Remove a league-team's banner (owner, captain, or a platform admin). */
+        delete: operations["delete_team_banner"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2425,7 +2461,8 @@ export interface paths {
         put?: never;
         /** Upload league-team logo. */
         post: operations["upload_team_logo"];
-        delete?: never;
+        /** Remove a league-team's logo (owner, captain, or a platform admin). */
+        delete: operations["delete_team_logo"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3513,7 +3550,8 @@ export interface paths {
         put?: never;
         /** Upload player avatar. */
         post: operations["upload_player_avatar"];
-        delete?: never;
+        /** Remove your own avatar. */
+        delete: operations["delete_player_avatar"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3530,7 +3568,8 @@ export interface paths {
         put?: never;
         /** Upload player banner. */
         post: operations["upload_player_banner"];
-        delete?: never;
+        /** Remove your own banner. */
+        delete: operations["delete_player_banner"];
         options?: never;
         head?: never;
         patch?: never;
@@ -9243,7 +9282,7 @@ export interface components {
                 past_games_season: number;
                 /**
                  * Format: int32
-                 * @description How many of them have a CS2 profile that fed the rating figures.
+                 * @description How many of them have a CS2 Premier rating on record.
                  */
                 rated_count: number;
                 /**
@@ -16362,7 +16401,7 @@ export interface components {
             past_games_season: number;
             /**
              * Format: int32
-             * @description How many of them have a CS2 profile that fed the rating figures.
+             * @description How many of them have a CS2 Premier rating on record.
              */
             rated_count: number;
             /**
@@ -20537,6 +20576,88 @@ export interface operations {
                 };
             };
             /** @description Tracking entry not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    admin_delete_player_avatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Player ID */
+                player_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Avatar removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_PlayerResponse"];
+                };
+            };
+            /** @description Missing admin.users.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Player not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    admin_delete_player_banner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Player ID */
+                player_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Banner removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_PlayerResponse"];
+                };
+            };
+            /** @description Missing admin.users.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Player not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -25451,6 +25572,56 @@ export interface operations {
             };
         };
     };
+    delete_team_banner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team ID */
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Banner removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_LeagueTeamResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden - requires team.settings.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Team not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     upload_team_logo: {
         parameters: {
             query?: never;
@@ -25483,6 +25654,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden - requires team.settings.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Team not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    delete_team_logo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team ID */
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Logo removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_LeagueTeamResponse"];
                 };
             };
             /** @description Unauthorized */
@@ -29096,6 +29317,35 @@ export interface operations {
             };
         };
     };
+    delete_player_avatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Avatar removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_PlayerResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     upload_player_banner: {
         parameters: {
             query?: never;
@@ -29125,6 +29375,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    delete_player_banner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Banner removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_PlayerResponse"];
                 };
             };
             /** @description Unauthorized */

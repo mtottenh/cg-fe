@@ -266,6 +266,32 @@
               </div>
             </div>
 
+            <!-- Content takedown (admin.users.manage on the API) -->
+            <div class="d-flex flex-wrap ga-2 mb-4" data-testid="player-takedown">
+              <v-btn
+                size="small"
+                variant="tonal"
+                color="error"
+                prepend-icon="mdi-account-off-outline"
+                :disabled="!playerDetail.avatar_url || takingDown"
+                data-testid="takedown-avatar"
+                @click="confirmTakedown('avatar')"
+              >
+                Remove avatar
+              </v-btn>
+              <v-btn
+                size="small"
+                variant="tonal"
+                color="error"
+                prepend-icon="mdi-panorama-outline"
+                :disabled="!playerDetail.banner_url || takingDown"
+                data-testid="takedown-banner"
+                @click="confirmTakedown('banner')"
+              >
+                Remove banner
+              </v-btn>
+            </div>
+
             <!-- Player Info -->
             <v-list density="compact" class="mb-4">
               <v-list-item>
@@ -332,6 +358,8 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+    <ConfirmDialogHost :dialog="confirmDialog" />
+    <AppSnackbar v-model="snackbar.open" :text="snackbar.text" :color="snackbar.color" />
   </div>
 </template>
 
@@ -344,6 +372,10 @@ import { useGamesStore } from '@/stores/games'
 import { formatDate } from '@/utils/formatters'
 import { teamRoleMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import ErrorAlert from '@/components/ErrorAlert.vue'
+import AppSnackbar from '@/components/AppSnackbar.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { usePlayersStore } from '@/stores/players'
 import type { components } from '@/api/types'
 
 type PlayerSummary = components['schemas']['PlayerSearchResponse']
@@ -389,6 +421,32 @@ const hasActiveFilters = computed(() => {
 const detailModalOpen = ref(false)
 const selectedPlayer = ref<PlayerSummary | null>(null)
 const playerDetail = ref<PlayerDetail | null>(null)
+const playersStore = usePlayersStore()
+const confirmDialog = useConfirmDialog()
+const snackbar = ref({ open: false, text: '', color: 'success' })
+const takingDown = ref(false)
+
+/** Take down a player's image after confirmation; the dialog updates in place. */
+function confirmTakedown(image: 'avatar' | 'banner') {
+  const target = playerDetail.value
+  if (!target) return
+  confirmDialog.confirm({
+    title: `Remove ${target.display_name}'s ${image}?`,
+    message: `The ${image} is cleared from their profile and the file is deleted. They can upload a new one.`,
+    action: 'Remove',
+    color: 'error',
+    handler: async () => {
+      takingDown.value = true
+      try {
+        const updated = await playersStore.adminClearPlayerImage(target.id, image)
+        playerDetail.value = { ...target, ...updated }
+        snackbar.value = { open: true, text: `${image === 'avatar' ? 'Avatar' : 'Banner'} removed`, color: 'success' }
+      } finally {
+        takingDown.value = false
+      }
+    },
+  })
+}
 const playerTeams = ref<PlayerLeagueTeamMembership[]>([])
 const loadingDetail = ref(false)
 const loadingTeams = ref(false)

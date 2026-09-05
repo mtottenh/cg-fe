@@ -139,16 +139,26 @@ function localDateTimeInput(daysAhead: number, hour: number): string {
 /**
  * Assert a page shows the match as scheduled for `iso`.
  *
- * The agreed time is rendered by `formatDateTime` (= `toLocaleString()`,
- * utils/formatters.ts:15-18) in the header chip (MatchDetailPage.vue:97-100),
- * so the expected label is produced by the browser's own Intl rather than
- * Node's — same locale and timezone as the component that rendered it.
- * `.first()`: once scheduled, the check-in card repeats the same timestamp
- * (MatchDetailPage.vue:145-151).
+ * The agreed time is rendered under "Match Scheduled" by
+ * `formatDateTimeLongWithWeekday` (utils/formatters.ts), so the expected
+ * label is produced by the browser's own Intl with the same options rather
+ * than Node's — same locale and timezone as the component that rendered it.
+ * (The `toLocaleString()` timestamp this used to read came from the
+ * check-in card, which no longer renders before the window opens.)
  */
 async function expectMatchScheduledAt(page: Page, iso: string): Promise<void> {
   await expect(page.getByText('Match Scheduled')).toBeVisible({ timeout: 15000 })
-  const label = await page.evaluate((value: string) => new Date(value).toLocaleString(), iso)
+  const label = await page.evaluate(
+    (value: string) =>
+      new Date(value).toLocaleString(undefined, {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    iso,
+  )
   await expect(page.getByText(label).first()).toBeVisible()
 }
 

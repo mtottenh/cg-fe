@@ -97,17 +97,6 @@
             </span>
           </template>
 
-          <template #[`item.match`]="{ item }">
-            <router-link
-              v-if="item.current_match_id"
-              :to="{ name: 'admin-tournaments' }"
-              class="text-caption"
-            >
-              {{ item.current_match_id.slice(0, 8) }}…
-            </router-link>
-            <span v-else class="text-caption text-grey">—</span>
-          </template>
-
           <template #[`item.cert`]="{ item }">
             <span v-if="!item.agent_cert_expires_at" class="text-caption text-grey">
               not enrolled
@@ -260,7 +249,6 @@ const headers = [
   { title: 'Gamestate', key: 'gamestate', sortable: false },
   { title: 'Map', key: 'map', sortable: false },
   { title: 'Players', key: 'players', sortable: false, align: 'end' as const },
-  { title: 'Match', key: 'match', sortable: false },
   { title: 'Certificate', key: 'cert', sortable: false },
   { title: 'Actions', key: 'actions', sortable: false, align: 'center' as const },
 ]

@@ -39,7 +39,18 @@ test.describe('Authentication', () => {
   })
 
   test.describe('Route gating', () => {
-    for (const path of ['/tournaments', '/leagues', '/players', '/profile']) {
+    // Leagues and tournaments are readable signed out (the brackets are the
+    // marketing); only the member-facing pages bounce.
+    for (const path of ['/tournaments', '/leagues']) {
+      test(`unauthenticated visit to ${path} renders without a login bounce`, async ({ page }) => {
+        await clearAuthState(page)
+        await page.goto(path)
+        await expect(page).toHaveURL(path)
+        await expect(page.getByTestId('steam-login-button')).toHaveCount(0)
+      })
+    }
+
+    for (const path of ['/players', '/profile']) {
       test(`unauthenticated visit to ${path} bounces to login`, async ({ page }) => {
         await clearAuthState(page)
         await page.goto(path)

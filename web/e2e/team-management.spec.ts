@@ -143,6 +143,15 @@ function editSettingsTitle(scope: Page | Locator) {
   return scope.locator('.v-card-title').filter({ hasText: 'Edit Team Settings' })
 }
 
+/**
+ * A team card in the league page's Teams tab. Scoped by test id because the
+ * member strip above the tabs also names the viewer's own team, and a bare
+ * `.v-card` filter finds that strip first.
+ */
+function leagueTeamCard(page: Page, teamName: string) {
+  return page.getByTestId('league-team-card').filter({ hasText: teamName })
+}
+
 test.describe('League Team Management Flows', () => {
   test.describe('Browse Teams via Leagues', () => {
     // Browse routes are members-only now — sign in before each test.
@@ -184,7 +193,7 @@ test.describe('League Team Management Flows', () => {
       await page.waitForLoadState('networkidle')
 
       await expect(
-        page.locator('.v-card-title').filter({ hasText: scenario.leagueName })
+        page.getByRole('heading', { level: 1 }).filter({ hasText: scenario.leagueName })
       ).toBeVisible()
 
       // The season selector MUST be visible and MUST have our season selected
@@ -195,17 +204,17 @@ test.describe('League Team Management Flows', () => {
     })
 
     test('should list the teams registered for the selected season', async ({ page }) => {
-      await page.goto(`/leagues/${scenario.leagueId}`)
+      await page.goto(`/leagues/${scenario.leagueId}?tab=teams`)
       await page.waitForLoadState('networkidle')
 
       // The fixture registered exactly one team into this season, so the teams
       // grid MUST render its card — name, tag and member-count chip
       // (LeagueDetailPage.vue:249-269).
-      const teamCard = page.locator('.v-card').filter({ hasText: roster.teamName }).first()
+      const teamCard = leagueTeamCard(page, roster.teamName).first()
       await expect(teamCard).toBeVisible({ timeout: 10_000 })
       await expect(teamCard.getByText(`[${roster.teamTag}]`)).toBeVisible()
       // Owner + one invited member.
-      await expect(teamCard.getByText('2 members')).toBeVisible()
+      await expect(teamCard.getByText(/2 of \d+/)).toBeVisible()
 
       // Backend cross-check: the same roster size the card claims.
       const members = await getTeamMembers(roster.teamSeasonId, roster.owner.token)
@@ -213,10 +222,10 @@ test.describe('League Team Management Flows', () => {
     })
 
     test('should open the team roster modal from a league team card', async ({ page }) => {
-      await page.goto(`/leagues/${scenario.leagueId}`)
+      await page.goto(`/leagues/${scenario.leagueId}?tab=teams`)
       await page.waitForLoadState('networkidle')
 
-      const teamCard = page.locator('.v-card').filter({ hasText: roster.teamName }).first()
+      const teamCard = leagueTeamCard(page, roster.teamName).first()
       await expect(teamCard).toBeVisible({ timeout: 10_000 })
       await teamCard.click()
 
@@ -254,19 +263,19 @@ test.describe('League Team Management Flows', () => {
       await page.waitForLoadState('networkidle')
 
       await expect(
-        page.locator('.v-card-title').filter({ hasText: scenario.leagueName })
+        page.getByRole('heading', { level: 1 }).filter({ hasText: scenario.leagueName })
       ).toBeVisible()
 
       // Rendered twice while the season is empty: the toolbar button and the
       // empty-state CTA (LeagueDetailPage.vue:171-178 and :281-289).
-      await expect(page.getByRole('button', { name: 'Create Team' }).first()).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Create a team' }).first()).toBeVisible()
     })
 
     test('should open create team modal', async ({ page }) => {
       await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
-      await page.getByRole('button', { name: 'Create Team' }).first().click()
+      await page.getByRole('button', { name: 'Create a team' }).first().click()
 
       const modal = page.getByRole('dialog')
       await expect(modal).toBeVisible()
@@ -278,7 +287,7 @@ test.describe('League Team Management Flows', () => {
       await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
-      await page.getByRole('button', { name: 'Create Team' }).first().click()
+      await page.getByRole('button', { name: 'Create a team' }).first().click()
       const modal = page.getByRole('dialog')
       await expect(modal).toBeVisible()
 
@@ -312,7 +321,7 @@ test.describe('League Team Management Flows', () => {
       await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
-      await page.getByRole('button', { name: 'Create Team' }).first().click()
+      await page.getByRole('button', { name: 'Create a team' }).first().click()
       const modal = page.getByRole('dialog')
       await expect(modal).toBeVisible()
 
@@ -328,7 +337,7 @@ test.describe('League Team Management Flows', () => {
       await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
-      await page.getByRole('button', { name: 'Create Team' }).first().click()
+      await page.getByRole('button', { name: 'Create a team' }).first().click()
       const modal = page.getByRole('dialog')
       await expect(modal).toBeVisible()
 
@@ -343,7 +352,7 @@ test.describe('League Team Management Flows', () => {
       await page.goto(`/leagues/${scenario.leagueId}`)
       await page.waitForLoadState('networkidle')
 
-      await page.getByRole('button', { name: 'Create Team' }).first().click()
+      await page.getByRole('button', { name: 'Create a team' }).first().click()
       const modal = page.getByRole('dialog')
       await expect(modal).toBeVisible()
 
@@ -378,7 +387,7 @@ test.describe('League Team Management Flows', () => {
       await page.goto(`/leagues/${own.leagueId}`)
       await page.waitForLoadState('networkidle')
 
-      await page.getByRole('button', { name: 'Create Team' }).first().click()
+      await page.getByRole('button', { name: 'Create a team' }).first().click()
       const modal = page.getByRole('dialog')
       await expect(modal).toBeVisible()
 
@@ -393,14 +402,15 @@ test.describe('League Team Management Flows', () => {
       // UI assertion 1: the dialog closes and the new team renders as a card in
       // the season's teams grid.
       await expect(modal).toBeHidden()
-      const teamCard = page.locator('.v-card').filter({ hasText: teamName }).first()
+      await page.getByRole('tab', { name: /^Teams/ }).click()
+      const teamCard = leagueTeamCard(page, teamName).first()
       await expect(teamCard).toBeVisible({ timeout: 10_000 })
       await expect(teamCard.getByText(`[${teamTag}]`)).toBeVisible()
-      await expect(teamCard.getByText('1 members')).toBeVisible()
+      await expect(teamCard.getByText(/1 of \d+/)).toBeVisible()
 
       // UI assertion 2: the CTA is replaced by the "you already have a team"
       // chip (LeagueDetailPage.vue:179-182).
-      await expect(page.getByText('You have a team in this season')).toBeVisible()
+      await expect(page.getByTestId('member-strip').getByText('View team')).toBeVisible()
 
       // Backend assertion: the team exists in the season and the creator is on
       // its roster as captain.
@@ -592,7 +602,7 @@ test.describe('League Team Management Flows', () => {
       await vBtn(card, 'View League').click()
       await expect(page).toHaveURL(new RegExp(`/leagues/${scenario.leagueId}`))
       await expect(
-        page.locator('.v-card-title').filter({ hasText: scenario.leagueName })
+        page.getByRole('heading', { level: 1 }).filter({ hasText: scenario.leagueName })
       ).toBeVisible()
     })
   })
@@ -713,17 +723,17 @@ test.describe('League Team Management Flows', () => {
     })
 
     test('should show the teams section with the season team count', async ({ page }) => {
-      await page.goto(`/leagues/${scenario.leagueId}`)
+      await page.goto(`/leagues/${scenario.leagueId}?tab=teams`)
       await page.waitForLoadState('networkidle')
 
       // LeagueDetailPage.vue:238-242 — "Teams" heading plus a count chip.
-      const teamsHeading = page.getByRole('heading', { name: /^Teams/ })
-      await expect(teamsHeading).toBeVisible({ timeout: 10_000 })
-      await expect(teamsHeading.locator('.v-chip')).toHaveText('1')
+      const teamsTab = page.getByRole('tab', { name: /^Teams/ })
+      await expect(teamsTab).toBeVisible({ timeout: 10_000 })
+      await expect(teamsTab.locator('.v-chip')).toHaveText('1')
 
       // The one registered team renders below it.
       await expect(
-        page.locator('.v-card').filter({ hasText: roster.teamName }).first()
+        leagueTeamCard(page, roster.teamName).first()
       ).toBeVisible()
     })
 
@@ -757,7 +767,7 @@ test.describe('League Team Management Flows', () => {
         teamNamePrefix: 'Season Two Team',
       })
 
-      await page.goto(`/leagues/${own.leagueId}`)
+      await page.goto(`/leagues/${own.leagueId}?tab=teams`)
       await page.waitForLoadState('networkidle')
 
       const seasonSelect = page.locator('.v-select').first()
@@ -767,24 +777,24 @@ test.describe('League Team Management Flows', () => {
       await seasonSelect.click()
       await page.getByRole('option', { name: new RegExp(own.seasonName) }).click()
       await expect(
-        page.locator('.v-card').filter({ hasText: teamA.teamName }).first()
+        leagueTeamCard(page, teamA.teamName).first()
       ).toBeVisible({ timeout: 10_000 })
-      await expect(page.locator('.v-card').filter({ hasText: teamB.teamName })).toHaveCount(0)
+      await expect(leagueTeamCard(page, teamB.teamName)).toHaveCount(0)
 
       // Switch to season two — the grid MUST swap.
       await seasonSelect.click()
       await page.getByRole('option', { name: new RegExp(secondSeason.seasonName) }).click()
       await expect(
-        page.locator('.v-card').filter({ hasText: teamB.teamName }).first()
+        leagueTeamCard(page, teamB.teamName).first()
       ).toBeVisible({ timeout: 10_000 })
-      await expect(page.locator('.v-card').filter({ hasText: teamA.teamName })).toHaveCount(0)
+      await expect(leagueTeamCard(page, teamA.teamName)).toHaveCount(0)
     })
 
     test('should navigate to the team detail page via View Full Details', async ({ page }) => {
-      await page.goto(`/leagues/${scenario.leagueId}`)
+      await page.goto(`/leagues/${scenario.leagueId}?tab=teams`)
       await page.waitForLoadState('networkidle')
 
-      const teamCard = page.locator('.v-card').filter({ hasText: roster.teamName }).first()
+      const teamCard = leagueTeamCard(page, roster.teamName).first()
       await expect(teamCard).toBeVisible({ timeout: 10_000 })
       await teamCard.click()
 

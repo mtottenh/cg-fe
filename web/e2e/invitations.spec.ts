@@ -205,11 +205,11 @@ test.describe('League Invitations', () => {
     // Team" CTA (:171-178) is offered.
     await page.goto(`/leagues/${leagueId}`)
     await page.waitForLoadState('networkidle')
-    await expect(page.getByText(/You are a\s+member\s+of this league/)).toBeVisible({
+    await expect(page.getByTestId('member-strip')).toBeVisible({
       timeout: 10_000,
     })
     await expect(page.getByText('This league is invite-only.')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Create Team' }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Create a team' }).first()).toBeVisible()
 
     // Backend assertions: membership created, invitation no longer pending.
     const members = await listLeagueMembers(adminToken, leagueId)
@@ -259,8 +259,8 @@ test.describe('League Invitations', () => {
     await page.goto(`/leagues/${leagueId}`)
     await page.waitForLoadState('networkidle')
     await expect(page.getByText('This league is invite-only.')).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText(/You are a\s+member\s+of this league/)).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Create Team' })).toHaveCount(0)
+    await expect(page.getByTestId('member-strip')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Create a team' })).toHaveCount(0)
 
     // Backend assertions: no membership, invitation marked declined.
     const members = await listLeagueMembers(adminToken, leagueId)

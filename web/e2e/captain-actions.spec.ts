@@ -166,7 +166,7 @@ test.describe('Captain action items', () => {
       // --- sidebar badge ---------------------------------------------------
       const dashboardNav = page
         .locator('.v-navigation-drawer .v-list-item')
-        .filter({ hasText: 'Dashboard' })
+        .filter({ hasText: 'Home' })
       await expect(dashboardNav.locator('.v-badge__badge')).toHaveText('1')
 
       // --- header bell -----------------------------------------------------
@@ -219,7 +219,7 @@ test.describe('Captain action items', () => {
       await expect(widget(pageA)).toHaveCount(0)
       await expect(
         pageA.locator('.v-navigation-drawer .v-list-item')
-          .filter({ hasText: 'Dashboard' })
+          .filter({ hasText: 'Home' })
           .locator('.v-badge__badge'),
       ).toHaveCount(0)
       const menuA = await openBell(pageA)

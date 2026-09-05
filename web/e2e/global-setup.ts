@@ -391,11 +391,14 @@ async function seedTeamForAdmin(
   if (myTeamsResponse.ok) {
     const myTeamsData = await myTeamsResponse.json()
     const myTeams: PlayerLeagueTeamMembership[] = myTeamsData.data || []
-    if (myTeams.length > 0) {
-      console.log('Admin already has a team, using existing')
+    // The admin's team in THIS season — specs create admin teams in other
+    // leagues, so on a reused database the first membership is not it.
+    const inSeason = myTeams.find((t) => t.season_id === seasonId)
+    if (inSeason) {
+      console.log('Admin already has a team in the seeded season, using existing')
       return {
-        teamId: myTeams[0].team_id,
-        teamSeasonId: myTeams[0].team_season_id,
+        teamId: inSeason.team_id,
+        teamSeasonId: inSeason.team_season_id,
       }
     }
   }
@@ -453,7 +456,8 @@ async function fillRoster(
   teamSize: number
 ): Promise<void> {
   const members = await getTeamMembers(teamSeasonId, token)
-  const active = members.filter((m) => m.status === 'active').length
+  // Status casing follows the API enum; compare loosely, as the specs do.
+  const active = members.filter((m) => m.status.toLowerCase() === 'active').length
   if (active >= teamSize) {
     console.log(`Admin team roster already has ${active} players`)
     return

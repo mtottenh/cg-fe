@@ -13,8 +13,8 @@
       <v-card-text>
         <p class="text-body-2 text-medium-emphasis mb-4">
           The team keeps its name, tag and roster, and is registered for the season you pick.
-          Its registrations in the league it is leaving are dropped — so this is refused once
-          the team has played a match or entered a tournament.
+          It is withdrawn from any cup in the league it is leaving that has not started yet;
+          the move is refused once the team has played a match or a cup it entered has a bracket.
         </p>
 
         <v-select
@@ -68,14 +68,18 @@
 import { computed, ref, watch } from 'vue'
 import { useLeaguesStore } from '@/stores/leagues'
 import { useLeagueSeasonsStore, type LeagueSeasonResponse } from '@/stores/leagueSeasons'
-import { useLeagueTeamsStore, type LeagueTeamSummaryResponse } from '@/stores/leagueTeams'
+import {
+  useLeagueTeamsStore,
+  type LeagueTeamSummaryResponse,
+  type MovedTeamResponse,
+} from '@/stores/leagueTeams'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 
 const props = defineProps<{
   team: LeagueTeamSummaryResponse | null
 }>()
 
-const emit = defineEmits<{ moved: [] }>()
+const emit = defineEmits<{ moved: [result: MovedTeamResponse] }>()
 const open = defineModel<boolean>({ required: true })
 
 const leaguesStore = useLeaguesStore()
@@ -135,8 +139,8 @@ async function move() {
   saving.value = true
   error.value = null
   try {
-    await teamsStore.moveTeam(props.team.team_id, targetLeagueId.value, targetSeasonId.value)
-    emit('moved')
+    const result = await teamsStore.moveTeam(props.team.team_id, targetLeagueId.value, targetSeasonId.value)
+    emit('moved', result)
     open.value = false
   } catch {
     error.value = teamsStore.moveTeamState.error ?? 'Failed to move team'

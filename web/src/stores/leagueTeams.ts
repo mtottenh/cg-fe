@@ -6,6 +6,8 @@ import { unwrapApi, createActionState, withActionState, createLatestGuard } from
 
 // Use generated types
 type LeagueTeamResponse = components['schemas']['LeagueTeamResponse']
+/** A moved team, plus the cups it was withdrawn from on the way. */
+export type MovedTeamResponse = components['schemas']['MovedTeamResponse']
 type LeagueTeamSummaryResponse = components['schemas']['LeagueTeamSummaryResponse']
 type LeagueTeamSeasonResponse = components['schemas']['LeagueTeamSeasonResponse']
 type LeagueTeamWithSeasonResponse = components['schemas']['LeagueTeamWithSeasonResponse']
@@ -197,7 +199,7 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     teamId: string,
     leagueId: string,
     seasonId: string,
-  ): Promise<LeagueTeamResponse> {
+  ): Promise<MovedTeamResponse> {
     return withActionState(moveTeamState, async () => {
       const result = await unwrapApi(api.POST('/v1/league-teams/{team_id}/move', {
         params: { path: { team_id: teamId } },

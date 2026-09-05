@@ -329,6 +329,7 @@ import CaptainActionsWidget from '@/components/CaptainActionsWidget.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import { matchStatusMap, teamRoleMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import { formatMatchFormat } from '@/utils/matchStatus'
+import { pickCurrentSeason } from '@/utils/seasons'
 
 type TournamentMatchResponse = components['schemas']['TournamentMatchResponse']
 type TournamentResponse = components['schemas']['TournamentResponse']
@@ -543,13 +544,11 @@ async function fetchLanding() {
     for (const league of (leagues?.data?.data ?? []).slice(0, 2)) {
       let text = 'Open to join'
       let title = league.name
-      if (league.current_season_id) {
-        const [season, teams] = await Promise.all([
-          api.GET('/v1/league-seasons/{season_id}', { params: { path: { season_id: league.current_season_id } } }).catch(() => null),
-          api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: league.current_season_id }, query: { per_page: 100 } } }).catch(() => null),
-        ])
-        const s = season?.data?.data
-        if (s) {
+      const seasonsRes = await api.GET('/v1/league-seasons', { params: { query: { league_id: league.id } } }).catch(() => null)
+      const s = pickCurrentSeason(seasonsRes?.data?.data ?? [], league.current_season_id)
+      if (s) {
+        const teams = await api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: s.id }, query: { per_page: 100 } } }).catch(() => null)
+        {
           title = `${league.name} · ${s.name}`
           const n = teams?.data?.data?.length ?? 0
           const parts = [

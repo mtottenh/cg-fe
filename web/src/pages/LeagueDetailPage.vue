@@ -330,7 +330,7 @@
 
       <v-row v-if="teams.length > 0">
         <v-col v-for="team in teams" :key="team.team_id" cols="12" sm="6" md="4" lg="3">
-          <v-card class="h-100" hover @click="viewTeam(team)">
+          <v-card class="h-100" hover data-testid="league-team-card" @click="viewTeam(team)">
             <v-card-item>
               <template v-slot:prepend>
                 <v-avatar color="secondary" size="48" rounded="lg">

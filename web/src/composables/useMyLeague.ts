@@ -3,6 +3,7 @@ import { api } from '@/api'
 import type { components } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 import { useLeaguesStore } from '@/stores/leagues'
+import { pickCurrentSeason } from '@/utils/seasons'
 
 type LeagueSeasonResponse = components['schemas']['LeagueSeasonResponse']
 
@@ -17,12 +18,13 @@ export interface MyLeagueContext {
   tournamentsCount: number | null
 }
 
-const LIVE_SEASON_STATUSES = ['active', 'playoffs', 'registration']
 const STORAGE_KEY = 'my_league_id'
 
 const context = ref<MyLeagueContext | null>(null)
 const loading = ref(false)
 let loadedFor: string | null = null
+/** Which player's memberships have been fetched; null until the first fetch. */
+let membershipsFetchedFor: string | null = null
 
 /**
  * "Your league" for the sidebar: the league the player is a member of, its
@@ -57,12 +59,7 @@ export function useMyLeague() {
       if (!league) { context.value = null; return }
       const { data: seasonsRes } = await api.GET('/v1/league-seasons', { params: { query: { league_id: leagueId } } })
       const seasons: LeagueSeasonResponse[] = (seasonsRes?.data ?? []).filter(s => s.status !== 'draft')
-      const season =
-        (league.current_season_id ? seasons.find(s => s.id === league.current_season_id) : undefined) ??
-        seasons.find(s => LIVE_SEASON_STATUSES.includes(s.status)) ??
-        seasons.find(s => s.status === 'completed') ??
-        seasons[0] ??
-        null
+      const season = pickCurrentSeason(seasons, league.current_season_id)
       let teamsCount: number | null = null
       let tournamentsCount: number | null = null
       if (season) {
@@ -91,9 +88,17 @@ export function useMyLeague() {
   }
 
   async function refresh() {
-    if (!authStore.isAuthenticated) { context.value = null; loadedFor = null; return }
-    if (leaguesStore.myLeagues.length === 0) {
-      await leaguesStore.fetchMyLeagues().catch(() => {})
+    if (!authStore.isAuthenticated || !authStore.playerId) {
+      context.value = null; loadedFor = null; membershipsFetchedFor = null
+      return
+    }
+    // Fetch memberships once per player. Refetching whenever the list is
+    // empty looped for a player in no league: every fetch stored a new empty
+    // array, the watcher below fired on it, and refresh ran again — about a
+    // thousand requests a second.
+    if (membershipsFetchedFor !== authStore.playerId) {
+      membershipsFetchedFor = authStore.playerId
+      await leaguesStore.fetchMyLeagues().catch(() => { membershipsFetchedFor = null })
     }
     const id = preferredId()
     if (!id) { context.value = null; loadedFor = null; return }
@@ -105,7 +110,12 @@ export function useMyLeague() {
     void load(leagueId)
   }
 
-  watch(memberships, () => { void refresh() })
+  // React to the membership *set* changing (joined or left a league), not to
+  // the store handing back a fresh array with the same contents.
+  watch(
+    () => memberships.value.map(m => m.league_id).join(','),
+    () => { void refresh() },
+  )
 
   return { myLeague: context, memberships, loading, refresh, selectLeague }
 }

@@ -6,6 +6,7 @@ import { useLeagueSeasonsStore } from '@/stores/leagueSeasons'
 import { useLeagueTeamsStore, type LeagueTeamSummaryResponse, type LeagueTeamMemberWithPlayer } from '@/stores/leagueTeams'
 import { useTournamentsStore } from '@/stores/tournaments'
 import { useGamesStore } from '@/stores/games'
+import { pickCurrentSeason } from '@/utils/seasons'
 
 export function useLeagueDetail() {
   const route = useRoute()
@@ -92,24 +93,18 @@ export function useLeagueDetail() {
     () => isLeagueMember.value && selectedSeason.value?.status === 'registration' && !hasTeamInSeason.value,
   )
 
-  const LIVE_SEASON_STATUSES = ['active', 'playoffs', 'registration']
-
   /**
-   * The season a league opens on: the league's own `current_season_id`
-   * (trigger-maintained), else the first live one, else the most recent
-   * completed one. Never a draft. The old rule ("active, else first in the
-   * list") opened a league with an open season and a draft next season on
-   * the empty draft, because the list is newest-created-first.
+   * The season a league opens on — see `pickCurrentSeason`: the one being
+   * played, else the one taking sign-ups, else the league's own
+   * `current_season_id`, else the most recent finished one. Never a draft.
+   * The old rule ("active, else first in the list") opened a league with an
+   * open season and a draft next season on the empty draft, because the list
+   * is newest-created-first; deferring to `current_season_id` first pinned
+   * every league to Season 1, which the API stamps at creation and never
+   * moves.
    */
   function defaultSeasonId(): string | null {
-    const visible = visibleSeasons.value
-    const current = league.value?.current_season_id
-    const pick =
-      (current ? visible.find(s => s.id === current) : undefined) ??
-      visible.find(s => LIVE_SEASON_STATUSES.includes(s.status)) ??
-      visible.find(s => s.status === 'completed') ??
-      visible[0] ??
-      seasons.value[0]
+    const pick = pickCurrentSeason(visibleSeasons.value, league.value?.current_season_id) ?? seasons.value[0]
     return pick?.id ?? null
   }
 

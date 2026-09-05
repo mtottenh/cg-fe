@@ -103,6 +103,7 @@ import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { useSnackbar } from '@/composables/useSnackbar'
 import EmptyState from '@/components/EmptyState.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
+import { pickCurrentSeason } from '@/utils/seasons'
 
 type LeagueTeamSummary = components['schemas']['LeagueTeamSummaryResponse']
 type LeagueSeason = components['schemas']['LeagueSeasonResponse']
@@ -122,7 +123,6 @@ const leaguesStore = useLeaguesStore()
 const leagueTeamsStore = useLeagueTeamsStore()
 const snackbar = useSnackbar()
 
-const LIVE = ['active', 'playoffs', 'registration']
 const loading = ref(true)
 const error = ref<string | null>(null)
 const openOnly = ref(true)
@@ -156,10 +156,7 @@ async function load() {
       const { data: leagueRes } = await api.GET('/v1/leagues/{league_id}', { params: { path: { league_id: m.league_id } } })
       const { data: seasonsRes } = await api.GET('/v1/league-seasons', { params: { query: { league_id: m.league_id } } })
       const seasons: LeagueSeason[] = (seasonsRes?.data ?? []).filter(s => s.status !== 'draft')
-      const season =
-        seasons.find(s => s.id === leagueRes?.data?.current_season_id) ??
-        seasons.find(s => LIVE.includes(s.status)) ??
-        null
+      const season = pickCurrentSeason(seasons, leagueRes?.data?.current_season_id)
       let teams: LeagueTeamSummary[] = []
       if (season) {
         const { data: teamsRes } = await api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: season.id }, query: { per_page: 100 } } })

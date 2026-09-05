@@ -526,20 +526,18 @@ test.describe('Schedule negotiation (two browser contexts)', () => {
       await pageP2.goto(matchUrl)
       await pageP2.waitForLoadState('networkidle')
 
-      await expect(pageP2.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
+      await expect(pageP2.getByText(/Proposal from /)).toBeVisible({ timeout: 20000 })
       // 'Awaiting Response' renders BOTH as the status chip and inside a <strong>
       // in the body copy, so scope to the chip or Playwright strict mode fails.
       await expect(
         pageP2.locator('.v-chip').filter({ hasText: 'Awaiting Response' }).first(),
       ).toBeVisible()
 
-      // Accept stays locked until a time is picked (ProposalCard.vue:109).
+      // A single offered time is preselected (ProposalCard preselects when
+      // exactly one is proposed), so Accept is live without a click first.
       const acceptButton = pageP2.getByRole('button', { name: 'Accept' })
-      await expect(acceptButton).toBeDisabled()
-
       const timeChoices = pageP2.getByRole('radio')
       await expect(timeChoices).toHaveCount(1)
-      await timeChoices.first().check()
       await expect(timeChoices.first()).toBeChecked()
       await expect(acceptButton).toBeEnabled()
 
@@ -566,7 +564,7 @@ test.describe('Schedule negotiation (two browser contexts)', () => {
       )
 
       // UI, acceptor's page (no reload — handleAccept refetches).
-      await expect(pageP2.getByText('Proposal from opponent')).toHaveCount(0)
+      await expect(pageP2.getByText(/Proposal from /)).toHaveCount(0)
       await expectMatchScheduledAt(pageP2, proposedTime)
 
       // UI, proposer's page: the same agreed time once refreshed.
@@ -642,7 +640,7 @@ test.describe('Schedule negotiation (two browser contexts)', () => {
       // (MatchSchedulingPanel.submitCounter -> MatchDetailPage.handleCounter)
       await pageP2.goto(matchUrl)
       await pageP2.waitForLoadState('networkidle')
-      await expect(pageP2.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
+      await expect(pageP2.getByText(/Proposal from /)).toBeVisible({ timeout: 20000 })
 
       await pageP2.getByRole('button', { name: 'Counter-Propose' }).click()
       const counterDialog = pageP2.getByRole('dialog')
@@ -694,7 +692,7 @@ test.describe('Schedule negotiation (two browser contexts)', () => {
       // (ProposalCard.confirmReject -> MatchDetailPage.handleReject)
       await pageP1.reload()
       await pageP1.waitForLoadState('networkidle')
-      await expect(pageP1.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
+      await expect(pageP1.getByText(/Proposal from /)).toBeVisible({ timeout: 20000 })
 
       // P1 is shown P2's time, formatted by `formatProposedTime`
       // (stores/matchScheduling.ts:182-190) as the radio's label.
@@ -734,7 +732,7 @@ test.describe('Schedule negotiation (two browser contexts)', () => {
       await expect(pageP1.getByText(/Propose times for this match/)).toBeVisible({
         timeout: 15000,
       })
-      await expect(pageP1.getByText('Proposal from opponent')).toHaveCount(0)
+      await expect(pageP1.getByText(/Proposal from /)).toHaveCount(0)
       await expect(pageP1.getByText('Scheduling History')).toBeVisible()
       await expect(pageP1.getByText('Rejected').first()).toBeVisible()
 
@@ -813,7 +811,7 @@ test.describe('Schedule negotiation (two browser contexts)', () => {
 
       await pageP2.goto(matchUrl)
       await pageP2.waitForLoadState('networkidle')
-      await expect(pageP2.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
+      await expect(pageP2.getByText(/Proposal from /)).toBeVisible({ timeout: 20000 })
       await expect(pageP2.getByRole('button', { name: 'Counter-Propose' })).toBeVisible()
       await expect(pageP2.getByRole('button', { name: 'Withdraw Proposal' })).toHaveCount(0)
 
@@ -892,7 +890,7 @@ test.describe('Schedule negotiation (two browser contexts)', () => {
       // And the opponent is offered the replacement, not the withdrawn times.
       await pageP2.reload()
       await pageP2.waitForLoadState('networkidle')
-      await expect(pageP2.getByText('Proposal from opponent')).toBeVisible({ timeout: 20000 })
+      await expect(pageP2.getByText(/Proposal from /)).toBeVisible({ timeout: 20000 })
       const choices = pageP2.getByRole('radio')
       await expect(choices).toHaveCount(1)
 

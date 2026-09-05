@@ -56,9 +56,13 @@ export function useMatchLobby(
     auth_success(msg: AuthSuccessMessage) {
       userRole.value = msg.role
 
-      // Populate presence
-      participants.value = msg.lobby_state.participants
-      spectatorCount.value = msg.lobby_state.spectator_count
+      // Populate presence from the snapshot the server built after this
+      // socket joined — it names both teams and who is really here. Guard
+      // the shape: an older API sent an object here, which used to turn
+      // this array into something `findIndex` could not run on.
+      const snapshot = msg.lobby_state.participants
+      participants.value = Array.isArray(snapshot) ? snapshot : []
+      spectatorCount.value = msg.lobby_state.spectator_count ?? 0
 
       // Populate veto session from lobby state (no REST call needed)
       if (msg.lobby_state.session) {
@@ -104,6 +108,7 @@ export function useMatchLobby(
       const idx = participants.value.findIndex(p => p.registration_id === msg.registration_id)
       if (idx !== -1) {
         participants.value[idx]!.connected = true
+        participants.value[idx]!.username = msg.username
       } else {
         participants.value.push({
           registration_id: msg.registration_id,

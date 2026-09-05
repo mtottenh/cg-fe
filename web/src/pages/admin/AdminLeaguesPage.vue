@@ -141,46 +141,60 @@
                   <span v-else class="text-medium-emphasis">—</span>
                 </template>
 
+                <!-- Labelled, on one line: four bare icons wrapped into a
+                     2×2 cluster nobody read as "edit", "seasons", "archive". -->
                 <template v-slot:item.actions="{ item }">
-                  <v-btn aria-label="Edit settings"
-                    icon
-                    size="small"
-                    variant="text"
-                    @click="openEditModal(item)"
-                    title="Edit Settings"
-                  >
-                    <v-icon>mdi-pencil</v-icon>
-                  </v-btn>
-                  <v-btn aria-label="Manage members"
-                    icon
-                    size="small"
-                    variant="text"
-                    @click="openMembersModal(item)"
-                    title="Manage Members"
-                  >
-                    <v-icon>mdi-account-group</v-icon>
-                  </v-btn>
-                  <v-btn aria-label="Manage seasons and teams"
-                    icon
-                    size="small"
-                    variant="text"
-                    @click="openDetailModal(item)"
-                    title="Manage Seasons & Teams"
-                  >
-                    <v-icon>mdi-clipboard-list</v-icon>
-                  </v-btn>
-                  <v-btn
-                    :aria-label="item.archived_at ? 'Restore league' : 'Archive league'"
-                    icon
-                    size="small"
-                    variant="text"
-                    :title="item.archived_at
-                      ? 'Restore League'
-                      : 'Archive League (hides it and its seasons, teams and tournaments from players)'"
-                    @click="setLeagueArchived(item, !item.archived_at)"
-                  >
-                    <v-icon>{{ item.archived_at ? 'mdi-restore' : 'mdi-archive-arrow-down' }}</v-icon>
-                  </v-btn>
+                  <div class="d-flex align-center justify-end ga-1 flex-nowrap">
+                    <v-btn
+                      aria-label="Edit settings"
+                      title="Edit Settings"
+                      size="small"
+                      variant="text"
+                      prepend-icon="mdi-pencil"
+                      data-testid="league-edit"
+                      @click="openEditModal(item)"
+                    >
+                      Edit
+                    </v-btn>
+                    <v-btn
+                      aria-label="Manage seasons and teams"
+                      title="Manage Seasons & Teams"
+                      size="small"
+                      variant="text"
+                      prepend-icon="mdi-calendar-multiple"
+                      data-testid="league-seasons"
+                      @click="openDetailModal(item)"
+                    >
+                      Seasons &amp; teams
+                    </v-btn>
+                    <v-btn
+                      aria-label="Manage members"
+                      title="Manage Members"
+                      size="small"
+                      variant="text"
+                      prepend-icon="mdi-account-group"
+                      data-testid="league-members"
+                      @click="openMembersModal(item)"
+                    >
+                      Members
+                    </v-btn>
+                    <v-menu location="bottom end">
+                      <template v-slot:activator="{ props: menuProps }">
+                        <v-btn v-bind="menuProps" aria-label="More actions" icon size="small" variant="text" data-testid="league-more">
+                          <v-icon>mdi-dots-vertical</v-icon>
+                        </v-btn>
+                      </template>
+                      <v-list density="compact">
+                        <v-list-item
+                          :prepend-icon="item.archived_at ? 'mdi-restore' : 'mdi-archive-arrow-down'"
+                          :title="item.archived_at ? 'Restore league' : 'Archive league'"
+                          :subtitle="item.archived_at ? 'Players see it again' : 'Hides it and its seasons, teams and tournaments from players'"
+                          :data-testid="item.archived_at ? 'league-restore' : 'league-archive'"
+                          @click="setLeagueArchived(item, !item.archived_at)"
+                        />
+                      </v-list>
+                    </v-menu>
+                  </div>
                 </template>
 
                 <template v-slot:no-data>
@@ -297,7 +311,7 @@ const headers = [
   { title: 'Status', key: 'league_status', width: '110px' },
   { title: 'Your Role', key: 'membership_type', width: '120px' },
   { title: 'Joined', key: 'joined_at', width: '140px' },
-  { title: 'Actions', key: 'actions', width: '120px', sortable: false, align: 'center' as const },
+  { title: 'Actions', key: 'actions', width: '400px', sortable: false, align: 'end' as const },
 ]
 
 // Admin roles - users with these roles can manage the league

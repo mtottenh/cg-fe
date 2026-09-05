@@ -283,6 +283,56 @@
         </v-col>
 
         <v-col cols="12" md="4">
+          <v-card class="mb-4" data-testid="team-stats">
+            <v-card-title>
+              <v-icon start>mdi-chart-box-outline</v-icon>
+              Team stats
+            </v-card-title>
+            <v-divider />
+            <v-progress-linear v-if="loadingStats" indeterminate />
+            <v-card-text v-else-if="teamStats">
+              <div class="text-overline text-medium-emphasis">CS2 rating</div>
+              <div class="d-flex flex-wrap ga-6 mb-1">
+                <div>
+                  <div class="text-h6" data-testid="stat-median-rating">{{ fmtRating(teamStats.median_rating) }}</div>
+                  <div class="text-caption text-medium-emphasis">Median</div>
+                </div>
+                <div>
+                  <div class="text-h6" data-testid="stat-max-rating">{{ teamStats.max_rating ?? '—' }}</div>
+                  <div class="text-caption text-medium-emphasis">Max</div>
+                </div>
+                <div>
+                  <div class="text-h6" data-testid="stat-total-rating">{{ teamStats.total_rating.toLocaleString() }}</div>
+                  <div class="text-caption text-medium-emphasis">Total</div>
+                </div>
+              </div>
+              <div
+                v-if="teamStats.rated_count < teamStats.member_count"
+                class="text-caption text-medium-emphasis"
+                data-testid="stat-rated-note"
+              >
+                {{ teamStats.rated_count }} of {{ teamStats.member_count }} players have a CS2 rating.
+              </div>
+
+              <v-divider class="my-3" />
+
+              <div class="text-overline text-medium-emphasis">Past games</div>
+              <div class="d-flex flex-wrap ga-6">
+                <div>
+                  <div class="text-h6" data-testid="stat-games-season">{{ teamStats.past_games_season }}</div>
+                  <div class="text-caption text-medium-emphasis">This season</div>
+                </div>
+                <div>
+                  <div class="text-h6" data-testid="stat-games-alltime">{{ teamStats.past_games_all_time }}</div>
+                  <div class="text-caption text-medium-emphasis">All-time</div>
+                </div>
+              </div>
+            </v-card-text>
+            <v-card-text v-else class="text-caption text-medium-emphasis">
+              Stats are unavailable for this team.
+            </v-card-text>
+          </v-card>
+
           <v-card>
             <v-card-title>
               <v-icon start>mdi-account-multiple</v-icon>
@@ -506,6 +556,15 @@ const teamId = computed(() => route.params.id as string)
 // team_season_id can come from query param or we need to look it up
 const teamSeasonId = ref<string | null>(route.query.season as string | null)
 
+type TeamSeasonStats = import('@/api/types').components['schemas']['TeamSeasonStatsResponse']
+const teamStats = ref<TeamSeasonStats | null>(null)
+const loadingStats = ref(false)
+
+/** Ratings come back as a float median; the rest are whole numbers. */
+function fmtRating(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : Math.round(value).toLocaleString()
+}
+
 // Keep teamSeasonId reactive to URL changes
 watch(() => route.query.season, (newSeason) => {
   if (newSeason) {
@@ -662,6 +721,10 @@ onMounted(async () => {
       loadingMembers.value = true
       await teamsStore.fetchMembers(teamSeasonId.value)
       loadingMembers.value = false
+
+      loadingStats.value = true
+      teamStats.value = await teamsStore.fetchTeamStats(teamSeasonId.value).catch(() => null)
+      loadingStats.value = false
 
       await loadSeasonRosterLock()
 

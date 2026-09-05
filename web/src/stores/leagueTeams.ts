@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
+
+type TeamSeasonStats = components['schemas']['TeamSeasonStatsResponse']
 import { unwrapApi, createActionState, withActionState, createLatestGuard } from '@/stores/helpers'
 
 // Use generated types
@@ -67,6 +69,7 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
   const updateTeamState = createActionState()
   const registerTeamForSeasonState = createActionState()
   const fetchMembersState = createActionState()
+  const fetchTeamStatsState = createActionState()
   const addMemberState = createActionState()
   const removeMemberState = createActionState()
   const promoteToCaptainState = createActionState()
@@ -253,6 +256,16 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
       members.value = result.data
       return members.value
     }, 'Failed to fetch team members')
+  }
+
+  /** Roster CS2-rating aggregates and past-games tallies for a team season. */
+  async function fetchTeamStats(teamSeasonId: string): Promise<TeamSeasonStats> {
+    return withActionState(fetchTeamStatsState, async () => {
+      const result = await unwrapApi(api.GET('/v1/league-team-seasons/{team_season_id}/stats', {
+        params: { path: { team_season_id: teamSeasonId } },
+      }))
+      return result.data
+    }, 'Failed to fetch team stats')
   }
 
   async function addMember(teamSeasonId: string, memberData: AddLeagueTeamMemberRequest): Promise<void> {
@@ -479,6 +492,8 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
 
     // Roster management
     fetchMembers,
+    fetchTeamStats,
+    fetchTeamStatsState,
     addMember,
     removeMember,
     promoteToCaptain,

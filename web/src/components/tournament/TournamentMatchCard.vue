@@ -5,19 +5,16 @@
     @click="handleClick"
   >
     <div class="match-content">
-      <!-- Match number, best-of, and status. The Bo chip renders in compact
-           mode too — with per-round formats a bracket mixes Bo1 and Bo3
-           matches, and the bracket view is all compact cards. -->
+      <!-- Match number and best-of as quiet text (a bracket is a wall of
+           these cards, and three chips a card was the loudest thing on it);
+           the format still shows in compact mode because per-round formats
+           mix Bo1 and Bo3 in one bracket. Only the status is a chip, and a
+           finished match wears it as plain text so the live ones stand out. -->
       <div class="match-header d-flex justify-space-between align-center">
-        <div class="d-flex ga-1">
-          <v-chip size="x-small" variant="tonal" color="grey">
-            #{{ match.match_number }}
-          </v-chip>
-          <v-chip v-if="match.match_format" size="x-small" variant="tonal" color="primary">
-            {{ formatMatchFormatShort(match.match_format) }}
-          </v-chip>
-        </div>
-        <v-chip :color="statusColor" size="x-small" :variant="statusVariant">
+        <span class="text-caption text-medium-emphasis">
+          #{{ match.match_number }}<template v-if="match.match_format"> · {{ formatMatchFormatShort(match.match_format) }}</template>
+        </span>
+        <v-chip :color="statusColor" size="x-small" :variant="statusVariant" class="status-chip">
           {{ statusLabel }}
         </v-chip>
       </div>
@@ -44,9 +41,9 @@
               {{ match.participant1_name || 'TBD' }}
               <v-tooltip activator="parent" location="top">{{ match.participant1_name || 'TBD' }}</v-tooltip>
             </span>
-            <v-chip v-if="match.participant1_seed" size="x-small" variant="text" class="ml-1">
+            <span v-if="match.participant1_seed" class="seed text-caption text-medium-emphasis ml-1">
               #{{ match.participant1_seed }}
-            </v-chip>
+            </span>
           </div>
           <span class="score" :class="{ 'winning': isWinner(match.participant1_registration_id) }">
             {{ showScores ? match.participant1_score : '-' }}
@@ -73,9 +70,9 @@
               {{ match.participant2_name || 'TBD' }}
               <v-tooltip activator="parent" location="top">{{ match.participant2_name || 'TBD' }}</v-tooltip>
             </span>
-            <v-chip v-if="match.participant2_seed" size="x-small" variant="text" class="ml-1">
+            <span v-if="match.participant2_seed" class="seed text-caption text-medium-emphasis ml-1">
               #{{ match.participant2_seed }}
-            </v-chip>
+            </span>
           </div>
           <span class="score" :class="{ 'winning': isWinner(match.participant2_registration_id) }">
             {{ showScores ? match.participant2_score : '-' }}
@@ -135,7 +132,9 @@ const showScores = computed(() =>
 )
 
 const statusVariant = computed(() => {
-  return props.match.status === 'in_progress' ? 'flat' : 'tonal'
+  if (props.match.status === 'in_progress') return 'flat'
+  if (props.match.status === 'completed') return 'text'
+  return 'tonal'
 })
 
 const statusLabel = computed(() => getStatusLabel(matchStatusMap, props.match.status))
@@ -216,11 +215,14 @@ function handleClick() {
 }
 
 .participant-name {
-  max-width: 100px;
+  /* Use whatever width the card has; truncate only when it really runs out. */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-.compact .participant-name {
-  max-width: 80px;
+.seed,
+.status-chip {
+  flex-shrink: 0;
 }
 
 .score {

@@ -25,7 +25,7 @@
       another tab, or a route change reusing this component).
     -->
     <v-alert v-if="!loading && team && !canEdit" type="warning" class="mb-4">
-      Only the team owner or a platform admin can edit team settings
+      Only the team owner can edit team settings
     </v-alert>
 
     <template v-if="team && canEdit">

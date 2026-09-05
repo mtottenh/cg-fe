@@ -115,6 +115,7 @@
                       placeholder-icon="mdi-panorama-wide-angle"
                       shape="banner"
                       :aspect-ratio="4"
+                      :max-size="12"
                       path="/v1/league-teams/{team_id}/banner"
                       :path-params="{ team_id: teamId }"
                       response-field="banner_url"

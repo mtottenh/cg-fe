@@ -121,6 +121,8 @@ interface ConfirmedResultDispute {
   /** Registration seeded into the match's participant1 slot (and the winner). */
   participant1RegistrationId: string
   participant2RegistrationId: string
+  /** Its display name — what the dispute modal shows for the original winner. */
+  participant1Name: string
 }
 
 async function buildConfirmedResultDispute(
@@ -226,6 +228,7 @@ async function buildConfirmedResultDispute(
     disputeId: dispute!.id,
     participant1RegistrationId: first!.registrationId,
     participant2RegistrationId: second!.registrationId,
+    participant1Name: String(match!.participant1_name ?? ''),
   }
 }
 
@@ -660,9 +663,10 @@ test.describe('Admin Dispute Resolution', () => {
     await expect(
       modal.locator('tr').filter({ hasText: 'Original Score' }),
     ).toContainText('1 - 0')
+    // Named since api 0.7.5 (cg#19); it used to be the bare registration id.
     await expect(
       modal.locator('tr').filter({ hasText: 'Original Winner' }),
-    ).toContainText(built.participant1RegistrationId)
+    ).toContainText(built.participant1Name)
 
     const panel = await openResolutionPanel(modal, 'Uphold Original Result')
     await panel

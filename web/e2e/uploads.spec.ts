@@ -242,10 +242,10 @@ test.describe('Image uploads', () => {
       await page.goto('/profile/edit')
       await expect(page.getByText('Profile Images')).toBeVisible()
 
-      // The avatar upload has max-size=2MB — build a 10MB buffer which both
-      // exceeds avatar (2MB) and banner (5MB) limits so the assertion is
-      // robust even if the input indexing changes.
-      const oversized = Buffer.alloc(10 * 1024 * 1024, 0)
+      // The avatar upload has max-size=10MB and the banner 12MB — build a
+      // 20MB buffer that exceeds both, so the assertion is robust even if
+      // the input indexing changes.
+      const oversized = Buffer.alloc(20 * 1024 * 1024, 0)
 
       const uploadRequests: string[] = []
       const listener = (request: import('@playwright/test').Request) => {

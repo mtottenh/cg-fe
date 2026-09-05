@@ -41,6 +41,7 @@
                   response-field="avatar_url"
                   @upload-complete="handleAvatarUploaded"
                   @upload-error="handleUploadError"
+                  @remove="removeImage('avatar')"
                 />
               </v-col>
               <v-col cols="12" md="8">
@@ -50,12 +51,13 @@
                   placeholder="Upload banner"
                   placeholder-icon="mdi-panorama"
                   shape="banner"
-                  :aspect-ratio="3"
+                  :aspect-ratio="4"
                   :max-size="5"
                   path="/v1/players/me/banner"
                   response-field="banner_url"
                   @upload-complete="handleBannerUploaded"
                   @upload-error="handleUploadError"
+                  @remove="removeImage('banner')"
                 />
               </v-col>
             </v-row>
@@ -395,5 +397,16 @@ function handleBannerUploaded() {
 
 function handleUploadError(errorMsg: string) {
   error.value = errorMsg
+}
+
+/** The uploader's Remove: clear the image on the server, not just the preview. */
+async function removeImage(image: 'avatar' | 'banner') {
+  error.value = null
+  try {
+    await playersStore.clearMyImage(image)
+    successMessage.value = image === 'avatar' ? 'Avatar removed' : 'Banner removed'
+  } catch {
+    error.value = playersStore.clearMyImageState.error || `Failed to remove ${image}`
+  }
 }
 </script>

@@ -283,6 +283,75 @@
                 </v-col>
 
                 <v-col cols="12">
+                  <div class="text-subtitle-2 mb-2">Branding</div>
+                  <div class="text-caption text-medium-emphasis mb-3">
+                    Link an image by URL, or remove one — admins can take down problematic
+                    branding here.
+                  </div>
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <div class="d-flex align-center ga-3 mb-2">
+                    <v-avatar size="48" rounded="lg" color="surface-variant">
+                      <v-img alt="" v-if="settingsForm.logo_url" :src="settingsForm.logo_url" />
+                      <v-icon v-else>mdi-image-off-outline</v-icon>
+                    </v-avatar>
+                    <v-btn
+                      size="small"
+                      variant="text"
+                      color="error"
+                      :disabled="!settingsForm.logo_url"
+                      data-testid="admin-remove-logo"
+                      @click="removeImage('logo')"
+                    >
+                      Remove logo
+                    </v-btn>
+                  </div>
+                  <v-text-field
+                    v-model="settingsForm.logo_url"
+                    aria-label="Logo URL"
+                    label="Logo URL"
+                    :rules="[rules.url]"
+                    variant="outlined"
+                    density="comfortable"
+                    clearable
+                    data-testid="admin-logo-url"
+                  />
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <div class="d-flex align-center ga-3 mb-2">
+                    <v-sheet
+                      width="96"
+                      height="24"
+                      rounded="lg"
+                      color="surface-variant"
+                      class="overflow-hidden"
+                    >
+                      <v-img alt="" v-if="settingsForm.banner_url" :src="settingsForm.banner_url" cover height="24" />
+                    </v-sheet>
+                    <v-btn
+                      size="small"
+                      variant="text"
+                      color="error"
+                      :disabled="!settingsForm.banner_url"
+                      data-testid="admin-remove-banner"
+                      @click="removeImage('banner')"
+                    >
+                      Remove banner
+                    </v-btn>
+                  </div>
+                  <v-text-field
+                    v-model="settingsForm.banner_url"
+                    aria-label="Banner URL"
+                    label="Banner URL"
+                    :rules="[rules.url]"
+                    variant="outlined"
+                    density="comfortable"
+                    clearable
+                    data-testid="admin-banner-url"
+                  />
+                </v-col>
+
+                <v-col cols="12">
                   <v-btn
                     color="primary"
                     variant="flat"
@@ -429,7 +498,11 @@ const settingsForm = ref({
   name: '',
   tag: '',
   description: '',
+  logo_url: '',
+  banner_url: '',
 })
+/** What the server had when the tab opened, so an emptied field reads as a removal. */
+const brandingOriginal = ref<{ logo_url: string; banner_url: string } | null>(null)
 
 const memberHeaders = [
   { title: '', key: 'avatar_url', width: '50px', sortable: false },
@@ -460,6 +533,8 @@ watch(open, async (isOpen) => {
       name: props.team.team_name,
       tag: props.team.team_tag,
       description: '',
+      logo_url: props.team.team_logo_url ?? '',
+      banner_url: '',
     }
     await loadTeamData()
   }
@@ -473,6 +548,14 @@ async function loadTeamData() {
   await Promise.allSettled([
     leagueTeamsStore.fetchMembers(seasonId),
     leagueTeamsStore.fetchTeamInvitations(seasonId),
+    // The summary carries only the logo; the full team has the banner and
+    // the description too.
+    leagueTeamsStore.fetchTeam(props.team.team_id).then((team) => {
+      settingsForm.value.logo_url = team.logo_url ?? ''
+      settingsForm.value.banner_url = team.banner_url ?? ''
+      settingsForm.value.description = team.description ?? ''
+      brandingOriginal.value = { logo_url: team.logo_url ?? '', banner_url: team.banner_url ?? '' }
+    }),
   ])
   error.value =
     leagueTeamsStore.fetchMembersState.error
@@ -544,10 +627,31 @@ async function cancelInvitation(invitation: TeamInvitation) {
   )
 }
 
+/** Take a team image down from the modal (admins, or the owner). */
+async function removeImage(image: 'logo' | 'banner') {
+  if (!props.team) return
+  const teamId = props.team.team_id
+  await feedback.run(() => leagueTeamsStore.clearTeamImage(teamId, image), {
+    success: `Team ${image} removed`,
+    errorSource: leagueTeamsStore.clearTeamImageState,
+    after: () => {
+      settingsForm.value[`${image}_url`] = ''
+      if (brandingOriginal.value) brandingOriginal.value[`${image}_url`] = ''
+      emit('updated')
+    },
+  })
+}
+
 async function saveSettings() {
   if (!settingsFormValid.value || !props.team) return
 
-  const body: { name?: string; tag?: string; description?: string } = {}
+  const body: {
+    name?: string
+    tag?: string
+    description?: string
+    logo_url?: string
+    banner_url?: string
+  } = {}
   if (settingsForm.value.name !== props.team.team_name) {
     body.name = settingsForm.value.name
   }
@@ -557,13 +661,28 @@ async function saveSettings() {
   if (settingsForm.value.description) {
     body.description = settingsForm.value.description
   }
+  // A changed, non-empty URL is a link; an emptied one is a removal, which
+  // the API only does through DELETE.
+  const teamId = props.team.team_id
+  for (const image of ['logo', 'banner'] as const) {
+    const key = `${image}_url` as const
+    const now = settingsForm.value[key]?.trim() ?? ''
+    const was = brandingOriginal.value?.[key] ?? ''
+    if (now && now !== was) body[key] = now
+    if (!now && was) {
+      await feedback.run(() => leagueTeamsStore.clearTeamImage(teamId, image), {
+        success: `Team ${image} removed`,
+        errorSource: leagueTeamsStore.clearTeamImageState,
+      })
+      if (brandingOriginal.value) brandingOriginal.value[key] = ''
+    }
+  }
 
   if (Object.keys(body).length === 0) {
     snackbar.show('No changes to save', 'info')
     return
   }
 
-  const teamId = props.team.team_id
   await feedback.run(
     () => leagueTeamsStore.updateTeam(teamId, body),
     {

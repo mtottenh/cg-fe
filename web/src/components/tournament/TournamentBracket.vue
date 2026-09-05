@@ -180,6 +180,9 @@
             </h3>
             <div class="group-layout">
               <div class="group-standings">
+                <div class="column-title text-caption text-medium-emphasis text-uppercase font-weight-bold">
+                  Standings
+                </div>
                 <v-table
                   v-if="section.standings.length > 0"
                   density="compact"
@@ -234,6 +237,9 @@
               </div>
 
               <div class="group-matches">
+                <div class="column-title text-caption text-medium-emphasis text-uppercase font-weight-bold">
+                  Matches
+                </div>
                 <div
                   v-for="(round, roundIndex) in section.rounds"
                   :key="roundIndex"
@@ -593,6 +599,11 @@ watch(() => props.brackets, async (brackets) => {
 
 .standings-table :deep(tr.is-me td) {
   background: rgba(var(--v-theme-primary), 0.08);
+}
+
+.column-title {
+  margin-bottom: 8px;
+  letter-spacing: 0.08em;
 }
 
 .group-round + .group-round {

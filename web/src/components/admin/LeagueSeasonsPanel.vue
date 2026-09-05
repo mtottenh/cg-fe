@@ -80,36 +80,46 @@
       </template>
 
       <template v-slot:item.actions="{ item }">
-        <v-btn aria-label="Edit season"
-          icon
-          size="small"
-          variant="text"
-          @click="$emit('edit', item)"
-          title="Edit Season"
-        >
-          <v-icon>mdi-pencil</v-icon>
-        </v-btn>
-        <v-btn aria-label="View teams"
-          icon
-          size="small"
-          variant="text"
-          @click="$emit('view-teams', item)"
-          title="View Teams"
-        >
-          <v-icon>mdi-account-group</v-icon>
-        </v-btn>
-        <v-btn
-          :aria-label="item.archived_at ? 'Restore season' : 'Archive season'"
-          icon
-          size="small"
-          variant="text"
-          :title="item.archived_at
-            ? 'Restore Season'
-            : 'Archive Season (hides it from players; nothing is deleted)'"
-          @click="$emit('set-archived', item, !item.archived_at)"
-        >
-          <v-icon>{{ item.archived_at ? 'mdi-restore' : 'mdi-archive-arrow-down' }}</v-icon>
-        </v-btn>
+        <div class="d-flex align-center justify-end ga-1 flex-nowrap">
+          <v-btn
+            aria-label="Edit season"
+            title="Edit Season"
+            size="small"
+            variant="text"
+            prepend-icon="mdi-pencil"
+            data-testid="season-edit"
+            @click="$emit('edit', item)"
+          >
+            Edit
+          </v-btn>
+          <v-btn
+            aria-label="View teams"
+            title="View Teams"
+            size="small"
+            variant="text"
+            prepend-icon="mdi-account-group"
+            data-testid="season-teams"
+            @click="$emit('view-teams', item)"
+          >
+            Teams
+          </v-btn>
+          <v-menu location="bottom end">
+            <template v-slot:activator="{ props: menuProps }">
+              <v-btn v-bind="menuProps" aria-label="More actions" icon size="small" variant="text" data-testid="season-more">
+                <v-icon>mdi-dots-vertical</v-icon>
+              </v-btn>
+            </template>
+            <v-list density="compact">
+              <v-list-item
+                :prepend-icon="item.archived_at ? 'mdi-restore' : 'mdi-archive-arrow-down'"
+                :title="item.archived_at ? 'Restore season' : 'Archive season'"
+                :subtitle="item.archived_at ? 'Players see it again' : 'Hides it from players; nothing is deleted'"
+                :data-testid="item.archived_at ? 'season-restore' : 'season-archive'"
+                @click="$emit('set-archived', item, !item.archived_at)"
+              />
+            </v-list>
+          </v-menu>
+        </div>
       </template>
 
       <template v-slot:no-data>
@@ -159,7 +169,7 @@ const headers = [
   { title: 'Dates', key: 'registration', width: '220px', sortable: false },
   { title: 'Team Size', key: 'team_size', width: '100px', sortable: false },
   { title: 'Roster', key: 'roster_lock_status', width: '100px' },
-  { title: 'Actions', key: 'actions', width: '140px', sortable: false, align: 'center' as const },
+  { title: 'Actions', key: 'actions', width: '240px', sortable: false, align: 'end' as const },
 ]
 
 const formatStatus = (status: string) => getStatusLabel(seasonStatusMap, status)

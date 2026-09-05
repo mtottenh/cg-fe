@@ -134,7 +134,7 @@ const props = withDefaults(defineProps<Props<P>>(), {
   placeholderIcon: 'mdi-image-plus',
   shape: 'square',
   aspectRatio: 1,
-  maxSize: 5,
+  maxSize: 10,
   accept: 'image/jpeg,image/png,image/webp',
   pathParams: undefined,
   responseField: 'url',

@@ -15,7 +15,7 @@
           {{ p.connected ? 'mdi-circle' : 'mdi-circle-outline' }}
         </v-icon>
         <span class="text-caption" :class="{ 'text-medium-emphasis': !p.connected }">
-          {{ p.username }}
+          {{ p.username || p.team_name }}
         </span>
         <v-chip size="x-small" variant="text" class="text-caption text-medium-emphasis">
           {{ p.team_name }}

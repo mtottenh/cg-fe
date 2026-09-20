@@ -37,7 +37,14 @@
         prepend-icon="mdi-file-video"
         title="Demos"
         :to="{ name: 'admin-demos' }"
-        :active="route.name?.toString().startsWith('admin-demo')"
+        :active="route.name === 'admin-demos' || route.name === 'admin-demo-detail'"
+      />
+
+      <v-list-item
+        prepend-icon="mdi-bucket-outline"
+        title="Demo Buckets"
+        :to="{ name: 'admin-demo-buckets' }"
+        :active="route.name === 'admin-demo-buckets'"
       />
 
       <v-list-item

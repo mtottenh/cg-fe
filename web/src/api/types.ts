@@ -147,6 +147,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/demos/buckets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the buckets the explorer may browse. */
+        get: operations["list_demo_buckets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/demos/buckets/{bucket}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Presign a time-limited download for one object in an allowlisted bucket. */
+        get: operations["download_bucket_object"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/demos/buckets/{bucket}/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse one page of an allowlisted bucket.
+         * @description Read-only: there is deliberately no write, delete or catalog action here.
+         */
+        get: operations["browse_demo_bucket"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/demos/process-unlinked": {
         parameters: {
             query?: never;
@@ -6040,6 +6094,48 @@ export interface components {
          * @enum {string}
          */
         BracketStatus: "pending" | "active" | "completed" | "cancelled";
+        /** @description One page of a bucket listing. */
+        BucketListingResponse: {
+            /** @description Bucket that was listed. */
+            bucket: string;
+            /** @description Child "folders" rolled up by the delimiter. */
+            common_prefixes: string[];
+            /** @description Opaque cursor for the next page; absent when the listing is complete. */
+            next_cursor?: string | null;
+            /** @description Objects directly under the prefix. */
+            objects: components["schemas"]["BucketObjectResponse"][];
+            /** @description Prefix the listing was scoped to. */
+            prefix: string;
+        };
+        /** @description A presigned, time-limited download URL for a single bucket object. */
+        BucketObjectDownloadResponse: {
+            /** @description Bucket the object lives in. */
+            bucket: string;
+            /** @description Presigned URL. */
+            download_url: string;
+            /**
+             * Format: int64
+             * @description Seconds until the URL expires.
+             */
+            expires_in_secs: number;
+            /** @description Object key. */
+            key: string;
+        };
+        /** @description One object in a bucket listing. */
+        BucketObjectResponse: {
+            /** @description Full object key. */
+            key: string;
+            /**
+             * Format: date-time
+             * @description Last-modified timestamp, when the backend reports one.
+             */
+            last_modified?: string | null;
+            /**
+             * Format: int64
+             * @description Size in bytes.
+             */
+            size: number;
+        };
         /** @description Request to withdraw a schedule proposal you made yourself. */
         CancelScheduleProposalRequest: {
             /**
@@ -6917,6 +7013,43 @@ export interface components {
                 errors: components["schemas"]["BatchCatalogErrorResponse"][];
                 /** @description Demos that already existed. */
                 existing: components["schemas"]["DemoResponse"][];
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_BucketListingResponse: {
+            /** @description One page of a bucket listing. */
+            data: {
+                /** @description Bucket that was listed. */
+                bucket: string;
+                /** @description Child "folders" rolled up by the delimiter. */
+                common_prefixes: string[];
+                /** @description Opaque cursor for the next page; absent when the listing is complete. */
+                next_cursor?: string | null;
+                /** @description Objects directly under the prefix. */
+                objects: components["schemas"]["BucketObjectResponse"][];
+                /** @description Prefix the listing was scoped to. */
+                prefix: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_BucketObjectDownloadResponse: {
+            /** @description A presigned, time-limited download URL for a single bucket object. */
+            data: {
+                /** @description Bucket the object lives in. */
+                bucket: string;
+                /** @description Presigned URL. */
+                download_url: string;
+                /**
+                 * Format: int64
+                 * @description Seconds until the URL expires.
+                 */
+                expires_in_secs: number;
+                /** @description Object key. */
+                key: string;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -10041,6 +10174,17 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_DemoBucketResponse: {
+            data: {
+                /** @description True when this is the bucket new MatchZy uploads are written to. */
+                is_upload_target: boolean;
+                /** @description Bucket name. */
+                name: string;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_Vec_DemoMatchLinkResponse: {
             data: {
                 /**
@@ -11805,6 +11949,13 @@ export interface components {
             registration_id: string;
             /** @description If true the lineup is marked `submitted`; otherwise left `draft`. */
             submit?: boolean;
+        };
+        /** @description One bucket the admin explorer is permitted to browse. */
+        DemoBucketResponse: {
+            /** @description True when this is the bucket new MatchZy uploads are written to. */
+            is_upload_target: boolean;
+            /** @description Bucket name. */
+            name: string;
         };
         /**
          * @description Category for demo files in the catalog.
@@ -18187,6 +18338,168 @@ export interface operations {
             };
             /** @description Admin access required */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_demo_buckets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Allowlisted buckets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_DemoBucketResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    download_bucket_object: {
+        parameters: {
+            query: {
+                /** @description Full object key to presign. */
+                key: string;
+            };
+            header?: never;
+            path: {
+                /** @description Bucket name */
+                bucket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Presigned download URL */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_BucketObjectDownloadResponse"];
+                };
+            };
+            /** @description Missing or invalid key */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Bucket not allowlisted, or object missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    browse_demo_bucket: {
+        parameters: {
+            query?: {
+                /** @description Key prefix to scope the listing to. Empty lists the bucket root. */
+                prefix?: string | null;
+                /**
+                 * @description Delimiter for folder-style rollup. Defaults to `/`; pass an empty
+                 *     string for a flat listing.
+                 */
+                delimiter?: string | null;
+                /** @description Opaque cursor from a previous page's `next_cursor`. */
+                cursor?: string | null;
+                /** @description Page size (default 100, max 1000). */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description Bucket name */
+                bucket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of objects */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_BucketListingResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Bucket not allowlisted */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

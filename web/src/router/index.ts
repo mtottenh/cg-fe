@@ -228,6 +228,13 @@ const router = createRouter({
           component: () => import('@/pages/admin/AdminGameServersPage.vue'),
         },
         {
+          // Read-only object-storage browser. Registered BEFORE demos/:id so
+          // the literal segment is not swallowed by the :id capture.
+          path: 'demos/buckets',
+          name: 'admin-demo-buckets',
+          component: () => import('@/pages/admin/AdminDemoBucketsPage.vue'),
+        },
+        {
           path: 'demos/:id',
           name: 'admin-demo-detail',
           component: () => import('@/pages/admin/AdminDemoDetailPage.vue'),

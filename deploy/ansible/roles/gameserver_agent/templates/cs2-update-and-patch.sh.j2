@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+#
+# Nightly CS2 update wrapper.
+#
+# Valve's updates overwrite csgo/gameinfo.gi and strip the Metamod search
+# path, which silently kills the whole plugin stack (Metamod ->
+# CounterStrikeSharp -> MatchZy): every css_* and matchzy_* command starts
+# returning "Unknown command", while LinuxGSM's `monitor` stays green
+# because the process is still alive. This runs the update, re-applies the
+# patch if it went missing, and restarts only when it actually had to.
+#
+# NOTE: gameinfo.gi has CRLF line endings. The patch must match \r?$ and
+# write \r\n back, or it silently does nothing.
+#
+# Env overrides (for testing / manual repair):
+#   CS2_GAMEINFO=<path>    operate on a different file
+#   CS2_SKIP_UPDATE=1      skip the LinuxGSM update step
+#   CS2_SKIP_RESTART=1     patch but do not restart
+
+set -uo pipefail
+
+LGSM={{ gameserver_lgsm_script }}
+GAMEINFO=${CS2_GAMEINFO:-{{ gameserver_gameinfo_path }}}
+CONSOLE={{ gameserver_lgsm_console_log }}
+SVC_USER={{ gameserver_lgsm_user }}
+SKIP_UPDATE=${CS2_SKIP_UPDATE:-0}
+SKIP_RESTART=${CS2_SKIP_RESTART:-0}
+MARKER='csgo/addons/metamod'
+
+log() { logger -t cs2-update -- "$*"; printf '%s %s\n' "$(date '+%F %T')" "$*"; }
+
+as_svc() { su - "$SVC_USER" -c "$1"; }
+
+# --- 1. update -------------------------------------------------------------
+if [ "$SKIP_UPDATE" = "1" ]; then
+    log "skipping update (CS2_SKIP_UPDATE=1)"
+else
+    log "running LinuxGSM update"
+    as_svc "$LGSM update" >/dev/null 2>&1
+    log "update finished (rc=$?)"
+fi
+
+# --- 2. re-apply the Metamod search path if the update stripped it ---------
+if [ ! -f "$GAMEINFO" ]; then
+    log "ERROR: $GAMEINFO missing - not touching anything"
+    exit 1
+fi
+
+if grep -q "$MARKER" "$GAMEINFO"; then
+    log "gameinfo.gi already has the Metamod search path - nothing to do"
+    exit 0
+fi
+
+log "Metamod search path MISSING from gameinfo.gi - re-applying"
+BAK="$GAMEINFO.bak-$(date +%F-%H%M%S)"
+cp -p "$GAMEINFO" "$BAK" || { log "ERROR: backup failed"; exit 1; }
+
+TMP="$GAMEINFO.new"
+awk '!d && /^[ \t]*Game[ \t]+csgo\r?$/ {
+        match($0, /^[ \t]*/); ind = substr($0, 1, RLENGTH)
+        printf "%sGame\tcsgo/addons/metamod\r\n", ind
+        d = 1
+     }
+     { print }' "$GAMEINFO" > "$TMP" || { log "ERROR: awk failed"; rm -f "$TMP"; exit 1; }
+
+# Sanity-gate before overwriting: exactly one line added, marker present.
+old_lines=$(wc -l < "$GAMEINFO")
+new_lines=$(wc -l < "$TMP")
+if [ ! -s "$TMP" ] || [ "$new_lines" -ne "$((old_lines + 1))" ] || ! grep -q "$MARKER" "$TMP"; then
+    log "ERROR: patch sanity check failed (${old_lines} -> ${new_lines} lines) - leaving original alone"
+    rm -f "$TMP"
+    exit 1
+fi
+
+# cat-into-place keeps the original inode, owner and mode.
+cat "$TMP" > "$GAMEINFO" || { log "ERROR: write-back failed, restore from $BAK"; rm -f "$TMP"; exit 1; }
+rm -f "$TMP"
+log "patch applied (backup: $BAK)"
+
+# --- 3. restart so the plugin stack actually loads -------------------------
+if [ "$SKIP_RESTART" = "1" ]; then
+    log "skipping restart (CS2_SKIP_RESTART=1)"
+    exit 0
+fi
+
+log "restarting server to load the plugin stack"
+as_svc "$LGSM restart" >/dev/null 2>&1
+
+# --- 4. verify the stack actually came up ---------------------------------
+sleep 45
+if grep -qi "MMS: Fatal error" "$CONSOLE" 2>/dev/null; then
+    log "WARNING: Metamod reported a fatal error after restart - plugins are NOT loaded"
+elif grep -qi "MatchZy .* LOADED" "$CONSOLE" 2>/dev/null; then
+    log "OK: MatchZy loaded"
+else
+    log "WARNING: no MatchZy load line seen yet - check $CONSOLE"
+fi

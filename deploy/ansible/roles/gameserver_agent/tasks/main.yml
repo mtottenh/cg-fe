@@ -258,9 +258,9 @@
     crontab -l | grep -v 'cs2server update' | crontab -
   args:
     executable: /bin/bash
-  register: gameserver_legacy_update_cron
-  changed_when: gameserver_legacy_update_cron.rc == 0
-  failed_when: gameserver_legacy_update_cron.rc not in [0, 99]
+  register: gameserver_agent_legacy_update_cron
+  changed_when: gameserver_agent_legacy_update_cron.rc == 0
+  failed_when: gameserver_agent_legacy_update_cron.rc not in [0, 99]
   when: gameserver_lgsm_script | default('') | length > 0
 
 - name: Nightly CS2 update + gameinfo.gi repair cron

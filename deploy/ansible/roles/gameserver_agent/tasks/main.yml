@@ -46,6 +46,10 @@
   register: gameserver_agent_dpkg
   changed_when: false
   failed_when: false
+  # Read-only probe. Without this it is skipped under --check, leaving
+  # stdout empty and tripping the assert below on a host that is in fact
+  # fine — which made the whole role impossible to dry-run.
+  check_mode: false
 
 - name: A deb is available (path given or already installed)
   ansible.builtin.assert:
@@ -186,6 +190,33 @@
         block: "{{ gameserver_agent_matchzy_cfg.content | b64decode }}"
       no_log: true
 
+    # The URL alone is not enough: without the header pair every upload
+    # 401s at the portal and the bucket silently stays empty. A partially
+    # hand-pasted config looks healthy until you go looking for demos.
+    # grep -q keeps the bearer token out of the log.
+    - name: Demo-upload header present in MatchZy config
+      ansible.builtin.command: >-
+        grep -q matchzy_demo_upload_header_value
+        {{ gameserver_matchzy_config_path }}
+      changed_when: false
+
+- name: MatchZy demo upload cannot be wired for a pre-existing enrollment
+  ansible.builtin.fail:
+    msg: >-
+      gameserver_matchzy_config_path is set but
+      /etc/portal/agent/matchzy_portal.cfg does not exist — this host was
+      enrolled by an agent version that only PRINTED the MatchZy cvars, so
+      the demo-upload bearer token is unrecoverable (the portal returns it
+      exactly once, at enrollment). Every demo upload will 401 and the
+      bucket will stay empty. Re-enroll to mint a fresh token:
+      `portal-cli gameserver revoke <id>`, remove /etc/portal/agent, re-run
+      this play. Set gameserver_require_matchzy_upload=false for a host
+      that deliberately runs without portal demo upload.
+  when:
+    - gameserver_matchzy_config_path | default('') | length > 0
+    - not gameserver_agent_matchzy_snippet.stat.exists
+    - gameserver_require_matchzy_upload | default(true)
+
 - name: Note when MatchZy wiring was skipped for a pre-existing enrollment
   ansible.builtin.debug:
     msg: >-
@@ -197,6 +228,49 @@
   when:
     - gameserver_matchzy_config_path | default('') | length > 0
     - not gameserver_agent_matchzy_snippet.stat.exists
+    - not (gameserver_require_matchzy_upload | default(true))
+
+# --- Nightly update wrapper (gameinfo.gi self-heal) ---------------------------
+# Valve's CS2 updates overwrite csgo/gameinfo.gi and strip the Metamod
+# search path, silently killing Metamod -> CounterStrikeSharp -> MatchZy.
+# LinuxGSM's `monitor` cron does not catch it: the process stays alive and
+# happily rejects every plugin command. The wrapper re-applies the patch
+# after each update and restarts only when it had to.
+#
+# LinuxGSM-specific — skipped entirely when gameserver_lgsm_script is unset.
+
+- name: CS2 update wrapper installed
+  ansible.builtin.template:
+    src: cs2-update-and-patch.sh.j2
+    dest: /usr/local/bin/cs2-update-and-patch.sh
+    owner: root
+    group: root
+    mode: "0755"
+  when: gameserver_lgsm_script | default('') | length > 0
+
+# Pre-Ansible boxes call `cs2server update` straight from root's crontab.
+# Leaving it in place would update twice and skip the gameinfo.gi repair.
+# rc 99 = nothing to remove, so this is a no-op on an already-clean host.
+- name: Legacy unmanaged CS2 update cron removed
+  ansible.builtin.shell: |
+    set -o pipefail
+    crontab -l 2>/dev/null | grep -q 'cs2server update' || exit 99
+    crontab -l | grep -v 'cs2server update' | crontab -
+  args:
+    executable: /bin/bash
+  register: gameserver_agent_legacy_update_cron
+  changed_when: gameserver_agent_legacy_update_cron.rc == 0
+  failed_when: gameserver_agent_legacy_update_cron.rc not in [0, 99]
+  when: gameserver_lgsm_script | default('') | length > 0
+
+- name: Nightly CS2 update + gameinfo.gi repair cron
+  ansible.builtin.cron:
+    name: cs2-update-and-patch
+    user: root
+    hour: "{{ gameserver_update_cron_hour }}"
+    minute: "{{ gameserver_update_cron_minute }}"
+    job: /usr/local/bin/cs2-update-and-patch.sh > /dev/null 2>&1
+  when: gameserver_lgsm_script | default('') | length > 0
 
 # --- Service + health gates ---------------------------------------------------
 

@@ -57,6 +57,12 @@ all:
           ansible_python_interpreter: /usr/bin/python3
           gameserver_matchzy_config_path: /home/cs2server/serverfiles/game/csgo/cfg/MatchZy/config.cfg
           gameserver_matchzy_config_owner: cs2server
+          # LinuxGSM paths for the nightly update + gameinfo.gi repair
+          # wrapper (Valve strips the Metamod search path on every update).
+          gameserver_lgsm_script: /home/cs2server/cs2server
+          gameserver_lgsm_user: cs2server
+          gameserver_gameinfo_path: /home/cs2server/serverfiles/game/csgo/gameinfo.gi
+          gameserver_lgsm_console_log: /home/cs2server/log/console/cs2server-console.log
 
   vars:
     # The domain Caddy terminates TLS for. Pointed at ansible_host via

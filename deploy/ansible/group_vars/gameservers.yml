@@ -41,3 +41,26 @@ ufw_extra_allow:
   - { port: "{{ gameserver_game_port }}", proto: tcp }   # game + RCON
   - { port: "{{ gameserver_game_port }}", proto: udp }   # game traffic
   - { port: "{{ gameserver_gotv_port }}", proto: udp }   # GOTV/CSTV
+
+# --- MatchZy demo-upload enforcement -----------------------------------------
+# The demo-upload block is only wired when the enrollment wrote
+# /etc/portal/agent/matchzy_portal.cfg (agents older than that only PRINTED
+# the cvars). With this true the converge FAILS rather than skipping
+# silently — a host that looks healthy but uploads nothing is exactly how
+# the portal-demos bucket sat empty for months. Set false per host if you
+# genuinely run without portal demo upload.
+gameserver_require_matchzy_upload: true
+
+# --- Nightly CS2 update wrapper ----------------------------------------------
+# Valve's updates overwrite csgo/gameinfo.gi and strip the Metamod search
+# path, silently killing Metamod -> CounterStrikeSharp -> MatchZy. The
+# wrapper re-applies it after each update and restarts only when it had to.
+#
+# LinuxGSM-specific: leave gameserver_lgsm_script empty to skip the whole
+# thing (non-LinuxGSM hosts). Set these per host in the inventory.
+gameserver_lgsm_script: ""          # e.g. /home/cs2server/cs2server
+gameserver_lgsm_user: ""            # e.g. cs2server
+gameserver_gameinfo_path: ""        # e.g. /home/cs2server/serverfiles/game/csgo/gameinfo.gi
+gameserver_lgsm_console_log: ""     # e.g. /home/cs2server/log/console/cs2server-console.log
+gameserver_update_cron_hour: 1
+gameserver_update_cron_minute: 0

@@ -20,6 +20,9 @@ type SetDemoNotesRequest = components['schemas']['SetDemoNotesRequest']
 type AssociateDemoRequest = components['schemas']['AssociateDemoRequest']
 type AutoLinkSettingResponse = components['schemas']['AutoLinkSettingResponse']
 type ProcessUnlinkedDemosResponse = components['schemas']['ProcessUnlinkedDemosResponse']
+type DemoBucketResponse = components['schemas']['DemoBucketResponse']
+type BucketListingResponse = components['schemas']['BucketListingResponse']
+type BucketObjectDownloadResponse = components['schemas']['BucketObjectDownloadResponse']
 type PipelineOverviewResponse = components['schemas']['PipelineOverviewResponse']
 type TrackingHealthEntryResponse = components['schemas']['TrackingHealthEntryResponse']
 type DiscoveredMatchAdminResponse = components['schemas']['DiscoveredMatchAdminResponse']
@@ -48,6 +51,9 @@ export const useDemosStore = defineStore('demos', () => {
   const links = ref<DemoMatchLinkResponse[]>([])
   const statusCounts = ref<DemoStatusCountsResponse | null>(null)
   const autoLinkEnabled = ref<boolean | null>(null)
+  // Bucket explorer (read-only browse of the allowlisted demo buckets)
+  const buckets = ref<DemoBucketResponse[]>([])
+  const bucketListing = ref<BucketListingResponse | null>(null)
   // P-73 — the ingestion pipeline, which had no admin read surface at all.
   const pipelineOverview = ref<PipelineOverviewResponse | null>(null)
   const trackingHealth = ref<TrackingHealthEntryResponse[]>([])
@@ -84,6 +90,9 @@ export const useDemosStore = defineStore('demos', () => {
   const fetchDiscoveredMatchesState = createActionState()
   const requeueDiscoveredState = createActionState()
   const processUnlinkedState = createActionState()
+  const fetchBucketsState = createActionState()
+  const browseBucketState = createActionState()
+  const downloadBucketObjectState = createActionState()
 
   async function fetchDemos(filters: DemoFilters = {}) {
     return withActionState(fetchDemosState, async () => {
@@ -139,6 +148,53 @@ export const useDemosStore = defineStore('demos', () => {
       links.value = result.data
       return result.data
     }, 'Failed to fetch demo links')
+  }
+
+  /** Buckets the API permits browsing. Server-side allowlist is authoritative. */
+  async function fetchBuckets(): Promise<DemoBucketResponse[]> {
+    return withActionState(fetchBucketsState, async () => {
+      const result = await unwrapApi(api.GET('/v1/admin/demos/buckets', {}))
+      buckets.value = result.data
+      return result.data
+    }, 'Failed to load buckets')
+  }
+
+  /**
+   * One page of a bucket listing. Pass `cursor` from the previous page's
+   * `next_cursor` to page forward; omit `delimiter` for folder-style rollup.
+   */
+  async function browseBucket(
+    bucket: string,
+    opts: { prefix?: string; cursor?: string; delimiter?: string; limit?: number } = {},
+  ): Promise<BucketListingResponse> {
+    return withActionState(browseBucketState, async () => {
+      const result = await unwrapApi(api.GET('/v1/admin/demos/buckets/{bucket}/objects', {
+        params: {
+          path: { bucket },
+          query: {
+            prefix: opts.prefix,
+            cursor: opts.cursor,
+            delimiter: opts.delimiter,
+            limit: opts.limit,
+          },
+        },
+      }))
+      bucketListing.value = result.data
+      return result.data
+    }, 'Failed to browse bucket')
+  }
+
+  /** Presigned, time-limited download URL for one object. */
+  async function downloadBucketObject(
+    bucket: string,
+    key: string,
+  ): Promise<BucketObjectDownloadResponse> {
+    return withActionState(downloadBucketObjectState, async () => {
+      const result = await unwrapApi(api.GET('/v1/admin/demos/buckets/{bucket}/download', {
+        params: { path: { bucket }, query: { key } },
+      }))
+      return result.data
+    }, 'Failed to get download URL')
   }
 
   async function downloadDemo(id: string): Promise<DemoDownloadResponse> {
@@ -460,6 +516,9 @@ export const useDemosStore = defineStore('demos', () => {
     fetchPlayersState,
     fetchLinksState,
     downloadDemoState,
+    fetchBucketsState,
+    browseBucketState,
+    downloadBucketObjectState,
     fetchStatusCountsState,
     fetchAutoLinkSettingState,
     updateAutoLinkSettingState,
@@ -474,6 +533,11 @@ export const useDemosStore = defineStore('demos', () => {
     fetchPlayers,
     fetchLinks,
     downloadDemo,
+    buckets,
+    bucketListing,
+    fetchBuckets,
+    browseBucket,
+    downloadBucketObject,
     catalogSingle,
     catalogBatch,
     categorize,

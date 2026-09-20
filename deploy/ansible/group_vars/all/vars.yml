@@ -97,6 +97,19 @@ portal_evidence_public_url: "https://{{ portal_evidence_bucket }}.{{ linode_obje
 
 portal_demos_bucket: portal-demos
 
+# Legacy pre-portal demo archive (raw/, processed/, stats/). Still fed
+# nightly by the game host's cs2-backup timer, and the only bucket with any
+# demo history in it.
+portal_legacy_demos_bucket: cs2-10mans-demo-files
+
+# Buckets the admin demo explorer may browse and presign downloads from.
+# This is a SECURITY BOUNDARY, not a convenience list: the API's Object
+# Storage credentials can read every bucket on the account, so anything
+# omitted here is rejected server-side (404). Keep it minimal.
+portal_demo_bucket_allowlist:
+  - "{{ portal_demos_bucket }}"
+  - "{{ portal_legacy_demos_bucket }}"
+
 # --- Operator SSH key --------------------------------------------------------
 # Public key installed for the ops user by roles/base (and injected into
 # root by provision.yml on a fresh Linode). Set to "" to manage keys by hand.

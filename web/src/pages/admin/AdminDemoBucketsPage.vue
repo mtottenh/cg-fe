@@ -34,6 +34,7 @@
           item-title="title"
           item-value="value"
           label="Bucket"
+          aria-label="Bucket"
           density="compact"
           hide-details
           style="max-width: 340px"

@@ -6,7 +6,8 @@ import { useLeagueSeasonsStore } from '@/stores/leagueSeasons'
 import { useLeagueTeamsStore, type LeagueTeamSummaryResponse, type LeagueTeamMemberWithPlayer } from '@/stores/leagueTeams'
 import { useTournamentsStore } from '@/stores/tournaments'
 import { useGamesStore } from '@/stores/games'
-import { pickCurrentSeason } from '@/utils/seasons'
+import { pickCurrentSeason, isSeasonTakingTeams } from '@/utils/seasons'
+import { isPrimaryRosterRole } from '@/utils/rosterLock'
 
 export function useLeagueDetail() {
   const route = useRoute()
@@ -72,9 +73,13 @@ export function useLeagueDetail() {
     return leaguesStore.hasPendingApplicationForLeague(league.value.id)
   })
 
+  // The one-team-per-season rule counts active primary (captain/player)
+  // memberships only: a substitute elsewhere may still found a team.
   const hasTeamInSeason = computed(() => {
     if (!selectedSeasonId.value || !isLeagueMember.value) return false
-    return teamsStore.myTeams.some(t => t.season_id === selectedSeasonId.value)
+    return teamsStore.myTeams.some(
+      t => t.season_id === selectedSeasonId.value && t.status === 'active' && isPrimaryRosterRole(t.role),
+    )
   })
 
   // Draft seasons are the organiser's workbench: players never see them in
@@ -88,9 +93,29 @@ export function useLeagueDetail() {
   const selectedSeason = computed(
     () => seasons.value.find(s => s.id === selectedSeasonId.value) ?? null,
   )
-  /** Teams can be created only while the selected season is taking registrations. */
+  /**
+   * The season's team cap is known to be reached. Backend `count_teams`
+   * skips withdrawn/disqualified entries (the summary's `season_status` is
+   * the team-season status). Only decided when the whole list is loaded;
+   * a partial page leaves it to the API rather than guessing.
+   */
+  const seasonTeamCapReached = computed(() => {
+    const max = selectedSeason.value?.max_teams
+    if (!max || !selectedSeason.value) return false
+    const all = teams.value.filter(t => t.season_id === selectedSeason.value!.id)
+    if (teamsStore.pagination.total_items > all.length) return false
+    const live = all.filter(t => !['withdrawn', 'disqualified'].includes(t.season_status ?? '')).length
+    return live >= max
+  })
+
+  /** Backend `create_team`: season taking teams (status + window), cap not reached, no primary team yet. */
   const canCreateTeamInSeason = computed(
-    () => isLeagueMember.value && selectedSeason.value?.status === 'registration' && !hasTeamInSeason.value,
+    () =>
+      isLeagueMember.value &&
+      !!selectedSeason.value &&
+      isSeasonTakingTeams(selectedSeason.value) &&
+      !seasonTeamCapReached.value &&
+      !hasTeamInSeason.value,
   )
 
   /**

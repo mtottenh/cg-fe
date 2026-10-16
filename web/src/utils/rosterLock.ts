@@ -79,3 +79,30 @@ export function rosterLockHint(value: string | null | undefined): string | null 
     ? 'The roster is locked for this season — no roster changes are allowed.'
     : 'The roster is soft-locked for this season — substitute changes only.'
 }
+
+/**
+ * Captain and player are the primary roster; substitutes are not. The
+ * one-team-per-season rule (`find_primary_team_in_season`) and the roster cap
+ * (`count_primary_members`) count primary members only.
+ */
+export function isPrimaryRosterRole(role: string | null | undefined): boolean {
+  return role === 'captain' || role === 'player'
+}
+
+/** Team-season statuses after which the team no longer takes part in the season. */
+const TERMINAL_TEAM_SEASON = ['eliminated', 'disqualified', 'withdrawn']
+
+/**
+ * Can this roster still take a player (invite, apply, accept)? Backend
+ * `ensure_roster_live`: the team is not disbanded or archived and its season
+ * entry is not terminal. `undefined` fields are unknown and do not block.
+ */
+export function isRosterLive(roster: {
+  teamStatus?: string | null
+  teamArchivedAt?: string | null
+  teamSeasonStatus?: string | null
+}): boolean {
+  if (roster.teamStatus === 'disbanded') return false
+  if (roster.teamArchivedAt) return false
+  return !TERMINAL_TEAM_SEASON.includes(roster.teamSeasonStatus ?? '')
+}

@@ -27,11 +27,16 @@
             You don't have any teams eligible to register for this tournament.
           </p>
           <ul class="text-body-2 pl-4 mb-0">
-            <li v-if="tournament.league_id">
+            <li v-if="tournament.season_id">
+              Teams must be entered in <strong>this cup's league season</strong>
+            </li>
+            <li v-else-if="tournament.league_id">
               Teams must be part of <strong>the linked league</strong>
             </li>
-            <li>You must be a <strong>captain</strong> or <strong>manager</strong> of the team</li>
+            <li>You must be the team's <strong>captain</strong></li>
+            <li>The team must still be playing (not disbanded or out of the season)</li>
             <li>The team must not already be registered</li>
+            <li v-if="rosterCheck">The roster must have the players the cup needs</li>
           </ul>
         </v-alert>
 
@@ -122,11 +127,18 @@ import { useLeagueTeamsStore, type PlayerLeagueTeamMembershipResponse } from '@/
 import type { TournamentResponse, TournamentRegistrationResponse } from '@/stores/tournaments'
 import { useFormRules } from '@/composables/useFormRules'
 import { teamRoleMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
+import { isLiveRegistration } from '@/utils/tournamentRegistration'
+import { isRosterLive } from '@/utils/rosterLock'
 
 const props = defineProps<{  tournament: TournamentResponse
   registrations: TournamentRegistrationResponse[]
   /** Server-side registration rejection to display inline. */
   error?: string | null
+  /**
+   * Active roster size and what registering needs, per team season; `null`
+   * when unknown (then the API decides).
+   */
+  rosterCheck?: (teamSeasonId: string) => { count: number; needed: number } | null
 }>()
 
 const emit = defineEmits<{  register: [teamSeasonId: string, participantName: string, participantLogoUrl?: string]
@@ -150,18 +162,19 @@ const rules = {
   maxLength: (v: string) => !v || v.length <= 100 || 'Max 100 characters',
 }
 
-// Get already registered team season IDs
+// Team seasons already in. A terminal registration (withdrawn, eliminated,
+// disqualified, no-show) does not block: the API replaces it on re-register.
 const registeredTeamSeasonIds = computed(() => {
   return props.registrations
-    .filter((r) => r.team_season_id && r.status !== 'withdrawn')
+    .filter((r) => r.team_season_id && isLiveRegistration(r))
     .map((r) => r.team_season_id!)
 })
 
 // Filter eligible teams
 const eligibleTeams = computed(() => {
   return leagueTeamsStore.myTeams.filter((team) => {
-    // Must be captain or manager to register team
-    if (!['captain', 'manager'].includes(team.role)) {
+    // Only the captain registers the team
+    if (team.role !== 'captain') {
       return false
     }
 
@@ -180,8 +193,20 @@ const eligibleTeams = computed(() => {
       return false
     }
 
-    // Team must be in active status
+    // The viewer's seat must be active
     if (team.status !== 'active') {
+      return false
+    }
+
+    // The team must still be able to play: not disbanded, and its season
+    // entry not eliminated/disqualified/withdrawn
+    if (!isRosterLive({ teamStatus: team.team_status, teamSeasonStatus: team.team_season_status })) {
+      return false
+    }
+
+    // Roster at least max(cup team_size, season minimum)
+    const roster = props.rosterCheck?.(team.team_season_id)
+    if (roster && roster.count < roster.needed) {
       return false
     }
 

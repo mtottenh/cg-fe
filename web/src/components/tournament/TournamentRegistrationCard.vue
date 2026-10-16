@@ -59,7 +59,7 @@
               </v-btn>
               <div class="d-flex flex-column align-end">
                 <v-btn size="large" disabled data-testid="register-short-roster">Register team</v-btn>
-                <span class="text-caption text-medium-emphasis mt-1">{{ myTeam.rosterMax - (myTeam.rosterCount ?? 0) }} more {{ myTeam.rosterMax - (myTeam.rosterCount ?? 0) === 1 ? 'player' : 'players' }} needed</span>
+                <span class="text-caption text-medium-emphasis mt-1">{{ playersShort }} more {{ playersShort === 1 ? 'player' : 'players' }} needed</span>
               </div>
             </div>
           </template>
@@ -84,7 +84,7 @@
                 <v-icon start>mdi-clock-outline</v-icon>
                 Awaiting Approval
               </v-chip>
-              <div>
+              <div v-if="canWithdraw">
                 <v-btn
                   variant="text"
                   color="error"
@@ -208,6 +208,7 @@
 import { computed } from 'vue'
 import type { TournamentResponse, TournamentRegistrationResponse } from '@/stores/tournaments'
 import { formatDateTime } from '@/utils/formatters'
+import { canWithdrawRegistration } from '@/utils/tournamentRegistration'
 
 const props = withDefaults(
   defineProps<{
@@ -225,9 +226,12 @@ const props = withDefaults(
     leagueName?: string | null
     seasonId?: string | null
     seasonName?: string | null
-    /** The viewer's own team in this league season, with its roster. */
-    /** `rosterCount` is null when the season's roster is not known here. */
-    myTeam?: { teamId: string; teamSeasonId: string; name: string; rosterCount: number | null; rosterMax: number } | null
+    /**
+     * The viewer's own team in this league season, with its roster.
+     * `rosterCount` is null when the season's roster is not known here;
+     * `rosterNeeded` is what registering takes (0 = no requirement).
+     */
+    myTeam?: { teamId: string; teamSeasonId: string; name: string; rosterCount: number | null; rosterNeeded: number } | null
     /** Live entries, for the closed state's "8 teams entered". */
     enteredCount?: number | null
     /**
@@ -264,9 +268,13 @@ const teamGate = computed<'not_member' | 'no_team' | 'short' | null>(() => {
   if (invitationHardBlock.value) return null
   if (props.isLeagueMember === false) return 'not_member'
   if (props.isLeagueMember && !props.myTeam) return 'no_team'
-  if (props.myTeam && props.myTeam.rosterCount != null && props.myTeam.rosterCount < props.myTeam.rosterMax) return 'short'
+  if (props.myTeam && props.myTeam.rosterCount != null && props.myTeam.rosterCount < props.myTeam.rosterNeeded) return 'short'
   return null
 })
+
+const playersShort = computed(() =>
+  props.myTeam ? Math.max(0, props.myTeam.rosterNeeded - (props.myTeam.rosterCount ?? 0)) : 0,
+)
 
 const closesSentence = computed(() =>
   props.tournament.registration_end ? ` Registration closes ${formatDateTime(props.tournament.registration_end)}.` : '',
@@ -345,11 +353,9 @@ const canCheckIn = computed(() => {
   return props.tournament.is_check_in_open && props.myRegistration?.status === 'approved'
 })
 
-const canWithdraw = computed(() => {
-  if (!props.myRegistration) return false
-  const status = props.tournament.status
-  return ['registration', 'scheduled'].includes(status)
-})
+const canWithdraw = computed(() =>
+  !!props.myRegistration && canWithdrawRegistration(props.myRegistration.status, props.tournament.status),
+)
 
 const cardColor = computed(() => {
   if (teamGate.value === 'short') return 'warning'
@@ -393,7 +399,8 @@ const title = computed(() => {
   if (teamGate.value === 'not_member') return `Teams in this cup come from ${props.leagueName ?? 'its league'}.`
   if (teamGate.value === 'no_team') return `You need a ${props.seasonName ?? 'league'} team to enter.`
   if (teamGate.value === 'short' && props.myTeam) {
-    return `${props.myTeam.name} has ${props.myTeam.rosterCount ?? 0} of ${props.myTeam.rosterMax} players. Cups need ${props.myTeam.rosterMax}.`
+    const n = props.myTeam.rosterCount ?? 0
+    return `${props.myTeam.name} has ${n} ${n === 1 ? 'player' : 'players'} — this cup needs ${props.myTeam.rosterNeeded}.`
   }
   if (props.signedOut && props.tournament.is_registration_open) return 'Sign in to register a team.'
   if (props.myRegistration?.checked_in) return "You're All Set!"
@@ -410,7 +417,7 @@ const title = computed(() => {
 const subtitle = computed(() => {
   if (teamGate.value === 'not_member') return 'Join the league first, then create or join a team.'
   if (teamGate.value === 'no_team') return 'Create one and invite players, or ask a team with an open slot.'
-  if (teamGate.value === 'short') return `Register opens as soon as the roster is full.${closesSentence.value}`
+  if (teamGate.value === 'short') return `Register opens as soon as the roster has ${props.myTeam?.rosterNeeded ?? 'enough'} players.${closesSentence.value}`
   if (props.signedOut && props.tournament.is_registration_open) return 'Brackets and teams are open to everyone; entering needs an account.'
   if (props.myRegistration?.checked_in) return 'Good luck in the tournament!'
   if (props.myRegistration?.status === 'approved' && canCheckIn.value) return 'Check in now to confirm your participation'
@@ -419,7 +426,10 @@ const subtitle = computed(() => {
       ? `Check-in opens ${formatDateTime(props.tournament.check_in_start)}.`
       : 'Check-in will open before the tournament starts'
   }
-  if (!props.myRegistration && canRegister.value && props.myTeam) return `${props.myTeam.rosterMax} players on the roster.${closesSentence.value}`
+  if (!props.myRegistration && canRegister.value && props.myTeam) {
+    const n = props.myTeam.rosterCount
+    return n != null ? `${n} ${n === 1 ? 'player' : 'players'} on the roster.${closesSentence.value}` : `${closesSentence.value.trim() || 'Register your team to compete'}`
+  }
   if (props.myRegistration?.status === 'pending') return 'Your registration is awaiting admin approval'
   if (needsInvitation.value) {
     return isTeamTournament.value

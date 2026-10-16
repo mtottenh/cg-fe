@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pickCurrentSeason } from '@/utils/seasons'
+import { pickCurrentSeason, isSeasonTakingTeams } from '@/utils/seasons'
 
 const s = (id: string, status: string, created_at: string) => ({ id, status, created_at })
 
@@ -29,5 +29,20 @@ describe('pickCurrentSeason', () => {
   it('falls back to a lone draft', () => {
     expect(pickCurrentSeason([s('d', 'draft', '2026-01-01')], null)?.id).toBe('d')
     expect(pickCurrentSeason([], null)).toBeNull()
+  })
+})
+
+describe('isSeasonTakingTeams', () => {
+  const now = new Date('2026-06-15T12:00:00Z')
+  it('needs registration status', () => {
+    expect(isSeasonTakingTeams({ status: 'registration' }, now)).toBe(true)
+    expect(isSeasonTakingTeams({ status: 'active' }, now)).toBe(false)
+  })
+  it('honours the registration window when set', () => {
+    expect(isSeasonTakingTeams({ status: 'registration', registration_start: '2026-07-01T00:00:00Z' }, now)).toBe(false)
+    expect(isSeasonTakingTeams({ status: 'registration', registration_end: '2026-06-01T00:00:00Z' }, now)).toBe(false)
+    expect(isSeasonTakingTeams({
+      status: 'registration', registration_start: '2026-06-01T00:00:00Z', registration_end: '2026-07-01T00:00:00Z',
+    }, now)).toBe(true)
   })
 })

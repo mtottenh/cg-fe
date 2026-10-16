@@ -97,15 +97,13 @@
                 <template v-if="myTeamInSeason">
                   <div class="text-subtitle-2">
                     Your team: {{ myTeamInSeason.team_name }} ·
-                    <span :class="rosterShort ? 'text-warning' : 'text-success'">{{ rosterCount }} of {{ rosterMax }} players</span>
+                    <span :class="rosterShort ? 'text-warning' : 'text-success'">{{ rosterLabel }}</span>
                   </div>
-                  <div class="text-body-2 text-medium-emphasis">
-                    {{ rosterShort ? `Cups need ${rosterMax}. Invite ${rosterMax - rosterCount} more before registering.` : 'Roster full. You can enter cups.' }}
-                  </div>
+                  <div v-if="rosterHint" class="text-body-2 text-medium-emphasis">{{ rosterHint }}</div>
                 </template>
                 <template v-else>
                   <div class="text-subtitle-2">You're a member. Next: {{ canCreateTeamInSeason ? 'create a team, or find one with an open slot.' : 'find a team with an open slot.' }}</div>
-                  <div class="text-body-2 text-medium-emphasis">Teams are per season, {{ rosterMax }} a side.</div>
+                  <div class="text-body-2 text-medium-emphasis">Teams are per season{{ rosterRange ? `, ${rosterRange}` : '' }}.</div>
                 </template>
               </div>
               <template v-if="myTeamInSeason">
@@ -268,7 +266,7 @@
                         <div class="d-flex ga-2 flex-wrap my-1">
                           <v-chip size="small" :color="tournamentStatusColor(nextTournament.status)" variant="tonal">{{ tournamentStatusLabel(nextTournament.status) }}</v-chip>
                           <v-chip size="small" variant="tonal">{{ formatTournamentFormat(nextTournament.format) }}</v-chip>
-                          <v-chip v-if="nextTournament.participant_type === 'team'" size="small" variant="tonal">Teams of {{ rosterMax }}</v-chip>
+                          <v-chip v-if="nextTournament.participant_type === 'team' && nextCupTeamSize" size="small" variant="tonal">Teams of {{ nextCupTeamSize }}</v-chip>
                           <v-chip size="small" variant="tonal">{{ nextTournament.max_participants }} max</v-chip>
                         </div>
                       </div>
@@ -277,7 +275,7 @@
                       </v-btn>
                     </v-card>
                     <div v-if="nextTournament.is_registration_open && myTeamInSeason && rosterShort" class="text-caption text-medium-emphasis mt-2">
-                      Register needs a full roster — {{ rosterCount }} of {{ rosterMax }} so far.
+                      Registering needs {{ rosterNeeded }} players — {{ rosterCount }} so far.
                     </div>
                   </template>
                   <EmptyState v-else icon="mdi-tournament" title="No tournaments for this season yet" variant="text" />
@@ -293,7 +291,7 @@
                   <v-card-title>Your season</v-card-title>
                   <v-card-text>
                     <div class="d-flex justify-space-between mb-2"><span class="text-medium-emphasis">Team</span><span>{{ myTeamInSeason?.team_name ?? 'None yet' }}</span></div>
-                    <div class="d-flex justify-space-between mb-2"><span class="text-medium-emphasis">Roster</span><span :class="myTeamInSeason ? (rosterShort ? 'text-warning' : 'text-success') : ''">{{ myTeamInSeason ? `${rosterCount} of ${rosterMax}` : '—' }}</span></div>
+                    <div class="d-flex justify-space-between mb-2"><span class="text-medium-emphasis">Roster</span><span :class="myTeamInSeason ? (rosterShort ? 'text-warning' : 'text-success') : ''">{{ myTeamInSeason ? rosterLabel : '—' }}</span></div>
                     <div class="d-flex justify-space-between"><span class="text-medium-emphasis">Your role</span><span>{{ myTeamInSeason ? getRoleLabel(myTeamInSeason.role) : '—' }}</span></div>
                   </v-card-text>
                 </template>
@@ -342,9 +340,9 @@
               <v-card-subtitle>[{{ team.team_tag }}]</v-card-subtitle>
             </v-card-item>
             <v-card-actions>
-              <v-chip size="small" variant="tonal" :color="(team.active_member_count || 0) >= (team.team_size_max || rosterMax) ? 'success' : undefined">
+              <v-chip size="small" variant="tonal" :color="team.team_size_min && (team.active_member_count || 0) >= team.team_size_min ? 'success' : undefined">
                 <v-icon start size="small">mdi-account-group</v-icon>
-                {{ team.active_member_count || 0 }} of {{ team.team_size_max || rosterMax }}
+                {{ team.active_member_count || 0 }}{{ team.team_size_max ? ` / ${team.team_size_max}` : '' }}
               </v-chip>
               <v-spacer />
               <v-icon size="small">mdi-chevron-right</v-icon>
@@ -590,6 +588,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { api } from '@/api'
 import { useLeagueDetail } from '@/composables/useLeagueDetail'
 import { useAuthStore } from '@/stores/auth'
 import { useGamesStore } from '@/stores/games'
@@ -610,6 +609,7 @@ import { formatTournamentFormat, type TournamentSummaryResponse } from '@/stores
 import { seasonStatusMap, leagueAccessTypeMap, leagueStatusMap, teamRoleMap, tournamentPublicStatusMap, tournamentStatusMap, getStatusColor, getStatusLabel, getStatusIcon } from '@/utils/statusMaps'
 import { rulesFromSettings, hasAnyRules } from '@/composables/useEligibilityRules'
 import { useEligibilityCheck } from '@/composables/useEligibilityCheck'
+import { rosterNeededForCup } from '@/utils/tournamentRegistration'
 import EligibilityRulesDisplay from '@/components/eligibility/EligibilityRulesDisplay.vue'
 
 // P-178: the local map copy moved to `statusMaps.ts` once the lane contention
@@ -658,9 +658,38 @@ const myTeamInSeason = computed(() =>
 const myTeamSummary = computed(() =>
   myTeamInSeason.value ? (teams.value.find(t => t.team_season_id === myTeamInSeason.value!.team_season_id) ?? null) : null,
 )
-const rosterMax = computed(() => myTeamSummary.value?.team_size_max ?? selectedSeason.value?.team_size_max ?? 5)
-const rosterCount = computed(() => myTeamSummary.value?.active_member_count ?? 1)
-const rosterShort = computed(() => rosterCount.value < rosterMax.value)
+// The season cap only limits adding members; what a cup needs is its own
+// lineup or the season minimum, whichever is larger (the registration rule).
+const rosterMax = computed(() => myTeamSummary.value?.team_size_max ?? selectedSeason.value?.team_size_max ?? null)
+const rosterMin = computed(() => myTeamSummary.value?.team_size_min ?? selectedSeason.value?.team_size_min ?? null)
+// Unknown stays unknown: the season's team list may not include the team yet.
+const rosterCount = computed(() => myTeamSummary.value?.active_member_count ?? null)
+// The tournament list is a summary without `team_size`; the next cup's lineup
+// comes from its own record.
+const nextCupTeamSize = ref<number | null>(null)
+const nextTeamCup = computed(() => nextTournament.value?.participant_type === 'team' ? nextTournament.value : null)
+const rosterNeeded = computed(() =>
+  nextTeamCup.value ? rosterNeededForCup(nextCupTeamSize.value, rosterMin.value) : (rosterMin.value ?? 0),
+)
+const rosterShort = computed(() => rosterCount.value != null && rosterCount.value < rosterNeeded.value)
+const rosterLabel = computed(() =>
+  `${rosterCount.value ?? '?'}${rosterMax.value ? ` / ${rosterMax.value}` : ''} players`,
+)
+const rosterHint = computed(() => {
+  if (rosterCount.value == null || !rosterNeeded.value) return null
+  const who = nextTeamCup.value ? nextTeamCup.value.name : 'The season'
+  return rosterShort.value
+    ? `${who} needs ${rosterNeeded.value}. Invite ${rosterNeeded.value - rosterCount.value} more before registering.`
+    : `Enough players for ${nextTeamCup.value ? nextTeamCup.value.name : 'the season minimum'}.`
+})
+const rosterRange = computed(() => {
+  const min = selectedSeason.value?.team_size_min
+  const max = selectedSeason.value?.team_size_max
+  if (min && max) return `${min}–${max} players`
+  if (max) return `up to ${max} players`
+  if (min) return `at least ${min} players`
+  return null
+})
 const myTeamLink = computed(() =>
   myTeamInSeason.value
     ? { path: `/teams/${myTeamInSeason.value.team_id}`, query: { season: myTeamInSeason.value.team_season_id } }
@@ -672,6 +701,16 @@ const myTeamLink = computed(() =>
 const NEXT_UP_ORDER = ['registration', 'published', 'scheduled', 'in_progress', 'draft', 'completed', 'finalized', 'cancelled']
 const nextTournament = computed(() =>
   [...tournaments.value].sort((a, b) => NEXT_UP_ORDER.indexOf(a.status) - NEXT_UP_ORDER.indexOf(b.status))[0] ?? null,
+)
+watch(
+  () => (nextTournament.value?.participant_type === 'team' ? nextTournament.value.id : null),
+  async (id) => {
+    nextCupTeamSize.value = null
+    if (!id) return
+    const res = await api.GET('/v1/tournaments/{tournament_id}', { params: { path: { tournament_id: id } } }).catch(() => null)
+    if (nextTournament.value?.id === id) nextCupTeamSize.value = res?.data?.data?.team_size ?? null
+  },
+  { immediate: true },
 )
 const playedTournaments = computed(() =>
   tournaments.value.filter(t => ['in_progress', 'completed', 'finalized'].includes(t.status)),

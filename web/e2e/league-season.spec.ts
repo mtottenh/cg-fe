@@ -108,7 +108,7 @@ test.describe('League Season Lifecycle', () => {
       // The registered team MUST appear as a card with its roster-count chip.
       const teamCard = page.locator('.v-card').filter({ hasText: roster.teamName }).first()
       await expect(teamCard).toBeVisible()
-      await expect(teamCard.getByText(/\d+ of \d+/)).toBeVisible()
+      await expect(teamCard.getByText(/\d+ \/ \d+/)).toBeVisible()
       await expect(teamCard.getByText(`[${roster.teamTag}]`)).toBeVisible()
     })
   })

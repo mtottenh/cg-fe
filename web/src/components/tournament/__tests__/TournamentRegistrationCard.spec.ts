@@ -82,6 +82,8 @@ function mountCard(props: {
   myRegistration?: TournamentRegistrationResponse | null
   hasEligibleTeams?: boolean
   isInvited?: boolean
+  isLeagueMember?: boolean
+  myTeam?: { teamId: string; teamSeasonId: string; name: string; rosterCount: number | null; rosterNeeded: number } | null
 }) {
   wrapper = mount(TournamentRegistrationCard, {
     props: {
@@ -215,5 +217,39 @@ describe('TournamentRegistrationCard invite-only gate', () => {
     expect(w.text()).not.toContain('Invitation Required')
     expect(buttonLabels(w)).toContain('Register Team')
     expect(w.find('[data-testid="register-with-invitation"]').exists()).toBe(false)
+  })
+})
+
+// The registration roster rule: active roster >= max(cup team_size, season
+// minimum). The season's roster cap is not the bar (it only limits adding).
+describe('TournamentRegistrationCard roster gate', () => {
+  const team = (rosterCount: number | null, rosterNeeded: number) =>
+    ({ teamId: 't1', teamSeasonId: 'ts1', name: 'UCR', rosterCount, rosterNeeded })
+
+  it('blocks a roster below what the cup needs and says how many', () => {
+    const w = mountCard({ tournament: makeTournament(), isLeagueMember: true, myTeam: team(3, 5) })
+    expect(w.text()).toContain('UCR has 3 players — this cup needs 5.')
+    expect(w.text()).toContain('2 more players needed')
+    expect(w.find('[data-testid="register-short-roster"]').exists()).toBe(true)
+  })
+
+  it('lets a roster that meets the need register even below the season cap', () => {
+    const w = mountCard({ tournament: makeTournament(), isLeagueMember: true, myTeam: team(6, 5) })
+    expect(w.find('[data-testid="register-short-roster"]').exists()).toBe(false)
+    expect(buttonLabels(w)).toContain('Register Team')
+  })
+
+  it('does not block on an unknown roster count', () => {
+    const w = mountCard({ tournament: makeTournament(), isLeagueMember: true, myTeam: team(null, 5) })
+    expect(w.find('[data-testid="register-short-roster"]').exists()).toBe(false)
+  })
+
+  it('offers withdraw only while the backend would accept it', () => {
+    const approved = makeRegistration({ status: 'approved' })
+    expect(buttonLabels(mountCard({ tournament: makeTournament(), myRegistration: approved }))).toContain('Withdraw')
+    wrapper?.unmount()
+    expect(buttonLabels(mountCard({ tournament: makeTournament({ status: 'in_progress' }), myRegistration: approved }))).toContain('Withdraw')
+    wrapper?.unmount()
+    expect(buttonLabels(mountCard({ tournament: makeTournament({ status: 'completed' }), myRegistration: approved }))).not.toContain('Withdraw')
   })
 })

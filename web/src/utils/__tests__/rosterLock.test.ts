@@ -3,6 +3,8 @@ import {
   allowsAnyRosterChanges,
   allowsPrimaryRosterChanges,
   allowsSubstituteChanges,
+  isPrimaryRosterRole,
+  isRosterLive,
   parseRosterLock,
   rosterLockColor,
   rosterLockHint,
@@ -67,5 +69,26 @@ describe('rosterLock', () => {
     expect(rosterLockHint('open')).toBeNull()
     expect(rosterLockHint('soft_lock')).toMatch(/substitute changes only/i)
     expect(rosterLockHint('hard_lock')).toMatch(/no roster changes/i)
+  })
+})
+
+describe('isPrimaryRosterRole', () => {
+  it('counts captain and player, not substitute', () => {
+    expect(isPrimaryRosterRole('captain')).toBe(true)
+    expect(isPrimaryRosterRole('player')).toBe(true)
+    expect(isPrimaryRosterRole('substitute')).toBe(false)
+  })
+})
+
+// Mirrors `ensure_roster_live` in portal-domain services/league_team/mod.rs.
+describe('isRosterLive', () => {
+  it('refuses disbanded or archived teams and terminal season entries', () => {
+    expect(isRosterLive({ teamStatus: 'active', teamSeasonStatus: 'active' })).toBe(true)
+    expect(isRosterLive({ teamStatus: 'inactive' })).toBe(true)
+    expect(isRosterLive({ teamStatus: 'disbanded' })).toBe(false)
+    expect(isRosterLive({ teamStatus: 'active', teamArchivedAt: '2026-01-01T00:00:00Z' })).toBe(false)
+    for (const s of ['eliminated', 'disqualified', 'withdrawn']) {
+      expect(isRosterLive({ teamStatus: 'active', teamSeasonStatus: s })).toBe(false)
+    }
   })
 })

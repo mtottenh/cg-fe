@@ -39,3 +39,19 @@ export function pickCurrentSeason<T extends SeasonLike>(
     null
   )
 }
+
+/**
+ * Is the season taking new teams right now? Backend `LeagueSeason::
+ * can_register_team`: status `registration` and, when set, inside the
+ * registration window.
+ */
+export function isSeasonTakingTeams(
+  season: { status: string; registration_start?: string | null; registration_end?: string | null },
+  now: Date = new Date(),
+): boolean {
+  if (season.status !== 'registration') return false
+  const t = now.getTime()
+  if (season.registration_start && t < new Date(season.registration_start).getTime()) return false
+  if (season.registration_end && t > new Date(season.registration_end).getTime()) return false
+  return true
+}

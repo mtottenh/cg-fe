@@ -10933,6 +10933,17 @@ export interface components {
                 team_logo_url?: string | null;
                 team_name: string;
                 team_season_id: string;
+                /**
+                 * @description Where this roster stands in its season; `withdrawn`, `eliminated`
+                 *     and `disqualified` are over.
+                 */
+                team_season_status: components["schemas"]["LeagueTeamSeasonStatus"];
+                /**
+                 * @description Whether the team still exists (`disbanded` teams keep their history
+                 *     but take no part in anything), so a client can tell a live roster
+                 *     from a finished one without fetching each team.
+                 */
+                team_status: components["schemas"]["LeagueTeamStatus"];
                 team_tag: string;
             }[];
             /** @description Response metadata. */
@@ -15011,6 +15022,17 @@ export interface components {
             team_logo_url?: string | null;
             team_name: string;
             team_season_id: string;
+            /**
+             * @description Where this roster stands in its season; `withdrawn`, `eliminated`
+             *     and `disqualified` are over.
+             */
+            team_season_status: components["schemas"]["LeagueTeamSeasonStatus"];
+            /**
+             * @description Whether the team still exists (`disbanded` teams keep their history
+             *     but take no part in anything), so a client can tell a live roster
+             *     from a finished one without fetching each team.
+             */
+            team_status: components["schemas"]["LeagueTeamStatus"];
             team_tag: string;
         };
         /** @description A single rating history entry. */

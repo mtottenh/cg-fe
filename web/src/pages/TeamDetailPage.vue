@@ -97,7 +97,7 @@
             brand-new team" — which orphans roster history, trophies and match
             history behind a new team id. This is that missing action.
           -->
-          <v-card v-if="isOwner" class="mb-4" data-testid="season-registration-card">
+          <v-card v-if="canRegisterForSeasons" class="mb-4" data-testid="season-registration-card">
             <v-card-title class="d-flex align-center">
               <v-icon start>mdi-calendar-plus</v-icon>
               <span>Season Registration</span>
@@ -503,7 +503,11 @@ import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import LeagueTeamInviteModal from '@/components/team/LeagueTeamInviteModal.vue'
 import { teamRoleMap, teamStatusMap, getStatusColor as mapStatusColor, getStatusLabel } from '@/utils/statusMaps'
-import { rosterLockColor, rosterLockHint, rosterLockLabel } from '@/utils/rosterLock'
+import {
+  allowsPrimaryRosterChanges, isPrimaryRosterRole, isRosterLive, rosterLockColor, rosterLockHint, rosterLockLabel,
+} from '@/utils/rosterLock'
+import { isSeasonTakingTeams } from '@/utils/seasons'
+import { useLeaguesStore } from '@/stores/leagues'
 import type { components } from '@/api/types'
 
 type LeagueTeamResponse = components['schemas']['LeagueTeamResponse']
@@ -512,6 +516,7 @@ const route = useRoute()
 const router = useRouter()
 const teamsStore = useLeagueTeamsStore()
 const seasonsStore = useLeagueSeasonsStore()
+const leaguesStore = useLeaguesStore()
 const authStore = useAuthStore()
 
 const loading = ref(true)
@@ -547,6 +552,9 @@ const respondingToRequest = ref<string | null>(null)
  * this only decides what the UI offers.
  */
 const seasonRosterLock = ref<string | null>(null)
+/** This roster's season entry status and season id, from the same fetch. */
+const teamSeasonStatus = ref<string | null>(null)
+const teamSeasonSeasonId = ref<string | null>(null)
 const rosterLockChip = computed(() => rosterLockLabel(seasonRosterLock.value))
 const rosterLockChipColor = computed(() => rosterLockColor(seasonRosterLock.value))
 const rosterLockTitle = computed(() => rosterLockHint(seasonRosterLock.value))
@@ -584,9 +592,21 @@ const applyMessage = ref('')
 const applyingToTeam = ref(false)
 const showInviteModal = ref(false)
 
+/**
+ * Mirrors the join-request path (`create_join_request`, role `player`): the
+ * roster is live (team not disbanded/archived, entry not withdrawn), the lock
+ * admits primary changes, the applicant is in the league and holds no primary
+ * seat elsewhere this season.
+ */
 const canApplyToTeam = computed(() => {
-  if (!authStore.isAuthenticated || !teamSeasonId.value) return false
+  if (!authStore.isAuthenticated || !teamSeasonId.value || !team.value) return false
   if (isMember.value) return false
+  if (!isRosterLive({ teamStatus: team.value.status, teamArchivedAt: team.value.archived_at, teamSeasonStatus: teamSeasonStatus.value })) return false
+  if (!allowsPrimaryRosterChanges(seasonRosterLock.value)) return false
+  if (!leaguesStore.myLeagues.some(m => m.league_id === team.value!.league_id)) return false
+  if (teamSeasonSeasonId.value && teamsStore.myTeams.some(
+    t => t.season_id === teamSeasonSeasonId.value && t.status === 'active' && isPrimaryRosterRole(t.role),
+  )) return false
   return true
 })
 
@@ -601,6 +621,11 @@ const canApplyToTeam = computed(() => {
  */
 const isOwner = computed(
   () => !!team.value && !!authStore.playerId && team.value.owner_player_id === authStore.playerId,
+)
+
+/** A disbanded or archived team enters no new season (`register_for_season`). */
+const canRegisterForSeasons = computed(
+  () => isOwner.value && !!team.value && team.value.status !== 'disbanded' && !team.value.archived_at,
 )
 
 // P-71 state: seasons of this team's league that are open for registration and
@@ -621,7 +646,7 @@ const registeringSeasonId = ref<string | null>(null)
  * team-list probe would hit.
  */
 async function loadRegisterableSeasons() {
-  if (!team.value || !isOwner.value) {
+  if (!team.value || !canRegisterForSeasons.value) {
     registerableSeasons.value = []
     return
   }
@@ -631,11 +656,10 @@ async function loadRegisterableSeasons() {
     const enteredSeasonIds = new Set(
       teamsStore.myTeams.filter(m => m.team_id === teamId.value).map(m => m.season_id),
     )
-    // `registration` is the ONLY status `SeasonStatus::is_registration_open()`
-    // accepts (portal-core/src/types/league_team.rs:62); offering any other
-    // status would be a control that always 409s.
+    // `can_register_team`: status `registration` inside its window; offering
+    // any other season would be a control that always 409s.
     registerableSeasons.value = seasons.filter(
-      s => s.status === 'registration' && !enteredSeasonIds.has(s.id),
+      s => isSeasonTakingTeams(s) && !s.archived_at && !enteredSeasonIds.has(s.id),
     )
   } finally {
     loadingSeasons.value = false
@@ -684,6 +708,8 @@ async function resolveSeasonFromLeague(leagueId: string): Promise<string | null>
  */
 async function loadSeasonRosterLock() {
   seasonRosterLock.value = null
+  teamSeasonStatus.value = null
+  teamSeasonSeasonId.value = null
   if (!teamSeasonId.value) return
   const teamSeason = await unwrapApi(
     api.GET('/v1/league-team-seasons/{team_season_id}', {
@@ -691,6 +717,8 @@ async function loadSeasonRosterLock() {
     })
   ).catch(() => null)
   seasonRosterLock.value = teamSeason?.data.roster_lock_status ?? null
+  teamSeasonStatus.value = teamSeason?.data.status ?? null
+  teamSeasonSeasonId.value = teamSeason?.data.season_id ?? null
 }
 
 onMounted(async () => {
@@ -700,7 +728,11 @@ onMounted(async () => {
 
     // Fetch user's teams so useTeamContext can determine membership/role
     if (authStore.isAuthenticated) {
-      await teamsStore.fetchMyTeams()
+      await Promise.all([
+        teamsStore.fetchMyTeams(),
+        // League membership gates "Apply to Join"; a failure only hides it.
+        leaguesStore.myLeagues.length ? Promise.resolve() : leaguesStore.fetchMyLeagues().catch(() => {}),
+      ])
       // If we don't have a team_season_id from query, try to find it from user's teams
       if (!teamSeasonId.value) {
         const myMembership = teamsStore.myTeams.find(t => t.team_id === teamId.value)

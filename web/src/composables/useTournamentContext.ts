@@ -5,6 +5,8 @@ import { useLeagueTeamsStore } from '@/stores/leagueTeams'
 import { api } from '@/api'
 import { useTournamentLifecycleGuards } from '@/composables/useTournamentAdminActions'
 import { useSwissBracketProgress } from '@/composables/useSwissBracketProgress'
+import { isLiveRegistration } from '@/utils/tournamentRegistration'
+import { isRosterLive } from '@/utils/rosterLock'
 
 export function useTournamentContext(tournament: Ref<TournamentResponse | null>) {
   const authStore = useAuthStore()
@@ -18,9 +20,8 @@ export function useTournamentContext(tournament: Ref<TournamentResponse | null>)
 
   const isTeamTournament = computed(() => tournament.value?.participant_type === 'team')
 
-  /** A registration that still represents taking part. */
-  const isLive = (r: TournamentRegistrationResponse) =>
-    r.status !== 'withdrawn' && r.status !== 'disqualified'
+  /** A registration that still represents taking part (not terminal). */
+  const isLive = isLiveRegistration
 
   /**
    * Current user's active registration in this tournament.
@@ -87,14 +88,19 @@ export function useTournamentContext(tournament: Ref<TournamentResponse | null>)
    * so a captain was offered a team that was already in — and got an
    * unexplained duplicate-registration rejection from the API.
    */
-  /** Teams the viewer captains or manages in this tournament's league season. */
+  /**
+   * Live teams the viewer captains in this tournament's league season — the
+   * API lets only the captain register, and only a team that can still play.
+   * `status` is the viewer's seat; archived teams never reach this list.
+   */
   const myTeamsInSeason = computed(() => {
     if (!isTeamTournament.value || !tournament.value || !authStore.isAuthenticated) return []
     return leagueTeamsStore.myTeams.filter(team => {
-      if (!['captain', 'manager'].includes(team.role)) return false
+      if (team.role !== 'captain') return false
       if (tournament.value!.league_id && team.league_id !== tournament.value!.league_id) return false
       if (tournament.value!.season_id && team.season_id !== tournament.value!.season_id) return false
-      return team.status === 'active'
+      if (team.status !== 'active') return false
+      return isRosterLive({ teamStatus: team.team_status, teamSeasonStatus: team.team_season_status })
     })
   })
   /** The team the join strip talks about, registered or not. */

@@ -109,14 +109,14 @@
                   <div class="text-caption text-medium-emphasis">{{ team.team_tag }}</div>
                 </div>
                 <v-chip size="small" :color="slotsLeft(team) > 0 ? 'success' : undefined" variant="tonal">
-                  {{ team.active_member_count }} of {{ team.team_size_max ?? '?' }}
+                  {{ primaryCount(team) }}{{ team.team_size_max != null ? ` / ${team.team_size_max}` : '' }} players
                 </v-chip>
               </v-card-text>
               <v-spacer />
               <v-card-actions class="px-4 pb-3">
                 <v-btn variant="text" :to="{ path: `/teams/${team.team_id}`, query: team.team_season_id ? { season: team.team_season_id } : {} }">View team</v-btn>
                 <v-spacer />
-                <v-chip v-if="group.myTeam && group.myTeam.team_season_id === team.team_season_id" size="small" color="success" variant="tonal">Your team</v-chip>
+                <v-chip v-if="myTeamSeasonIds.has(team.team_season_id ?? '')" size="small" color="success" variant="tonal">Your team</v-chip>
                 <v-chip v-else-if="applied.has(team.team_season_id ?? '')" size="small" color="info" variant="tonal">Request sent</v-chip>
                 <v-btn
                   v-else-if="group.joinable && team.team_season_id && !group.myTeam && slotsLeft(team) > 0"
@@ -150,6 +150,7 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import EmptyState from '@/components/EmptyState.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import { seasonStatusMap, getStatusLabel } from '@/utils/statusMaps'
+import { allowsPrimaryRosterChanges, isPrimaryRosterRole, isRosterLive, rosterLockLabel } from '@/utils/rosterLock'
 
 type LeagueTeamSummary = components['schemas']['LeagueTeamSummaryResponse']
 type LeagueSeason = components['schemas']['LeagueSeasonResponse']
@@ -192,17 +193,30 @@ const teamsBySeason = ref(new Map<string, LeagueTeamSummary[]>())
 const loadingSeasons = ref(new Set<string>())
 
 const memberships = computed(() => leaguesStore.myLeagues.filter(m => m.league_status === 'active'))
-const slotsLeft = (t: LeagueTeamSummary) => (t.team_size_max ?? 5) - t.active_member_count
+// "Ask to join" requests a player (primary) seat, and the season cap counts
+// primary members only (`count_primary_members`); substitutes have their own
+// limit. No cap means no limit.
+const primaryCount = (t: LeagueTeamSummary) => t.captain_count + t.player_count
+const slotsLeft = (t: LeagueTeamSummary) =>
+  t.team_size_max == null ? Infinity : t.team_size_max - primaryCount(t)
 
-/** A season a player can still join: taking registrations, or running with an open roster. */
+/** Every roster the viewer is on, substitute seats included ("Your team"). */
+const myTeamSeasonIds = computed(() =>
+  new Set(leagueTeamsStore.myTeams.filter(t => t.status === 'active').map(t => t.team_season_id)),
+)
+
+const isSeasonOver = (s: LeagueSeason) => s.status === 'completed' || s.status === 'cancelled'
+
+/**
+ * A season a player can still join. The phase does not decide it (P-148):
+ * any non-final season whose roster lock admits primary changes does.
+ */
 function isJoinable(s: LeagueSeason): boolean {
-  if (s.status === 'registration') return true
-  return (s.status === 'active' || s.status === 'playoffs') && s.roster_lock_status === 'open'
+  return !isSeasonOver(s) && allowsPrimaryRosterChanges(s.roster_lock_status)
 }
 function whyNot(s: LeagueSeason): string {
-  if (s.status === 'completed' || s.status === 'cancelled') return 'Season over'
-  if (s.roster_lock_status !== 'open') return 'Roster locked'
-  return getStatusLabel(seasonStatusMap, s.status)
+  if (isSeasonOver(s)) return 'Season over'
+  return rosterLockLabel(s.roster_lock_status) ?? getStatusLabel(seasonStatusMap, s.status)
 }
 
 const leagueItems = computed(() => [
@@ -242,7 +256,8 @@ const groups = computed<Group[]>(() => {
   return seasonsInView.value.map(({ leagueId, leagueName, season }) => {
     const joinable = isJoinable(season)
     const teams = [...(teamsBySeason.value.get(season.id) ?? [])]
-      .filter(t => t.team_status === 'active')
+      // Same liveness rule the join request is refused by.
+      .filter(t => isRosterLive({ teamStatus: t.team_status, teamArchivedAt: t.archived_at, teamSeasonStatus: t.season_status }))
       .filter(t => !q || t.team_name.toLowerCase().includes(q) || t.team_tag.toLowerCase().includes(q))
       .filter(t => !openOnly.value || !joinable || slotsLeft(t) > 0)
       .sort((a, b) => slotsLeft(b) - slotsLeft(a) || a.team_name.localeCompare(b.team_name))
@@ -254,7 +269,8 @@ const groups = computed<Group[]>(() => {
       seasonName: season.name,
       joinable,
       whyNotJoinable: joinable ? null : whyNot(season),
-      myTeam: leagueTeamsStore.myTeams.find(t => t.season_id === season.id && t.status === 'active') ?? null,
+      // Only a primary seat blocks joining another team (one team per season).
+      myTeam: leagueTeamsStore.myTeams.find(t => t.season_id === season.id && t.status === 'active' && isPrimaryRosterRole(t.role)) ?? null,
       teams,
     }
   })

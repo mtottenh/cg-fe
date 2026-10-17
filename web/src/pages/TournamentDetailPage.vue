@@ -143,8 +143,8 @@
                           </v-avatar>
                         </template>
                         <template v-slot:append>
-                          <v-chip v-if="rosterFor(reg)" size="small" variant="tonal" :color="rosterFor(reg)!.full ? 'success' : 'warning'">
-                            {{ rosterFor(reg)!.count }} of {{ rosterFor(reg)!.max }}
+                          <v-chip v-if="rosterFor(reg)" size="small" variant="tonal" :color="rosterFor(reg)!.ready ? 'success' : 'warning'">
+                            {{ rosterFor(reg)!.count }}{{ rosterFor(reg)!.max != null ? ` / ${rosterFor(reg)!.max}` : '' }} players
                           </v-chip>
                           <v-chip v-else-if="reg.status !== 'approved'" size="small" variant="tonal" :color="registrationStatusColor(reg.status)">
                             {{ registrationStatusLabel(reg.status) }}
@@ -358,7 +358,7 @@
                 :brackets="brackets"
                 :matches="matches"
                 :stages="stages"
-                :highlight-registration-id="myRegistration?.id"
+                :highlight-registration-id="myBracketRegistrationId"
                 @match-click="openMatch"
               />
             </v-card-text>
@@ -435,6 +435,7 @@
       v-model="showTeamRegistrationModal"
       :tournament="tournament"
       :registrations="myRegistrations"
+      :roster-check="rosterCheckFor"
       @register="handleTeamRegister"
     />
 
@@ -496,6 +497,7 @@ import ErrorAlert from '@/components/ErrorAlert.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { formatDateTime } from '@/utils/formatters'
 import { isHttpUrl } from '@/utils/urls'
+import { rosterNeededForCup } from '@/utils/tournamentRegistration'
 import { registrationStatusMap, getStatusColor, getStatusLabel } from '@/utils/statusMaps'
 
 const route = useRoute()
@@ -522,7 +524,7 @@ const {
 
 // The league and season this cup runs in, and the season's rosters — for the
 // header, the breadcrumb, the join strip ("1 of 5 players") and "Teams in".
-const scope = ref<{ leagueName: string | null; seasonName: string | null }>({ leagueName: null, seasonName: null })
+const scope = ref<{ leagueName: string | null; seasonName: string | null; seasonTeamSizeMin: number | null }>({ leagueName: null, seasonName: null, seasonTeamSizeMin: null })
 const seasonTeams = ref<LeagueTeamSummaryResponse[]>([])
 async function loadScope(t: TournamentResponse) {
   const [league, season, teams] = await Promise.all([
@@ -530,28 +532,41 @@ async function loadScope(t: TournamentResponse) {
     t.season_id ? api.GET('/v1/league-seasons/{season_id}', { params: { path: { season_id: t.season_id } } }).catch(() => null) : null,
     t.season_id ? api.GET('/v1/league-seasons/{season_id}/teams', { params: { path: { season_id: t.season_id }, query: { per_page: 100 } } }).catch(() => null) : null,
   ])
-  scope.value = { leagueName: league?.data?.data?.name ?? null, seasonName: season?.data?.data?.name ?? null }
+  scope.value = {
+    leagueName: league?.data?.data?.name ?? null,
+    seasonName: season?.data?.data?.name ?? null,
+    seasonTeamSizeMin: season?.data?.data?.team_size_min ?? null,
+  }
   seasonTeams.value = teams?.data?.data ?? []
 }
 const isLeagueMember = computed((): boolean | undefined => {
   if (!authStore.isAuthenticated || !tournament.value?.league_id) return undefined
   return leaguesStore.myLeagues.some(m => m.league_id === tournament.value!.league_id)
 })
+// What registering takes: the cup's lineup or the season's roster minimum,
+// whichever is larger. The season cap (team_size_max) only limits adding
+// members, so it is shown as capacity, never as the bar to clear.
 function rosterFor(reg: { team_season_id?: string | null }) {
   if (!reg.team_season_id) return null
   const t = seasonTeams.value.find(s => s.team_season_id === reg.team_season_id)
   if (!t) return null
-  const max = t.team_size_max ?? tournament.value?.team_size ?? 5
-  return { count: t.active_member_count, max, full: t.active_member_count >= max }
+  const needed = rosterNeededForCup(tournament.value?.team_size, t.team_size_min ?? scope.value.seasonTeamSizeMin)
+  return { count: t.active_member_count, max: t.team_size_max ?? null, needed, ready: t.active_member_count >= needed }
+}
+function rosterCheckFor(teamSeasonId: string) {
+  const r = rosterFor({ team_season_id: teamSeasonId })
+  return r ? { count: r.count, needed: r.needed } : null
 }
 const myTeamForCard = computed(() => {
   const mine = myTeamInSeason.value
   if (!mine) return null
   const roster = rosterFor({ team_season_id: mine.team_season_id })
-  const max = roster?.max ?? tournament.value?.team_size ?? 5
+  const needed = roster?.needed ?? rosterNeededForCup(tournament.value?.team_size, scope.value.seasonTeamSizeMin)
   // Unknown roster (a cup outside a season) is unknown, not one player.
-  return { teamId: mine.team_id, teamSeasonId: mine.team_season_id, name: mine.team_name, rosterCount: roster?.count ?? null, rosterMax: max }
+  return { teamId: mine.team_id, teamSeasonId: mine.team_season_id, name: mine.team_name, rosterCount: roster?.count ?? null, rosterNeeded: needed }
 })
+// An eliminated (or withdrawn) entry still has its matches in the bracket.
+const myBracketRegistrationId = computed(() => myRegistration.value?.id ?? myRegistrations.value[0]?.id)
 const liveRegistrations = computed(() =>
   allRegistrations.value.filter(r => r.status !== 'withdrawn' && r.status !== 'disqualified').slice(0, 8),
 )

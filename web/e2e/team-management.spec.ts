@@ -214,7 +214,7 @@ test.describe('League Team Management Flows', () => {
       await expect(teamCard).toBeVisible({ timeout: 10_000 })
       await expect(teamCard.getByText(`[${roster.teamTag}]`)).toBeVisible()
       // Owner + one invited member.
-      await expect(teamCard.getByText(/2 of \d+/)).toBeVisible()
+      await expect(teamCard.getByText(/2 \/ \d+/)).toBeVisible()
 
       // Backend cross-check: the same roster size the card claims.
       const members = await getTeamMembers(roster.teamSeasonId, roster.owner.token)
@@ -406,7 +406,7 @@ test.describe('League Team Management Flows', () => {
       const teamCard = leagueTeamCard(page, teamName).first()
       await expect(teamCard).toBeVisible({ timeout: 10_000 })
       await expect(teamCard.getByText(`[${teamTag}]`)).toBeVisible()
-      await expect(teamCard.getByText(/1 of \d+/)).toBeVisible()
+      await expect(teamCard.getByText(/1 \/ \d+/)).toBeVisible()
 
       // UI assertion 2: the CTA is replaced by the "you already have a team"
       // chip (LeagueDetailPage.vue:179-182).

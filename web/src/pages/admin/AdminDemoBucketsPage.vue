@@ -77,19 +77,55 @@
     </div>
 
     <v-card>
+      <v-card-text class="d-flex flex-wrap align-center ga-3 pb-0">
+        <v-text-field
+          v-model="search"
+          label="Search this prefix"
+          aria-label="Search this prefix"
+          placeholder="filter by file name"
+          prepend-inner-icon="mdi-magnify"
+          density="compact"
+          variant="outlined"
+          clearable
+          hide-details
+          style="max-width: 360px"
+          data-testid="bucket-search"
+        />
+        <span class="text-caption text-medium-emphasis">
+          {{ visibleObjects.length }}
+          {{ visibleObjects.length === 1 ? 'file' : 'files' }}
+          <template v-if="search.trim()">matching</template>
+          <template v-if="listing?.next_cursor">
+            · more not yet loaded
+          </template>
+        </span>
+      </v-card-text>
+
       <v-table density="comfortable" data-testid="bucket-objects">
         <thead>
           <tr>
-            <th>Name</th>
-            <th class="text-right">Size</th>
-            <th>Last modified</th>
+            <th>
+              <button type="button" class="sort-header" data-testid="sort-name" @click="toggleSort('name')">
+                Name <v-icon size="x-small" :icon="sortIcon('name')" />
+              </button>
+            </th>
+            <th class="text-right">
+              <button type="button" class="sort-header" data-testid="sort-size" @click="toggleSort('size')">
+                Size <v-icon size="x-small" :icon="sortIcon('size')" />
+              </button>
+            </th>
+            <th>
+              <button type="button" class="sort-header" data-testid="sort-date" @click="toggleSort('last_modified')">
+                Last modified <v-icon size="x-small" :icon="sortIcon('last_modified')" />
+              </button>
+            </th>
             <th class="text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
           <!-- Folders first, as in any file browser -->
           <tr
-            v-for="folder in listing?.common_prefixes ?? []"
+            v-for="folder in visibleFolders"
             :key="folder"
             class="cursor-pointer"
             @click="applyPrefix(folder)"
@@ -103,7 +139,7 @@
             <td class="text-right text-medium-emphasis">—</td>
           </tr>
 
-          <tr v-for="object in listing?.objects ?? []" :key="object.key">
+          <tr v-for="object in visibleObjects" :key="object.key">
             <td>
               <v-icon start icon="mdi-file-outline" class="text-medium-emphasis" />
               {{ relativeName(object.key) }}
@@ -127,6 +163,7 @@
           <tr v-if="isEmpty">
             <td colspan="4" class="text-center text-medium-emphasis py-8">
               <template v-if="demosStore.browseBucketState.loading">Loading…</template>
+              <template v-else-if="search.trim()">No files match “{{ search.trim() }}”.</template>
               <template v-else>Nothing here.</template>
             </td>
           </tr>
@@ -167,6 +204,17 @@ const objects = ref<{ key: string; size: number; last_modified?: string | null }
 const commonPrefixes = ref<string[]>([])
 const nextCursor = ref<string | null>(null)
 
+const search = ref('')
+type SortKey = 'name' | 'size' | 'last_modified'
+const sortKey = ref<SortKey>('name')
+const sortDesc = ref(false)
+
+// S3 has no server-side search or ordering — ListObjectsV2 returns keys in
+// lexicographic order and nothing else. So both are applied client-side over
+// what has been loaded, and PAGE_SIZE is the API maximum to keep "loaded"
+// and "all" the same thing for any realistically sized prefix.
+const PAGE_SIZE = 1000
+
 const listing = computed(() =>
   selectedBucket.value
     ? {
@@ -184,9 +232,58 @@ const bucketItems = computed(() =>
   })),
 )
 
-const isEmpty = computed(
-  () => !commonPrefixes.value.length && !objects.value.length,
+/** Search + sort, applied client-side (see PAGE_SIZE). */
+const visibleObjects = computed(() => {
+  const needle = search.value.trim().toLowerCase()
+  const rows = needle
+    ? objects.value.filter((o) => o.key.toLowerCase().includes(needle))
+    : [...objects.value]
+
+  const dir = sortDesc.value ? -1 : 1
+  rows.sort((a, b) => {
+    switch (sortKey.value) {
+      case 'size':
+        return (a.size - b.size) * dir
+      case 'last_modified': {
+        // Missing timestamps sort last regardless of direction.
+        const at = a.last_modified ? Date.parse(a.last_modified) : null
+        const bt = b.last_modified ? Date.parse(b.last_modified) : null
+        if (at === null && bt === null) return 0
+        if (at === null) return 1
+        if (bt === null) return -1
+        return (at - bt) * dir
+      }
+      default:
+        return a.key.localeCompare(b.key) * dir
+    }
+  })
+  return rows
+})
+
+/** Folders are hidden while searching — a name filter over the current
+ *  prefix's files is what the box implies. */
+const visibleFolders = computed(() =>
+  search.value.trim() ? [] : commonPrefixes.value,
 )
+
+const isEmpty = computed(
+  () => !visibleFolders.value.length && !visibleObjects.value.length,
+)
+
+function toggleSort(key: SortKey) {
+  if (sortKey.value === key) {
+    sortDesc.value = !sortDesc.value
+  } else {
+    sortKey.value = key
+    // Dates are most useful newest-first; names read better A-Z.
+    sortDesc.value = key !== 'name'
+  }
+}
+
+function sortIcon(key: SortKey): string {
+  if (sortKey.value !== key) return 'mdi-unfold-more-horizontal'
+  return sortDesc.value ? 'mdi-arrow-down' : 'mdi-arrow-up'
+}
 
 /** Synthetic path segments from the current prefix. */
 const breadcrumbs = computed(() => {
@@ -221,6 +318,7 @@ async function load(append = false) {
   const page = await demosStore.browseBucket(selectedBucket.value, {
     prefix: prefix.value || undefined,
     cursor: append ? (nextCursor.value ?? undefined) : undefined,
+    limit: PAGE_SIZE,
   })
   objects.value = append ? [...objects.value, ...page.objects] : page.objects
   commonPrefixes.value = page.common_prefixes
@@ -239,6 +337,7 @@ function applyPrefix(next: string) {
   prefix.value = next ?? ''
   prefixInput.value = prefix.value
   nextCursor.value = null
+  search.value = ''
   return load(false)
 }
 
@@ -269,6 +368,21 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.sort-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.sort-header:hover {
+  text-decoration: underline;
+}
+
 .cursor-pointer {
   cursor: pointer;
 }

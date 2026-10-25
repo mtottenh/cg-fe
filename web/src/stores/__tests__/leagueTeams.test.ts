@@ -286,6 +286,43 @@ describe('League Teams Store', () => {
       expect(store.error).toBe('Upstream timeout')
     })
   })
+  describe('fetchMyInvitations', () => {
+    it('separates invites to answer from join requests I sent', async () => {
+      mockGet.mockResolvedValue({
+        data: {
+          data: [
+            { ...makeInvitation({ id: 'inv-1', invitation_type: 'invite' }), team_name: 'A' },
+            { ...makeInvitation({ id: 'req-1', invitation_type: 'request' }), team_name: 'B' },
+          ],
+        },
+      })
+      const store = useLeagueTeamsStore()
+
+      await store.fetchMyInvitations()
+
+      expect(store.myInvitations.map(i => i.id)).toEqual(['inv-1'])
+      expect(store.myJoinRequests.map(i => i.id)).toEqual(['req-1'])
+    })
+  })
+
+  describe('withdrawJoinRequest', () => {
+    it('DELETEs the request and drops it from myJoinRequests', async () => {
+      mockGet.mockResolvedValue({
+        data: { data: [{ ...makeInvitation({ id: 'req-1', invitation_type: 'request' }), team_name: 'B' }] },
+      })
+      ;(api.DELETE as unknown as Mock).mockResolvedValue({ data: {} })
+      const store = useLeagueTeamsStore()
+      await store.fetchMyInvitations()
+
+      await store.withdrawJoinRequest('req-1')
+
+      expect(api.DELETE).toHaveBeenCalledWith('/v1/league-team-invitations/{invitation_id}', {
+        params: { path: { invitation_id: 'req-1' } },
+      })
+      expect(store.myJoinRequests).toEqual([])
+    })
+  })
+
   describe('fetchTeamStats', () => {
     it('reads the team season stats and returns the data payload', async () => {
       const stats = {

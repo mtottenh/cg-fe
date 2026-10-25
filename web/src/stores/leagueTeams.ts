@@ -49,7 +49,13 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
 
   // Current player's data
   const myTeams = ref<PlayerLeagueTeamMembershipResponse[]>([])
+  // `/league-team-invitations/me` returns both directions: invites a captain
+  // sent this player (theirs to accept) and join requests this player sent
+  // (a captain's to accept, theirs only to withdraw). Mixing them showed a
+  // player's own request as an invitation with an Accept button that could
+  // only fail ("only a team captain can accept join requests").
   const myInvitations = ref<LeagueTeamInvitationWithTeamResponse[]>([])
+  const myJoinRequests = ref<LeagueTeamInvitationWithTeamResponse[]>([])
 
   // Viewed player's teams (for public profile)
   const viewedPlayerTeams = ref<PlayerLeagueTeamMembershipResponse[]>([])
@@ -413,7 +419,8 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
   async function fetchMyInvitations(): Promise<LeagueTeamInvitationWithTeamResponse[]> {
     return withActionState(fetchMyInvitationsState, async () => {
       const result = await unwrapApi(api.GET('/v1/league-team-invitations/me'))
-      myInvitations.value = result.data
+      myInvitations.value = result.data.filter(i => i.invitation_type === 'invite')
+      myJoinRequests.value = result.data.filter(i => i.invitation_type === 'request')
       return myInvitations.value
     }, 'Failed to fetch my invitations')
   }
@@ -460,7 +467,21 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
         params: { path: { team_season_id: teamSeasonId } },
         body: { message: message ?? null },
       }))
+      // Pick up the new request so it shows as sent (and withdrawable).
+      await fetchMyInvitations().catch(() => {})
     }, 'Failed to apply to team')
+  }
+
+  // The applicant taking back their own join request. Same endpoint as a
+  // captain cancelling an invite; the backend authorizes by direction.
+  const withdrawJoinRequestState = createActionState()
+  async function withdrawJoinRequest(invitationId: string): Promise<void> {
+    return withActionState(withdrawJoinRequestState, async () => {
+      await unwrapApi(api.DELETE('/v1/league-team-invitations/{invitation_id}', {
+        params: { path: { invitation_id: invitationId } },
+      }))
+      myJoinRequests.value = myJoinRequests.value.filter(i => i.id !== invitationId)
+    }, 'Failed to withdraw request')
   }
 
   // ==================== Utility ====================
@@ -485,6 +506,7 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     invitations,
     myTeams,
     myInvitations,
+    myJoinRequests,
     viewedPlayerTeams,
     loading,
     error,
@@ -536,6 +558,8 @@ export const useLeagueTeamsStore = defineStore('leagueTeams', () => {
     // Team Applications
     applyToTeam,
     applyToTeamState,
+    withdrawJoinRequest,
+    withdrawJoinRequestState,
 
     // Utility
     clearCurrent,

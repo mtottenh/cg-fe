@@ -176,7 +176,14 @@ const snackbar = useSnackbar()
 
 const loading = ref(true)
 const error = ref<string | null>(null)
-const applied = ref(new Set<string>())
+// Requests sent this visit, plus the pending ones the server knows about, so
+// "Request sent" survives a reload instead of offering a second request the
+// API refuses (InvitationAlreadyExists).
+const sentThisVisit = ref(new Set<string>())
+const applied = computed(() => new Set([
+  ...sentThisVisit.value,
+  ...leagueTeamsStore.myJoinRequests.map(r => r.team_season_id),
+]))
 const applyingTo = ref<string | null>(null)
 
 // Filters, mirrored into the URL so a link to "Season 2 of X" holds.
@@ -294,6 +301,7 @@ async function load() {
     await Promise.all([
       leaguesStore.myLeagues.length ? Promise.resolve() : leaguesStore.fetchMyLeagues(),
       leagueTeamsStore.fetchMyTeams().catch(() => {}),
+      leagueTeamsStore.fetchMyInvitations().catch(() => {}),
     ])
     const byLeague = new Map<string, LeagueSeason[]>()
     for (const m of memberships.value) {
@@ -329,7 +337,7 @@ async function askToJoin(teamSeasonId: string, teamName: string) {
   applyingTo.value = teamSeasonId
   try {
     await leagueTeamsStore.applyToTeam(teamSeasonId)
-    applied.value = new Set([...applied.value, teamSeasonId])
+    sentThisVisit.value = new Set([...sentThisVisit.value, teamSeasonId])
     snackbar.success(`Request sent to ${teamName}. The captain will accept or decline.`)
   } catch (e) {
     snackbar.error(e instanceof ApiError ? e.detail : 'Could not send the request')

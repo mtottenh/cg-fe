@@ -387,7 +387,7 @@ cleanup-demo-upload *ARGS:
 
 # Every MatchZy upload the API has seen recently, with its outcome.
 demo-upload-log since="24h":
-    ssh {{USER}}@{{HOST}} "journalctl -u portal-api -u portal-scanner --since '-{{since}}' --no-pager -o cat | grep -E 'demo upload|demo not linked|demo link skipped|Demo still has no stats|differs from its object name' || echo 'no demo upload activity in the last {{since}}'"
+    ssh {{USER}}@{{HOST}} "sudo journalctl -u portal-api -u portal-scanner --since '-{{since}}' --no-pager -o cat | grep -E 'demo upload|demo not linked|demo link skipped|Demo still has no stats|differs from its object name' || echo 'no demo upload activity in the last {{since}}'"
 
 # --- misc --------------------------------------------------------------------
 

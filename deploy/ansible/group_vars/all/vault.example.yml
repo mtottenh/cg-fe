@@ -74,3 +74,10 @@ vault_tailscale_auth_key: "tskey-auth-CHANGE_ME"
 # vault_scanner_s3_secret_key: "CHANGE_ME"
 # vault_demo_stats_s3_access_key: "CHANGE_ME"
 # vault_demo_stats_s3_secret_key: "CHANGE_ME"
+
+# --- Legacy demo bucket key -------------------------------------------------
+# Read access to portal_legacy_demos_bucket (cs2-10mans-demo-files), whose
+# objects the shared key above cannot read. Without it the explorer can list
+# that bucket but downloads 403.
+# vault_legacy_demos_s3_access_key: "CHANGE_ME"
+# vault_legacy_demos_s3_secret_key: "CHANGE_ME"

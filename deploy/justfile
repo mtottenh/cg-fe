@@ -12,6 +12,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 HOST := `yq -r '.all.children.portal.hosts[].ansible_host' ansible/inventory/prod.yml 2>/dev/null || echo portal`
 DOMAIN := `yq -r '.all.vars.portal_domain' ansible/inventory/prod.yml 2>/dev/null || echo portal.example.com`
 USER := "ops"
+GAME_HOST := `yq -r '.all.children.gameservers.hosts[].ansible_host' ansible/inventory/prod.yml 2>/dev/null | head -1 || echo game`
 
 # Vault password: prompt interactively, OR read from a password file —
 # checked in order: ~/.config/cg-portal/vault_pass (preferred on WSL, where
@@ -367,6 +368,26 @@ restore-remote NAME IDENTITY:
 restore-verify:
     ssh {{USER}}@{{HOST}} 'sudo systemctl start pg-restore-verify.service'
     ssh {{USER}}@{{HOST}} 'sudo journalctl -u pg-restore-verify.service -n 40 --no-pager'
+
+# --- demo ingestion ----------------------------------------------------------
+
+# Replay a MatchZy demo upload end to end: curl ON the game server with its
+# own demo token → Caddy → API → S3 → demo-stats → scanner, then watch the
+# demo row. A REAL prod write, named replaytest-*; remove it with
+# `just cleanup-demo-upload`. Args: --file PATH, --match-id N,
+# --map-number N, --watch MIN, --dry-run (see the script header).
+replay-demo-upload *ARGS:
+    PORTAL_HOST={{HOST}} GAME_HOST={{GAME_HOST}} DOMAIN={{DOMAIN}} SSH_USER={{USER}} scripts/demo-upload-replay.sh {{ARGS}}
+
+# Delete replayed demos (replaytest-*) — S3 object, DB row and demo-stats
+# files — or one demo by name: `just cleanup-demo-upload --name FILE`.
+# Asks first unless --yes.
+cleanup-demo-upload *ARGS:
+    PORTAL_HOST={{HOST}} SSH_USER={{USER}} scripts/demo-upload-cleanup.sh {{ARGS}}
+
+# Every MatchZy upload the API has seen recently, with its outcome.
+demo-upload-log since="24h":
+    ssh {{USER}}@{{HOST}} "journalctl -u portal-api -u portal-scanner --since '-{{since}}' --no-pager -o cat | grep -E 'demo upload|demo not linked|demo link skipped|Demo still has no stats|differs from its object name' || echo 'no demo upload activity in the last {{since}}'"
 
 # --- misc --------------------------------------------------------------------
 

@@ -4,7 +4,7 @@
       <v-col>
         <h1 class="text-h3">My Invitations</h1>
         <p class="text-body-2 text-medium-emphasis mt-2">
-          Manage your pending league team invitations
+          Invitations waiting for your answer, and the join requests you've sent
         </p>
       </v-col>
       <v-col cols="auto">
@@ -171,7 +171,7 @@
     </v-row>
 
     <EmptyState
-      v-else-if="!loadingData && !loadError && leaguesStore.myLeagueInvitations.length === 0"
+      v-else-if="!loadingData && !loadError && leaguesStore.myLeagueInvitations.length === 0 && leagueTeamsStore.myJoinRequests.length === 0"
       icon="mdi-email-outline"
       title="No Pending Invitations"
       subtitle="You don't have any invitations at the moment."
@@ -180,6 +180,65 @@
         <v-btn color="primary" class="mt-4" to="/leagues">Browse Leagues</v-btn>
       </template>
     </EmptyState>
+
+    <!-- Join requests this player sent. A captain answers these; the player
+         can only wait or withdraw, so they get no Accept/Decline. -->
+    <template v-if="leagueTeamsStore.myJoinRequests.length > 0">
+      <h2 class="text-h5 mb-4 mt-6" data-testid="sent-requests-heading">
+        <v-icon start>mdi-send</v-icon>
+        Requests You've Sent
+        <v-chip size="small" class="ml-2">{{ leagueTeamsStore.myJoinRequests.length }}</v-chip>
+      </h2>
+      <v-row>
+        <v-col v-for="request in leagueTeamsStore.myJoinRequests" :key="request.id" cols="12" md="6">
+          <v-card class="h-100" data-testid="sent-request-card">
+            <v-card-item>
+              <template v-slot:prepend>
+                <v-avatar color="primary" size="48">
+                  <v-img alt="" v-if="request.team_logo_url" :src="request.team_logo_url" />
+                  <span v-else class="text-h6">{{ (request.team_tag || request.team_name || '??').substring(0, 2).toUpperCase() }}</span>
+                </v-avatar>
+              </template>
+              <v-card-title>{{ request.team_name || 'Unknown Team' }}</v-card-title>
+              <v-card-subtitle>
+                <v-chip size="x-small" :color="getRoleColor(request.role)" class="mr-2">
+                  {{ formatRole(request.role) }}
+                </v-chip>
+                <span class="text-caption">Requested {{ formatRelativeTime(request.created_at) }}</span>
+              </v-card-subtitle>
+            </v-card-item>
+
+            <v-card-text>
+              <div class="d-flex align-center mb-2">
+                <v-icon size="16" class="mr-2">mdi-trophy</v-icon>
+                <span class="text-body-2">{{ request.league_name }}</span>
+              </div>
+              <div v-if="request.season_name" class="text-caption text-medium-emphasis">
+                Season: {{ request.season_name }}
+              </div>
+              <div class="d-flex align-center text-caption text-medium-emphasis mt-2">
+                <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
+                Waiting for a captain · expires {{ request.expires_at ? formatRelativeTime(request.expires_at) : 'never' }}
+              </div>
+            </v-card-text>
+
+            <v-divider />
+
+            <v-card-actions>
+              <v-btn
+                variant="outlined"
+                :loading="withdrawing === request.id"
+                :disabled="processing"
+                @click="confirmWithdraw(request)"
+              >
+                <v-icon start>mdi-undo</v-icon>
+                Withdraw
+              </v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-col>
+      </v-row>
+    </template>
 
     <!-- Decline Confirm Dialog -->
     <ConfirmDialogHost :dialog="confirmDialog" />
@@ -207,12 +266,14 @@ const accepting = ref<string | null>(null)
 const declining = ref<string | null>(null)
 const acceptingLeague = ref<string | null>(null)
 const decliningLeague = ref<string | null>(null)
+const withdrawing = ref<string | null>(null)
 const snackbar = useSnackbar()
 const confirmDialog = useConfirmDialog()
 
 const processing = computed(() =>
   accepting.value !== null || declining.value !== null ||
-  acceptingLeague.value !== null || decliningLeague.value !== null
+  acceptingLeague.value !== null || decliningLeague.value !== null ||
+  withdrawing.value !== null
 )
 
 /**
@@ -348,6 +409,29 @@ function openDeclineDialog(invitation: LeagueTeamInvitationWithTeamResponse) {
         snackbar.show('Invitation declined', 'success')
       } finally {
         declining.value = null
+      }
+    },
+  })
+}
+
+function confirmWithdraw(request: LeagueTeamInvitationWithTeamResponse) {
+  confirmDialog.confirm({
+    title: 'Withdraw Request?',
+    message: `Withdraw your request to join ${request.team_name}? You can ask again later.`,
+    action: 'Withdraw',
+    color: 'error',
+    handler: async () => {
+      withdrawing.value = request.id
+      try {
+        await leagueTeamsStore.withdrawJoinRequest(request.id)
+        snackbar.show('Request withdrawn', 'success')
+      } catch {
+        snackbar.show(
+          leagueTeamsStore.withdrawJoinRequestState.error || 'Failed to withdraw request',
+          'error',
+        )
+      } finally {
+        withdrawing.value = null
       }
     },
   })

@@ -232,4 +232,41 @@ test.describe('Team authority after transfer', () => {
     )
     expect(mine).toHaveLength(1)
   })
+
+  test('my own join request is listed as sent, not as an invitation I can accept', async ({
+    page,
+  }) => {
+    const scenario = await createTeamWithMembers({ leagueId, seasonId, memberCount: 0 })
+    const applicant = await registerAsRosterUser()
+    await joinLeague(applicant.token, leagueId)
+
+    const applied = await fetch(`${API_URL}/v1/league-team-seasons/${scenario.teamSeasonId}/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${applicant.token}` },
+      body: JSON.stringify({ message: null }),
+    })
+    expect(applied.status).toBe(201)
+
+    await loginAsUser(page, { email: applicant.email, password: applicant.password })
+    await page.goto('/invitations')
+    await page.waitForLoadState('networkidle')
+
+    // The request used to render under "Team Invitations" with an Accept
+    // button that could only fail: "only a team captain can accept join
+    // requests".
+    await expect(page.getByTestId('sent-requests-heading')).toBeVisible()
+    await expect(page.getByRole('heading', { name: /Team Invitations/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Accept' })).toHaveCount(0)
+
+    const card = page.getByTestId('sent-request-card')
+    await expect(card).toHaveCount(1)
+    await card.getByRole('button', { name: 'Withdraw' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Withdraw', exact: true }).click()
+    await expect(page.getByText('Request withdrawn')).toBeVisible({ timeout: 5000 })
+    await expect(card).toHaveCount(0)
+
+    // Assert (API): the request is gone from the team's pending list.
+    const pending = await getTeamInvitations(scenario.owner.token, scenario.teamSeasonId)
+    expect(pending.filter((i) => i.player_id === applicant.playerId)).toHaveLength(0)
+  })
 })

@@ -51,10 +51,12 @@ ufw_extra_allow:
 # genuinely run without portal demo upload.
 gameserver_require_matchzy_upload: true
 
-# --- Nightly CS2 update wrapper ----------------------------------------------
-# Valve's updates overwrite csgo/gameinfo.gi and strip the Metamod search
-# path, silently killing Metamod -> CounterStrikeSharp -> MatchZy. The
-# wrapper re-applies it after each update and restarts only when it had to.
+# --- LinuxGSM updates (portal-gs-update) --------------------------------------
+# The agent deb ships /usr/sbin/portal-gs-update, which drives LinuxGSM for
+# the portal's Updates tab and for the nightly game-build cron. It also
+# repairs csgo/gameinfo.gi after Valve's updates strip the Metamod search
+# path, and re-asserts the MatchZy demo-upload block after a plugin update
+# (LinuxGSM's mods-update overwrites cfg/MatchZy/config.cfg).
 #
 # LinuxGSM-specific: leave gameserver_lgsm_script empty to skip the whole
 # thing (non-LinuxGSM hosts). Set these per host in the inventory.
@@ -62,5 +64,9 @@ gameserver_lgsm_script: ""          # e.g. /home/cs2server/cs2server
 gameserver_lgsm_user: ""            # e.g. cs2server
 gameserver_gameinfo_path: ""        # e.g. /home/cs2server/serverfiles/game/csgo/gameinfo.gi
 gameserver_lgsm_console_log: ""     # e.g. /home/cs2server/log/console/cs2server-console.log
+# May the agent re-assert the managed MatchZy blocks on its own when it finds
+# them missing (restarts nothing)? false = report only; an admin clicks Repair.
+gameserver_lgsm_auto_repair: true
+# Nightly game-build update (LinuxGSM and plugin updates are admin-initiated).
 gameserver_update_cron_hour: 1
 gameserver_update_cron_minute: 0

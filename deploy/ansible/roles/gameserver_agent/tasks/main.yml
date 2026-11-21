@@ -85,13 +85,16 @@
 
 # --- Config -------------------------------------------------------------------
 
+# Same owner/mode the deb's postinst sets (root:portal-agent 0750) — a
+# different mode here would flip the directory on every converge and every
+# package upgrade.
 - name: /etc/portal exists
   ansible.builtin.file:
     path: /etc/portal
     state: directory
     owner: root
-    group: root
-    mode: "0755"
+    group: portal-agent
+    mode: "0750"
 
 # systemd reads EnvironmentFile as root before dropping to the service
 # user, so root-only keeps the RCON password off every other account.
@@ -230,23 +233,58 @@
     - not gameserver_agent_matchzy_snippet.stat.exists
     - not (gameserver_require_matchzy_upload | default(true))
 
-# --- Nightly update wrapper (gameinfo.gi self-heal) ---------------------------
-# Valve's CS2 updates overwrite csgo/gameinfo.gi and strip the Metamod
-# search path, silently killing Metamod -> CounterStrikeSharp -> MatchZy.
-# LinuxGSM's `monitor` cron does not catch it: the process stays alive and
-# happily rejects every plugin command. The wrapper re-applies the patch
-# after each update and restarts only when it had to.
+# --- LinuxGSM updates (portal-gs-update) --------------------------------------
+# The agent deb (>= 0.3.0) ships /usr/sbin/portal-gs-update: the one
+# implementation of "update this CS2 host safely" — LinuxGSM self-update,
+# game build, plugin stack — used by the portal's Updates tab (through the
+# agent), by the nightly cron below, and by hand over SSH.
+# docs/gameserver-lgsm-updates-design.md.
 #
-# LinuxGSM-specific — skipped entirely when gameserver_lgsm_script is unset.
+# It replaces /usr/local/bin/cs2-update-and-patch.sh: the same gameinfo.gi
+# self-heal (Valve's updates strip the Metamod search path, silently killing
+# Metamod -> CounterStrikeSharp -> MatchZy) now lives in the helper's `game`
+# operation, and a plugin update re-asserts the MatchZy demo-upload block
+# that LinuxGSM's mods-update overwrites.
+#
+# LinuxGSM-specific — skipped entirely when gameserver_lgsm_script is unset,
+# and the config is removed so the agent stops advertising the capability.
 
-- name: CS2 update wrapper installed
+- name: Update helper is installed (agent deb >= 0.3.0)
+  ansible.builtin.stat:
+    path: /usr/sbin/portal-gs-update
+  register: gameserver_agent_gs_update
+  when: gameserver_lgsm_script | default('') | length > 0
+
+- name: Agent deb is new enough for LinuxGSM updates
+  ansible.builtin.assert:
+    that: gameserver_agent_gs_update.stat.exists
+    fail_msg: >-
+      gameserver_lgsm_script is set but /usr/sbin/portal-gs-update is
+      missing — the installed portal-server-agent predates 0.3.0. Run
+      `just deploy-agent-release v0.3.0` (or newer).
+  when: gameserver_lgsm_script | default('') | length > 0
+
+- name: Update helper configuration
   ansible.builtin.template:
-    src: cs2-update-and-patch.sh.j2
-    dest: /usr/local/bin/cs2-update-and-patch.sh
+    src: gs-update.conf.j2
+    dest: /etc/portal/gs-update.conf
     owner: root
     group: root
-    mode: "0755"
+    mode: "0644"
   when: gameserver_lgsm_script | default('') | length > 0
+  notify: restart portal-server-agent
+
+- name: Update helper configuration absent on non-LinuxGSM hosts
+  ansible.builtin.file:
+    path: /etc/portal/gs-update.conf
+    state: absent
+  when: gameserver_lgsm_script | default('') | length == 0
+  notify: restart portal-server-agent
+
+- name: Legacy update wrapper removed
+  ansible.builtin.file:
+    path: /usr/local/bin/cs2-update-and-patch.sh
+    state: absent
 
 # Pre-Ansible boxes call `cs2server update` straight from root's crontab.
 # Leaving it in place would update twice and skip the gameinfo.gi repair.
@@ -263,13 +301,16 @@
   failed_when: gameserver_agent_legacy_update_cron.rc not in [0, 99]
   when: gameserver_lgsm_script | default('') | length > 0
 
+# Game build only: LinuxGSM and plugin updates stay admin-initiated from the
+# portal (a plugin update takes the newest of everything and restarts CS2).
+# Same cron name as before, so this rewrites the old wrapper's entry.
 - name: Nightly CS2 update + gameinfo.gi repair cron
   ansible.builtin.cron:
     name: cs2-update-and-patch
     user: root
     hour: "{{ gameserver_update_cron_hour }}"
     minute: "{{ gameserver_update_cron_minute }}"
-    job: /usr/local/bin/cs2-update-and-patch.sh > /dev/null 2>&1
+    job: /usr/sbin/portal-gs-update game > /dev/null 2>&1
   when: gameserver_lgsm_script | default('') | length > 0
 
 # --- Service + health gates ---------------------------------------------------

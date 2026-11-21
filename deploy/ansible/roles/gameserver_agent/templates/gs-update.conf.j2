@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+#
+# Tells portal-gs-update (shipped in the portal-server-agent deb) where
+# LinuxGSM lives. Without this file the helper exits 78 and the agent does
+# not advertise the `lgsm_update` capability.
+#
+# Plain KEY=VALUE; the file is parsed, never sourced.
+
+LGSM_SCRIPT={{ gameserver_lgsm_script }}
+LGSM_USER={{ gameserver_lgsm_user }}
+GAMEINFO_PATH={{ gameserver_gameinfo_path }}
+CONSOLE_LOG={{ gameserver_lgsm_console_log }}
+MATCHZY_CONFIG_PATH={{ gameserver_matchzy_config_path }}
+MATCHZY_CONFIG_OWNER={{ gameserver_matchzy_config_owner }}
+AUTO_REPAIR={{ gameserver_lgsm_auto_repair | default(true) | ternary('true', 'false') }}

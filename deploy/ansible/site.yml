@@ -169,6 +169,11 @@
   gather_facts: true
   tags: [gameserver]
 
+  # Role-level tags so the agent can be converged on its own
+  # (`--tags gameserver_agent`) when base is not wanted — e.g. while the
+  # host's apt mirror is mid-sync and `apt update` fails.
   roles:
     - role: base
+      tags: [gameserver_base]
     - role: gameserver_agent
+      tags: [gameserver_agent]

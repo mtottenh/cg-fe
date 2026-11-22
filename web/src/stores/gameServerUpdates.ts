@@ -23,6 +23,11 @@ type SetMatchzyOverridesResult = components['schemas']['SetMatchzyOverridesRespo
 export const JOB_POLL_MS = 2_000
 /** A check gives up waiting for its result after this long. */
 export const CHECK_POLL_LIMIT_MS = 180_000
+/**
+ * `agent_job` moves only with heartbeats (every 30 s), so "the agent is not
+ * running a check" means nothing until at least one heartbeat has passed.
+ */
+export const CHECK_AGENT_IDLE_TRUST_MS = 40_000
 
 /**
  * Web-driven LinuxGSM updates of a game server
@@ -44,6 +49,8 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
   const overridesSave = ref<SetMatchzyOverridesResult | null>(null)
   /** A check was started and its result has not arrived yet. */
   const checking = ref(false)
+  /** Why the last check produced no result (it failed, or never reported). */
+  const checkError = ref<string | null>(null)
   /**
    * The server the modal has open, or null when it is closed. `job`,
    * `overrides` and every poll belong to it: a response for another server,
@@ -121,13 +128,15 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     return withActionState(
       checkState,
       async () => {
-        const since = overviews.value[serverId]?.check?.checked_at ?? null
+        const before = overviews.value[serverId]
+        const since = before?.check?.checked_at ?? null
+        const known = new Set((before?.recent_jobs ?? []).map((j) => j.id))
         const result = await unwrapApi(
           api.POST('/v1/admin/game-servers/{server_id}/updates/check', {
             params: { path: { server_id: serverId } },
           }),
         )
-        if (isCurrent(serverId, sess)) watchCheck(serverId, since)
+        if (isCurrent(serverId, sess)) watchCheck(serverId, since, known)
         return result.data
       },
       'Failed to start the check',
@@ -313,33 +322,55 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
   }
 
   /**
-   * After a check: re-read the overview every 2 s until its `check` is
-   * newer than `since` (or the agent no longer reports a check in flight
-   * and nothing changed after a few ticks), with an upper bound.
+   * After a check: re-read the overview every 2 s until
+   *  - its `check.checked_at` moves past `since` (the result arrived), or
+   *  - a `check` job not in `known` finishes (a failed check is recorded as
+   *    a failed check job: its error is the answer), or
+   *  - the agent reports no check in flight — trusted only once a heartbeat
+   *    has had time to say so (`CHECK_AGENT_IDLE_TRUST_MS`), or
+   *  - `CHECK_POLL_LIMIT_MS` passes.
    */
-  function watchCheck(serverId: string, since: string | null) {
+  function watchCheck(serverId: string, since: string | null, known: Set<string> = new Set()) {
     if (currentServerId.value !== serverId) return
     stopPolling()
     const gen = generation
     const started = Date.now()
-    let ticks = 0
     checking.value = true
+    checkError.value = null
+    const finish = (message: string | null) => {
+      checking.value = false
+      checkError.value = message
+      return false
+    }
     schedule(gen, async () => {
-      ticks += 1
+      const elapsed = Date.now() - started
       const overview = await fetchUpdates(serverId)
       const checkedAt = overview.check?.checked_at ?? null
-      const arrived = checkedAt !== null && checkedAt !== since
-      const agentIdle = overview.agent_job?.operation !== 'check'
-      const done =
-        arrived || (agentIdle && ticks >= 3) || Date.now() - started > CHECK_POLL_LIMIT_MS
-      if (done) checking.value = false
-      return !done
+      if (checkedAt !== null && (since === null || Date.parse(checkedAt) > Date.parse(since))) {
+        return finish(null)
+      }
+      const checkJob = overview.recent_jobs.find(
+        (j) => j.operation === 'check' && !known.has(j.id) && isTerminalStatus(j.status),
+      )
+      if (checkJob) {
+        return finish(
+          checkJob.status === 'succeeded' ? null : (checkJob.error ?? 'The check failed on the host'),
+        )
+      }
+      if (elapsed >= CHECK_AGENT_IDLE_TRUST_MS && overview.agent_job?.operation !== 'check') {
+        return finish('The host finished without reporting a result; try again')
+      }
+      if (elapsed >= CHECK_POLL_LIMIT_MS) {
+        return finish('No result from the host after 3 minutes')
+      }
+      return true
     })
   }
 
   function stopPolling() {
     generation += 1
     checking.value = false
+    checkError.value = null
     if (timer) {
       clearTimeout(timer)
       timer = null
@@ -368,6 +399,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     overrides,
     overridesSave,
     checking,
+    checkError,
     currentServerId,
     loading,
     error,

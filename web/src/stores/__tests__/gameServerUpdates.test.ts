@@ -339,6 +339,70 @@ describe('gameServerUpdates store', () => {
     expect(callsTo(mockGet, OVERVIEW_PATH)).toHaveLength(3)
   })
 
+  it('a check keeps waiting past a lagging heartbeat and stops when checked_at advances', async () => {
+    const old = { checked_at: '2026-11-22T09:00:00Z', latest: {}, update_available: {} }
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+    mockGet.mockResolvedValueOnce(ok(overview({ check: old })))
+    await store.fetchUpdates(SERVER)
+
+    mockPost.mockResolvedValueOnce(ok({ job_id: 'chk-1', operation: 'check' }))
+    // The heartbeat has not named the check yet: agent_job stays null.
+    let result = ok(overview({ check: old }))
+    mockGet.mockImplementation(() => Promise.resolve(result))
+    await store.checkNow(SERVER)
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(store.checking).toBe(true)
+    expect(store.checkError).toBeNull()
+
+    result = ok(overview({ check: { ...old, checked_at: '2026-11-22T10:00:30Z' } }))
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
+    expect(store.checking).toBe(false)
+    expect(store.checkError).toBeNull()
+  })
+
+  it('a failed check job is the answer: its error is surfaced', async () => {
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+    const earlier = job({ id: 'old-check', operation: 'check', status: 'failed', error: 'old failure' })
+    mockGet.mockResolvedValueOnce(ok(overview({ recent_jobs: [earlier] })))
+    await store.fetchUpdates(SERVER)
+
+    mockPost.mockResolvedValueOnce(ok({ job_id: 'chk-2', operation: 'check' }))
+    mockGet
+      .mockResolvedValueOnce(ok(overview({ recent_jobs: [earlier] })))
+      .mockResolvedValue(
+        ok(overview({
+          recent_jobs: [
+            job({ id: 'chk-2', operation: 'check', status: 'failed', error: 'steamcmd: connection timed out' }),
+            earlier,
+          ],
+        })),
+      )
+    await store.checkNow(SERVER)
+
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
+    expect(store.checking).toBe(true)
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
+    expect(store.checking).toBe(false)
+    expect(store.checkError).toBe('steamcmd: connection timed out')
+  })
+
+  it('trusts "no check in flight" only after a heartbeat could have said so', async () => {
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+    mockPost.mockResolvedValueOnce(ok({ job_id: 'chk-3', operation: 'check' }))
+    mockGet.mockResolvedValue(ok(overview()))
+    await store.checkNow(SERVER)
+
+    await vi.advanceTimersByTimeAsync(38_000)
+    expect(store.checking).toBe(true)
+    await vi.advanceTimersByTimeAsync(4_000)
+    expect(store.checking).toBe(false)
+    expect(store.checkError).toContain('without reporting a result')
+  })
+
   it('saveOverrides records the delivery and follows an applying repair job', async () => {
     mockPut.mockResolvedValueOnce(
       ok({ overrides: { matchzy_a: '1' }, delivery: 'applying', job_id: 'job-9', detail: null }),

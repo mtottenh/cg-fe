@@ -121,6 +121,16 @@
                   The MatchZy config was repaired; the server re-reads it as soon as no match is loaded.
                 </v-alert>
 
+                <v-alert
+                  v-if="checkError"
+                  type="warning"
+                  variant="tonal"
+                  density="compact"
+                  class="mb-3"
+                  data-testid="updates-check-error"
+                >
+                  Check: {{ checkError }}
+                </v-alert>
                 <div class="d-flex align-center ga-2 flex-wrap mb-3">
                   <v-chip
                     size="small"
@@ -340,7 +350,7 @@ const emit = defineEmits<{
 }>()
 
 const store = useGameServerUpdatesStore()
-const { overviews, job, checking, checkState, startState, fetchUpdatesState } = storeToRefs(store)
+const { overviews, job, checking, checkError, checkState, startState, fetchUpdatesState } = storeToRefs(store)
 const confirmDialog = useConfirmDialog()
 
 const open = computed({

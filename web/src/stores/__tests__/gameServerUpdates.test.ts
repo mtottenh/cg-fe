@@ -513,9 +513,49 @@ describe('gameServerUpdates store', () => {
     })
     expect(saved.delivery).toBe('applying')
     expect(store.overrides?.pending).toBe(false)
-    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
     expect(store.job?.id).toBe('job-9')
     store.stopPolling()
+  })
+
+  it('an applying repair with no job row yet falls back to the active job', async () => {
+    mockPut.mockResolvedValueOnce(
+      ok({ overrides: { matchzy_a: '1' }, delivery: 'applying', job_id: 'agent-job', detail: null }),
+    )
+    const repair = job({ id: 'row-1', operation: 'repair-config', trigger: 'overrides' })
+    mockGet.mockImplementation((path: string, opts: { params: { path: { job_id?: string } } }) => {
+      if (path === OVERVIEW_PATH) return Promise.resolve(ok(overview({ active_job: repair })))
+      return Promise.resolve(
+        opts.params.path.job_id === 'row-1' ? ok(repair) : failure(404, 'update job not found'),
+      )
+    })
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+
+    await store.saveOverrides(SERVER, { matchzy_a: '1' })
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
+
+    expect(store.job?.id).toBe('row-1')
+    expect(store.pollError).toBeNull()
+    store.stopPolling()
+  })
+
+  it('an applying repair the agent never reports on ends with an accurate message', async () => {
+    mockPut.mockResolvedValueOnce(
+      ok({ overrides: { matchzy_a: '1' }, delivery: 'applying', job_id: 'agent-job', detail: null }),
+    )
+    mockGet.mockImplementation((path: string) =>
+      Promise.resolve(path === OVERVIEW_PATH ? ok(overview()) : failure(404, 'update job not found')),
+    )
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+
+    await store.saveOverrides(SERVER, { matchzy_a: '1' })
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
+
+    expect(callsTo(mockGet, JOB_PATH)).toHaveLength(POLL_MAX_FAILURES)
+    expect(store.job).toBeNull()
+    expect(store.pollError).toContain('has not reported on the job yet')
   })
 
   it('saveOverrides surfaces the validation detail on 400', async () => {

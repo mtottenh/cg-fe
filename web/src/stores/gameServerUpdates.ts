@@ -287,9 +287,11 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
           applied: overrides.value?.applied ?? null,
           pending: result.data.delivery === 'pending',
         }
-        // `applying` started a repair-config job: follow it.
+        // `applying` started a repair-config job: follow it. Its row exists
+        // only once the agent sends its first progress, so a 404 is expected
+        // at first.
         if (result.data.delivery === 'applying' && result.data.job_id) {
-          void openJob(serverId, result.data.job_id).catch(() => undefined)
+          watchJob(serverId, result.data.job_id, { awaitingFirstReport: true })
         }
         return result.data
       },
@@ -358,16 +360,39 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     run(opts.interval(0))
   }
 
-  /** Follow a job every 2 s until it is terminal, then refresh the overview. */
-  function watchJob(serverId: string, jobId: string) {
+  /**
+   * Follow a job every 2 s until it is terminal, then refresh the overview.
+   * With `awaitingFirstReport` (a job the agent started on its own, e.g.
+   * the repair after an overrides save) a 404 means "no row yet": the
+   * overview's `active_job` is followed instead if there is one, otherwise
+   * the 404 counts as a failure and is retried with backoff.
+   */
+  function watchJob(serverId: string, jobId: string, opts: { awaitingFirstReport?: boolean } = {}) {
     if (currentServerId.value !== serverId) return
     stopPolling()
     const gen = generation
     let queued = false
+    let followed = jobId
+    let seen = !opts.awaitingFirstReport
+    const read = async () => {
+      if (seen) return fetchJob(serverId, followed)
+      try {
+        const found = await fetchJob(serverId, followed)
+        seen = true
+        return found
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 404)) throw e
+        const active = (await fetchUpdates(serverId)).active_job
+        if (!active) throw e
+        followed = active.id
+        seen = true
+        return fetchJob(serverId, followed)
+      }
+    }
     schedule(
       gen,
       async () => {
-        const current = await fetchJob(serverId, jobId)
+        const current = await read()
         queued = current.status === 'queued'
         if (!isTerminalStatus(current.status)) return true
         await fetchUpdates(serverId).catch(() => undefined)
@@ -381,7 +406,9 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
           pollError.value = 'Stopped following the job after 30 minutes; reopen it to look again'
         },
         onGiveUp: (detail) => {
-          pollError.value = `Stopped following the job: ${detail}`
+          pollError.value = seen
+            ? `Stopped following the job: ${detail}`
+            : 'The agent has not reported on the job yet; it will show under Jobs once it does'
         },
       },
     )

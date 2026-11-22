@@ -153,8 +153,9 @@
     >
       <div>Saved. {{ getStatusLabel(overridesDeliveryMap, lastSave.delivery) }}.</div>
       <div v-if="lastSave.detail" class="text-body-2">{{ lastSave.detail }}</div>
-      <div v-if="lastSave.job_id" class="text-body-2">
-        Follow the repair in the Overview tab.
+      <div v-if="lastSave.job_id" class="text-body-2" data-testid="overrides-delivery-job">
+        The agent started a config repair to apply them; its progress shows in the Overview tab
+        once the agent reports on it.
       </div>
     </v-alert>
   </div>

@@ -76,6 +76,7 @@
                   size="x-small"
                   variant="text"
                   class="ml-1"
+                  :disabled="!canRepair(item)"
                   data-testid="server-demo-repair"
                   @click.stop="openUpdatesModal(item, 'repair')"
                 >
@@ -361,6 +362,12 @@ function updateAvailable(server: GameServer): boolean {
 function demoUploadUnwired(server: GameServer): boolean {
   const o = overviews.value[server.id]
   return Boolean(o?.supported && o.demo_upload_wired === false)
+}
+
+/** The modal's own rule: no repair while the agent is away or a job runs. */
+function canRepair(server: GameServer): boolean {
+  const o = overviews.value[server.id]
+  return Boolean(o?.supported && o.agent_connected && !o.active_job)
 }
 
 function openUpdatesModal(server: GameServer, action: 'repair' | null = null) {

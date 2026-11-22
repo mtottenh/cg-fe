@@ -527,7 +527,7 @@ async function onOpen() {
   }
   store.open(server.id)
   await load(sess, server.id)
-  if (alive(sess, server.id) && props.action === 'repair' && supported.value) askRepair()
+  if (alive(sess, server.id) && props.action === 'repair' && supported.value && !busy.value) askRepair()
 }
 
 function onClose() {

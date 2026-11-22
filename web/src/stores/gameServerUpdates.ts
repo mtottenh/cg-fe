@@ -375,7 +375,11 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
           ;(opts.onCeiling ?? opts.onLimit)()
           return
         }
-        if (now - (opts.limitFrom?.() ?? started) >= opts.limitMs) {
+        // A plain time limit counts regardless. A progress-based limit
+        // (`limitFrom`) is judged only after a read the user could see:
+        // nothing is fetched while the tab is hidden, so progress cannot be
+        // observed then (see below).
+        if (!opts.limitFrom && now - started >= opts.limitMs) {
           opts.onLimit()
           return
         }
@@ -397,6 +401,10 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
           }
         }
         if (!again || gen !== ch.generation) return
+        if (!failures && opts.limitFrom && Date.now() - opts.limitFrom() >= opts.limitMs) {
+          opts.onLimit()
+          return
+        }
         const base = opts.interval(Date.now() - started)
         run(failures ? Math.min(base * 2 ** failures, POLL_MAX_BACKOFF_MS) : base)
       }, delay)

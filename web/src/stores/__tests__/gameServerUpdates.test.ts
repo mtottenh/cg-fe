@@ -435,6 +435,29 @@ describe('gameServerUpdates store', () => {
     expect(store.pollError).toContain('No progress from the job for 30 minutes')
   })
 
+  it('does not call a job stalled because the tab was hidden while it progressed', async () => {
+    mockPost.mockResolvedValueOnce(ok(job({ operation: 'all' })))
+    let tick = 0
+    mockGet.mockImplementation(() => {
+      tick += 1
+      return Promise.resolve(ok(job({ operation: 'all', updated_at: `t${tick}` })))
+    })
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+
+    await store.startUpdate(SERVER, 'all')
+    await vi.advanceTimersByTimeAsync(60_000)
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    await vi.advanceTimersByTimeAsync(JOB_POLL_LIMIT_MS + 60_000)
+    hidden.mockReturnValue(false)
+    const calls = callsTo(mockGet, JOB_PATH).length
+    await vi.advanceTimersByTimeAsync(10_000)
+    hidden.mockRestore()
+
+    expect(store.pollError).toBeNull()
+    expect(callsTo(mockGet, JOB_PATH).length).toBeGreaterThan(calls)
+  })
+
   it('stops following even a progressing job at the absolute ceiling', async () => {
     mockPost.mockResolvedValueOnce(ok(job({ operation: 'all' })))
     let tick = 0

@@ -571,23 +571,28 @@ async function checkNow() {
  * backend's gate entirely, so the reasons an admin consents to must be
  * current, not whatever the modal loaded minutes ago.
  */
+/** Bumped by every askStart: only the latest re-read may settle the dialog. */
+let planSeq = 0
+
 async function askStart(operation: StartUpdateOperation) {
   const server = props.server
   if (!server) return
+  const seq = ++planSeq
   confirmOperation.value = operation
   confirmError.value = null
   planFailed.value = false
   planLoading.value = true
   confirmOpen.value = true
   const sess = session
+  const latest = () => seq === planSeq && alive(sess, server.id)
   try {
     await store.fetchUpdates(server.id)
   } catch (e) {
-    if (!alive(sess, server.id)) return
+    if (!latest()) return
     planFailed.value = true
     confirmError.value = errorText(e, 'Could not re-read who is connected; try again')
   } finally {
-    if (alive(sess, server.id)) planLoading.value = false
+    if (latest()) planLoading.value = false
   }
 }
 

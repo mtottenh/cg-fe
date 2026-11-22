@@ -320,6 +320,55 @@ describe('ServerUpdatesModal', () => {
     await wrapper?.setProps({ modelValue: false })
   })
 
+  it('re-opening the plan while the first re-read is in flight: only the latest read settles it', async () => {
+    let first!: (v: unknown) => void
+    let second!: (v: unknown) => void
+    mockGet
+      .mockResolvedValueOnce(ok(overview()))
+      .mockReturnValueOnce(new Promise((r) => (first = r)))
+      .mockReturnValueOnce(new Promise((r) => (second = r)))
+    mountModal()
+    await settle()
+
+    await click('updates-start-lgsm')
+    await wrapper?.vm.$nextTick()
+    // Cancel, then open the plan again before the first read is back.
+    ;(document.body.querySelector('[data-testid="update-confirm"] .v-card-actions .v-btn') as HTMLButtonElement).click()
+    await settle()
+    await click('updates-start-lgsm')
+
+    first(ok(overview()))
+    await settle()
+    expect(byTestId('update-confirm-refreshing')).not.toBeNull()
+    expect((byTestId('update-confirm-start') as HTMLButtonElement).disabled).toBe(true)
+
+    second(ok(overview()))
+    await settle()
+    expect(byTestId('update-confirm-refreshing')).toBeNull()
+    expect((byTestId('update-confirm-start') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('a late failure of a superseded re-read does not block the current plan', async () => {
+    let first!: (v: unknown) => void
+    mockGet
+      .mockResolvedValueOnce(ok(overview()))
+      .mockReturnValueOnce(new Promise((r) => (first = r)))
+      .mockResolvedValueOnce(ok(overview()))
+    mountModal()
+    await settle()
+
+    await click('updates-start-lgsm')
+    ;(document.body.querySelector('[data-testid="update-confirm"] .v-card-actions .v-btn') as HTMLButtonElement).click()
+    await settle()
+    await click('updates-start-lgsm')
+    expect((byTestId('update-confirm-start') as HTMLButtonElement).disabled).toBe(false)
+
+    first(failure(500, 'database unavailable'))
+    await settle()
+    expect(byTestId('update-confirm-error')).toBeNull()
+    expect((byTestId('update-confirm-start') as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('lgsm does not restart CS2, so it starts without force even with players on', async () => {
     mockGet.mockResolvedValue(ok(overview()))
     mockPost.mockResolvedValueOnce(ok(job({ operation: 'lgsm', phase: 'lgsm-update' })))

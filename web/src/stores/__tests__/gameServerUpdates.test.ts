@@ -587,6 +587,20 @@ describe('gameServerUpdates store', () => {
     expect(store.pollError).toContain('has not reported on the job yet')
   })
 
+  it('an applying repair whose reads fail with 500 says so, not "not reported yet"', async () => {
+    mockPut.mockResolvedValueOnce(
+      ok({ overrides: { matchzy_a: '1' }, delivery: 'applying', job_id: 'agent-job', detail: null }),
+    )
+    mockGet.mockResolvedValue(failure(500, 'database unavailable'))
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+
+    await store.saveOverrides(SERVER, { matchzy_a: '1' })
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
+
+    expect(store.pollError).toBe('Stopped following the job: database unavailable')
+  })
+
   it('saveOverrides surfaces the validation detail on 400', async () => {
     const detail = 'override "matchzy_demo_upload_url" refused: cvar is portal-owned'
     mockPut.mockResolvedValueOnce(failure(400, detail))

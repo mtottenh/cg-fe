@@ -325,8 +325,8 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     /** Stop after this long, whether requests succeed or not. */
     limitMs: number
     onLimit: () => void
-    /** `POLL_MAX_FAILURES` requests in a row failed. */
-    onGiveUp: (detail: string) => void
+    /** `POLL_MAX_FAILURES` requests in a row failed; `error` is the last. */
+    onGiveUp: (detail: string, error: unknown) => void
   }
 
   /**
@@ -359,7 +359,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
           failures += 1
           if (failures >= POLL_MAX_FAILURES) {
             if (gen === generation) {
-              opts.onGiveUp(e instanceof ApiError ? e.detail : 'the request failed')
+              opts.onGiveUp(e instanceof ApiError ? e.detail : 'the request failed', e)
             }
             return
           }
@@ -417,10 +417,13 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
         onLimit: () => {
           pollError.value = 'Stopped following the job after 30 minutes; reopen it to look again'
         },
-        onGiveUp: (detail) => {
-          pollError.value = seen
-            ? `Stopped following the job: ${detail}`
-            : 'The agent has not reported on the job yet; it will show under Jobs once it does'
+        onGiveUp: (detail, error) => {
+          // "Not reported yet" only when the job row is still missing; a
+          // 500 or 403 is a real failure whatever the job's state.
+          const missing = !seen && error instanceof ApiError && error.status === 404
+          pollError.value = missing
+            ? 'The agent has not reported on the job yet; it will show under Jobs once it does'
+            : `Stopped following the job: ${detail}`
         },
       },
     )

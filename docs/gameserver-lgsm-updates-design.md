@@ -338,3 +338,33 @@ Where the build differs from the proposal above. The agent repo's README
   server's tmux lands in the game user's logind session scope and survives
   the unit exiting; Ansible's `blockinfile` task is a no-op after the
   helper rewrites the block.
+
+### API (phase 3) as built
+
+- **No `maintenance` status (§7).** Allocation skips any server with a
+  `queued` or `running` job whose operation is `game`, `mods` or `all`; `lgsm`
+  and `repair-config` do not block. The server's stored status is untouched,
+  and it is eligible again as soon as the job ends in any state. Allocation
+  re-checks for such a job after locking the server row, and the update start
+  inserts its job before evaluating the safety gate, so whichever arrives
+  second sees the other.
+- **Audit (§7)** goes to `admin_server_commands`, not `server_events` (the
+  latter is MatchZy's webhook queue and de-duplicates repeat actions): one row
+  per admin command (`update:<op>`, `update:check`, `matchzy_overrides`) and
+  one `update_result:<op>` row per admin-started job's outcome.
+- **The safety gate fails closed.** Without `force`, `game`/`mods`/`all` are
+  refused when humans are connected, a reservation is live, a booking is
+  active or starts within 30 minutes, the player count is unknown (no fresh
+  CS2 status), the server is `in_match`/`busy_external`/`reserved`/
+  `configuring`, MatchZy has a match loaded or no gamestate, or a lookup
+  failed. A refusal leaves a `failed` job ("refused by the safety gate: …").
+- **Unanswered starts stay `queued`** (the API returns 502 saying the outcome
+  is unknown), so the server stays out of allocation until the agent reports.
+  The lost-job pass asks the agent (`update_status`) before declaring a job
+  `lost` after 20 minutes without word, handles at most 16 jobs per pass, and a
+  `lost` verdict is overturned by later progress or a result.
+- **Endpoints** (all `admin.servers.manage`): `GET/POST /updates`,
+  `POST /updates/check`, `POST /updates/repair-config`,
+  `GET /updates/{job_id}`, `GET/PUT /matchzy-overrides`. Overrides saved while
+  the agent is away are pushed on its next connect; pushes are serialised per
+  server and always send the stored set.

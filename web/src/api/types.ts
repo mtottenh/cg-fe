@@ -757,6 +757,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/game-servers/{server_id}/matchzy-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The portal-managed MatchZy overrides of a server. */
+        get: operations["get_matchzy_overrides"];
+        /**
+         * Replace the portal-managed MatchZy overrides. They are stored whatever
+         *     the agent's state; when it is connected and capable they are sent at
+         *     once, otherwise on its next connect. An empty map clears them.
+         */
+        put: operations["set_matchzy_overrides"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/game-servers/{server_id}/revoke": {
         parameters: {
             query?: never;
@@ -768,6 +790,98 @@ export interface paths {
         put?: never;
         /** Revoke a server's agent certificates and drop its connection. */
         post: operations["revoke_agent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}/updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Update state of a server: what is installed, the last check, health of
+         *     the plugin stack and the MatchZy config, jobs, and what a restart would
+         *     interrupt.
+         */
+        get: operations["get_updates"];
+        put?: never;
+        /**
+         * Start an update. Answers as soon as the agent has started the helper;
+         *     poll the job for progress and the result.
+         * @description `game`, `mods` and `all` restart CS2 and are refused (409) while humans
+         *     are connected, the server or MatchZy reports a match, a reservation is
+         *     live, or a booking is active or starts within 30 minutes — and when any
+         *     of that cannot be known (no fresh status, a failed lookup) — unless
+         *     `force` is set. While such a job is in
+         *     flight the server is not allocated to matches.
+         */
+        post: operations["start_update"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}/updates/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask the host to check installed against latest versions. Answers as
+         *     soon as the agent has started the check; the result lands in the
+         *     overview's `check` a few seconds later.
+         */
+        post: operations["check_updates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}/updates/repair-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-assert the managed blocks of the MatchZy config (demo upload and the
+         *     portal's overrides). Restarts nothing, so there is no players gate.
+         */
+        post: operations["repair_config"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/game-servers/{server_id}/updates/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One update job in full: progress while it runs, then versions before
+         *     and after, the config report and the log tail.
+         */
+        get: operations["get_update_job"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1007,6 +1121,53 @@ export interface paths {
          *     to restart the walk.
          */
         post: operations["resume_pipeline_tracking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/pipeline/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * MatchZy demo upload attempts, newest first (admin).
+         * @description Every request to `POST /v1/gameserver/demos` leaves one row, refusals
+         *     included — MatchZy never retries and reports nothing, so this is the only
+         *     place a refused or failed upload shows up outside the logs. Keyset-paged
+         *     on `received_at`: pass `next_before` back as `before`.
+         */
+        get: operations["list_pipeline_uploads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/pipeline/uploads/missing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Finished server matches whose demo never arrived (admin).
+         * @description The failure that matters most and that nothing else reports: a
+         *     reservation completed more than 30 minutes ago (within the last 14 days)
+         *     with neither a demo linked to its match nor a stored upload carrying its
+         *     MatchZy id. Newest completed first; the same predicate as the overview's
+         *     `server_uploads.missing`.
+         */
+        get: operations["list_pipeline_missing_uploads"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7293,6 +7454,11 @@ export interface components {
                 s3_bucket: string;
                 /** @description S3 object key. */
                 s3_key: string;
+                /**
+                 * @description Uploaded by a game server or found by the bucket scan — derived from
+                 *     the key (`matchzy/` prefix), not stored.
+                 */
+                source: components["schemas"]["DemoSource"];
                 /** @description Stats fetch error message. */
                 stats_fetch_error?: string | null;
                 /**
@@ -7386,6 +7552,21 @@ export interface components {
                  * @description Count of ready demos.
                  */
                 ready: number;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_DemoUploadAttemptListResponse: {
+            /** @description A page of upload attempts, newest first. */
+            data: {
+                attempts: components["schemas"]["DemoUploadAttemptResponse"][];
+                /**
+                 * Format: date-time
+                 * @description Pass as `before` for the next page; null when this page was short
+                 *     (no more rows).
+                 */
+                next_before?: string | null;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -7789,8 +7970,20 @@ export interface components {
                 game_id: string;
                 /** Format: int32 */
                 gotv_port?: number | null;
+                /**
+                 * @description Whether a demo-upload token has been minted (at enrollment). Without
+                 *     one MatchZy's uploads are refused as `rejected_auth`.
+                 */
+                has_demo_token: boolean;
                 id: string;
                 ip_address: string;
+                /**
+                 * Format: date-time
+                 * @description When this server's most recent demo upload attempt arrived, whatever
+                 *     its outcome; null when it has never attempted one.
+                 */
+                last_demo_upload_at?: string | null;
+                last_demo_upload_outcome?: null | components["schemas"]["DemoUploadOutcome"];
                 /** @description MatchZy gamestate from the last heartbeat. */
                 last_gamestate?: string | null;
                 last_heartbeat_at?: string | null;
@@ -7812,6 +8005,47 @@ export interface components {
                 region: string;
                 status: components["schemas"]["GameServerStatus"];
                 updated_at: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_GameServerUpdatesResponse: {
+            /** @description Everything the Updates tab shows at once. */
+            data: {
+                active_job?: null | components["schemas"]["UpdateJobSummary"];
+                agent_connected: boolean;
+                agent_job?: null | components["schemas"]["UpdateAgentJob"];
+                agent_version?: string | null;
+                capabilities: string[];
+                check?: null | components["schemas"]["UpdateCheckInfo"];
+                /**
+                 * @description Whether the demo-upload block is intact in the MatchZy config file;
+                 *     null = unknown.
+                 */
+                demo_upload_wired?: boolean | null;
+                installed?: null | components["schemas"]["UpdateVersions"];
+                load?: null | components["schemas"]["UpdateLoadHealth"];
+                /**
+                 * @description Whether the portal-managed overrides are in that file; null = none
+                 *     set on the host, or unknown.
+                 */
+                overrides_applied?: boolean | null;
+                /** @description The last ten jobs, newest first (the active one included). */
+                recent_jobs: components["schemas"]["UpdateJobSummary"][];
+                /**
+                 * @description A repair changed the config and the running server has not re-read
+                 *     it yet (the agent waits for no match to be loaded).
+                 */
+                reload_pending: boolean;
+                safety: components["schemas"]["UpdateSafety"];
+                server_id: string;
+                /**
+                 * @description Whether the agent can run updates on this host (it advertises
+                 *     `lgsm_update`). False for agents older than 0.3.0 and hosts without
+                 *     the helper: hide the feature.
+                 */
+                supported: boolean;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -8362,6 +8596,25 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_MatchzyOverridesResponse: {
+            /** @description The portal-managed MatchZy overrides of a server. */
+            data: {
+                /**
+                 * @description Whether the host's MatchZy config has them (agent heartbeat); null
+                 *     = none set on the host, or unknown.
+                 */
+                applied?: boolean | null;
+                /** @description `cvar → value` (string, number or boolean). */
+                overrides: {
+                    [key: string]: unknown;
+                };
+                /** @description Saved but not yet accepted by the agent; pushed on its next connect. */
+                pending: boolean;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_MovedTeamResponse: {
             /**
              * @description The team after a cross-league move, plus the cups it was withdrawn from.
@@ -8512,6 +8765,11 @@ export interface components {
                 discovered_matches: components["schemas"]["DiscoveredMatchQueueResponse"];
                 /** @description Game slug this overview is scoped to, or null for all games. */
                 game_slug?: string | null;
+                /**
+                 * @description The server route — MatchZy uploading demos straight from our game
+                 *     servers. NOT scoped by `game`: only CS2 servers upload in practice.
+                 */
+                server_uploads: components["schemas"]["ServerUploadsSummaryResponse"];
                 /** @description Stage 1 — Steam tracking tokens (the poller's work list). */
                 tracking: components["schemas"]["TrackingHealthSummaryResponse"];
             };
@@ -9324,6 +9582,26 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_SetMatchzyOverridesResponse: {
+            /** @description Result of saving the overrides. */
+            data: {
+                delivery: components["schemas"]["OverridesDelivery"];
+                /** @description Why it was not applied now, for `written` and `pending`. */
+                detail?: string | null;
+                /**
+                 * @description The agent's `repair-config` job (trigger `overrides`) when
+                 *     `delivery` is `applying`.
+                 */
+                job_id?: string | null;
+                /** @description The set as stored (strings trimmed). */
+                overrides: {
+                    [key: string]: unknown;
+                };
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_SpinResponse: {
             /** @description Result of a wheel spin. */
             data: {
@@ -9787,6 +10065,32 @@ export interface components {
                 required_action?: string | null;
                 /** @description The tracked SteamID64. Not a secret — it is public on the profile. */
                 steam_id_64: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_UpdateCheckStartedResponse: {
+            /** @description A check was started; its result arrives in `check` of the overview. */
+            data: {
+                /** @description The agent's id for the check (not a job row). */
+                job_id?: string | null;
+                /** @description Always `check`. */
+                operation: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_UpdateJobResponse: {
+            /** @description A whole update job. */
+            data: components["schemas"]["UpdateJobSummary"] & {
+                after?: null | components["schemas"]["UpdateVersions"];
+                before?: null | components["schemas"]["UpdateVersions"];
+                config_report?: null | components["schemas"]["UpdateConfigReport"];
+                load?: null | components["schemas"]["UpdateLoadHealth"];
+                /** @description The newest 8 KiB of the job's log. */
+                log_tail?: string | null;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -10453,8 +10757,20 @@ export interface components {
                 game_id: string;
                 /** Format: int32 */
                 gotv_port?: number | null;
+                /**
+                 * @description Whether a demo-upload token has been minted (at enrollment). Without
+                 *     one MatchZy's uploads are refused as `rejected_auth`.
+                 */
+                has_demo_token: boolean;
                 id: string;
                 ip_address: string;
+                /**
+                 * Format: date-time
+                 * @description When this server's most recent demo upload attempt arrived, whatever
+                 *     its outcome; null when it has never attempted one.
+                 */
+                last_demo_upload_at?: string | null;
+                last_demo_upload_outcome?: null | components["schemas"]["DemoUploadOutcome"];
                 /** @description MatchZy gamestate from the last heartbeat. */
                 last_gamestate?: string | null;
                 last_heartbeat_at?: string | null;
@@ -10795,6 +11111,34 @@ export interface components {
                 triggered_by_system: boolean;
                 /** @description User who triggered the transition (if not system). */
                 triggered_by_user_id?: string | null;
+            }[];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_Vec_MissingDemoResponse: {
+            data: {
+                /** Format: date-time */
+                completed_at: string;
+                /**
+                 * Format: date-time
+                 * @description `completed_at` + the missing threshold.
+                 */
+                expected_by: string;
+                /** Format: uuid */
+                match_id: string;
+                /** Format: int64 */
+                matchzy_id: number;
+                /** Format: uuid */
+                reservation_id: string;
+                /** Format: uuid */
+                server_id: string;
+                server_name?: string | null;
+                /** Format: uuid */
+                tournament_id: string;
+                tournament_name?: string | null;
+                /** @description For the public match page route. */
+                tournament_slug?: string | null;
             }[];
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -12337,6 +12681,11 @@ export interface components {
             s3_bucket: string;
             /** @description S3 object key. */
             s3_key: string;
+            /**
+             * @description Uploaded by a game server or found by the bucket scan — derived from
+             *     the key (`matchzy/` prefix), not stored.
+             */
+            source: components["schemas"]["DemoSource"];
             /** @description Stats fetch error message. */
             stats_fetch_error?: string | null;
             /**
@@ -12357,6 +12706,12 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * @description Where a cataloged demo came from. Derived from the object key, not
+         *     stored: the upload handler is the only writer of `matchzy/` keys.
+         * @enum {string}
+         */
+        DemoSource: "matchzy_upload" | "bucket_scan";
         /** @description Demo stats response. */
         DemoStatsResponse: {
             /** @description Demo file name. */
@@ -12426,6 +12781,81 @@ export interface components {
              */
             ready: number;
         };
+        /** @description A page of upload attempts, newest first. */
+        DemoUploadAttemptListResponse: {
+            attempts: components["schemas"]["DemoUploadAttemptResponse"][];
+            /**
+             * Format: date-time
+             * @description Pass as `before` for the next page; null when this page was short
+             *     (no more rows).
+             */
+            next_before?: string | null;
+        };
+        /** @description One MatchZy demo upload request and how it ended. */
+        DemoUploadAttemptResponse: {
+            /**
+             * Format: int64
+             * @description Request body size.
+             */
+            bytes: number;
+            /**
+             * Format: uuid
+             * @description The cataloged demo (stored outcomes only).
+             */
+            demo_id?: string | null;
+            demo_status?: null | components["schemas"]["DemoStatus"];
+            /** Format: int32 */
+            duration_ms: number;
+            /** @description What went wrong, for refusals and failures. */
+            error?: string | null;
+            /** @description Sanitised `MatchZy-FileName`; null when the header was missing. */
+            file_name?: string | null;
+            /**
+             * Format: int32
+             * @description The HTTP status MatchZy was given.
+             */
+            http_status: number;
+            /** Format: uuid */
+            id: string;
+            link_note?: null | components["schemas"]["DemoUploadLinkNote"];
+            /** Format: uuid */
+            linked_match_id?: string | null;
+            /** Format: uuid */
+            linked_tournament_id?: string | null;
+            /** @description For the public match page route. */
+            linked_tournament_slug?: string | null;
+            /**
+             * Format: int32
+             * @description 0-indexed, as MatchZy sends it.
+             */
+            map_number?: number | null;
+            /** Format: int64 */
+            matchzy_id?: number | null;
+            outcome: components["schemas"]["DemoUploadOutcome"];
+            /** Format: date-time */
+            received_at: string;
+            /**
+             * Format: uuid
+             * @description Null when the demo token was missing or unknown.
+             */
+            server_id?: string | null;
+            server_name?: string | null;
+        };
+        /**
+         * @description Why a `stored` upload did, or did not, get linked to a match.
+         * @enum {string}
+         */
+        DemoUploadLinkNote: "linked" | "no_match_id" | "no_reservation" | "other_server" | "link_failed";
+        /**
+         * @description How one MatchZy demo upload (`POST /v1/gameserver/demos`) ended.
+         *
+         *     One `demo_upload_attempts` row per request. The refusals are split by who
+         *     has to act: `rejected_auth` is a server-setup problem (re-enroll the agent),
+         *     `rejected_request` is MatchZy sending something unusable, and the two
+         *     `*_failed` outcomes are the portal's own fault.
+         * @enum {string}
+         */
+        DemoUploadOutcome: "stored" | "rejected_auth" | "rejected_request" | "store_failed" | "catalog_failed";
         /** @description Demo validation response. */
         DemoValidationResponse: {
             /**
@@ -13228,8 +13658,20 @@ export interface components {
             game_id: string;
             /** Format: int32 */
             gotv_port?: number | null;
+            /**
+             * @description Whether a demo-upload token has been minted (at enrollment). Without
+             *     one MatchZy's uploads are refused as `rejected_auth`.
+             */
+            has_demo_token: boolean;
             id: string;
             ip_address: string;
+            /**
+             * Format: date-time
+             * @description When this server's most recent demo upload attempt arrived, whatever
+             *     its outcome; null when it has never attempted one.
+             */
+            last_demo_upload_at?: string | null;
+            last_demo_upload_outcome?: null | components["schemas"]["DemoUploadOutcome"];
             /** @description MatchZy gamestate from the last heartbeat. */
             last_gamestate?: string | null;
             last_heartbeat_at?: string | null;
@@ -13257,6 +13699,42 @@ export interface components {
          * @enum {string}
          */
         GameServerStatus: "offline" | "available" | "reserved" | "configuring" | "in_match" | "busy_external" | "error";
+        /** @description Everything the Updates tab shows at once. */
+        GameServerUpdatesResponse: {
+            active_job?: null | components["schemas"]["UpdateJobSummary"];
+            agent_connected: boolean;
+            agent_job?: null | components["schemas"]["UpdateAgentJob"];
+            agent_version?: string | null;
+            capabilities: string[];
+            check?: null | components["schemas"]["UpdateCheckInfo"];
+            /**
+             * @description Whether the demo-upload block is intact in the MatchZy config file;
+             *     null = unknown.
+             */
+            demo_upload_wired?: boolean | null;
+            installed?: null | components["schemas"]["UpdateVersions"];
+            load?: null | components["schemas"]["UpdateLoadHealth"];
+            /**
+             * @description Whether the portal-managed overrides are in that file; null = none
+             *     set on the host, or unknown.
+             */
+            overrides_applied?: boolean | null;
+            /** @description The last ten jobs, newest first (the active one included). */
+            recent_jobs: components["schemas"]["UpdateJobSummary"][];
+            /**
+             * @description A repair changed the config and the running server has not re-read
+             *     it yet (the agent waits for no match to be loaded).
+             */
+            reload_pending: boolean;
+            safety: components["schemas"]["UpdateSafety"];
+            server_id: string;
+            /**
+             * @description Whether the agent can run updates on this host (it advertises
+             *     `lgsm_update`). False for agents older than 0.3.0 and hosts without
+             *     the helper: hide the feature.
+             */
+            supported: boolean;
+        };
         /** @description Summary response for a game (used in list endpoints). */
         GameSummaryResponse: {
             /**
@@ -14382,6 +14860,20 @@ export interface components {
             /** @description User who triggered the transition (if not system). */
             triggered_by_user_id?: string | null;
         };
+        /** @description The portal-managed MatchZy overrides of a server. */
+        MatchzyOverridesResponse: {
+            /**
+             * @description Whether the host's MatchZy config has them (agent heartbeat); null
+             *     = none set on the host, or unknown.
+             */
+            applied?: boolean | null;
+            /** @description `cvar → value` (string, number or boolean). */
+            overrides: {
+                [key: string]: unknown;
+            };
+            /** @description Saved but not yet accepted by the agent; pushed on its next connect. */
+            pending: boolean;
+        };
         /** @description Response metadata. */
         Meta: {
             /**
@@ -14394,6 +14886,30 @@ export interface components {
              * @example 2024-01-15T10:30:00Z
              */
             timestamp: string;
+        };
+        /** @description A finished server match whose demo never arrived. */
+        MissingDemoResponse: {
+            /** Format: date-time */
+            completed_at: string;
+            /**
+             * Format: date-time
+             * @description `completed_at` + the missing threshold.
+             */
+            expected_by: string;
+            /** Format: uuid */
+            match_id: string;
+            /** Format: int64 */
+            matchzy_id: number;
+            /** Format: uuid */
+            reservation_id: string;
+            /** Format: uuid */
+            server_id: string;
+            server_name?: string | null;
+            /** Format: uuid */
+            tournament_id: string;
+            tournament_name?: string | null;
+            /** @description For the public match page route. */
+            tournament_slug?: string | null;
         };
         /** @description Request to move a team into another league. */
         MoveTeamRequest: {
@@ -14499,6 +15015,11 @@ export interface components {
             /** @description Tournament the rows belong to. */
             tournament_id: string;
         };
+        /**
+         * @description What happened to a saved override set.
+         * @enum {string}
+         */
+        OverridesDelivery: "applying" | "written" | "pending";
         /** @description Wrapper for paginated list responses. */
         PaginatedResponse_GameSummaryResponse: {
             /** @description The list of items. */
@@ -14889,6 +15410,11 @@ export interface components {
             discovered_matches: components["schemas"]["DiscoveredMatchQueueResponse"];
             /** @description Game slug this overview is scoped to, or null for all games. */
             game_slug?: string | null;
+            /**
+             * @description The server route — MatchZy uploading demos straight from our game
+             *     servers. NOT scoped by `game`: only CS2 servers upload in practice.
+             */
+            server_uploads: components["schemas"]["ServerUploadsSummaryResponse"];
             /** @description Stage 1 — Steam tracking tokens (the poller's work list). */
             tracking: components["schemas"]["TrackingHealthSummaryResponse"];
         };
@@ -16206,6 +16732,58 @@ export interface components {
             starts_at: string;
             tournament_id?: string | null;
         };
+        /**
+         * @description The MatchZy server-upload route, as the Pipeline's "Server uploads" card
+         *     reads it (docs/demo-ingestion-admin-design.md §3.1).
+         *
+         *     Not game-filtered: the game servers are CS2-only in practice, and the
+         *     attempt table has no game column (an auth refusal has no server either).
+         */
+        ServerUploadsSummaryResponse: {
+            /**
+             * Format: int64
+             * @description `store_failed` + `catalog_failed` in the last 24 hours — the portal's
+             *     own failures.
+             */
+            failed_24h: number;
+            /**
+             * Format: date-time
+             * @description Latest `stored` attempt, if any server has ever uploaded.
+             */
+            last_upload_at?: string | null;
+            /**
+             * Format: int64
+             * @description Completed server matches (last 14 days) with no demo more than
+             *     `missing_after_minutes` after completion.
+             */
+            missing: number;
+            /**
+             * Format: int64
+             * @description Minutes after completion before a demo counts as missing.
+             */
+            missing_after_minutes: number;
+            /**
+             * Format: int64
+             * @description `rejected_auth` + `rejected_request` in the last 24 hours — server
+             *     setup or MatchZy sending something unusable.
+             */
+            refused_24h: number;
+            /**
+             * Format: int64
+             * @description Minutes pending before an uploaded demo counts as stuck.
+             */
+            stuck_after_minutes: number;
+            /**
+             * Format: int64
+             * @description Uploaded demos still pending/processing after `stuck_after_minutes`.
+             */
+            stuck_pending: number;
+            /**
+             * Format: int64
+             * @description `stored` attempts in the last 24 hours.
+             */
+            uploaded_24h: number;
+        };
         /** @description Toggle captain status (creator only). */
         SetCaptainRequest: {
             is_captain: boolean;
@@ -16233,6 +16811,34 @@ export interface components {
              *     ]
              */
             map_ids: string[];
+        };
+        /** @description Replace the overrides. An empty map clears them. */
+        SetMatchzyOverridesRequest: {
+            /**
+             * @description At most 64 entries. Names match `^matchzy_[a-z0-9_]+$` (at most 128
+             *     bytes) and are not `matchzy_demo_upload_*`, `matchzy_remote_*`,
+             *     `matchzy_loadmatch*` or `matchzy_loadbackup_url`. Values are a
+             *     string, number or boolean that renders to at most 256 bytes of
+             *     printable ASCII without `"`, `;` or `\`.
+             */
+            overrides: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Result of saving the overrides. */
+        SetMatchzyOverridesResponse: {
+            delivery: components["schemas"]["OverridesDelivery"];
+            /** @description Why it was not applied now, for `written` and `pending`. */
+            detail?: string | null;
+            /**
+             * @description The agent's `repair-config` job (trigger `overrides`) when
+             *     `delivery` is `applying`.
+             */
+            job_id?: string | null;
+            /** @description The set as stored (strings trimmed). */
+            overrides: {
+                [key: string]: unknown;
+            };
         };
         /** @description Replace the full set of rank tiers for a game. */
         SetRankTiersRequest: {
@@ -16351,6 +16957,20 @@ export interface components {
              * @description Maximum rows (default 10, max 100).
              */
             limit?: number | null;
+        };
+        /**
+         * @description What an admin may start. `repair-config` has its own endpoint.
+         * @enum {string}
+         */
+        StartUpdateOperation: "lgsm" | "game" | "mods" | "all";
+        /** @description Start an update. */
+        StartUpdateRequest: {
+            /**
+             * @description Go ahead although players are connected or a reservation is live
+             *     or imminent. Only matters for `game`, `mods` and `all`.
+             */
+            force?: boolean;
+            operation: components["schemas"]["StartUpdateOperation"];
         };
         /** @description One stat the game plugin can extract, for award-builder UIs. */
         StatCatalogEntryResponse: {
@@ -17086,6 +17706,16 @@ export interface components {
             /** @description Team side in demo (e.g., "CT", "T"). */
             team_side: string;
         };
+        /**
+         * @description The operation the agent's last heartbeat named as in flight — checks
+         *     included, which have no job row.
+         */
+        UpdateAgentJob: {
+            job_id?: string | null;
+            operation?: string | null;
+            phase?: string | null;
+            status?: string | null;
+        };
         /** @description Request to update the demo auto-link setting. */
         UpdateAutoLinkSettingRequest: {
             /**
@@ -17093,6 +17723,20 @@ export interface components {
              *     ingestion. Manual linking and evidence uploads are unaffected.
              */
             enabled: boolean;
+        };
+        /**
+         * @description Whether an update is available, per component; `null` = could not be
+         *     compared (a version unknown, or the upstream lookup failed).
+         */
+        UpdateAvailability: {
+            cssharp?: boolean | null;
+            /** @description The CS2 build (`cs2_build`). */
+            game?: boolean | null;
+            lgsm?: boolean | null;
+            matchzy?: boolean | null;
+            metamod?: boolean | null;
+            /** @description Any of the three plugins. */
+            mods?: boolean | null;
         };
         /** @description Request to update an availability window. */
         UpdateAvailabilityWindowRequest: {
@@ -17125,6 +17769,44 @@ export interface components {
             icon?: string | null;
             /** @description New award name. */
             name?: string | null;
+        };
+        /** @description The last `check` the host ran. */
+        UpdateCheckInfo: {
+            /** Format: date-time */
+            checked_at?: string | null;
+            /** @description The demo-upload block was in the MatchZy config at the check. */
+            demo_upload_block_present?: boolean | null;
+            /** @description Latest upstream versions as of the check. */
+            latest: components["schemas"]["UpdateVersions"];
+            /**
+             * @description Recomputed against what is installed NOW, so a component updated
+             *     since the check no longer shows as outdated.
+             */
+            update_available: components["schemas"]["UpdateAvailability"];
+        };
+        /** @description A check was started; its result arrives in `check` of the overview. */
+        UpdateCheckStartedResponse: {
+            /** @description The agent's id for the check (not a job row). */
+            job_id?: string | null;
+            /** @description Always `check`. */
+            operation: string;
+        };
+        /**
+         * @description What an update did to operator settings in `cfg/MatchZy` (the managed
+         *     blocks excluded).
+         */
+        UpdateConfigReport: {
+            cvars_added: string[];
+            cvars_changed: components["schemas"]["UpdateCvarChange"][];
+            cvars_removed: string[];
+            files_changed: string[];
+        };
+        /** @description One cvar an update changed in MatchZy's config. */
+        UpdateCvarChange: {
+            after?: string | null;
+            /** @description `[redacted]` for portal-owned or secret settings. */
+            before?: string | null;
+            name: string;
         };
         /** @description Request to update a game's settings. */
         UpdateGameRequest: {
@@ -17170,6 +17852,62 @@ export interface components {
             port?: number | null;
             region?: string | null;
         };
+        /** @description A whole update job. */
+        UpdateJobResponse: components["schemas"]["UpdateJobSummary"] & {
+            after?: null | components["schemas"]["UpdateVersions"];
+            before?: null | components["schemas"]["UpdateVersions"];
+            config_report?: null | components["schemas"]["UpdateConfigReport"];
+            load?: null | components["schemas"]["UpdateLoadHealth"];
+            /** @description The newest 8 KiB of the job's log. */
+            log_tail?: string | null;
+        };
+        /**
+         * @description Status of a game-server update job.
+         * @enum {string}
+         */
+        UpdateJobStatus: "queued" | "running" | "succeeded" | "failed" | "rolled_back" | "lost";
+        /** @description An update job without its bulky parts. */
+        UpdateJobSummary: {
+            /** @description The agent made this result up because the helper never reported. */
+            agent_synthesized: boolean;
+            /** @description Whether the server is out of match allocation because of this job. */
+            blocks_allocation: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** @description One line; for `rolled_back` the reason for the rollback. */
+            error?: string | null;
+            /** @description The phase that broke; for `rolled_back`, what triggered the rollback. */
+            failed_phase?: string | null;
+            /** Format: date-time */
+            finished_at?: string | null;
+            /** @description Started with `force` over the players/reservation gate. */
+            forced: boolean;
+            id: string;
+            operation: components["schemas"]["UpdateOperation"];
+            /** @description Where the job is, or where it stopped (`done` on success). */
+            phase?: string | null;
+            /** @description The admin who started it; null for jobs the portal did not start. */
+            requested_by?: string | null;
+            requested_by_username?: string | null;
+            /** @description Whether CS2 was restarted; null while unknown. */
+            restarted?: boolean | null;
+            server_id: string;
+            /** Format: date-time */
+            started_at?: string | null;
+            status: components["schemas"]["UpdateJobStatus"];
+            trigger: components["schemas"]["UpdateJobTrigger"];
+            /**
+             * Format: date-time
+             * @description Last progress; a job in flight for 20 minutes without any is
+             *     declared `lost`.
+             */
+            updated_at: string;
+        };
+        /**
+         * @description What started a game-server update job.
+         * @enum {string}
+         */
+        UpdateJobTrigger: "portal" | "overrides" | "auto_repair" | "local";
         /** @description Request to update a member's role. */
         UpdateLeagueMemberRoleRequest: {
             /** @description New membership type: admin, moderator, or member. */
@@ -17275,6 +18013,14 @@ export interface components {
             /** @description Updated team tag. */
             tag?: string | null;
         };
+        /** @description What the console showed about the plugin stack after a (re)start. */
+        UpdateLoadHealth: {
+            cssharp?: boolean | null;
+            /** @description The `MMS: Fatal error` line, if there was one. */
+            error?: string | null;
+            matchzy?: boolean | null;
+            metamod?: boolean | null;
+        };
         /** @description Request to update an existing map's metadata. */
         UpdateMapRequest: {
             /** @description Display name. */
@@ -17293,6 +18039,12 @@ export interface components {
             /** @description Map image URL. */
             image_url?: string | null;
         };
+        /**
+         * @description An operation of the game host's update helper, as the agent names it on
+         *     the wire (`repair-config` has a hyphen there and here).
+         * @enum {string}
+         */
+        UpdateOperation: "lgsm" | "game" | "mods" | "all" | "repair-config" | "check";
         /** @description Request to update the current player's profile. */
         UpdatePlayerProfileRequest: {
             /**
@@ -17353,6 +18105,44 @@ export interface components {
              * @example 60
              */
             priority?: number | null;
+        };
+        /** @description What a restart would interrupt right now. */
+        UpdateSafety: {
+            bookings: components["schemas"]["UpdateSafetyBooking"][];
+            /**
+             * Format: int32
+             * @description Humans connected at the last heartbeat; null when unknown (agent
+             *     away, or it reports no `status`).
+             */
+            humans_connected?: number | null;
+            /** @description Their names, bots excluded. */
+            players: string[];
+            /** @description Why, one line each — the same lines the 409 names. */
+            reasons: string[];
+            reservation?: null | components["schemas"]["UpdateSafetyReservation"];
+            /**
+             * @description Whether `game`, `mods` and `all` need `force: true` right now. The
+             *     gate fails closed: unknowns (player count, match state, a failed
+             *     reservation or booking lookup) count as reasons too.
+             */
+            restart_needs_force: boolean;
+        };
+        /** @description A booking that is active or starts within 30 minutes. */
+        UpdateSafetyBooking: {
+            /** Format: date-time */
+            ends_at: string;
+            id: string;
+            reason?: string | null;
+            /** Format: date-time */
+            starts_at: string;
+            tournament_id?: string | null;
+        };
+        /** @description The live reservation a restart would interrupt. */
+        UpdateSafetyReservation: {
+            id: string;
+            kind: components["schemas"]["ReservationKind"];
+            match_id: string;
+            status: components["schemas"]["ReservationStatus"];
         };
         /** @description Request to update steam tracking auth code. */
         UpdateSteamTrackingRequest: {
@@ -17482,6 +18272,22 @@ export interface components {
              * @description Stage start time.
              */
             starts_at?: string | null;
+        };
+        /** @description Versions of the five things the helper tracks; `null` = unknown. */
+        UpdateVersions: {
+            /** @description CS2 Steam build id. */
+            cs2_build?: string | null;
+            /** @description CounterStrikeSharp release. */
+            cssharp?: string | null;
+            /** @description LinuxGSM release, e.g. `v26.6.0`. */
+            lgsm?: string | null;
+            /** @description MatchZy release. */
+            matchzy?: string | null;
+            /**
+             * @description Metamod version as the helper reports it (e.g. `2.0.0-git1491`);
+             *     known only after a `mods`/`all` run through the helper.
+             */
+            metamod?: string | null;
         };
         /** @description Response for upload initiation. */
         UploadInfoResponse: {
@@ -20286,6 +21092,101 @@ export interface operations {
             };
         };
     };
+    get_matchzy_overrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The overrides */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_MatchzyOverridesResponse"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    set_matchzy_overrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMatchzyOverridesRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored; `delivery` says whether the host has them */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_SetMatchzyOverridesResponse"];
+                };
+            };
+            /** @description Malformed body (e.g. `overrides` not an object), or an override breaks the rules; `detail` names it. Nothing was stored */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     revoke_agent: {
         parameters: {
             query?: never;
@@ -20308,6 +21209,280 @@ export interface operations {
                 };
             };
             /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_updates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Update overview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_GameServerUpdatesResponse"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    start_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Update started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_UpdateJobResponse"];
+                };
+            };
+            /** @description Malformed body or unknown `operation` (problem document) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No agent connected; no lgsm_update capability; another job is running; players connected or a reservation/booking is live or imminent (without force); or the agent refused. `detail` names the reason */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The agent could not start the helper (the job ends `failed`), or it did not answer: then whether the update started is unknown, `detail` says so and names the job, which stays `queued` until the agent reports on it or the lost-job pass settles it */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    check_updates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Check started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_UpdateCheckStartedResponse"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No agent connected, no lgsm_update capability, or the agent refused (a job is running) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The agent did not answer or could not start the check */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    repair_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Repair started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_UpdateJobResponse"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No agent connected; no lgsm_update capability; another job is running; or the agent refused */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The agent could not start the helper, or it did not answer (outcome unknown: the job stays `queued`, see the start endpoint) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_update_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game server ID */
+                server_id: string;
+                /** @description Update job ID */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_UpdateJobResponse"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or job not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -20912,6 +22087,108 @@ export interface operations {
             };
             /** @description Tracking entry not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_pipeline_uploads: {
+        parameters: {
+            query?: {
+                /** @description Only attempts from this game server. */
+                server_id?: string | null;
+                /** @description Only attempts with this outcome. */
+                outcome?: null | components["schemas"]["DemoUploadOutcome"];
+                /** @description Only attempts that stored this demo. */
+                demo_id?: string | null;
+                /**
+                 * @description Keyset cursor: attempts received strictly before this instant
+                 *     (pass the previous page's `next_before`).
+                 */
+                before?: string | null;
+                /** @description Maximum rows to return (default 50, max 200). */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Upload attempts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_DemoUploadAttemptListResponse"];
+                };
+            };
+            /** @description Invalid filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_pipeline_missing_uploads: {
+        parameters: {
+            query?: {
+                /** @description Maximum rows to return (default 50, max 200). */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matches missing a demo */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_Vec_MissingDemoResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Admin access required */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

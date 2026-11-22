@@ -88,6 +88,16 @@
           <v-window v-model="tab">
             <!-- ============================ Overview ============================ -->
             <v-window-item value="overview">
+              <v-alert
+                v-if="pollError"
+                type="warning"
+                variant="tonal"
+                density="compact"
+                class="mb-3"
+                data-testid="updates-poll-error"
+              >
+                {{ pollError }}
+              </v-alert>
               <UpdateJobView v-if="job" :job="job" closable @close="closeJob" />
 
               <template v-else>
@@ -350,7 +360,7 @@ const emit = defineEmits<{
 }>()
 
 const store = useGameServerUpdatesStore()
-const { overviews, job, checking, checkError, checkState, startState, fetchUpdatesState } = storeToRefs(store)
+const { overviews, job, checking, checkError, pollError, checkState, startState, fetchUpdatesState } = storeToRefs(store)
 const confirmDialog = useConfirmDialog()
 
 const open = computed({

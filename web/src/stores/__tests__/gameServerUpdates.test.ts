@@ -18,7 +18,13 @@ vi.mock('@/api', async (importOriginal) => {
 })
 
 import { ApiError, api } from '@/api'
-import { JOB_POLL_MS, useGameServerUpdatesStore } from '@/stores/gameServerUpdates'
+import {
+  CHECK_POLL_LIMIT_MS,
+  JOB_POLL_MS,
+  JOB_SLOW_POLL_MS,
+  POLL_MAX_FAILURES,
+  useGameServerUpdatesStore,
+} from '@/stores/gameServerUpdates'
 import type { GameServerUpdates, UpdateJobResponse } from '@/utils/gameServerUpdates'
 
 const mockGet = api.GET as unknown as Mock
@@ -284,8 +290,96 @@ describe('gameServerUpdates store', () => {
     await store.startUpdate(SERVER, 'mods')
     await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
     expect(store.fetchJobState.error).toBe('boom')
+    // Backed off: the retry comes after twice the interval, not the interval.
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
+    expect(callsTo(mockGet, JOB_PATH)).toHaveLength(1)
     await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
     expect(store.job?.status).toBe('rolled_back')
+    expect(store.pollError).toBeNull()
+  })
+
+  it('stops following a job after repeated failures (a 404 does not heal) and says so', async () => {
+    mockPost.mockResolvedValueOnce(ok(job()))
+    mockGet.mockResolvedValue(failure(404, 'update job not found'))
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+
+    await store.startUpdate(SERVER, 'mods')
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+
+    expect(callsTo(mockGet, JOB_PATH)).toHaveLength(POLL_MAX_FAILURES)
+    expect(store.pollError).toBe('Stopped following the job: update job not found')
+  })
+
+  it('reads a job still queued after 2 minutes every 5 s instead of every 2 s', async () => {
+    mockPost.mockResolvedValueOnce(ok(job({ status: 'queued', phase: null })))
+    mockGet.mockResolvedValue(ok(job({ status: 'queued', phase: null })))
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+
+    await store.startUpdate(SERVER, 'mods')
+    await vi.advanceTimersByTimeAsync(120_000)
+    const atTwoMinutes = callsTo(mockGet, JOB_PATH).length
+    expect(atTwoMinutes).toBe(120_000 / JOB_POLL_MS)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(callsTo(mockGet, JOB_PATH).length - atTwoMinutes).toBe(60_000 / JOB_SLOW_POLL_MS)
+    store.stopPolling()
+  })
+
+  it('fetches nothing while the tab is hidden, and resumes when it is shown', async () => {
+    mockPost.mockResolvedValueOnce(ok(job()))
+    mockGet.mockResolvedValue(ok(job()))
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+
+    await store.startUpdate(SERVER, 'mods')
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 5)
+    expect(callsTo(mockGet, JOB_PATH)).toHaveLength(0)
+
+    hidden.mockReturnValue(false)
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
+    expect(callsTo(mockGet, JOB_PATH)).toHaveLength(1)
+    hidden.mockRestore()
+    store.stopPolling()
+  })
+
+  it('a check whose reads keep failing gives up with a message', async () => {
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+    mockPost.mockResolvedValueOnce(ok({ job_id: 'chk-9', operation: 'check' }))
+    mockGet.mockResolvedValue(failure(403, 'missing permission admin.servers.manage'))
+    await store.checkNow(SERVER)
+
+    await vi.advanceTimersByTimeAsync(CHECK_POLL_LIMIT_MS)
+
+    expect(callsTo(mockGet, OVERVIEW_PATH)).toHaveLength(POLL_MAX_FAILURES)
+    expect(store.checking).toBe(false)
+    expect(store.checkError).toBe('Stopped waiting for the check: missing permission admin.servers.manage')
+  })
+
+  it('the check time cap holds even when reads fail on and off', async () => {
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+    mockPost.mockResolvedValueOnce(ok({ job_id: 'chk-10', operation: 'check' }))
+    let n = 0
+    mockGet.mockImplementation(() => {
+      n += 1
+      return Promise.resolve(
+        n % 2
+          ? failure(500, 'flaky')
+          : ok(overview({ agent_job: { job_id: 'chk-10', operation: 'check', phase: 'check', status: 'running' } })),
+      )
+    })
+    await store.checkNow(SERVER)
+
+    await vi.advanceTimersByTimeAsync(CHECK_POLL_LIMIT_MS + 10_000)
+    expect(store.checking).toBe(false)
+    expect(store.checkError).toBe('No result from the host after 3 minutes')
+    const calls = callsTo(mockGet, OVERVIEW_PATH).length
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(callsTo(mockGet, OVERVIEW_PATH)).toHaveLength(calls)
   })
 
   it('openJob follows a running job but not a finished one', async () => {

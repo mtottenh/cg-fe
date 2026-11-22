@@ -28,6 +28,16 @@ export const CHECK_POLL_LIMIT_MS = 180_000
  * running a check" means nothing until at least one heartbeat has passed.
  */
 export const CHECK_AGENT_IDLE_TRUST_MS = 40_000
+/** A job still `queued` after this long is read less often… */
+export const JOB_QUEUED_SLOWDOWN_MS = 120_000
+/** …at this interval (the agent may be away; the lost-job pass takes 20 min). */
+export const JOB_SLOW_POLL_MS = 5_000
+/** Following a job stops after this long whatever happens (lost after 20 min without progress). */
+export const JOB_POLL_LIMIT_MS = 30 * 60_000
+/** Consecutive failed polls before giving up (a 403/404 does not heal). */
+export const POLL_MAX_FAILURES = 5
+/** Backoff after failures doubles the interval up to this. */
+export const POLL_MAX_BACKOFF_MS = 30_000
 
 /**
  * Web-driven LinuxGSM updates of a game server
@@ -49,6 +59,8 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
   const overridesSave = ref<SetMatchzyOverridesResult | null>(null)
   /** A check was started and its result has not arrived yet. */
   const checking = ref(false)
+  /** Why following a job stopped early (repeated errors, or the time cap). */
+  const pollError = ref<string | null>(null)
   /** Why the last check produced no result (it failed, or never reported). */
   const checkError = ref<string | null>(null)
   /**
@@ -293,19 +305,57 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
   /** Bumped on every (re)start and stop; a stale tick sees a mismatch and quits. */
   let generation = 0
 
-  function schedule(gen: number, tick: () => Promise<boolean>) {
-    timer = setTimeout(async () => {
-      timer = null
-      if (gen !== generation) return
-      let again = true
-      try {
-        again = await tick()
-      } catch {
-        // A failed poll is retried on the next tick; the action state
-        // already carries the error for the UI.
-      }
-      if (again && gen === generation) schedule(gen, tick)
-    }, JOB_POLL_MS)
+  interface PollOptions {
+    /** The interval while things go well, given the time since the poll began. */
+    interval: (elapsedMs: number) => number
+    /** Stop after this long, whether requests succeed or not. */
+    limitMs: number
+    onLimit: () => void
+    /** `POLL_MAX_FAILURES` requests in a row failed. */
+    onGiveUp: (detail: string) => void
+  }
+
+  /**
+   * Run `tick` until it returns false. Each run is scheduled after the
+   * previous one finished. A tick that throws is retried with exponential
+   * backoff and, after `POLL_MAX_FAILURES` in a row, the poll gives up.
+   * While the tab is hidden nothing is fetched, but the time cap still runs.
+   */
+  function schedule(gen: number, tick: () => Promise<boolean>, opts: PollOptions) {
+    const started = Date.now()
+    let failures = 0
+    const run = (delay: number) => {
+      timer = setTimeout(async () => {
+        timer = null
+        if (gen !== generation) return
+        const elapsed = Date.now() - started
+        if (elapsed >= opts.limitMs) {
+          opts.onLimit()
+          return
+        }
+        if (typeof document !== 'undefined' && document.hidden) {
+          run(opts.interval(elapsed))
+          return
+        }
+        let again = true
+        try {
+          again = await tick()
+          failures = 0
+        } catch (e) {
+          failures += 1
+          if (failures >= POLL_MAX_FAILURES) {
+            if (gen === generation) {
+              opts.onGiveUp(e instanceof ApiError ? e.detail : 'the request failed')
+            }
+            return
+          }
+        }
+        if (!again || gen !== generation) return
+        const base = opts.interval(Date.now() - started)
+        run(failures ? Math.min(base * 2 ** failures, POLL_MAX_BACKOFF_MS) : base)
+      }, delay)
+    }
+    run(opts.interval(0))
   }
 
   /** Follow a job every 2 s until it is terminal, then refresh the overview. */
@@ -313,12 +363,28 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     if (currentServerId.value !== serverId) return
     stopPolling()
     const gen = generation
-    schedule(gen, async () => {
-      const current = await fetchJob(serverId, jobId)
-      if (!isTerminalStatus(current.status)) return true
-      await fetchUpdates(serverId).catch(() => undefined)
-      return false
-    })
+    let queued = false
+    schedule(
+      gen,
+      async () => {
+        const current = await fetchJob(serverId, jobId)
+        queued = current.status === 'queued'
+        if (!isTerminalStatus(current.status)) return true
+        await fetchUpdates(serverId).catch(() => undefined)
+        return false
+      },
+      {
+        interval: (elapsed) =>
+          queued && elapsed >= JOB_QUEUED_SLOWDOWN_MS ? JOB_SLOW_POLL_MS : JOB_POLL_MS,
+        limitMs: JOB_POLL_LIMIT_MS,
+        onLimit: () => {
+          pollError.value = 'Stopped following the job after 30 minutes; reopen it to look again'
+        },
+        onGiveUp: (detail) => {
+          pollError.value = `Stopped following the job: ${detail}`
+        },
+      },
+    )
   }
 
   /**
@@ -360,10 +426,12 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
       if (elapsed >= CHECK_AGENT_IDLE_TRUST_MS && overview.agent_job?.operation !== 'check') {
         return finish('The host finished without reporting a result; try again')
       }
-      if (elapsed >= CHECK_POLL_LIMIT_MS) {
-        return finish('No result from the host after 3 minutes')
-      }
       return true
+    }, {
+      interval: () => JOB_POLL_MS,
+      limitMs: CHECK_POLL_LIMIT_MS,
+      onLimit: () => finish('No result from the host after 3 minutes'),
+      onGiveUp: (detail) => finish(`Stopped waiting for the check: ${detail}`),
     })
   }
 
@@ -371,6 +439,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     generation += 1
     checking.value = false
     checkError.value = null
+    pollError.value = null
     if (timer) {
       clearTimeout(timer)
       timer = null
@@ -400,6 +469,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     overridesSave,
     checking,
     checkError,
+    pollError,
     currentServerId,
     loading,
     error,

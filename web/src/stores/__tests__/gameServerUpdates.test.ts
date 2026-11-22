@@ -170,10 +170,47 @@ describe('gameServerUpdates store', () => {
 
   it('surfaces the 502 detail when the agent did not answer', async () => {
     mockPost.mockResolvedValueOnce(failure(502, 'the agent did not answer'))
+    mockGet.mockResolvedValueOnce(ok(overview()))
     const store = useGameServerUpdatesStore()
 
     await expect(store.repairConfig(SERVER)).rejects.toBeInstanceOf(ApiError)
     expect(store.repairState.error).toBe('the agent did not answer')
+  })
+
+  it('after a 502 shows and follows the job the agent left queued', async () => {
+    const detail =
+      'the agent did not answer; the outcome is unknown and job job-7 stays queued until the agent reports'
+    mockPost.mockResolvedValueOnce(failure(502, detail))
+    const queued = job({ id: 'job-7', status: 'queued', phase: null })
+    mockGet.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === OVERVIEW_PATH
+          ? ok(overview({ active_job: queued }))
+          : ok(callsTo(mockGet, JOB_PATH).length < 3 ? queued : job({ id: 'job-7', status: 'succeeded', phase: 'done' })),
+      ),
+    )
+    const store = useGameServerUpdatesStore()
+
+    const err = await store.startUpdate(SERVER, 'game').catch((e: unknown) => e)
+
+    expect((err as ApiError).status).toBe(502)
+    expect(store.startState.error).toBe(detail)
+    expect(store.job?.id).toBe('job-7')
+    expect(store.job?.status).toBe('queued')
+
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 2)
+    expect(store.job?.status).toBe('succeeded')
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
+    expect(callsTo(mockGet, JOB_PATH)).toHaveLength(3)
+  })
+
+  it('a 409 does not re-read the overview', async () => {
+    mockPost.mockResolvedValueOnce(failure(409, 'update job x (mods) is already running on this server'))
+    const store = useGameServerUpdatesStore()
+
+    await expect(store.repairConfig(SERVER)).rejects.toBeInstanceOf(ApiError)
+    expect(mockGet).not.toHaveBeenCalled()
+    expect(store.job).toBeNull()
   })
 
   it('polls the job every 2 s until it is terminal, then refreshes the overview', async () => {

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api } from '@/api'
+import { ApiError, api } from '@/api'
 import type { components } from '@/api/types'
 import {
   aggregateActionStates,
@@ -137,7 +137,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
             params: { path: { server_id: serverId } },
             body: force ? { operation, force: true } : { operation },
           }),
-        )
+        ).catch((e: unknown) => adoptUnansweredJob(serverId, e))
         job.value = result.data
         watchJob(serverId, result.data.id)
         return result.data
@@ -154,13 +154,35 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
           api.POST('/v1/admin/game-servers/{server_id}/updates/repair-config', {
             params: { path: { server_id: serverId } },
           }),
-        )
+        ).catch((e: unknown) => adoptUnansweredJob(serverId, e))
         job.value = result.data
         watchJob(serverId, result.data.id)
         return result.data
       },
       'Failed to start the config repair',
     )
+  }
+
+  /**
+   * A 502 from a start means the agent did not answer: the job row stays
+   * `queued` until the agent reports (or the lost-job pass gives up after
+   * 20 minutes). Re-read the overview and, if a job is active, show and
+   * follow it — while still raising the error so its `detail` is shown.
+   */
+  async function adoptUnansweredJob(serverId: string, e: unknown): Promise<never> {
+    if (e instanceof ApiError && e.status === 502) {
+      try {
+        const overview = await fetchUpdates(serverId)
+        const active = overview.active_job
+        if (active) {
+          await fetchJob(serverId, active.id)
+          watchJob(serverId, active.id)
+        }
+      } catch {
+        // The start's own error is what the admin needs to see.
+      }
+    }
+    throw e
   }
 
   async function fetchJob(serverId: string, jobId: string): Promise<UpdateJobResponse> {

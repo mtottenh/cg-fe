@@ -3,6 +3,12 @@
     <v-card v-if="plan" data-testid="update-confirm">
       <v-card-title>{{ plan.title }}?</v-card-title>
       <v-card-text>
+        <v-progress-linear
+          v-if="refreshing"
+          indeterminate
+          class="mb-3"
+          data-testid="update-confirm-refreshing"
+        />
         <div class="text-subtitle-2 mb-1">What changes</div>
         <v-table density="compact" class="mb-3" data-testid="update-confirm-changes">
           <tbody>
@@ -96,7 +102,7 @@
           color="primary"
           variant="flat"
           :loading="loading"
-          :disabled="plan.needsForce && !interrupt"
+          :disabled="refreshing || blocked || (plan.needsForce && !interrupt)"
           data-testid="update-confirm-start"
           @click="$emit('confirm', plan.needsForce && interrupt)"
         >
@@ -118,6 +124,10 @@ const props = defineProps<{
   plan: UpdatePlan | null
   loading?: boolean
   error?: string | null
+  /** The safety picture is being re-read; nothing may start until it is fresh. */
+  refreshing?: boolean
+  /** It could not be re-read: starting would rest on stale safety. */
+  blocked?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -138,8 +148,10 @@ function bookingLabel(b: UpdatePlan['bookings'][number]): string {
 }
 
 const interrupt = ref(false)
+// Consent is to THESE reasons: any change (a refresh after opening, or after
+// a refused start) clears the tick so a stale consent is never sent.
 watch(
-  () => [props.modelValue, props.plan?.operation],
+  () => [props.modelValue, props.plan?.operation, props.plan?.reasons.join('\n'), props.refreshing],
   () => {
     interrupt.value = false
   },

@@ -297,6 +297,8 @@
     :plan="plan"
     :loading="startState.loading"
     :error="confirmError"
+    :refreshing="planLoading"
+    :blocked="planFailed"
     @confirm="start"
   />
   <ConfirmDialogHost :dialog="confirmDialog" />
@@ -352,6 +354,9 @@ const actionError = ref<string | null>(null)
 const confirmOpen = ref(false)
 const confirmOperation = ref<StartUpdateOperation | null>(null)
 const confirmError = ref<string | null>(null)
+/** The plan's safety picture is being re-read / could not be. */
+const planLoading = ref(false)
+const planFailed = ref(false)
 
 const overview = computed(() => (props.server ? (overviews.value[props.server.id] ?? null) : null))
 const supported = computed(() => overview.value?.supported === true)
@@ -518,10 +523,27 @@ async function checkNow() {
   }
 }
 
-function askStart(operation: StartUpdateOperation) {
+/**
+ * Open the plan, re-reading the overview first: `force` skips the
+ * backend's gate entirely, so the reasons an admin consents to must be
+ * current, not whatever the modal loaded minutes ago.
+ */
+async function askStart(operation: StartUpdateOperation) {
+  const server = props.server
+  if (!server) return
   confirmOperation.value = operation
   confirmError.value = null
+  planFailed.value = false
+  planLoading.value = true
   confirmOpen.value = true
+  try {
+    await store.fetchUpdates(server.id)
+  } catch (e) {
+    planFailed.value = true
+    confirmError.value = errorText(e, 'Could not re-read who is connected; try again')
+  } finally {
+    planLoading.value = false
+  }
 }
 
 async function start(force: boolean) {

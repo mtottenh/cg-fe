@@ -221,6 +221,57 @@ describe('ServerUpdatesModal', () => {
     wrapper?.setProps({ modelValue: false })
   })
 
+  it('re-reads the overview before showing the plan, so consent is to current reasons', async () => {
+    const calm = overview({ safety: { humans_connected: 0, players: [], bookings: [], reasons: [], restart_needs_force: false } })
+    const busy = overview({
+      safety: { humans_connected: 1, players: ['carol'], bookings: [], reasons: ['1 player connected'], restart_needs_force: true },
+    })
+    mockGet.mockResolvedValueOnce(ok(calm)).mockResolvedValue(ok(busy))
+    mountModal()
+    await settle()
+    expect(mockGet).toHaveBeenCalledTimes(1)
+
+    await click('updates-start-game')
+
+    expect(mockGet).toHaveBeenCalledTimes(2)
+    expect(byTestId('update-confirm-reasons')?.textContent).toContain('1 player connected')
+    expect(byTestId('update-confirm-players')?.textContent).toContain('carol')
+    expect((byTestId('update-confirm-start') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('cannot start when the overview could not be re-read', async () => {
+    const calm = overview({ safety: { humans_connected: 0, players: [], bookings: [], reasons: [], restart_needs_force: false } })
+    mockGet.mockResolvedValueOnce(ok(calm)).mockResolvedValue(failure(500, 'database unavailable'))
+    mountModal()
+    await settle()
+
+    await click('updates-start-game')
+
+    expect(byTestId('update-confirm-error')?.textContent).toContain('database unavailable')
+    expect((byTestId('update-confirm-start') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('clears "Interrupt anyway" when the reasons change after a refused start', async () => {
+    const first = overview()
+    const changed = overview({
+      safety: { humans_connected: 5, players: [], bookings: [], reasons: ['5 players connected'], restart_needs_force: true },
+    })
+    mockGet.mockResolvedValueOnce(ok(first)).mockResolvedValueOnce(ok(first)).mockResolvedValue(ok(changed))
+    mockPost.mockResolvedValueOnce(failure(409, 'update job x (mods) is already running on this server'))
+    mountModal()
+    await settle()
+
+    await click('updates-start-mods')
+    inputOf(byTestId('update-confirm-force')).click()
+    await settle()
+    expect((byTestId('update-confirm-start') as HTMLButtonElement).disabled).toBe(false)
+    await click('update-confirm-start')
+
+    expect(byTestId('update-confirm-reasons')?.textContent).toContain('5 players connected')
+    expect(inputOf(byTestId('update-confirm-force')).checked).toBe(false)
+    expect((byTestId('update-confirm-start') as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('lgsm does not restart CS2, so it starts without force even with players on', async () => {
     mockGet.mockResolvedValue(ok(overview()))
     mockPost.mockResolvedValueOnce(ok(job({ operation: 'lgsm', phase: 'lgsm-update' })))

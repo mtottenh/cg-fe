@@ -664,7 +664,7 @@ async function viewJob(jobId: string) {
 }
 
 function closeJob() {
-  store.stopPolling()
+  store.stopJobPolling()
   job.value = null
   const server = props.server
   if (server) void store.fetchUpdates(server.id).catch(() => undefined)

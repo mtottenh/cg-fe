@@ -50,9 +50,9 @@ export const POLL_MAX_BACKOFF_MS = 30_000
  * the job an admin is watching, and the portal-managed MatchZy overrides.
  *
  * Polling is owned here so the modal only has to start and stop it: one
- * timer, never overlapping requests, stopped by `stopPolling()` (the modal
- * calls it when it closes or unmounts) or when the job reaches a terminal
- * status.
+ * chained timer for the job and one for a check, so opening a job never
+ * cancels a check in flight. Requests never overlap; `stopPolling()` (the
+ * modal closes or unmounts) stops both, `stopJobPolling()` only the job.
  */
 export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => {
   /** Overviews by server id; the server list reads its badges from here. */
@@ -260,7 +260,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
   /** Open a job: load it, and follow it if it is still running. */
   async function openJob(serverId: string, jobId: string): Promise<UpdateJobResponse> {
     const sess = session
-    if (isCurrent(serverId, sess)) stopPolling()
+    if (isCurrent(serverId, sess)) stopJobPolling()
     const loaded = await fetchJob(serverId, jobId)
     if (isCurrent(serverId, sess) && !isTerminalStatus(loaded.status)) watchJob(serverId, jobId)
     return loaded
@@ -317,12 +317,25 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
   }
 
   // -------------------------------------------------------------------------
-  // Polling: one chained timer, so a slow response never overlaps the next.
+  // Polling: a chained timer per channel, so a slow response never
+  // overlaps the next.
   // -------------------------------------------------------------------------
 
-  let timer: ReturnType<typeof setTimeout> | null = null
-  /** Bumped on every (re)start and stop; a stale tick sees a mismatch and quits. */
-  let generation = 0
+  interface Channel {
+    timer: ReturnType<typeof setTimeout> | null
+    /** Bumped on every (re)start and stop; a stale tick sees a mismatch and quits. */
+    generation: number
+  }
+  const jobChannel: Channel = { timer: null, generation: 0 }
+  const checkChannel: Channel = { timer: null, generation: 0 }
+
+  function halt(ch: Channel) {
+    ch.generation += 1
+    if (ch.timer) {
+      clearTimeout(ch.timer)
+      ch.timer = null
+    }
+  }
 
   interface PollOptions {
     /** The interval while things go well, given the time since the poll began. */
@@ -348,13 +361,14 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
    * backoff and, after `POLL_MAX_FAILURES` in a row, the poll gives up.
    * While the tab is hidden nothing is fetched, but the time cap still runs.
    */
-  function schedule(gen: number, tick: () => Promise<boolean>, opts: PollOptions) {
+  function schedule(ch: Channel, tick: () => Promise<boolean>, opts: PollOptions) {
+    const gen = ch.generation
     const started = Date.now()
     let failures = 0
     const run = (delay: number) => {
-      timer = setTimeout(async () => {
-        timer = null
-        if (gen !== generation) return
+      ch.timer = setTimeout(async () => {
+        ch.timer = null
+        if (gen !== ch.generation) return
         const now = Date.now()
         const elapsed = now - started
         if (opts.ceilingMs !== undefined && elapsed >= opts.ceilingMs) {
@@ -376,13 +390,13 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
         } catch (e) {
           failures += 1
           if (failures >= POLL_MAX_FAILURES) {
-            if (gen === generation) {
+            if (gen === ch.generation) {
               opts.onGiveUp(e instanceof ApiError ? e.detail : 'the request failed', e)
             }
             return
           }
         }
-        if (!again || gen !== generation) return
+        if (!again || gen !== ch.generation) return
         const base = opts.interval(Date.now() - started)
         run(failures ? Math.min(base * 2 ** failures, POLL_MAX_BACKOFF_MS) : base)
       }, delay)
@@ -399,8 +413,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
    */
   function watchJob(serverId: string, jobId: string, opts: { awaitingFirstReport?: boolean } = {}) {
     if (currentServerId.value !== serverId) return
-    stopPolling()
-    const gen = generation
+    stopJobPolling()
     let queued = false
     let lastProgressAt = Date.now()
     let lastProgress: string | null = null
@@ -422,7 +435,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
       }
     }
     schedule(
-      gen,
+      jobChannel,
       async () => {
         const current = await read()
         queued = current.status === 'queued'
@@ -471,8 +484,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
    */
   function watchCheck(serverId: string, since: string | null, known: Set<string> = new Set()) {
     if (currentServerId.value !== serverId) return
-    stopPolling()
-    const gen = generation
+    stopCheckPolling()
     const started = Date.now()
     checking.value = true
     checkError.value = null
@@ -481,7 +493,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
       checkError.value = message
       return false
     }
-    schedule(gen, async () => {
+    schedule(checkChannel, async () => {
       const elapsed = Date.now() - started
       const overview = await fetchUpdates(serverId)
       const checkedAt = overview.check?.checked_at ?? null
@@ -508,15 +520,20 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     })
   }
 
-  function stopPolling() {
-    generation += 1
+  function stopJobPolling() {
+    halt(jobChannel)
+    pollError.value = null
+  }
+
+  function stopCheckPolling() {
+    halt(checkChannel)
     checking.value = false
     checkError.value = null
-    pollError.value = null
-    if (timer) {
-      clearTimeout(timer)
-      timer = null
-    }
+  }
+
+  function stopPolling() {
+    stopJobPolling()
+    stopCheckPolling()
   }
 
   /** The modal opened on `serverId`: a new session, nothing carried over. */
@@ -563,6 +580,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     fetchOverrides,
     saveOverrides,
     stopPolling,
+    stopJobPolling,
     open,
     reset,
   }

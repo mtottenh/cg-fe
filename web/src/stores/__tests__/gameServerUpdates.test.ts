@@ -569,6 +569,33 @@ describe('gameServerUpdates store', () => {
     expect(store.checkError).toContain('without reporting a result')
   })
 
+  it('opening a past job keeps a check in flight going', async () => {
+    const old = { checked_at: '2026-11-22T09:00:00Z', latest: {}, update_available: {} }
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+    mockGet.mockResolvedValueOnce(ok(overview({ check: old })))
+    await store.fetchUpdates(SERVER)
+
+    mockPost.mockResolvedValueOnce(ok({ job_id: 'chk-1', operation: 'check' }))
+    let fresh = false
+    mockGet.mockImplementation((path: string) => {
+      if (path === JOB_PATH) return Promise.resolve(ok(job({ status: 'succeeded', phase: 'done' })))
+      return Promise.resolve(
+        ok(overview({ check: fresh ? { ...old, checked_at: '2026-11-22T10:00:30Z' } : old })),
+      )
+    })
+    await store.checkNow(SERVER)
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
+
+    await store.openJob(SERVER, 'job-1')
+    expect(store.checking).toBe(true)
+
+    fresh = true
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
+    expect(store.checking).toBe(false)
+    expect(store.overviews[SERVER]?.check?.checked_at).toBe('2026-11-22T10:00:30Z')
+  })
+
   it('saveOverrides records the delivery and follows an applying repair job', async () => {
     mockPut.mockResolvedValueOnce(
       ok({ overrides: { matchzy_a: '1' }, delivery: 'applying', job_id: 'job-9', detail: null }),

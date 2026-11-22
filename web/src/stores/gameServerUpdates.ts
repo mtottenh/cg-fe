@@ -95,17 +95,34 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     saveOverridesState,
   ])
 
+  /**
+   * Overview reads per server are numbered; a response older than the one
+   * already stored is dropped, so a slow read (the list's fan-out, a check
+   * poll) can never replace the fresh read the plan dialog depends on.
+   */
+  const overviewIssued = new Map<string, number>()
+  const overviewStored = new Map<string, number>()
+
+  async function readOverview(serverId: string): Promise<GameServerUpdates> {
+    const seq = (overviewIssued.get(serverId) ?? 0) + 1
+    overviewIssued.set(serverId, seq)
+    const result = await unwrapApi(
+      api.GET('/v1/admin/game-servers/{server_id}/updates', {
+        params: { path: { server_id: serverId } },
+      }),
+    )
+    if (seq > (overviewStored.get(serverId) ?? 0)) {
+      overviewStored.set(serverId, seq)
+      overviews.value = { ...overviews.value, [serverId]: result.data }
+    }
+    return result.data
+  }
+
   async function fetchUpdates(serverId: string): Promise<GameServerUpdates> {
     return withActionState(
       fetchUpdatesState,
       async () => {
-        const result = await unwrapApi(
-          api.GET('/v1/admin/game-servers/{server_id}/updates', {
-            params: { path: { server_id: serverId } },
-          }),
-        )
-        overviews.value = { ...overviews.value, [serverId]: result.data }
-        return result.data
+        return readOverview(serverId)
       },
       'Failed to load the update status',
     )
@@ -120,12 +137,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     const worker = async () => {
       for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
         try {
-          const result = await unwrapApi(
-            api.GET('/v1/admin/game-servers/{server_id}/updates', {
-              params: { path: { server_id: id } },
-            }),
-          )
-          overviews.value = { ...overviews.value, [id]: result.data }
+          await readOverview(id)
         } catch {
           // Leave the server without a badge.
         }

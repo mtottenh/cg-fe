@@ -140,6 +140,35 @@ describe('gameServerUpdates store', () => {
     expect(store.overviews[SERVER]?.supported).toBe(true)
   })
 
+  it('an older overview read landing late never replaces a newer one', async () => {
+    const slow = deferred<unknown>()
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+    mockGet.mockReturnValueOnce(slow.promise).mockResolvedValueOnce(
+      ok(overview({ safety: { players: [], bookings: [], reasons: ['a booking starts in 10 minutes'], restart_needs_force: true } })),
+    )
+
+    const older = store.fetchUpdatesQuietly([SERVER])
+    await store.fetchUpdates(SERVER)
+    slow.resolve(ok(overview()))
+    await older
+
+    expect(store.overviews[SERVER]?.safety.reasons).toEqual(['a booking starts in 10 minutes'])
+  })
+
+  it('a newer read still replaces an older stored one', async () => {
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+    mockGet
+      .mockResolvedValueOnce(ok(overview({ reload_pending: false })))
+      .mockResolvedValueOnce(ok(overview({ reload_pending: true })))
+
+    await store.fetchUpdates(SERVER)
+    await store.fetchUpdatesQuietly([SERVER])
+
+    expect(store.overviews[SERVER]?.reload_pending).toBe(true)
+  })
+
   it('startUpdate sends no force flag unless asked', async () => {
     mockPost.mockResolvedValueOnce(ok(job()))
     const store = useGameServerUpdatesStore()

@@ -305,6 +305,21 @@ describe('ServerUpdatesModal', () => {
     expect((byTestId('update-confirm-start') as HTMLButtonElement).disabled).toBe(true)
   })
 
+  it('nothing can start while a check is in flight', async () => {
+    mockGet.mockResolvedValue(ok(overview()))
+    mockPost.mockResolvedValueOnce(ok({ job_id: 'chk-1', operation: 'check' }))
+    mountModal()
+    await settle()
+    expect((byTestId('updates-start-lgsm') as HTMLButtonElement).disabled).toBe(false)
+
+    await click('updates-check')
+
+    for (const id of ['updates-start-lgsm', 'updates-start-game', 'updates-start-mods', 'updates-start-all', 'updates-repair']) {
+      expect((byTestId(id) as HTMLButtonElement).disabled, id).toBe(true)
+    }
+    await wrapper?.setProps({ modelValue: false })
+  })
+
   it('lgsm does not restart CS2, so it starts without force even with players on', async () => {
     mockGet.mockResolvedValue(ok(overview()))
     mockPost.mockResolvedValueOnce(ok(job({ operation: 'lgsm', phase: 'lgsm-update' })))

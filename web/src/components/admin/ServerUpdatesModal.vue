@@ -387,6 +387,8 @@ const busy = computed(() => {
   if (!o || !o.agent_connected) return true
   if (o.active_job) return true
   if (job.value && !isTerminalStatus(job.value.status)) return true
+  // A check holds the agent: it refuses a start until the check is done.
+  if (checking.value) return true
   return false
 })
 

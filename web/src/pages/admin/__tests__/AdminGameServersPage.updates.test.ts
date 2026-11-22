@@ -40,6 +40,7 @@ const server: GameServer = {
   status: 'available',
   current_match_id: null,
   agent_connected: true,
+  has_demo_token: true,
   agent_version: '0.3.0',
   agent_cert_expires_at: null,
   last_heartbeat_at: '2026-11-22T12:00:00Z',

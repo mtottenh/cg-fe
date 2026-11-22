@@ -135,10 +135,59 @@
                 density="compact"
                 class="mb-2"
               />
+              <v-row dense>
+                <v-col cols="6">
+                  <v-text-field
+                    v-model="processP1Score"
+                    type="number"
+                    min="0"
+                    step="1"
+                    :label="`${participantName(match.participant1_registration_id)} score`"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    data-testid="process-p1-score"
+                  />
+                </v-col>
+                <v-col cols="6">
+                  <v-text-field
+                    v-model="processP2Score"
+                    type="number"
+                    min="0"
+                    step="1"
+                    :label="`${participantName(match.participant2_registration_id)} score`"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    data-testid="process-p2-score"
+                  />
+                </v-col>
+              </v-row>
+              <v-alert
+                v-if="processPlan?.kind === 'invalid'"
+                type="error"
+                variant="tonal"
+                density="compact"
+                class="my-2"
+                data-testid="process-score-error"
+              >
+                {{ processPlan.message }}
+              </v-alert>
+              <v-alert
+                v-else-if="processPlan?.kind === 'stored' && processPlan.swap"
+                type="info"
+                variant="tonal"
+                density="compact"
+                class="my-2"
+                data-testid="process-score-swap-hint"
+              >
+                {{ swapHint(progressionWinnerId) }}
+              </v-alert>
+              <div v-else class="mb-2" />
               <v-btn
                 color="primary"
                 :loading="tournamentsStore.processProgressionState.loading"
-                :disabled="!progressionWinnerId"
+                :disabled="!progressionWinnerId || processPlan?.kind === 'invalid'"
                 @click="handleProcessProgression"
               >
                 Process
@@ -159,10 +208,59 @@
                 density="compact"
                 class="mb-2"
               />
+              <v-row dense>
+                <v-col cols="6">
+                  <v-text-field
+                    v-model="reapplyP1Score"
+                    type="number"
+                    min="0"
+                    step="1"
+                    :label="`${participantName(match.participant1_registration_id)} score`"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    data-testid="reapply-p1-score"
+                  />
+                </v-col>
+                <v-col cols="6">
+                  <v-text-field
+                    v-model="reapplyP2Score"
+                    type="number"
+                    min="0"
+                    step="1"
+                    :label="`${participantName(match.participant2_registration_id)} score`"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    data-testid="reapply-p2-score"
+                  />
+                </v-col>
+              </v-row>
+              <v-alert
+                v-if="reapplyPlan?.kind === 'invalid'"
+                type="error"
+                variant="tonal"
+                density="compact"
+                class="my-2"
+                data-testid="reapply-score-error"
+              >
+                {{ reapplyPlan.message }}
+              </v-alert>
+              <v-alert
+                v-else-if="reapplyPlan?.kind === 'stored' && reapplyPlan.swap"
+                type="info"
+                variant="tonal"
+                density="compact"
+                class="my-2"
+                data-testid="reapply-score-swap-hint"
+              >
+                {{ swapHint(reapplyWinnerId) }}
+              </v-alert>
+              <div v-else class="mb-2" />
               <v-btn
                 color="warning"
                 :loading="tournamentsStore.reapplyProgressionState.loading"
-                :disabled="!reapplyWinnerId"
+                :disabled="!reapplyWinnerId || reapplyPlan?.kind === 'invalid'"
                 @click="handleReapplyProgression"
               >
                 Reapply
@@ -198,6 +296,7 @@ import { useTournamentsStore, type TournamentMatchResponse } from '@/stores/tour
 import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import { planProgressionScores, type ProgressionScorePlan } from '@/utils/progressionScores'
 
 const props = defineProps<{
   match: TournamentMatchResponse | null
@@ -231,6 +330,67 @@ const forfeitReason = ref('')
 const doubleForfeitReason = ref('')
 const progressionWinnerId = ref('')
 const reapplyWinnerId = ref('')
+// Score inputs (text-field models) for the two progression forms.
+const processP1Score = ref<string | number>('')
+const processP2Score = ref<string | number>('')
+const reapplyP1Score = ref<string | number>('')
+const reapplyP2Score = ref<string | number>('')
+
+/**
+ * What a progression request for `winnerId` would send, mirroring the backend
+ * rules (see `planProgressionScores`). `null` until a winner is chosen.
+ */
+function planFor(
+  winnerId: string,
+  p1Input: string | number,
+  p2Input: string | number,
+): ProgressionScorePlan | null {
+  const match = props.match
+  if (!match || !winnerId) return null
+  const winnerIsParticipant1 = winnerId === match.participant1_registration_id
+  const loserId = winnerIsParticipant1
+    ? match.participant2_registration_id
+    : match.participant1_registration_id
+  return planProgressionScores({
+    matchFormat: match.match_format,
+    winnerIsParticipant1,
+    winnerName: participantName(winnerId),
+    loserName: participantName(loserId),
+    participant1Input: p1Input,
+    participant2Input: p2Input,
+    storedParticipant1: match.participant1_score,
+    storedParticipant2: match.participant2_score,
+  })
+}
+
+const processPlan = computed(() =>
+  planFor(progressionWinnerId.value, processP1Score.value, processP2Score.value))
+const reapplyPlan = computed(() =>
+  planFor(reapplyWinnerId.value, reapplyP1Score.value, reapplyP2Score.value))
+
+/** Hint shown when the stored score names the other side and will be mirrored. */
+function swapHint(winnerId: string): string {
+  if (!props.match) return ''
+  const { participant1_score: s1, participant2_score: s2 } = props.match
+  const leaderId = s1 > s2
+    ? props.match.participant1_registration_id
+    : props.match.participant2_registration_id
+  return `The current score ${s1}–${s2} favours ${participantName(leaderId)}. `
+    + `Left unchanged it will be swapped to ${s2}–${s1} so ${participantName(winnerId)} wins; `
+    + 'edit the scores to record a different result.'
+}
+
+/** Prefill the score inputs from the stored score when it names a winner. */
+function resetProgressionScores() {
+  const m = props.match
+  const decided = !!m && m.participant1_score !== m.participant2_score
+  const p1 = decided ? String(m.participant1_score) : ''
+  const p2 = decided ? String(m.participant2_score) : ''
+  processP1Score.value = p1
+  processP2Score.value = p2
+  reapplyP1Score.value = p1
+  reapplyP2Score.value = p2
+}
 
 const forfeitTypeOptions = [
   { title: 'No Show', value: 'no_show' },
@@ -267,6 +427,13 @@ watch(() => props.match?.id, () => {
   reapplyWinnerId.value = ''
   progressionWinnerId.value = props.match?.winner_registration_id ?? ''
 }, { immediate: true })
+
+// Re-prefill scores when the match (or its stored score) changes.
+watch(
+  () => [props.match?.id, props.match?.participant1_score, props.match?.participant2_score],
+  resetProgressionScores,
+  { immediate: true },
+)
 
 function afterSuccess() {
   emit('updated')
@@ -321,6 +488,25 @@ function handleDoubleForfeit() {
   })
 }
 
+/** Confirm-message clause stating the score that will be recorded. */
+function scoreClause(plan: ProgressionScorePlan): string {
+  const m = props.match
+  if (!m) return ''
+  const line = (a: number, b: number) =>
+    `${participantName(m.participant1_registration_id)} ${a}–${b} ${participantName(m.participant2_registration_id)}`
+  const s1 = m.participant1_score
+  const s2 = m.participant2_score
+  if (plan.kind === 'explicit') {
+    return ` Score recorded as ${line(plan.scores.participant1Score, plan.scores.participant2Score)}.`
+  }
+  if (plan.kind === 'stored') {
+    return plan.swap
+      ? ` Score swapped to ${line(s2, s1)}.`
+      : ` Score stays ${line(s1, s2)}.`
+  }
+  return ''
+}
+
 function handleProcessProgression() {
   if (!props.match || !progressionWinnerId.value) return
   const match = props.match
@@ -329,14 +515,17 @@ function handleProcessProgression() {
     ? match.participant2_registration_id
     : match.participant1_registration_id
   if (!loserId) return
+  const plan = processPlan.value
+  if (!plan || plan.kind === 'invalid') return
+  const scores = plan.kind === 'explicit' ? plan.scores : undefined
   confirmDialog.confirm({
     title: 'Process Progression',
-    message: `Advance ${participantName(winnerId)} as winner over ${participantName(loserId)}?`,
+    message: `Advance ${participantName(winnerId)} as winner over ${participantName(loserId)}?${scoreClause(plan)}`,
     action: 'Process',
     color: 'primary',
     handler: async () => {
       await feedback.run(
-        () => tournamentsStore.processProgression(match.id, winnerId, loserId),
+        () => tournamentsStore.processProgression(match.id, winnerId, loserId, scores),
         { success: 'Progression processed', errorSource: tournamentsStore.processProgressionState, after: afterSuccess, rethrow: true },
       )
     },
@@ -347,14 +536,17 @@ function handleReapplyProgression() {
   if (!props.match || !reapplyWinnerId.value) return
   const matchId = props.match.id
   const winnerId = reapplyWinnerId.value
+  const plan = reapplyPlan.value
+  if (!plan || plan.kind === 'invalid') return
+  const scores = plan.kind === 'explicit' ? plan.scores : undefined
   confirmDialog.confirm({
     title: 'Reapply Progression',
-    message: `Replace the advanced winner with ${participantName(winnerId)}? Downstream bracket slots are rewritten.`,
+    message: `Replace the advanced winner with ${participantName(winnerId)}?${scoreClause(plan)} Downstream bracket slots are rewritten.`,
     action: 'Reapply',
     color: 'warning',
     handler: async () => {
       await feedback.run(
-        () => tournamentsStore.reapplyProgression(matchId, winnerId),
+        () => tournamentsStore.reapplyProgression(matchId, winnerId, scores),
         { success: 'Progression reapplied', errorSource: tournamentsStore.reapplyProgressionState, after: afterSuccess, rethrow: true },
       )
     },

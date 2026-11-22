@@ -3,11 +3,19 @@ import { api } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState, createLatestGuard } from '@/stores/helpers'
 import { replaceById } from '@/utils/collections'
+import type { ProgressionScores } from '@/utils/progressionScores'
 
 type TournamentMatchResponse = components['schemas']['TournamentMatchResponse']
 type TournamentBracketResponse = components['schemas']['TournamentBracketResponse']
 type MatchParticipantsResponse = components['schemas']['MatchParticipantsResponse']
 type MatchResultOverrideResponse = components['schemas']['MatchResultOverrideResponse']
+
+/** Score fields for a progression request body — both or neither. */
+function scoreBody(scores?: ProgressionScores) {
+  return scores
+    ? { participant1_score: scores.participant1Score, participant2_score: scores.participant2Score }
+    : {}
+}
 
 /**
  * Matches slice: matches, brackets, admin match actions, progression, player match actions.
@@ -228,22 +236,31 @@ export function createMatchesSlice() {
   async function processProgression(
     matchId: string,
     winnerRegistrationId: string,
-    loserRegistrationId: string
+    loserRegistrationId: string,
+    scores?: ProgressionScores,
   ) {
     return withActionState(processProgressionState, async () => {
       const result = await unwrapApi(api.POST('/v1/admin/matches/{match_id}/progression/process', {
         params: { path: { match_id: matchId } },
-        body: { winner_registration_id: winnerRegistrationId, loser_registration_id: loserRegistrationId },
+        body: {
+          winner_registration_id: winnerRegistrationId,
+          loser_registration_id: loserRegistrationId,
+          ...scoreBody(scores),
+        },
       }))
       return result.data
     }, 'Failed to process progression')
   }
 
-  async function reapplyProgression(matchId: string, newWinnerRegistrationId: string) {
+  async function reapplyProgression(
+    matchId: string,
+    newWinnerRegistrationId: string,
+    scores?: ProgressionScores,
+  ) {
     return withActionState(reapplyProgressionState, async () => {
       const result = await unwrapApi(api.POST('/v1/admin/matches/{match_id}/progression/reapply', {
         params: { path: { match_id: matchId } },
-        body: { new_winner_registration_id: newWinnerRegistrationId },
+        body: { new_winner_registration_id: newWinnerRegistrationId, ...scoreBody(scores) },
       }))
       return result.data
     }, 'Failed to reapply progression')

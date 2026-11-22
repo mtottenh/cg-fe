@@ -15771,6 +15771,16 @@ export interface components {
         ProcessProgressionRequest: {
             /** @description The loser registration ID */
             loser_registration_id: string;
+            /**
+             * Format: int32
+             * @description Games won by participant 1 (optional; requires `participant2_score`)
+             */
+            participant1_score?: number | null;
+            /**
+             * Format: int32
+             * @description Games won by participant 2 (optional; requires `participant1_score`)
+             */
+            participant2_score?: number | null;
             /** @description The winner registration ID */
             winner_registration_id: string;
         };
@@ -16125,6 +16135,16 @@ export interface components {
         ReapplyProgressionRequest: {
             /** @description The new winner registration ID */
             new_winner_registration_id: string;
+            /**
+             * Format: int32
+             * @description Games won by participant 1 (optional; requires `participant2_score`)
+             */
+            participant1_score?: number | null;
+            /**
+             * Format: int32
+             * @description Games won by participant 2 (optional; requires `participant1_score`)
+             */
+            participant2_score?: number | null;
         };
         /** @description Request to record a coin flip result. */
         RecordCoinFlipRequest: {

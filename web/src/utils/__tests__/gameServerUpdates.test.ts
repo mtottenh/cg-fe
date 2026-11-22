@@ -54,7 +54,7 @@ describe('phaseSteps', () => {
   it('a succeeded job is complete throughout', () => {
     const steps = phaseSteps({ operation: 'mods', status: 'succeeded', phase: 'done' })
     expect(steps.every((s) => s.state === 'complete')).toBe(true)
-    expect(steps.at(-1)?.phase).toBe('done')
+    expect(steps[steps.length - 1]?.phase).toBe('done')
   })
 
   it('a failed job marks the phase that broke and skips the rest', () => {
@@ -85,8 +85,8 @@ describe('phaseSteps', () => {
 
   it('a running rollback is shown as the active step', () => {
     const steps = phaseSteps({ operation: 'mods', status: 'running', phase: 'rollback' })
-    expect(steps.at(-2)).toMatchObject({ phase: 'rollback', state: 'active' })
-    expect(steps.at(-1)).toMatchObject({ phase: 'done', state: 'pending' })
+    expect(steps[steps.length - 2]).toMatchObject({ phase: 'rollback', state: 'active' })
+    expect(steps[steps.length - 1]).toMatchObject({ phase: 'done', state: 'pending' })
   })
 
   it('keeps a phase the plan does not know, before done', () => {

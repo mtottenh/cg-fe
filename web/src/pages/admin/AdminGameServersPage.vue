@@ -48,6 +48,40 @@
               <v-chip v-if="!item.enabled" size="x-small" color="grey" variant="tonal">
                 Disabled
               </v-chip>
+              <v-chip
+                v-if="updateAvailable(item)"
+                size="x-small"
+                color="info"
+                variant="tonal"
+                prepend-icon="mdi-arrow-up-bold"
+                title="An update is available"
+                data-testid="server-update-available"
+                @click="openUpdatesModal(item)"
+              >
+                Update
+              </v-chip>
+              <v-chip
+                v-if="demoUploadUnwired(item)"
+                size="x-small"
+                color="error"
+                variant="tonal"
+                prepend-icon="mdi-alert"
+                title="MatchZy's demo upload block is missing: demos will not reach the portal"
+                data-testid="server-demo-unwired"
+              >
+                Demo upload not wired
+                <v-btn
+                  aria-label="Repair the MatchZy config"
+                  title="Repair the MatchZy config"
+                  size="x-small"
+                  variant="text"
+                  class="ml-1"
+                  data-testid="server-demo-repair"
+                  @click.stop="openUpdatesModal(item, 'repair')"
+                >
+                  Repair
+                </v-btn>
+              </v-chip>
             </div>
           </template>
 
@@ -123,6 +157,17 @@
                 @click="openConsoleModal(item)"
               >
                 Console
+              </v-btn>
+              <v-btn
+                aria-label="Updates"
+                title="Updates"
+                size="small"
+                variant="text"
+                prepend-icon="mdi-update"
+                data-testid="server-updates-open"
+                @click="openUpdatesModal(item)"
+              >
+                Updates
               </v-btn>
               <v-btn
                 aria-label="Edit server"
@@ -207,6 +252,7 @@
     <GameServerEnrollModal v-model="enrollModalOpen" :server="selectedServer" />
     <GameServerBookingsModal v-model="bookingsModalOpen" :server="selectedServer" />
     <ServerConsoleModal v-model="consoleModalOpen" :server="selectedServer" @changed="refresh" />
+    <ServerUpdatesModal v-model="updatesModalOpen" :server="selectedServer" :action="updatesAction" />
     <ConfirmDialogHost :dialog="confirmDialog" />
     <AppSnackbar v-model="snackbar.open" :text="snackbar.text" :color="snackbar.color" />
   </div>
@@ -223,13 +269,18 @@ import GameServerEditModal from '@/components/admin/GameServerEditModal.vue'
 import GameServerEnrollModal from '@/components/admin/GameServerEnrollModal.vue'
 import GameServerBookingsModal from '@/components/admin/GameServerBookingsModal.vue'
 import ServerConsoleModal from '@/components/admin/ServerConsoleModal.vue'
+import ServerUpdatesModal from '@/components/admin/ServerUpdatesModal.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useGameServersStore } from '@/stores/gameServers'
+import { useGameServerUpdatesStore } from '@/stores/gameServerUpdates'
+import { anyUpdateAvailable } from '@/utils/gameServerUpdates'
 import type { GameServer } from '@/stores/gameServers'
 import { getStatusColor, getStatusIcon, getStatusLabel, serverStatusMap } from '@/utils/statusMaps'
 
 const store = useGameServersStore()
 const { servers, loading, error } = storeToRefs(store)
+const updatesStore = useGameServerUpdatesStore()
+const { overviews } = storeToRefs(updatesStore)
 const confirmDialog = useConfirmDialog()
 
 const search = ref('')
@@ -237,6 +288,8 @@ const editModalOpen = ref(false)
 const enrollModalOpen = ref(false)
 const bookingsModalOpen = ref(false)
 const consoleModalOpen = ref(false)
+const updatesModalOpen = ref(false)
+const updatesAction = ref<'repair' | null>(null)
 const selectedServer = ref<GameServer | null>(null)
 const snackbar = ref({ open: false, text: '', color: 'success' })
 
@@ -285,8 +338,35 @@ function certExpiringSoon(server: GameServer): boolean {
   return new Date(server.agent_cert_expires_at).getTime() - Date.now() < 30 * 86_400_000
 }
 
-function refresh() {
-  void store.fetchServers()
+/**
+ * The list endpoint carries no update state, so the badges come from each
+ * server's GET /updates. A community runs a handful of servers, so they are
+ * fetched after the list (four at a time, failures ignored); only servers
+ * that ever had an agent are asked — the rest cannot support updates.
+ */
+async function refresh() {
+  try {
+    const list = await store.fetchServers()
+    void updatesStore.fetchUpdatesQuietly(list.filter((s) => s.agent_version).map((s) => s.id))
+  } catch {
+    // The store's error is shown by ErrorAlert.
+  }
+}
+
+function updateAvailable(server: GameServer): boolean {
+  const o = overviews.value[server.id]
+  return Boolean(o?.supported && anyUpdateAvailable(o))
+}
+
+function demoUploadUnwired(server: GameServer): boolean {
+  const o = overviews.value[server.id]
+  return Boolean(o?.supported && o.demo_upload_wired === false)
+}
+
+function openUpdatesModal(server: GameServer, action: 'repair' | null = null) {
+  selectedServer.value = server
+  updatesAction.value = action
+  updatesModalOpen.value = true
 }
 
 function openCreateModal() {

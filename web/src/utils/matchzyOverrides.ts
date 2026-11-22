@@ -27,7 +27,6 @@ export interface OverrideRow {
 
 const NAME_RE = /^matchzy_[a-z0-9_]+$/
 // Printable ASCII (0x20–0x7e) minus `"`, `;` and `\`.
-// eslint-disable-next-line no-control-regex
 const VALUE_RE = /^[\x20-\x21\x23-\x3a\x3c-\x5b\x5d-\x7e]*$/
 
 /** Why a cvar name is refused, or null when it is acceptable. */

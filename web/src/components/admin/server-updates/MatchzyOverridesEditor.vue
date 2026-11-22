@@ -216,10 +216,14 @@ async function load() {
   loadError.value = null
   saveError.value = null
   store.overridesSave = null
+  const serverId = props.serverId
   try {
-    await store.fetchOverrides(props.serverId)
+    await store.fetchOverrides(serverId)
+    // Switched servers meanwhile: that server's load fills the rows.
+    if (serverId !== props.serverId) return
     resetRows()
   } catch (e) {
+    if (serverId !== props.serverId) return
     loadError.value = e instanceof ApiError ? e.detail : 'Failed to load the MatchZy overrides'
   }
 }
@@ -229,8 +233,10 @@ async function save() {
   if (!validation.value.valid) return
   saving.value = true
   saveError.value = null
+  const serverId = props.serverId
   try {
-    await store.saveOverrides(props.serverId, rowsToOverrides(rows.value))
+    await store.saveOverrides(serverId, rowsToOverrides(rows.value))
+    if (serverId !== props.serverId) return
     resetRows()
     emit('saved')
   } catch (e) {

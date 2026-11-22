@@ -44,6 +44,19 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
   const overridesSave = ref<SetMatchzyOverridesResult | null>(null)
   /** A check was started and its result has not arrived yet. */
   const checking = ref(false)
+  /**
+   * The server the modal has open, or null when it is closed. `job`,
+   * `overrides` and every poll belong to it: a response for another server,
+   * or one that lands after the modal closed or re-opened (a new session),
+   * is dropped instead of being shown — or followed — in the wrong place.
+   */
+  const currentServerId = ref<string | null>(null)
+  let session = 0
+
+  /** Whether work begun in `sess` for `serverId` may still touch the modal's state. */
+  function isCurrent(serverId: string, sess: number): boolean {
+    return sess === session && currentServerId.value === serverId
+  }
 
   const fetchUpdatesState = createActionState()
   const checkState = createActionState()
@@ -104,6 +117,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
 
   /** Ask the host for installed vs latest; the result lands in the overview. */
   async function checkNow(serverId: string): Promise<UpdateCheckStarted> {
+    const sess = session
     return withActionState(
       checkState,
       async () => {
@@ -113,7 +127,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
             params: { path: { server_id: serverId } },
           }),
         )
-        watchCheck(serverId, since)
+        if (isCurrent(serverId, sess)) watchCheck(serverId, since)
         return result.data
       },
       'Failed to start the check',
@@ -129,6 +143,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     operation: StartUpdateOperation,
     force = false,
   ): Promise<UpdateJobResponse> {
+    const sess = session
     return withActionState(
       startState,
       async () => {
@@ -137,9 +152,11 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
             params: { path: { server_id: serverId } },
             body: force ? { operation, force: true } : { operation },
           }),
-        ).catch((e: unknown) => adoptUnansweredJob(serverId, e))
-        job.value = result.data
-        watchJob(serverId, result.data.id)
+        ).catch((e: unknown) => adoptUnansweredJob(serverId, sess, e))
+        if (isCurrent(serverId, sess)) {
+          job.value = result.data
+          watchJob(serverId, result.data.id)
+        }
         return result.data
       },
       'Failed to start the update',
@@ -147,6 +164,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
   }
 
   async function repairConfig(serverId: string): Promise<UpdateJobResponse> {
+    const sess = session
     return withActionState(
       repairState,
       async () => {
@@ -154,9 +172,11 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
           api.POST('/v1/admin/game-servers/{server_id}/updates/repair-config', {
             params: { path: { server_id: serverId } },
           }),
-        ).catch((e: unknown) => adoptUnansweredJob(serverId, e))
-        job.value = result.data
-        watchJob(serverId, result.data.id)
+        ).catch((e: unknown) => adoptUnansweredJob(serverId, sess, e))
+        if (isCurrent(serverId, sess)) {
+          job.value = result.data
+          watchJob(serverId, result.data.id)
+        }
         return result.data
       },
       'Failed to start the config repair',
@@ -169,15 +189,12 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
    * 20 minutes). Re-read the overview and, if a job is active, show and
    * follow it — while still raising the error so its `detail` is shown.
    */
-  async function adoptUnansweredJob(serverId: string, e: unknown): Promise<never> {
-    if (e instanceof ApiError && e.status === 502) {
+  async function adoptUnansweredJob(serverId: string, sess: number, e: unknown): Promise<never> {
+    if (e instanceof ApiError && e.status === 502 && isCurrent(serverId, sess)) {
       try {
         const overview = await fetchUpdates(serverId)
         const active = overview.active_job
-        if (active) {
-          await fetchJob(serverId, active.id)
-          watchJob(serverId, active.id)
-        }
+        if (active && isCurrent(serverId, sess)) await openJob(serverId, active.id)
       } catch {
         // The start's own error is what the admin needs to see.
       }
@@ -186,6 +203,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
   }
 
   async function fetchJob(serverId: string, jobId: string): Promise<UpdateJobResponse> {
+    const sess = session
     return withActionState(
       fetchJobState,
       async () => {
@@ -194,7 +212,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
             params: { path: { server_id: serverId, job_id: jobId } },
           }),
         )
-        job.value = result.data
+        if (isCurrent(serverId, sess)) job.value = result.data
         return result.data
       },
       'Failed to load the update job',
@@ -203,13 +221,15 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
 
   /** Open a job: load it, and follow it if it is still running. */
   async function openJob(serverId: string, jobId: string): Promise<UpdateJobResponse> {
-    stopPolling()
+    const sess = session
+    if (isCurrent(serverId, sess)) stopPolling()
     const loaded = await fetchJob(serverId, jobId)
-    if (!isTerminalStatus(loaded.status)) watchJob(serverId, jobId)
+    if (isCurrent(serverId, sess) && !isTerminalStatus(loaded.status)) watchJob(serverId, jobId)
     return loaded
   }
 
   async function fetchOverrides(serverId: string): Promise<MatchzyOverrides> {
+    const sess = session
     return withActionState(
       fetchOverridesState,
       async () => {
@@ -218,7 +238,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
             params: { path: { server_id: serverId } },
           }),
         )
-        overrides.value = result.data
+        if (isCurrent(serverId, sess)) overrides.value = result.data
         return result.data
       },
       'Failed to load the MatchZy overrides',
@@ -229,6 +249,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     serverId: string,
     values: Record<string, string | number | boolean>,
   ): Promise<SetMatchzyOverridesResult> {
+    const sess = session
     return withActionState(
       saveOverridesState,
       async () => {
@@ -238,6 +259,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
             body: { overrides: values },
           }),
         )
+        if (!isCurrent(serverId, sess)) return result.data
         overridesSave.value = result.data
         overrides.value = {
           overrides: result.data.overrides,
@@ -279,6 +301,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
 
   /** Follow a job every 2 s until it is terminal, then refresh the overview. */
   function watchJob(serverId: string, jobId: string) {
+    if (currentServerId.value !== serverId) return
     stopPolling()
     const gen = generation
     schedule(gen, async () => {
@@ -295,6 +318,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
    * and nothing changed after a few ticks), with an upper bound.
    */
   function watchCheck(serverId: string, since: string | null) {
+    if (currentServerId.value !== serverId) return
     stopPolling()
     const gen = generation
     const started = Date.now()
@@ -322,9 +346,17 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     }
   }
 
-  /** Forget the job and overrides the modal showed (overviews stay for badges). */
+  /** The modal opened on `serverId`: a new session, nothing carried over. */
+  function open(serverId: string) {
+    reset()
+    currentServerId.value = serverId
+  }
+
+  /** The modal closed: forget its job and overrides (overviews stay for badges). */
   function reset() {
     stopPolling()
+    session += 1
+    currentServerId.value = null
     job.value = null
     overrides.value = null
     overridesSave.value = null
@@ -336,6 +368,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     overrides,
     overridesSave,
     checking,
+    currentServerId,
     loading,
     error,
     fetchUpdatesState,
@@ -355,6 +388,7 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     fetchOverrides,
     saveOverrides,
     stopPolling,
+    open,
     reset,
   }
 })

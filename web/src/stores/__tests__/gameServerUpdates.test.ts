@@ -99,6 +99,15 @@ function callsTo(mock: Mock, path: string) {
   return mock.mock.calls.filter((c) => c[0] === path)
 }
 
+/** A promise the test resolves when it chooses. */
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
+}
+
 describe('gameServerUpdates store', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -115,6 +124,7 @@ describe('gameServerUpdates store', () => {
   it('fetchUpdates keeps the overview under its server id', async () => {
     mockGet.mockResolvedValueOnce(ok(overview()))
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     await store.fetchUpdates(SERVER)
 
@@ -127,6 +137,7 @@ describe('gameServerUpdates store', () => {
   it('startUpdate sends no force flag unless asked', async () => {
     mockPost.mockResolvedValueOnce(ok(job()))
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     await store.startUpdate(SERVER, 'mods')
     store.stopPolling()
@@ -140,6 +151,7 @@ describe('gameServerUpdates store', () => {
   it('startUpdate with force sends force: true', async () => {
     mockPost.mockResolvedValueOnce(ok(job({ forced: true })))
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     const started = await store.startUpdate(SERVER, 'all', true)
     store.stopPolling()
@@ -156,6 +168,7 @@ describe('gameServerUpdates store', () => {
       '`mods` restarts CS2 and would interrupt: 3 players connected. Send force: true to go ahead anyway'
     mockPost.mockResolvedValueOnce(failure(409, detail))
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     const err = await store.startUpdate(SERVER, 'mods').catch((e: unknown) => e)
 
@@ -172,6 +185,7 @@ describe('gameServerUpdates store', () => {
     mockPost.mockResolvedValueOnce(failure(502, 'the agent did not answer'))
     mockGet.mockResolvedValueOnce(ok(overview()))
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     await expect(store.repairConfig(SERVER)).rejects.toBeInstanceOf(ApiError)
     expect(store.repairState.error).toBe('the agent did not answer')
@@ -190,6 +204,7 @@ describe('gameServerUpdates store', () => {
       ),
     )
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     const err = await store.startUpdate(SERVER, 'game').catch((e: unknown) => e)
 
@@ -207,6 +222,7 @@ describe('gameServerUpdates store', () => {
   it('a 409 does not re-read the overview', async () => {
     mockPost.mockResolvedValueOnce(failure(409, 'update job x (mods) is already running on this server'))
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     await expect(store.repairConfig(SERVER)).rejects.toBeInstanceOf(ApiError)
     expect(mockGet).not.toHaveBeenCalled()
@@ -223,6 +239,7 @@ describe('gameServerUpdates store', () => {
       )
     })
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     await store.startUpdate(SERVER, 'mods')
     expect(callsTo(mockGet, JOB_PATH)).toHaveLength(0)
@@ -245,6 +262,7 @@ describe('gameServerUpdates store', () => {
     mockPost.mockResolvedValueOnce(ok(job()))
     mockGet.mockResolvedValue(ok(job()))
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     await store.startUpdate(SERVER, 'game')
     await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
@@ -261,6 +279,7 @@ describe('gameServerUpdates store', () => {
       .mockResolvedValueOnce(failure(500, 'boom'))
       .mockResolvedValue(ok(job({ status: 'rolled_back', phase: 'rollback', failed_phase: 'verify' })))
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     await store.startUpdate(SERVER, 'mods')
     await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
@@ -272,6 +291,7 @@ describe('gameServerUpdates store', () => {
   it('openJob follows a running job but not a finished one', async () => {
     mockGet.mockResolvedValue(ok(job({ status: 'failed', failed_phase: 'game-update' })))
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     await store.openJob(SERVER, 'job-1')
     await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
@@ -282,6 +302,7 @@ describe('gameServerUpdates store', () => {
 
   it('checkNow polls the overview until a newer check arrives', async () => {
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
     mockGet.mockResolvedValueOnce(
       ok(overview({ check: { checked_at: '2026-11-22T09:00:00Z', latest: {}, update_available: {} } })),
     )
@@ -324,6 +345,7 @@ describe('gameServerUpdates store', () => {
     )
     mockGet.mockResolvedValue(ok(job({ id: 'job-9', operation: 'repair-config', trigger: 'overrides' })))
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     const saved = await store.saveOverrides(SERVER, { matchzy_a: '1' })
 
@@ -342,11 +364,76 @@ describe('gameServerUpdates store', () => {
     const detail = 'override "matchzy_demo_upload_url" refused: cvar is portal-owned'
     mockPut.mockResolvedValueOnce(failure(400, detail))
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     await expect(store.saveOverrides(SERVER, { matchzy_demo_upload_url: 'x' })).rejects.toBeInstanceOf(
       ApiError,
     )
     expect(store.saveOverridesState.error).toBe(detail)
+  })
+
+  it('a start answered after the modal closed is neither shown nor followed', async () => {
+    const answer = deferred<unknown>()
+    mockPost.mockReturnValueOnce(answer.promise)
+    mockGet.mockResolvedValue(ok(job()))
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+
+    const pending = store.startUpdate(SERVER, 'mods')
+    store.reset()
+    answer.resolve(ok(job()))
+    await pending
+
+    expect(store.job).toBeNull()
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
+    expect(callsTo(mockGet, JOB_PATH)).toHaveLength(0)
+  })
+
+  it("a job opened for server A that lands after switching to B is dropped, not followed", async () => {
+    const answer = deferred<unknown>()
+    mockGet.mockReturnValueOnce(answer.promise).mockResolvedValue(ok(job()))
+    const store = useGameServerUpdatesStore()
+    store.open('server-a')
+
+    const pending = store.openJob('server-a', 'job-1')
+    store.open('server-b')
+    answer.resolve(ok(job({ server_id: 'server-a' })))
+    await pending
+
+    expect(store.job).toBeNull()
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
+    expect(callsTo(mockGet, JOB_PATH)).toHaveLength(1)
+  })
+
+  it("server A's overrides never land in server B's editor", async () => {
+    const answer = deferred<unknown>()
+    mockGet.mockReturnValueOnce(answer.promise)
+    const store = useGameServerUpdatesStore()
+    store.open('server-a')
+
+    const pending = store.fetchOverrides('server-a')
+    store.open('server-b')
+    answer.resolve(ok({ overrides: { matchzy_a: '1' }, applied: true, pending: false }))
+    await pending
+
+    expect(store.overrides).toBeNull()
+  })
+
+  it('a reopen of the same server starts a new session: late answers from the old one are dropped', async () => {
+    const answer = deferred<unknown>()
+    mockGet.mockReturnValueOnce(answer.promise).mockResolvedValue(ok(job()))
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+
+    const pending = store.openJob(SERVER, 'job-1')
+    store.reset()
+    store.open(SERVER)
+    answer.resolve(ok(job()))
+    await pending
+
+    expect(store.job).toBeNull()
+    await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
+    expect(callsTo(mockGet, JOB_PATH)).toHaveLength(1)
   })
 
   it('fetchUpdatesQuietly loads what it can and skips failures', async () => {
@@ -358,6 +445,7 @@ describe('gameServerUpdates store', () => {
       ),
     )
     const store = useGameServerUpdatesStore()
+    store.open(SERVER)
 
     await store.fetchUpdatesQuietly(['a', 'bad', 'c'])
 

@@ -175,6 +175,39 @@ describe('ServerUpdatesModal', () => {
     expect(byTestId('updates-check')).toBeNull()
   })
 
+  it('an overview that lands after the modal closed opens and polls nothing', async () => {
+    let answer!: (v: unknown) => void
+    mockGet.mockReturnValueOnce(new Promise((r) => (answer = r))).mockResolvedValue(ok(job()))
+    mountModal()
+    await settle()
+
+    await wrapper?.setProps({ modelValue: false })
+    answer(ok(overview({ active_job: job() })))
+    await settle()
+
+    expect(mockGet.mock.calls.filter(([p]) => String(p).endsWith('{job_id}'))).toHaveLength(0)
+  })
+
+  it("switching servers never shows the previous server's job", async () => {
+    let answerA!: (v: unknown) => void
+    mockGet.mockImplementation((path: string, opts: { params: { path: { server_id: string } } }) => {
+      if (path.endsWith('{job_id}')) return Promise.resolve(ok(job({ server_id: opts.params.path.server_id })))
+      if (opts.params.path.server_id === 'srv-1') return new Promise((r) => (answerA = r))
+      return Promise.resolve(ok(overview({ server_id: 'srv-2' })))
+    })
+    mountModal()
+    await settle()
+
+    await wrapper?.setProps({ server: { ...server, id: 'srv-2', name: 'eu-west-2' } })
+    await settle()
+    answerA(ok(overview({ active_job: job() })))
+    await settle()
+
+    expect(byTestId('update-job')).toBeNull()
+    expect(mockGet.mock.calls.filter(([p]) => String(p).endsWith('{job_id}'))).toHaveLength(0)
+    expect(byTestId('updates-components')).not.toBeNull()
+  })
+
   it('shows installed → latest, the update badges, load health and the demo-upload chip', async () => {
     mockGet.mockResolvedValue(ok(overview()))
     mountModal()

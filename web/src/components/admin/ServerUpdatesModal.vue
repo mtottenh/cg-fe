@@ -471,42 +471,63 @@ function errorText(e: unknown, fallback: string): string {
   return e instanceof ApiError ? e.detail : fallback
 }
 
-async function load() {
-  const server = props.server
-  if (!server) return
+/**
+ * Bumped on every open, close and server switch. Anything awaited checks
+ * `alive()` afterwards so a response that lands late never acts on a
+ * closed modal or on the next server's.
+ */
+let session = 0
+
+function alive(sess: number, serverId: string): boolean {
+  return sess === session && props.modelValue && props.server?.id === serverId
+}
+
+async function load(sess: number, serverId: string) {
   try {
-    const o = await store.fetchUpdates(server.id)
+    const o = await store.fetchUpdates(serverId)
+    if (!alive(sess, serverId)) return
     loadError.value = null
-    if (o.active_job && !job.value) await store.openJob(server.id, o.active_job.id)
+    if (o.active_job && !job.value) await store.openJob(serverId, o.active_job.id)
   } catch (e) {
-    loadError.value = errorText(e, 'Failed to load the update status')
+    if (alive(sess, serverId)) loadError.value = errorText(e, 'Failed to load the update status')
   }
 }
 
 async function onOpen() {
+  const server = props.server
+  session += 1
+  const sess = session
   tab.value = 'overview'
   loadError.value = null
   actionError.value = null
   confirmOpen.value = false
-  store.reset()
-  await load()
-  if (props.action === 'repair' && supported.value) askRepair()
+  if (!server) {
+    store.reset()
+    return
+  }
+  store.open(server.id)
+  await load(sess, server.id)
+  if (alive(sess, server.id) && props.action === 'repair' && supported.value) askRepair()
 }
 
 function onClose() {
+  session += 1
   confirmOpen.value = false
   store.reset()
 }
 
 watch(
-  () => props.modelValue,
-  (isOpen) => {
+  () => [props.modelValue, props.server?.id] as const,
+  ([isOpen]) => {
     if (isOpen) void onOpen()
     else onClose()
   },
   { immediate: true },
 )
-onBeforeUnmount(() => store.stopPolling())
+onBeforeUnmount(() => {
+  session += 1
+  store.reset()
+})
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -536,13 +557,15 @@ async function askStart(operation: StartUpdateOperation) {
   planFailed.value = false
   planLoading.value = true
   confirmOpen.value = true
+  const sess = session
   try {
     await store.fetchUpdates(server.id)
   } catch (e) {
+    if (!alive(sess, server.id)) return
     planFailed.value = true
     confirmError.value = errorText(e, 'Could not re-read who is connected; try again')
   } finally {
-    planLoading.value = false
+    if (alive(sess, server.id)) planLoading.value = false
   }
 }
 
@@ -550,12 +573,15 @@ async function start(force: boolean) {
   const server = props.server
   const operation = confirmOperation.value
   if (!server || !operation) return
+  const sess = session
   confirmError.value = null
   try {
     await store.startUpdate(server.id, operation, force)
+    if (!alive(sess, server.id)) return
     confirmOpen.value = false
     tab.value = 'overview'
   } catch (e) {
+    if (!alive(sess, server.id)) return
     const detail = errorText(e, 'Failed to start the update')
     if (e instanceof ApiError && e.status === 502 && job.value) {
       // The agent did not answer; the store is following the queued job.
@@ -580,11 +606,13 @@ function askRepair() {
       'config.cfg. Nothing restarts; the server re-reads the config when no match is loaded.',
     action: 'Repair',
     handler: async () => {
+      const sess = session
       actionError.value = null
       try {
         await store.repairConfig(server.id)
-        tab.value = 'overview'
+        if (alive(sess, server.id)) tab.value = 'overview'
       } catch (e) {
+        if (!alive(sess, server.id)) return
         if (e instanceof ApiError && e.status === 502 && job.value) {
           actionError.value = e.detail
           tab.value = 'overview'
@@ -600,10 +628,11 @@ async function viewJob(jobId: string) {
   const server = props.server
   if (!server) return
   tab.value = 'overview'
+  const sess = session
   try {
     await store.openJob(server.id, jobId)
   } catch (e) {
-    actionError.value = errorText(e, 'Failed to load the update job')
+    if (alive(sess, server.id)) actionError.value = errorText(e, 'Failed to load the update job')
   }
 }
 

@@ -20,6 +20,8 @@ vi.mock('@/api', async (importOriginal) => {
 import { ApiError, api } from '@/api'
 import {
   CHECK_POLL_LIMIT_MS,
+  JOB_POLL_CEILING_MS,
+  JOB_POLL_LIMIT_MS,
   JOB_POLL_MS,
   JOB_SLOW_POLL_MS,
   POLL_MAX_FAILURES,
@@ -409,6 +411,47 @@ describe('gameServerUpdates store', () => {
     const calls = callsTo(mockGet, OVERVIEW_PATH).length
     await vi.advanceTimersByTimeAsync(60_000)
     expect(callsTo(mockGet, OVERVIEW_PATH)).toHaveLength(calls)
+  })
+
+  it('keeps following a long job while it makes progress, and stops 30 min after it stalls', async () => {
+    mockPost.mockResolvedValueOnce(ok(job({ operation: 'all' })))
+    let tick = 0
+    let stalled = false
+    mockGet.mockImplementation(() => {
+      if (!stalled) tick += 1
+      return Promise.resolve(ok(job({ operation: 'all', updated_at: `t${tick}` })))
+    })
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+
+    await store.startUpdate(SERVER, 'all')
+    await vi.advanceTimersByTimeAsync(45 * 60_000)
+    expect(store.pollError).toBeNull()
+
+    stalled = true
+    await vi.advanceTimersByTimeAsync(JOB_POLL_LIMIT_MS - 60_000)
+    expect(store.pollError).toBeNull()
+    await vi.advanceTimersByTimeAsync(2 * 60_000)
+    expect(store.pollError).toContain('No progress from the job for 30 minutes')
+  })
+
+  it('stops following even a progressing job at the absolute ceiling', async () => {
+    mockPost.mockResolvedValueOnce(ok(job({ operation: 'all' })))
+    let tick = 0
+    mockGet.mockImplementation(() => {
+      tick += 1
+      return Promise.resolve(ok(job({ operation: 'all', updated_at: `t${tick}` })))
+    })
+    const store = useGameServerUpdatesStore()
+    store.open(SERVER)
+
+    await store.startUpdate(SERVER, 'all')
+    await vi.advanceTimersByTimeAsync(JOB_POLL_CEILING_MS + 10_000)
+
+    expect(store.pollError).toContain('after 3 hours')
+    const calls = callsTo(mockGet, JOB_PATH).length
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(callsTo(mockGet, JOB_PATH)).toHaveLength(calls)
   })
 
   it('openJob follows a running job but not a finished one', async () => {

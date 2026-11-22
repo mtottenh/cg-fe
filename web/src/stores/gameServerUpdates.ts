@@ -32,8 +32,13 @@ export const CHECK_AGENT_IDLE_TRUST_MS = 40_000
 export const JOB_QUEUED_SLOWDOWN_MS = 120_000
 /** …at this interval (the agent may be away; the lost-job pass takes 20 min). */
 export const JOB_SLOW_POLL_MS = 5_000
-/** Following a job stops after this long whatever happens (lost after 20 min without progress). */
+/**
+ * Following a job stops after this long without progress (a change of
+ * phase or `updated_at`); the backend declares it lost after 20 minutes.
+ */
 export const JOB_POLL_LIMIT_MS = 30 * 60_000
+/** …and after this long in all, however much progress it makes. */
+export const JOB_POLL_CEILING_MS = 3 * 60 * 60_000
 /** Consecutive failed polls before giving up (a 403/404 does not heal). */
 export const POLL_MAX_FAILURES = 5
 /** Backoff after failures doubles the interval up to this. */
@@ -322,9 +327,17 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
   interface PollOptions {
     /** The interval while things go well, given the time since the poll began. */
     interval: (elapsedMs: number) => number
-    /** Stop after this long, whether requests succeed or not. */
+    /**
+     * Stop after this long, whether requests succeed or not — measured
+     * from `limitFrom()` when given (e.g. the last progress), else from the
+     * start of the poll.
+     */
     limitMs: number
+    limitFrom?: () => number
     onLimit: () => void
+    /** An absolute bound from the start of the poll, whatever `limitFrom` says. */
+    ceilingMs?: number
+    onCeiling?: () => void
     /** `POLL_MAX_FAILURES` requests in a row failed; `error` is the last. */
     onGiveUp: (detail: string, error: unknown) => void
   }
@@ -342,8 +355,13 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
       timer = setTimeout(async () => {
         timer = null
         if (gen !== generation) return
-        const elapsed = Date.now() - started
-        if (elapsed >= opts.limitMs) {
+        const now = Date.now()
+        const elapsed = now - started
+        if (opts.ceilingMs !== undefined && elapsed >= opts.ceilingMs) {
+          ;(opts.onCeiling ?? opts.onLimit)()
+          return
+        }
+        if (now - (opts.limitFrom?.() ?? started) >= opts.limitMs) {
           opts.onLimit()
           return
         }
@@ -384,6 +402,8 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
     stopPolling()
     const gen = generation
     let queued = false
+    let lastProgressAt = Date.now()
+    let lastProgress: string | null = null
     let followed = jobId
     let seen = !opts.awaitingFirstReport
     const read = async () => {
@@ -406,6 +426,11 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
       async () => {
         const current = await read()
         queued = current.status === 'queued'
+        const progress = `${current.id}|${current.phase ?? ''}|${current.updated_at}`
+        if (progress !== lastProgress) {
+          lastProgress = progress
+          lastProgressAt = Date.now()
+        }
         if (!isTerminalStatus(current.status)) return true
         await fetchUpdates(serverId).catch(() => undefined)
         return false
@@ -414,8 +439,14 @@ export const useGameServerUpdatesStore = defineStore('gameServerUpdates', () => 
         interval: (elapsed) =>
           queued && elapsed >= JOB_QUEUED_SLOWDOWN_MS ? JOB_SLOW_POLL_MS : JOB_POLL_MS,
         limitMs: JOB_POLL_LIMIT_MS,
+        limitFrom: () => lastProgressAt,
         onLimit: () => {
-          pollError.value = 'Stopped following the job after 30 minutes; reopen it to look again'
+          pollError.value =
+            'No progress from the job for 30 minutes; stopped following it — reopen it to look again'
+        },
+        ceilingMs: JOB_POLL_CEILING_MS,
+        onCeiling: () => {
+          pollError.value = 'Stopped following the job after 3 hours; reopen it to look again'
         },
         onGiveUp: (detail, error) => {
           // "Not reported yet" only when the job row is still missing; a

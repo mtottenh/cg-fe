@@ -665,9 +665,13 @@ const nowHeading = computed(() => {
       if (userAlreadyCheckedIn.value) return 'Checked in — waiting for your opponent'
       return canCheckIn.value ? 'Check in for the match' : 'Your captain needs to check in'
     case 'pick_ban': return 'Pick and ban maps'
-    case 'in_progress': return canSubmitResult.value ? 'Report the result when the series ends' : 'The match is live'
+    case 'in_progress':
+      // A server-reported claim can be pending while the match still reads
+      // in_progress; the ask is then to confirm, not to keep watching.
+      if (showConfirmationPanel.value) return confirmHeading.value
+      return canSubmitResult.value ? 'Report the result when the series ends' : 'The match is live'
     case 'awaiting_result':
-      if (showConfirmationPanel.value) return 'Confirm the result your opponent reported'
+      if (showConfirmationPanel.value) return confirmHeading.value
       if (canSubmitResult.value) return 'Report the result'
       return 'Waiting for the result'
     case 'disputed': return 'Result under dispute'
@@ -740,11 +744,23 @@ function isWinner(registrationId: string | null | undefined): boolean {
 // Match status/format helpers imported from @/utils/matchStatus.
 
 function getSubmitterName(claim: ResultClaimResponse): string {
+  // Server-reported claims have no submitting team; falling through used to
+  // name participant 2 as the submitter.
+  if (claim.source === 'server' || !claim.submitted_by_registration_id) return 'The game server'
   if (claim.submitted_by_registration_id === match.value?.participant1_registration_id) {
     return match.value?.participant1_name || 'Opponent'
   }
   return match.value?.participant2_name || 'Opponent'
 }
+
+/** Heading for a pending claim the viewer's team is asked to confirm. */
+const confirmHeading = computed(() => {
+  const claim = currentResult.value
+  const fromServer = !!claim && (claim.source === 'server' || !claim.submitted_by_registration_id)
+  return fromServer
+    ? 'Confirm the result the game server reported'
+    : 'Confirm the result your opponent reported'
+})
 
 // Match check-in
 async function handleMatchCheckIn() {

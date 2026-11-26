@@ -10,6 +10,18 @@
           <v-icon start size="small">mdi-timer-outline</v-icon>
           {{ timeRemaining }}s
         </v-chip>
+        <!-- The server enforces the clock on a slower tick than it counts
+             down, so the turn stays open a little past zero. A chip that
+             vanished at 0 read as "no clock, take your time". -->
+        <v-chip
+          v-else-if="timeRemaining === 0 && (phase === 'banning' || phase === 'picking')"
+          color="error"
+          size="small"
+          data-testid="veto-times-up"
+        >
+          <v-icon start size="small">mdi-timer-off-outline</v-icon>
+          Time's up — choosing automatically…
+        </v-chip>
         <v-chip :color="phaseColor" size="small" variant="tonal">
           {{ phaseLabel }}
         </v-chip>

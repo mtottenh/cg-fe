@@ -231,3 +231,48 @@ describe('MatchResultsTab — records are named, not hashed (P-171, P-172)', () 
     expect(w.text()).not.toContain('01912f4a...')
   })
 })
+
+/**
+ * The Correct Score form posts a SERIES score (maps won). The API refuses a
+ * score the match format cannot end on; the form says so first instead of
+ * sending it and showing a bare 400.
+ */
+describe('MatchResultsTab — Correct Score validates the series shape', () => {
+  const problem = (w: VueWrapper) => w.find('[data-testid="override-series-problem"]')
+  const correctButton = (w: VueWrapper) =>
+    w.findAll('button').find((b) => b.text().includes('Correct Score'))!
+
+  async function fillReason(w: VueWrapper) {
+    await w.find('textarea').setValue('Wrong score was confirmed')
+  }
+
+  it('accepts a finished Bo3 score', async () => {
+    const w = await mountTab(match(2, 1, { match_format: 'bo3' }), claim(2, 1))
+    await fillReason(w)
+    expect(problem(w).exists()).toBe(false)
+    expect(correctButton(w).attributes('disabled')).toBeUndefined()
+  })
+
+  it('refuses a score a Bo3 cannot end on, and says what it can', async () => {
+    const w = await mountTab(match(2, 1, { match_format: 'bo3' }), claim(2, 1))
+    await fillReason(w)
+    const inputs = w.findAll('input[type="number"]')
+    await inputs[0]!.setValue(3)
+    await inputs[1]!.setValue(0)
+
+    expect(problem(w).text()).toContain('3–0 is not a finished Bo3 series')
+    expect(problem(w).text()).toContain('2–0, 2–1')
+    expect(problem(w).text()).toContain('maps won in the series, not rounds')
+    expect(correctButton(w).attributes('disabled')).toBeDefined()
+  })
+
+  it('refuses round scores typed into a Bo1', async () => {
+    const w = await mountTab(match(1, 0), claim(1, 0))
+    await fillReason(w)
+    const inputs = w.findAll('input[type="number"]')
+    await inputs[0]!.setValue(16)
+    await inputs[1]!.setValue(14)
+    expect(problem(w).exists()).toBe(true)
+    expect(correctButton(w).attributes('disabled')).toBeDefined()
+  })
+})

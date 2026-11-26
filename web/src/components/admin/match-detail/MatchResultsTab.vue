@@ -84,6 +84,16 @@
             <div v-if="isTie" class="text-caption text-error mt-2">
               Scores must not be equal — a draw has no winner to record.
             </div>
+            <!-- The series score counts maps won, not rounds: say so before
+                 the API answers a 16–14 with a bare 400. -->
+            <div
+              v-else-if="seriesProblem"
+              class="text-caption text-error mt-2"
+              role="alert"
+              data-testid="override-series-problem"
+            >
+              {{ seriesProblem }} Enter maps won in the series, not rounds.
+            </div>
           </template>
         </v-card-text>
       </v-card>
@@ -322,6 +332,7 @@ import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import { formatDateTime } from '@/utils/formatters'
+import { seriesScoreProblem } from '@/utils/seriesScore'
 
 const props = defineProps<{
   match: TournamentMatchResponse | null
@@ -400,10 +411,16 @@ const submitterName = computed(
 
 const isTie = computed(() => overrideP1.value === overrideP2.value)
 
+/** Why the entered score cannot end this match's format, if it cannot. */
+const seriesProblem = computed(() =>
+  seriesScoreProblem(props.match?.match_format, overrideP1.value, overrideP2.value),
+)
+
 const canOverride = computed(
   () =>
     hasRecordedResult.value &&
     !isTie.value &&
+    !seriesProblem.value &&
     Number.isFinite(overrideP1.value) &&
     Number.isFinite(overrideP2.value) &&
     overrideP1.value >= 0 &&

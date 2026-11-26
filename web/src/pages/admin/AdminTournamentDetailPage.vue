@@ -227,6 +227,7 @@
                     </v-card-text>
                   </v-card>
                   <GameServerSettingsCard :tournament="tournament" />
+                  <TournamentNotificationSettingsCard :tournament-id="tournament.id" />
                 </v-col>
               </v-row>
             </v-card-text>
@@ -359,6 +360,7 @@ import AdminMatchDetailModal from '@/components/admin/AdminMatchDetailModal.vue'
 import RegistrationsTab from '@/components/admin/tournament-detail/RegistrationsTab.vue'
 import MatchesTab from '@/components/admin/tournament-detail/MatchesTab.vue'
 import GameServerSettingsCard from '@/components/admin/tournament-detail/GameServerSettingsCard.vue'
+import TournamentNotificationSettingsCard from '@/components/admin/tournament-detail/TournamentNotificationSettingsCard.vue'
 import SeedingTab from '@/components/admin/tournament-detail/SeedingTab.vue'
 import StagesTab from '@/components/admin/tournament-detail/StagesTab.vue'
 import BracketTab from '@/components/admin/tournament-detail/BracketTab.vue'

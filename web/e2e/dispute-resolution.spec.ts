@@ -377,7 +377,8 @@ test.describe('Admin Dispute Resolution', () => {
     // Fill overturn form — inputs live inside the now-open panel.
     await overturnPanel.getByLabel(/P1 Score/).fill('1')
     await overturnPanel.getByLabel(/P2 Score/).fill('0')
-    await overturnPanel.getByLabel(/Winner Reg ID/).fill(ctx.p1RegistrationId)
+    // No winner field: the modal takes the winner from the score (1-0 → P1).
+    await expect(overturnPanel.getByTestId('overturn-winner')).not.toContainText('no winner')
     await overturnPanel
       .getByLabel('Notes *')
       .fill('Admin reviewed evidence and confirmed the original claim.')
@@ -476,7 +477,8 @@ test.describe('Admin Dispute Resolution', () => {
     // Flip the BO1 to P2: 0-1 with P2 as the new winner.
     await overturnPanel.getByLabel(/P1 Score/).fill('0')
     await overturnPanel.getByLabel(/P2 Score/).fill('1')
-    await overturnPanel.getByLabel(/Winner Reg ID/).fill(ctx.p2RegistrationId)
+    // No winner field: the modal takes the winner from the score (0-1 → P2).
+    await expect(overturnPanel.getByTestId('overturn-winner')).not.toContainText('no winner')
     await overturnPanel
       .getByLabel('Notes *')
       .fill('Evidence supports P2 as the correct winner.')

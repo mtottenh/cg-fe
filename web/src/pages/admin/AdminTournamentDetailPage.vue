@@ -38,6 +38,17 @@
 
     <!-- Content -->
     <template v-else-if="tournament">
+      <v-alert
+        v-if="vetoWithoutGameServer"
+        type="warning"
+        variant="tonal"
+        class="mb-4"
+        data-testid="game-server-not-enabled-warning"
+      >
+        This tournament has a map veto but does not use the portal's game
+        server. Matches will wait in pick/ban after the veto until an admin
+        starts them. Turn the game server on under Overview → Game server.
+      </v-alert>
       <!-- Overview Cards -->
       <v-row class="mb-4">
         <v-col cols="12" md="3">
@@ -197,6 +208,7 @@
                       </v-btn>
                     </v-card-text>
                   </v-card>
+                  <GameServerSettingsCard :tournament="tournament" />
                 </v-col>
               </v-row>
             </v-card-text>
@@ -247,6 +259,7 @@
               :match-transition-loading-id="matchTransitionLoadingId"
               @view-detail="openMatchDetail"
               @set-time="openMatchDetail($event, 'actions')"
+              @rescue="openMatchDetail($event, 'rescue')"
               @transition="handleMatchTransition"
               @bulk-start="handleBulkStartMatches"
             />
@@ -319,6 +332,7 @@ import {
   SCHEDULING_MODES,
 } from '@/stores/tournaments'
 import { formatMatchFormat } from '@/utils/matchStatus'
+import { readGameServerSettings } from '@/utils/matchRescue'
 import TournamentStatusChip from '@/components/admin/TournamentStatusChip.vue'
 import TournamentStatusActions from '@/components/admin/TournamentStatusActions.vue'
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
@@ -326,6 +340,7 @@ import RegistrationReasonModal from '@/components/admin/RegistrationReasonModal.
 import AdminMatchDetailModal from '@/components/admin/AdminMatchDetailModal.vue'
 import RegistrationsTab from '@/components/admin/tournament-detail/RegistrationsTab.vue'
 import MatchesTab from '@/components/admin/tournament-detail/MatchesTab.vue'
+import GameServerSettingsCard from '@/components/admin/tournament-detail/GameServerSettingsCard.vue'
 import SeedingTab from '@/components/admin/tournament-detail/SeedingTab.vue'
 import StagesTab from '@/components/admin/tournament-detail/StagesTab.vue'
 import BracketTab from '@/components/admin/tournament-detail/BracketTab.vue'
@@ -370,7 +385,7 @@ const bulkStartLoading = ref(false)
 // Match detail modal
 const matchDetailModalOpen = ref(false)
 const selectedMatchId = ref<string | null>(null)
-const matchDetailInitialTab = ref<'overview' | 'actions'>('overview')
+const matchDetailInitialTab = ref<'overview' | 'actions' | 'rescue'>('overview')
 
 // Registration action state
 const actionLoadingId = ref<string | null>(null)
@@ -516,7 +531,14 @@ async function handleSchedulingModeChange(mode: string) {
   }
 }
 
-function openMatchDetail(matchId: string, tab: 'overview' | 'actions' = 'overview') {
+/** A veto with nowhere to go once it finishes: say so before match night. */
+const vetoWithoutGameServer = computed(() =>
+  !!tournament.value?.default_map_veto_format
+  && !readGameServerSettings(tournament.value.settings).enabled
+  && !['completed', 'cancelled'].includes(tournament.value.status),
+)
+
+function openMatchDetail(matchId: string, tab: 'overview' | 'actions' | 'rescue' = 'overview') {
   selectedMatchId.value = matchId
   matchDetailInitialTab.value = tab
   matchDetailModalOpen.value = true

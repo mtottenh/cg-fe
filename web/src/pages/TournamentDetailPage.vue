@@ -971,18 +971,20 @@ async function fetchData() {
 // current: the page only loaded them on mount, so anyone following along had
 // to reload to see a result or an updated table. Re-reading the brackets is
 // what makes TournamentBracket refetch its standings.
+//
+// Silent on purpose: no loading bar every 30 seconds and no error banner for
+// a poll that failed (the last good data stays up and the next tick retries).
+// A tick is skipped while the page itself is loading something.
 useLiveRefresh(
   async () => {
     const id = tournamentsStore.currentTournament?.id
     if (!id) return
-    await Promise.allSettled([
-      tournamentsStore.fetchMatches(id),
-      tournamentsStore.fetchBrackets(id),
-    ])
+    await tournamentsStore.refreshFixturesSilently(id)
   },
   {
     intervalMs: 30_000,
-    enabled: () => tournamentsStore.currentTournament?.status === 'in_progress',
+    enabled: () =>
+      tournamentsStore.currentTournament?.status === 'in_progress' && !tournamentsStore.loading,
   },
 )
 

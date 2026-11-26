@@ -41,6 +41,16 @@
 
       <!-- Input -->
       <v-divider />
+      <v-alert
+        v-if="error"
+        type="warning"
+        variant="tonal"
+        density="compact"
+        class="ma-3 mb-0"
+        data-testid="chat-error"
+      >
+        Message not sent: {{ error }}
+      </v-alert>
       <div class="pa-3">
         <v-text-field
           v-model="inputText"
@@ -84,8 +94,10 @@ const props = withDefaults(
      * message is dropped without a reply, so the tab is not offered.
      */
     canTeamChat?: boolean
+    /** Why the server refused the viewer's last message, if it did. */
+    error?: string | null
   }>(),
-  { canTeamChat: true },
+  { canTeamChat: true, error: null },
 )
 
 const emit = defineEmits<{

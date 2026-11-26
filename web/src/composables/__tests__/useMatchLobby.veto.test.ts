@@ -318,3 +318,34 @@ describe('useMatchLobby veto phase under live updates', () => {
     })
   })
 })
+
+describe('useMatchLobby chat refusals', () => {
+  let unmount: () => void = () => {}
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    socketState.handlers = {}
+  })
+
+  afterEach(() => unmount())
+
+  it('keeps the reason the server refused a chat message, until the next send', () => {
+    const mounted = mountLobby()
+    unmount = mounted.unmount
+    expect(mounted.lobby.chatError.value).toBeNull()
+
+    socketState.handlers.error!({ type: 'error', code: 'chat_rejected', message: 'Team chat is only for the two teams' })
+    expect(mounted.lobby.chatError.value).toBe('Team chat is only for the two teams')
+
+    mounted.lobby.sendChat('all', 'gl hf')
+    expect(mounted.lobby.chatError.value).toBeNull()
+  })
+
+  it('ignores other error frames', () => {
+    const mounted = mountLobby()
+    unmount = mounted.unmount
+    socketState.handlers.error!({ type: 'error', code: 'veto_rejected', message: 'Not your turn' })
+    expect(mounted.lobby.chatError.value).toBeNull()
+  })
+})

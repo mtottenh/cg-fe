@@ -357,6 +357,7 @@
             :messages="lobbyChatMessages"
             :connected="lobbyConnected"
             :can-team-chat="lobbyUserRole === 'participant'"
+            :error="lobbyChatError"
             class="h-100"
             @send="handleChatSend"
           />
@@ -597,6 +598,7 @@ const lobbyParticipants = matchLobby.participants
 const lobbySpectatorCount = matchLobby.spectatorCount
 const lobbyConnected = matchLobby.connected
 const lobbyChatMessages = matchLobby.chatMessages
+const lobbyChatError = matchLobby.chatError
 const lobbyUserRole = matchLobby.userRole
 
 function handleChatSend(chatType: 'team' | 'all', content: string) {

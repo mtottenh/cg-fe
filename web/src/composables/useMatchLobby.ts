@@ -9,6 +9,7 @@ import {
   type AuthSuccessMessage,
   type ChatHistoryMessage,
   type ChatMessageIncoming,
+  type ErrorMessage,
   type CoinFlipResultMessage,
   type VetoStateUpdateMessage,
   type VetoActionPerformedMessage,
@@ -42,6 +43,8 @@ export function useMatchLobby(
 
   // ── Chat state ──
   const chatMessages = ref<ChatMessage[]>([])
+  /** Why the server refused this viewer's last chat message, if it did. */
+  const chatError = ref<string | null>(null)
 
   // ── Presence state ──
   const participants = ref<LobbyParticipant[]>([])
@@ -79,6 +82,11 @@ export function useMatchLobby(
       // and the action list may be several steps behind (frames sent while
       // the socket was down are gone), so re-read the full state.
       resyncFromRest()
+    },
+
+    error(msg: ErrorMessage) {
+      // A refused chat message used to vanish without a word.
+      if (msg.code === 'chat_rejected') chatError.value = msg.message
     },
 
     chat_history(msg: ChatHistoryMessage) {
@@ -195,6 +203,7 @@ export function useMatchLobby(
 
   // ── Chat actions ──
   function sendChat(chatType: 'team' | 'all', content: string) {
+    chatError.value = null
     socket.send({ type: 'chat', chat_type: chatType, content })
   }
 
@@ -431,6 +440,7 @@ export function useMatchLobby(
 
     // Chat state
     chatMessages,
+    chatError,
     sendChat,
 
     // Presence state

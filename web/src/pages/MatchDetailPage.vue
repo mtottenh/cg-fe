@@ -240,13 +240,13 @@
 
       <!-- Lobby Presence Bar (shown during live lobby states) -->
       <LobbyPresenceBar
-        v-if="showVetoPanel && lobbyParticipants.length > 0"
+        v-if="showVetoLobby && lobbyParticipants.length > 0"
         :participants="lobbyParticipants"
         :spectator-count="lobbySpectatorCount"
         :connected="lobbyConnected"
       />
 
-      <!-- Veto Panel (map pick/ban before match starts) -->
+      <!-- Veto Panel: the live pick/ban, then the maps and sides it settled -->
       <VetoPanel
         v-if="showVetoPanel"
         :match-id="match.id"
@@ -618,13 +618,23 @@ function handleChatSend(chatType: 'team' | 'all', content: string) {
   matchLobby.sendChat(chatType, content)
 }
 
-// Veto panel visibility: show when match has veto_required and is in veto-relevant states
-// The match state machine is: ... → checking_in → pick_ban → in_progress → ...
-// Show the panel during pick_ban (active veto) and checking_in (upcoming veto preview)
-const showVetoPanel = computed(() => {
+// The live veto lobby (presence, chat) belongs to check-in and pick/ban:
+// checking_in previews the upcoming veto, pick_ban runs it.
+const showVetoLobby = computed(() => {
   if (!match.value || !tournament.value) return false
   if (!match.value.veto_required) return false
   return ['checking_in', 'pick_ban'].includes(match.value.status)
+})
+
+// The veto panel itself stays up after the veto: once a finished veto has
+// started the match (no game server in play), it is the only place the
+// teams can see which maps they play and on which sides.
+const showVetoPanel = computed(() => {
+  if (!match.value || !tournament.value) return false
+  if (!match.value.veto_required) return false
+  return [
+    'checking_in', 'pick_ban', 'in_progress', 'awaiting_result', 'disputed', 'completed',
+  ].includes(match.value.status)
 })
 
 // Forfeit: available when user is a participant and match is active
@@ -755,7 +765,7 @@ const checkInDeadlineLabel = computed(() => {
 const showLineups = computed(() =>
   !!match.value && !!(match.value.participant1_registration_id || match.value.participant2_registration_id),
 )
-const showChat = computed(() => showVetoPanel.value && lobbyConnected.value)
+const showChat = computed(() => showVetoLobby.value && lobbyConnected.value)
 
 // Active dispute for this match (fetched via GET /tournaments/{id}/matches/{id}/dispute)
 const activeDisputeId = computed(() => disputesStore.matchDispute?.id ?? null)

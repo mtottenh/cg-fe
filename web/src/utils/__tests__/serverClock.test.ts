@@ -49,3 +49,40 @@ describe('serverClock', () => {
     expect(serverClockOffsetMs()).toBe(60_000)
   })
 })
+
+describe('serverClock — precise samples', () => {
+  it('prefers a session server_time over the Date header', async () => {
+    const mod = await import('@/utils/serverClock')
+    mod.resetServerClock()
+    const clientAt = 1_000_000_000_000
+    // Session says the server is 10.25 s ahead.
+    mod.noteServerTimestamp(new Date(clientAt + 10_250).toISOString(), clientAt)
+    expect(mod.serverClockOffsetMs()).toBe(10_250)
+    // A coarse header a moment later, rounded differently, is ignored.
+    mod.noteServerDateHeader(new Date(clientAt + 1_000 + 9_000).toUTCString(), clientAt + 1_000)
+    expect(mod.serverClockOffsetMs()).toBe(10_250)
+    // A newer session sample replaces it.
+    mod.noteServerTimestamp(new Date(clientAt + 2_000 + 3_000).toISOString(), clientAt + 2_000)
+    expect(mod.serverClockOffsetMs()).toBe(3_000)
+    mod.resetServerClock()
+  })
+
+  it('falls back to the Date header once the precise sample is old', async () => {
+    const mod = await import('@/utils/serverClock')
+    mod.resetServerClock()
+    const clientAt = 1_000_000_000_000
+    mod.noteServerTimestamp(new Date(clientAt + 10_000).toISOString(), clientAt)
+    const later = clientAt + 10 * 60_000
+    mod.noteServerDateHeader(new Date(later + 5_000).toUTCString(), later)
+    expect(mod.serverClockOffsetMs()).toBe(5_500)
+    mod.resetServerClock()
+  })
+
+  it('ignores a missing or unparsable server_time', async () => {
+    const mod = await import('@/utils/serverClock')
+    mod.resetServerClock()
+    mod.noteServerTimestamp(undefined)
+    mod.noteServerTimestamp('not a date')
+    expect(mod.serverClockOffsetMs()).toBe(0)
+  })
+})

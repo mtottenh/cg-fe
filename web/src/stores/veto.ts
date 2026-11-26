@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { api } from '@/api'
 import type { components } from '@/api/types'
 import { unwrapApi, createActionState, withActionState, createLatestGuard } from '@/stores/helpers'
+import { noteServerTimestamp } from '@/utils/serverClock'
 
 type VetoSessionResponse = components['schemas']['VetoSessionResponse']
 type VetoSessionStateResponse = components['schemas']['DataResponse_VetoSessionStateResponse']['data']
@@ -38,6 +39,10 @@ export const useVetoStore = defineStore('veto', () => {
   // Latest-wins guard: a slow session fetch for the previous match must not
   // clobber the state of the lobby the user has since navigated into.
   const beginSessionFetch = createLatestGuard()
+
+  // Every session the server sends (REST or socket frame) carries its clock;
+  // the turn countdown counts against that, not the viewer's own clock.
+  watch(session, (s) => noteServerTimestamp(s?.server_time), { flush: 'sync' })
 
   async function getVetoSession(matchId: string): Promise<VetoSessionStateResponse> {
     return withActionState(getSessionState, async () => {

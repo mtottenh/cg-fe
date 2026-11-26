@@ -116,8 +116,8 @@ test.describe('Map Veto Real-time (full sequence, late-join, spectator)', () => 
       await pageA.waitForLoadState('networkidle')
       await pageB.waitForLoadState('networkidle')
 
-      await expect(pageA.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
-      await expect(pageB.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
+      await expect(pageA.getByText('Map Veto', { exact: true })).toBeVisible({ timeout: 10000 })
+      await expect(pageB.getByText('Map Veto', { exact: true })).toBeVisible({ timeout: 10000 })
       // p1 (pageA) acts first per the coin flip in setupVetoScenario.
       await expect(pageA.getByText('Your turn!')).toBeVisible({ timeout: 10000 })
 
@@ -200,7 +200,7 @@ test.describe('Map Veto Real-time (full sequence, late-join, spectator)', () => 
       await pageB.waitForLoadState('networkidle')
 
       for (const p of [pageA, pageB]) {
-        await expect(p.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
+        await expect(p.getByText('Map Veto', { exact: true })).toBeVisible({ timeout: 10000 })
         await expect(p.getByText('Veto complete!')).toBeVisible({ timeout: 10000 })
         await expect(p.locator('.map-card-banned')).toHaveCount(totalBans, { timeout: 15000 })
         // The decider (by backend map name) is the single card that is not banned.
@@ -251,7 +251,7 @@ test.describe('Map Veto Real-time (full sequence, late-join, spectator)', () => 
       await page.goto(matchUrl)
       await page.waitForLoadState('networkidle')
 
-      await expect(page.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
+      await expect(page.getByText('Map Veto', { exact: true })).toBeVisible({ timeout: 10000 })
       // First load already shows the CURRENT board — the 3 prior bans — proving
       // the REST on-connect snapshot delivers current state, not just future
       // broadcasts.
@@ -291,7 +291,7 @@ test.describe('Map Veto Real-time (full sequence, late-join, spectator)', () => 
       await page.goto(matchUrl)
       await page.waitForLoadState('networkidle')
 
-      await expect(page.getByText('Map Veto')).toBeVisible({ timeout: 10000 })
+      await expect(page.getByText('Map Veto', { exact: true })).toBeVisible({ timeout: 10000 })
 
       // Read-only: no selectable map cards, no turn prompt — the spectator is
       // not a participant so nothing is actionable for them.

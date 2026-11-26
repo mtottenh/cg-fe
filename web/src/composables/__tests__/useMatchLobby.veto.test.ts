@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { createApp, defineComponent, h, ref } from 'vue'
+import { createApp, defineComponent, h, ref, type Ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 type Handlers = Record<string, (msg: unknown) => void>
@@ -72,12 +72,12 @@ function makeState(session: VetoSessionResponse, overrides: object = {}): VetoSe
   } as unknown as VetoSessionStateResponse
 }
 
-function mountLobby() {
+function mountLobby(canAct?: Ref<boolean>) {
   let lobby!: ReturnType<typeof useMatchLobby>
   const app = createApp(
     defineComponent({
       setup() {
-        lobby = useMatchLobby(ref<string | null>('match-1'), ref<string | null>('reg-a'))
+        lobby = useMatchLobby(ref<string | null>('match-1'), ref<string | null>('reg-a'), canAct)
         return () => h('div')
       },
     }),
@@ -221,5 +221,61 @@ describe('useMatchLobby veto phase under live updates', () => {
     await mounted.lobby.resync({ rejoin: true })
 
     expect(socketState.connect).not.toHaveBeenCalled()
+  })
+
+  describe('who may act for the team on the clock', () => {
+    function liveSessionOnMyTeam() {
+      const store = useVetoStore()
+      vi.spyOn(store, 'getVetoSession').mockResolvedValue(null as never)
+      store.sessionState = makeState(
+        makeSession({ status: 'in_progress', current_action_number: 1, current_team_turn: 'reg-a' }),
+        { current_action: SEQUENCE[0] },
+      )
+      store.session = store.sessionState!.session
+    }
+
+    function authAs(role: string) {
+      socketState.handlers.auth_success!({
+        type: 'auth_success',
+        role,
+        lobby_state: { participants: [], spectator_count: 0, session: null },
+      })
+    }
+
+    it('gives the captain the turn', () => {
+      liveSessionOnMyTeam()
+      const mounted = mountLobby(ref(true))
+      unmount = mounted.unmount
+
+      expect(mounted.lobby.isMyTurn.value).toBe(true)
+    })
+
+    it('does not hand the turn to a roster member the API would refuse', () => {
+      liveSessionOnMyTeam()
+      const mounted = mountLobby(ref(false))
+      unmount = mounted.unmount
+      authAs('spectator')
+
+      expect(mounted.lobby.isMyTeamsTurn.value).toBe(true)
+      expect(mounted.lobby.isMyTurn.value).toBe(false)
+      expect(mounted.lobby.canActInVeto.value).toBe(false)
+    })
+
+    it('trusts the socket role when the server classed the viewer as a participant', () => {
+      liveSessionOnMyTeam()
+      const mounted = mountLobby(ref(false))
+      unmount = mounted.unmount
+      authAs('participant')
+
+      expect(mounted.lobby.isMyTurn.value).toBe(true)
+    })
+
+    it('keeps the old behaviour where no permission is supplied (PUG lobbies)', () => {
+      liveSessionOnMyTeam()
+      const mounted = mountLobby()
+      unmount = mounted.unmount
+
+      expect(mounted.lobby.isMyTurn.value).toBe(true)
+    })
   })
 })

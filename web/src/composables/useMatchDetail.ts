@@ -709,6 +709,7 @@ export function useMatchDetail() {
     canPropose,
     showResultPanel,
     userRegistrationId,
+    canCheckIn,
     opponentPlayerId,
     suggestedTimes,
     suggestionsDetailed,

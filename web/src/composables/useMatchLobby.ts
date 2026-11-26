@@ -26,6 +26,12 @@ export type VetoPhase = 'waiting' | 'coin_flip' | 'banning' | 'picking' | 'side_
 export function useMatchLobby(
   matchId: Ref<string | null>,
   userRegistrationId: Ref<string | null | undefined>,
+  /**
+   * Server-computed "this user may act for their registration" (the check-in
+   * predicate: captain / owner / delegate / the registered player). Omitted
+   * where every member of a side may act (PUG lobbies).
+   */
+  canActForRegistration?: Ref<boolean>,
 ) {
   const vetoStore = useVetoStore()
   const matchServerStore = useMatchServerStore()
@@ -223,10 +229,32 @@ export function useMatchLobby(
     return 'side_select'
   })
 
-  const isMyTurn = computed(() => {
+  /** The viewer's TEAM is on the clock (whoever on it may act). */
+  const isMyTeamsTurn = computed(() => {
     if (!session.value || !userRegistrationId.value) return false
     return session.value.current_team_turn === userRegistrationId.value
   })
+
+  /**
+   * Whether the viewer may make veto choices for their team. The veto API
+   * accepts only the captain, owner, a delegate or tournament staff; an
+   * ordinary roster member shares the team's registration id, so comparing
+   * ids alone handed them "Your turn!" and clickable maps that 403'd.
+   *
+   * Two server-derived signals, either of which is enough: the check-in
+   * permission, and the role the lobby socket assigned (`participant` and
+   * `admin` are exactly the callers the veto authorizer lets act).
+   */
+  const canActInVeto = computed(() => {
+    if (!canActForRegistration) return true
+    return (
+      canActForRegistration.value ||
+      userRole.value === 'participant' ||
+      userRole.value === 'admin'
+    )
+  })
+
+  const isMyTurn = computed(() => isMyTeamsTurn.value && canActInVeto.value)
 
   const maps = computed((): MapStatusResponse[] => {
     return state.value?.maps ?? []
@@ -379,6 +407,8 @@ export function useMatchLobby(
     hasSession,
     phase,
     isMyTurn,
+    isMyTeamsTurn,
+    canActInVeto,
     maps,
     availableMaps,
     bannedMaps,

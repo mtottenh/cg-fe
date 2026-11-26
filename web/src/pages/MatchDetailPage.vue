@@ -337,6 +337,7 @@
           <LobbyChatPanel
             :messages="lobbyChatMessages"
             :connected="lobbyConnected"
+            :can-team-chat="lobbyUserRole === 'participant'"
             class="h-100"
             @send="handleChatSend"
           />
@@ -490,7 +491,7 @@ const {
   showResultPanel, showConfirmationPanel, canSubmitResult,
   showWaitingForOpponent, autoConfirmCountdown, checkInCountdown, vetoPickedMaps,
   selectableMaps,
-  opponentPlayerId, suggestedTimes, userRegistrationId, myRegistration,
+  opponentPlayerId, suggestedTimes, userRegistrationId, canCheckIn, myRegistration,
   fetchAll,
   refreshMatch,
   schedulingStore,
@@ -557,7 +558,7 @@ watch(
     if (prev !== undefined) void refreshMatch()
   },
 )
-const matchLobby = useMatchLobby(matchIdRef, userRegistrationId)
+const matchLobby = useMatchLobby(matchIdRef, userRegistrationId, canCheckIn)
 provideMatchLobby(matchLobby)
 
 // The veto panel mounts (and reads the then-pending session) when check-in
@@ -577,6 +578,7 @@ const lobbyParticipants = matchLobby.participants
 const lobbySpectatorCount = matchLobby.spectatorCount
 const lobbyConnected = matchLobby.connected
 const lobbyChatMessages = matchLobby.chatMessages
+const lobbyUserRole = matchLobby.userRole
 
 function handleChatSend(chatType: 'team' | 'all', content: string) {
   matchLobby.sendChat(chatType, content)
@@ -658,7 +660,10 @@ const nowHeading = computed(() => {
     case 'pending': return 'Waiting for both teams to be decided'
     case 'ready': return waitingForTimeHeading(timeContext.value)
     case 'scheduled': return m.scheduled_at ? `Match set for ${formatWhen(m.scheduled_at)}` : waitingForTimeHeading(timeContext.value)
-    case 'checking_in': return mine ? 'Check in for the match' : 'Teams are checking in'
+    case 'checking_in':
+      if (!mine) return 'Teams are checking in'
+      if (userAlreadyCheckedIn.value) return 'Checked in — waiting for your opponent'
+      return canCheckIn.value ? 'Check in for the match' : 'Your captain needs to check in'
     case 'pick_ban': return 'Pick and ban maps'
     case 'in_progress': return canSubmitResult.value ? 'Report the result when the series ends' : 'The match is live'
     case 'awaiting_result':
@@ -684,9 +689,29 @@ const nowNote = computed(() => {
       return m.scheduled_at
         ? "Check-in opens here shortly before the start. A team that doesn't check in can be forfeited as a no-show."
         : waitingForTimeNote(timeContext.value)
+    case 'checking_in': {
+      // A rostered player who cannot check in used to get the heading "Check
+      // in for the match" over an empty card: no button, and no word that it
+      // is the captain's to do.
+      if (!userRegistrationId.value || canCheckIn.value || userAlreadyCheckedIn.value) return null
+      const by = checkInDeadlineLabel.value
+      return (
+        "Only your team's captain, the team owner or a delegate can check in. " +
+        `If nobody checks in${by ? ` by ${by}` : ' before the deadline'}, your team forfeits as a no-show.`
+      )
+    }
     default:
       return null
   }
+})
+
+/**
+ * When check-in closes, if the API says. `check_in_deadline` is not on every
+ * deployed backend's match response, so it is read as optional.
+ */
+const checkInDeadlineLabel = computed(() => {
+  const deadline = (match.value as { check_in_deadline?: string | null } | null)?.check_in_deadline
+  return deadline ? formatDateTime(deadline) : null
 })
 
 const showLineups = computed(() =>

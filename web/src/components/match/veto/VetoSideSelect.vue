@@ -48,6 +48,12 @@ const props = defineProps<{
   actionsNeedingSide: VetoActionResponse[]
   userRegistrationId: string | null | undefined
   maps: MapStatusResponse[]
+  /**
+   * Whether the viewer may act for their team at all (captain / owner /
+   * delegate). A plain roster member shares the registration id but the API
+   * refuses their choice, so they get the waiting chip instead of buttons.
+   */
+  canAct?: boolean
 }>()
 
 const vetoStore = useVetoStore()
@@ -88,6 +94,7 @@ function gameLabel(action: VetoActionResponse): string {
  */
 function canSelectSide(action: VetoActionResponse): boolean {
   if (!props.userRegistrationId || !action.performed_by_registration_id) return false
+  if (props.canAct === false) return false
   return action.performed_by_registration_id !== props.userRegistrationId
 }
 
@@ -100,9 +107,12 @@ function waitingLabel(action: VetoActionResponse): string {
   const isPicker =
     !!props.userRegistrationId &&
     action.performed_by_registration_id === props.userRegistrationId
-  return isPicker
-    ? 'Waiting for your opponent to select a side...'
-    : 'Waiting for the opponent to select a side...'
+  if (isPicker) return 'Waiting for your opponent to select a side...'
+  // On the choosing team, but not someone who may choose.
+  if (props.userRegistrationId && props.canAct === false) {
+    return 'Waiting for your captain to select a side...'
+  }
+  return 'Waiting for the opponent to select a side...'
 }
 
 async function selectSide(actionNumber: number, side: string) {

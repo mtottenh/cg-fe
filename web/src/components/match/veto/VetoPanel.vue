@@ -50,6 +50,14 @@
         <template v-if="isMyTurn">
           <strong>Your turn!</strong> {{ turnActionLabel }}
         </template>
+        <!-- A rostered player who cannot act for the team: their side is on
+             the clock, but the choice is the captain's. -->
+        <template v-else-if="isMyTeamsTurn">
+          <span data-testid="veto-captain-choosing">
+            <strong>Your team's turn.</strong> Your captain is choosing —
+            only the captain, team owner or a delegate can {{ turnActionLabel.toLowerCase() }}.
+          </span>
+        </template>
         <template v-else>
           <!-- Named team: correct for spectators too, and tells participants
                exactly who is on the clock. -->
@@ -86,6 +94,7 @@
         :match-id="matchId"
         :actions-needing-side="mapsNeedingSideSelect"
         :user-registration-id="userRegistrationId"
+        :can-act="canActInVeto"
         :maps="maps"
       />
 
@@ -137,7 +146,7 @@ const loading = ref(true)
 // and provides it; we inject so there's one WS per match regardless of how
 // many components consume the state.
 const {
-  session, hasSession, phase, isMyTurn,
+  session, hasSession, phase, isMyTurn, isMyTeamsTurn, canActInVeto,
   maps, pickedMaps,
   actions, currentAction, timeRemaining, mapsNeedingSideSelect,
   coinFlipResult, bothParticipantsConnected,

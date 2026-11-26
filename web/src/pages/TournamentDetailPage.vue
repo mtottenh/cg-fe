@@ -476,6 +476,7 @@ import TournamentRegistrationCard from '@/components/tournament/TournamentRegist
 import OrganizerToolbar from '@/components/tournament/OrganizerToolbar.vue'
 import { useTournamentContext } from '@/composables/useTournamentContext'
 import TournamentBracket from '@/components/tournament/TournamentBracket.vue'
+import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import AwardsPanel from '@/components/awards/AwardsPanel.vue'
 import StatsLeaderboard from '@/components/awards/StatsLeaderboard.vue'
 import TournamentMatchCard from '@/components/tournament/TournamentMatchCard.vue'
@@ -965,6 +966,25 @@ async function fetchData() {
     // Errors captured in store
   }
 }
+
+// While the tournament is being played, keep the fixtures and the table
+// current: the page only loaded them on mount, so anyone following along had
+// to reload to see a result or an updated table. Re-reading the brackets is
+// what makes TournamentBracket refetch its standings.
+useLiveRefresh(
+  async () => {
+    const id = tournamentsStore.currentTournament?.id
+    if (!id) return
+    await Promise.allSettled([
+      tournamentsStore.fetchMatches(id),
+      tournamentsStore.fetchBrackets(id),
+    ])
+  },
+  {
+    intervalMs: 30_000,
+    enabled: () => tournamentsStore.currentTournament?.status === 'in_progress',
+  },
+)
 
 // Watch for route changes
 watch(

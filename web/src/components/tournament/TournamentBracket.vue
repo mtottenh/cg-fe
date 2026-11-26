@@ -502,13 +502,23 @@ const standingsByBracket = ref<Record<string, BracketStandingsRow[]>>({})
 // resulting mismatched (Z, Y-bracket) request 404s into an empty table that
 // nothing ever retries — the standings card just silently never appears.
 // Taking the id from the same payload makes that mismatch impossible.
+//
+// The table is only blanked when the SET of brackets changes (a different
+// tournament). A refresh of the same brackets — the page re-reads them while
+// matches are being played — keeps the current rows on screen until the new
+// ones arrive, instead of flashing an empty table every time.
 let standingsSeq = 0
+let standingsKey = ''
 watch(() => props.brackets, async (brackets) => {
   const seq = ++standingsSeq
-  standingsByBracket.value = {}
   const tableBrackets = brackets.filter(
     (b) => b.bracket_type === 'swiss' || b.bracket_type === 'round_robin',
   )
+  const key = tableBrackets.map((b) => b.id).sort().join(',')
+  if (key !== standingsKey) {
+    standingsKey = key
+    standingsByBracket.value = {}
+  }
   if (tableBrackets.length === 0) return
   const results = await Promise.all(
     tableBrackets.map(async (bracket) => {
@@ -519,7 +529,9 @@ watch(() => props.brackets, async (brackets) => {
         )
         return [bracket.id, data ?? []] as const
       } catch {
-        return [bracket.id, []] as const
+        // Keep what is on screen rather than emptying the table on a failed
+        // background refresh.
+        return [bracket.id, standingsByBracket.value[bracket.id] ?? []] as const
       }
     }),
   )

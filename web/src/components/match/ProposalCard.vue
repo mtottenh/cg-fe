@@ -162,18 +162,31 @@
               <v-icon>mdi-clock-outline</v-icon>
             </template>
             <template v-if="isProposer">Waiting for your opponent to respond...</template>
-            <!-- A teammate sent it: this viewer can neither answer their own
-                 team's proposal nor withdraw one they did not send (the API
-                 refuses both), so say so rather than offer the buttons. -->
-            <template v-else>
+            <!-- A teammate sent it: nobody answers their own team's proposal
+                 (the API refuses). The team's captain or a delegate can
+                 withdraw it; an ordinary roster member can only watch. -->
+            <template v-else-if="isOwnTeam">
               Your team sent this proposal — waiting for your opponent to respond.
-              Only the teammate who sent it can withdraw it.
             </template>
+            <template v-else>
+              Your opponent proposed these times — waiting for your team to answer.
+            </template>
+          </v-alert>
+          <v-alert
+            v-if="!canAct"
+            type="info"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+            data-testid="proposal-read-only"
+          >
+            Only your captain or a delegate can agree match times.
           </v-alert>
           <!-- Nothing tells the other team a proposal (or counter-proposal)
                exists: they only find it on their own dashboard or match page.
                Until the site sends notifications, the proposer has to. -->
           <v-alert
+            v-if="canWithdraw"
             type="warning"
             variant="tonal"
             density="compact"
@@ -185,7 +198,7 @@
             </template>
             Tell the other captain you've proposed a time — the site doesn't send notifications yet.
           </v-alert>
-          <div v-if="isProposer" class="d-flex ga-2 flex-wrap">
+          <div v-if="canWithdraw" class="d-flex ga-2 flex-wrap">
             <v-btn
               variant="outlined"
               color="error"
@@ -287,7 +300,7 @@ import {
   getTimeUntilExpiration,
 } from '@/stores/matchScheduling'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   proposal: ScheduleProposalResponse
   isProposer: boolean
   /**
@@ -295,10 +308,20 @@ const props = defineProps<{
    * the viewer). Their team cannot respond to it — the API answers 403.
    */
   isOwnTeam?: boolean
+  /**
+   * The viewer may schedule for their team: captain, owner or a delegate.
+   * Everyone else on the roster sees the proposal read-only — the API answers
+   * 403 to propose, accept, counter, reject and withdraw alike.
+   */
+  canAct?: boolean
   loading?: boolean
   /** Who sent it, for the header. */
   fromName?: string | null
-}>()
+}>(), {
+  // Boolean props default to false; this one must default to "may act".
+  canAct: true,
+  fromName: null,
+})
 
 const emit = defineEmits<{
   accept: [time: string]
@@ -308,7 +331,9 @@ const emit = defineEmits<{
 }>()
 
 /** Only the OTHER team may accept, counter or reject. */
-const canRespond = computed(() => !props.isProposer && !props.isOwnTeam)
+const canRespond = computed(() => props.canAct && !props.isProposer && !props.isOwnTeam)
+/** Any captain, owner or delegate of the proposing team, not only the sender. */
+const canWithdraw = computed(() => props.canAct && (props.isProposer || !!props.isOwnTeam))
 
 const headerLabel = computed(() => {
   if (props.isProposer) return 'Your proposal'

@@ -12,7 +12,7 @@ export interface MatchTimeContext {
   hasTime: boolean
   /** The tournament is `self_scheduled`. */
   selfScheduled: boolean
-  /** The viewer is shown the panel for proposing and accepting times. */
+  /** The viewer may propose and accept times (captain, owner or delegate). */
   canAgreeTime: boolean
 }
 
@@ -36,7 +36,7 @@ export function waitingForTimeNote(ctx: MatchTimeContext): string | null {
   if (ctx.status === 'ready') {
     if (ctx.canAgreeTime) return null
     return ctx.selfScheduled
-      ? 'The two teams agree a time between themselves. Check-in opens here shortly before it.'
+      ? 'The two captains agree a time between themselves. Check-in opens here shortly before it.'
       : 'An admin will set the time for this match. Check-in opens here shortly before it.'
   }
   if (ctx.status === 'scheduled' && !ctx.hasTime) {

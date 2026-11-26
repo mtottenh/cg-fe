@@ -6,8 +6,21 @@
     </v-card-title>
     <v-divider />
     <v-card-text>
+      <!-- A roster member who is not captain, owner or delegate: read-only. -->
+      <v-alert
+        v-if="!canAct && !activeProposal && match.status === 'ready'"
+        type="info"
+        variant="tonal"
+        data-testid="scheduling-read-only"
+      >
+        <p class="mb-0">
+          Only your captain or a delegate can agree match times. Ask them to
+          propose a time for this match.
+        </p>
+      </v-alert>
+
       <!-- No active proposal - can propose -->
-      <template v-if="!activeProposal && canPropose">
+      <template v-else-if="!activeProposal && canPropose">
         <p class="mb-4">Propose times for this match. Your opponent will be able to accept, reject, or counter-propose.</p>
 
         <!-- View mode toggle -->
@@ -79,6 +92,7 @@
           :proposal="activeProposal"
           :is-proposer="isProposer"
           :is-own-team="isOwnTeam"
+          :can-act="canAct"
           :from-name="proposerName"
           :loading="loading"
           @accept="(time) => $emit('accept', time)"
@@ -177,6 +191,8 @@ const props = withDefaults(
     isProposer: boolean
     /** The active proposal came from the viewer's own team. */
     isOwnTeam?: boolean
+    /** The viewer may schedule for their team (captain, owner or delegate). */
+    canAct?: boolean
     canPropose: boolean
     loading?: boolean
     suggestedTimes?: string[]
@@ -186,6 +202,7 @@ const props = withDefaults(
     suggestedTimes: () => [],
     opponentPlayerId: null,
     isOwnTeam: false,
+    canAct: true,
   }
 )
 

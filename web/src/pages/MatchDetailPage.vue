@@ -129,6 +129,7 @@
         :active-proposal="activeProposal"
         :is-proposer="isProposer"
         :is-own-team="isOwnTeamProposal"
+        :can-act="canSchedule"
         :can-propose="canPropose"
         :loading="schedulingLoading"
         :suggested-times="suggestedTimes"
@@ -167,7 +168,23 @@
             <template v-else>
               Match start time: {{ formatDateTime(match.scheduled_at) }}.
             </template>
-            Teams that fail to check in can be forfeited as a no-show.
+            <template v-if="checkInDeadlineLabel">
+              <strong data-testid="check-in-deadline">Check in by {{ checkInDeadlineLabel }}</strong>:
+              a team that has not checked in by then forfeits as a no-show.
+            </template>
+            <template v-else>
+              Teams that fail to check in can be forfeited as a no-show.
+            </template>
+          </v-alert>
+          <v-alert
+            v-else-if="checkInDeadlineLabel"
+            type="info"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+          >
+            <strong data-testid="check-in-deadline">Check in by {{ checkInDeadlineLabel }}</strong>:
+            a team that has not checked in by then forfeits as a no-show.
           </v-alert>
           <!-- Per-participant check-in status -->
           <div class="d-flex align-center mb-2">
@@ -489,7 +506,7 @@ const {
   match, tournament, activeProposal, proposalHistory,
   currentResult, resultHistory, matchFormat, statusHistory,
   loading, schedulingLoading, error: combinedError, clearError,
-  showSchedulingPanel, showCheckInPanel, isProposer, isOwnTeamProposal, canPropose,
+  showSchedulingPanel, showCheckInPanel, isProposer, isOwnTeamProposal, canSchedule, canPropose,
   showResultPanel, showConfirmationPanel, canSubmitResult,
   showWaitingForOpponent, autoConfirmCountdown, checkInCountdown, vetoPickedMaps,
   selectableMaps,
@@ -647,7 +664,7 @@ const timeContext = computed<MatchTimeContext>(() => ({
   status: match.value?.status ?? '',
   hasTime: !!match.value?.scheduled_at,
   selfScheduled: tournament.value?.scheduling_mode === 'self_scheduled',
-  canAgreeTime: showSchedulingPanel.value,
+  canAgreeTime: showSchedulingPanel.value && canSchedule.value,
 }))
 
 /**
@@ -712,11 +729,11 @@ const nowNote = computed(() => {
 })
 
 /**
- * When check-in closes, if the API says. `check_in_deadline` is not on every
- * deployed backend's match response, so it is read as optional.
+ * When the open check-in window closes. Absent until the window opens, and on
+ * a backend older than the field.
  */
 const checkInDeadlineLabel = computed(() => {
-  const deadline = (match.value as { check_in_deadline?: string | null } | null)?.check_in_deadline
+  const deadline = match.value?.check_in_deadline
   return deadline ? formatDateTime(deadline) : null
 })
 

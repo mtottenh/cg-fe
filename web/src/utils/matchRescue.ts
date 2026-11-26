@@ -159,8 +159,7 @@ export interface StuckHint {
 
 /**
  * Whether a match row looks stuck, from the list data alone (no per-row
- * diagnostics call). `check_in_deadline` is optional: a backend that does not
- * send it simply never produces the expired-window hint.
+ * diagnostics call). `check_in_deadline` is only set once the window opens.
  */
 export function stuckHint(
   match: { status: string; scheduled_at?: string | null; check_in_deadline?: string | null },

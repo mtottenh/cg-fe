@@ -31,12 +31,13 @@ afterEach(() => {
   wrapper = null
 })
 
-function mountCard(props: { times: string[]; isProposer?: boolean; isOwnTeam?: boolean }) {
+function mountCard(props: { times: string[]; isProposer?: boolean; isOwnTeam?: boolean; canAct?: boolean }) {
   wrapper = mount(ProposalCard, {
     props: {
       proposal: makeProposal(props.times),
       isProposer: props.isProposer ?? false,
       isOwnTeam: props.isOwnTeam ?? false,
+      ...(props.canAct === undefined ? {} : { canAct: props.canAct }),
       fromName: 'Team Alpha',
     },
     global: { plugins: [vuetify] },
@@ -71,16 +72,35 @@ describe('ProposalCard — who may respond', () => {
     expect(w.text()).toContain('Reject')
   })
 
-  it("shows a proposer's teammate a waiting state, with no response or withdraw buttons", () => {
-    // The API refuses a team answering its own proposal, and lets only the
-    // sending user withdraw it.
+  it("lets a captain or delegate withdraw a teammate's proposal, but not answer it", () => {
+    // The API refuses a team answering its own proposal; any captain, owner
+    // or delegate of that team may withdraw it, not only the sender.
     const w = mountCard({ times: [future(24)], isOwnTeam: true })
     expect(w.text()).toContain("Your team's proposal")
     expect(w.find('[data-testid="proposal-waiting"]').exists()).toBe(true)
     expect(w.text()).not.toContain('Accept')
     expect(w.text()).not.toContain('Counter-Propose')
     expect(w.text()).not.toContain('Reject')
+    expect(w.text()).toContain('Withdraw Proposal')
+  })
+
+  it("shows a plain roster member their own team's proposal read-only", () => {
+    const w = mountCard({ times: [future(24)], isOwnTeam: true, canAct: false })
+    expect(w.find('[data-testid="proposal-read-only"]').text())
+      .toContain('Only your captain or a delegate can agree match times')
     expect(w.text()).not.toContain('Withdraw Proposal')
+    expect(w.text()).not.toContain('Accept')
+    expect(w.find('[data-testid="proposal-not-notified"]').exists()).toBe(false)
+  })
+
+  it("shows a plain roster member the opponent's proposal read-only", () => {
+    const w = mountCard({ times: [future(24)], canAct: false })
+    expect(w.find('[data-testid="proposal-read-only"]').exists()).toBe(true)
+    expect(w.text()).toContain('waiting for your team to answer')
+    expect(w.text()).not.toContain('Accept')
+    expect(w.text()).not.toContain('Counter-Propose')
+    expect(w.text()).not.toContain('Reject')
+    expect(w.findAll('input[type="radio"]')).toHaveLength(0)
   })
 
   it('lets the proposer themselves withdraw', () => {

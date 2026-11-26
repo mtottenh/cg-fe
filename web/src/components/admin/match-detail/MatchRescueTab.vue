@@ -329,7 +329,7 @@ function tool(name: RescueTool): ToolState {
 /** The deadline in force: diagnostics first, the match row when it carries one. */
 const currentDeadline = computed<string | null>(() => {
   if (diagnostics.value) return diagnostics.value.check_in_deadline ?? null
-  return (props.match as { check_in_deadline?: string | null } | null)?.check_in_deadline ?? null
+  return props.match?.check_in_deadline ?? null
 })
 const currentDeadlineIsFuture = computed(() => !!currentDeadline.value && !isPast(currentDeadline.value))
 

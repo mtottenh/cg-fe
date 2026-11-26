@@ -127,8 +127,16 @@ export function useMatchDetail() {
     return activeProposal.value.proposed_by_registration_id === userRegistrationId.value
   })
 
+  /**
+   * Whether the viewer may schedule for their team: propose, accept, counter,
+   * reject or withdraw. The backend holds scheduling to the check-in rule
+   * (captain, owner or an active delegate) and answers 403 to anyone else on
+   * the roster, so the server-computed check-in flag is the answer here too.
+   */
+  const canSchedule = computed(() => !!userRegistrationId.value && canCheckIn.value)
+
   const canPropose = computed(() => {
-    if (!match.value || !userRegistrationId.value) return false
+    if (!match.value || !canSchedule.value) return false
     return match.value.status === 'ready' && !activeProposal.value
   })
 
@@ -706,6 +714,7 @@ export function useMatchDetail() {
     showCheckInPanel,
     isProposer,
     isOwnTeamProposal,
+    canSchedule,
     canPropose,
     showResultPanel,
     userRegistrationId,

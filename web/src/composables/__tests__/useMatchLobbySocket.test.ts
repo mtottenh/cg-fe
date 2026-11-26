@@ -4,6 +4,8 @@ import { createApp, defineComponent, h } from 'vue'
 vi.mock('@/api/client', () => ({
   getAuthToken: () => 'test-token',
 }))
+const refreshAccessToken = vi.hoisted(() => vi.fn())
+vi.mock('@/api/middleware', () => ({ refreshAccessToken }))
 vi.mock('@/api/baseUrl', () => ({
   wsBaseUrl: () => 'ws://test.local',
 }))
@@ -70,6 +72,7 @@ function mountSocket() {
 describe('useMatchLobbySocket reconnect behavior', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    refreshAccessToken.mockReset()
     FakeWebSocket.instances = []
     vi.stubGlobal('WebSocket', FakeWebSocket)
   })
@@ -125,7 +128,7 @@ describe('useMatchLobbySocket reconnect behavior', () => {
     app.unmount()
   })
 
-  it('resets the retry budget on successful open', () => {
+  it('resets the retry budget once the socket authenticates', () => {
     const { socket, app } = mountSocket()
     socket.connect()
 
@@ -136,8 +139,16 @@ describe('useMatchLobbySocket reconnect behavior', () => {
     }
     expect(FakeWebSocket.instances.length).toBe(10)
 
-    // 10th connection succeeds → budget resets
-    FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!.open()
+    // 10th connection opens AND authenticates → budget resets
+    const live = FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!
+    live.open()
+    live.message({
+      type: 'auth_success',
+      role: 'participant',
+      registration_id: null,
+      team_name: null,
+      lobby_state: { session: null, participants: [], spectator_count: 0 },
+    })
     expect(socket.connected.value).toBe(true)
 
     // A later drop starts a fresh backoff sequence (2s), not fallback
@@ -145,6 +156,70 @@ describe('useMatchLobbySocket reconnect behavior', () => {
     vi.advanceTimersByTime(2_000)
     expect(FakeWebSocket.instances.length).toBe(11)
     expect(socket.usingFallback.value).toBe(false)
+
+    app.unmount()
+  })
+
+  it('refreshes the access token once and reconnects when the socket auth is refused', async () => {
+    refreshAccessToken.mockResolvedValue(true)
+    const { socket, app } = mountSocket()
+    socket.connect()
+    const first = FakeWebSocket.instances[0]!
+    first.open()
+
+    // Expired token: the server answers auth_error and closes.
+    first.message({ type: 'auth_error', error: 'token expired' })
+    first.fail()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1)
+    // Exactly one new socket — from the recovery path, not the 2s retry too.
+    expect(FakeWebSocket.instances).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(FakeWebSocket.instances).toHaveLength(2)
+    expect(socket.usingFallback.value).toBe(false)
+
+    app.unmount()
+  })
+
+  it('falls back to polling instead of looping when the refresh does not help', async () => {
+    refreshAccessToken.mockResolvedValue(false)
+    const { socket, app } = mountSocket()
+    const fallback = vi.fn()
+    socket.onFallback(fallback)
+    socket.connect()
+    const first = FakeWebSocket.instances[0]!
+    first.open()
+
+    first.message({ type: 'auth_error', error: 'token expired' })
+    first.fail()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(socket.usingFallback.value).toBe(true)
+    await vi.advanceTimersByTimeAsync(60_000)
+    // No reconnect storm: still only the one socket.
+    expect(FakeWebSocket.instances).toHaveLength(1)
+    expect(fallback).toHaveBeenCalled()
+
+    app.unmount()
+  })
+
+  it('gives up after a second refusal straight after a successful refresh', async () => {
+    refreshAccessToken.mockResolvedValue(true)
+    const { socket, app } = mountSocket()
+    socket.onFallback(vi.fn())
+    socket.connect()
+    FakeWebSocket.instances[0]!.open()
+    FakeWebSocket.instances[0]!.message({ type: 'auth_error', error: 'token expired' })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const second = FakeWebSocket.instances[1]!
+    second.open()
+    second.message({ type: 'auth_error', error: 'forbidden' })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1)
+    expect(socket.usingFallback.value).toBe(true)
 
     app.unmount()
   })

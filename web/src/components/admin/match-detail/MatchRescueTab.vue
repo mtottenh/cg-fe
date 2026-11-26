@@ -303,6 +303,8 @@ const emit = defineEmits<{
   updated: []
   /** Take the admin to the schedule form. */
   'set-time': []
+  /** Take the admin to the Results tab to enter or correct the score. */
+  'set-result': []
 }>()
 
 const rescueStore = useMatchRescueStore()
@@ -745,6 +747,7 @@ function runSuggested(action: string) {
     case 'reset_veto': confirmResetVeto(); break
     case 'reset': confirmReset(); break
     case 'retry_completion': confirmRetryCompletion(); break
+    case 'set_result': emit('set-result'); break
     case 'assign_server':
     case 'reload_server':
     case 'clear_server':

@@ -18,6 +18,8 @@ export type SuggestedAction =
   | 'clear_server'
   | 'roster_check'
   | 'retry_completion'
+  /** Enter or correct the score on the Results tab (e.g. a dropped server result). */
+  | 'set_result'
 
 /** Every tool on the Rescue tab that depends on the match status. */
 export type RescueTool =
@@ -47,6 +49,7 @@ const SUGGESTED_ACTION_COPY: Record<SuggestedAction, ActionCopy> = {
   clear_server: { label: 'Clear match from server', icon: 'mdi-server-remove', color: 'warning' },
   roster_check: { label: 'Check rosters', icon: 'mdi-account-search', color: 'primary' },
   retry_completion: { label: 'Retry completion', icon: 'mdi-refresh', color: 'primary' },
+  set_result: { label: 'Enter the result', icon: 'mdi-scoreboard-outline', color: 'primary' },
 }
 
 /**

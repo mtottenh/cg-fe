@@ -189,6 +189,7 @@ describe('MatchRescueTab problems', () => {
     { code: 'reservation_live_match_terminal', suggested_action: 'clear_server', label: 'Clear match from server' },
     { code: 'roster_invalid', suggested_action: 'roster_check', label: 'Check rosters' },
     { code: 'saga_failed', suggested_action: 'retry_completion', label: 'Retry completion' },
+    { code: 'server_result_dropped', suggested_action: 'set_result', label: 'Enter the result' },
   ]
 
   it('gives each problem its message and exactly one button named for its fix', async () => {
@@ -222,6 +223,15 @@ describe('MatchRescueTab problems', () => {
     button('rescue-fix-scheduled_without_time')!.click()
     await flushPromises()
     expect(w.emitted('set-time')).toHaveLength(1)
+  })
+
+  it('"Enter the result" on a dropped server result sends the admin to the Results tab', async () => {
+    const w = await mountTab('in_progress', {
+      diagnostics: { problems: [{ code: 'server_result_dropped', message: 'The game server reported 2-1 but it could not be recorded', suggested_action: 'set_result' }] },
+    })
+    button('rescue-fix-server_result_dropped')!.click()
+    await flushPromises()
+    expect(w.emitted('set-result')).toHaveLength(1)
   })
 
   it('"Restart veto" on a problem posts the veto reset with the typed reason, then re-reads diagnostics', async () => {

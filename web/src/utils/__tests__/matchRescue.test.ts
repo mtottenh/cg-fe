@@ -50,7 +50,7 @@ describe('suggestedActionCopy', () => {
   it('has a button for every action the diagnostics endpoint can suggest', () => {
     const actions = [
       'set_time', 'extend_checkin', 'reset_veto', 'reset', 'assign_server',
-      'reload_server', 'clear_server', 'roster_check', 'retry_completion',
+      'reload_server', 'clear_server', 'roster_check', 'retry_completion', 'set_result',
     ]
     for (const action of actions) {
       const copy = suggestedActionCopy(action)

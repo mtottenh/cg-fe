@@ -67,6 +67,7 @@
               :active="open && activeTab === 'rescue'"
               @updated="emit('updated')"
               @set-time="activeTab = 'actions'"
+              @set-result="activeTab = 'results'"
             />
           </v-tabs-window-item>
         </v-tabs-window>

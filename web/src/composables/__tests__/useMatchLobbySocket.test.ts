@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createApp, defineComponent, h } from 'vue'
 
+const authToken = vi.hoisted(() => ({ value: 'test-token' as string | null }))
 vi.mock('@/api/client', () => ({
-  getAuthToken: () => 'test-token',
+  getAuthToken: () => authToken.value,
 }))
 const refreshAccessToken = vi.hoisted(() => vi.fn())
 vi.mock('@/api/middleware', () => ({ refreshAccessToken }))
@@ -72,6 +73,7 @@ function mountSocket() {
 describe('useMatchLobbySocket reconnect behavior', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    authToken.value = 'test-token'
     refreshAccessToken.mockReset()
     FakeWebSocket.instances = []
     vi.stubGlobal('WebSocket', FakeWebSocket)
@@ -100,6 +102,28 @@ describe('useMatchLobbySocket reconnect behavior', () => {
     expect(FakeWebSocket.instances).toHaveLength(2)
     vi.advanceTimersByTime(2_000)
     expect(FakeWebSocket.instances).toHaveLength(3)
+
+    app.unmount()
+  })
+
+  it('polls over REST for a logged-out viewer, who cannot open the socket', () => {
+    authToken.value = null
+    const { socket, app } = mountSocket()
+    const fallback = vi.fn()
+    socket.onFallback(fallback)
+    socket.connect()
+
+    expect(FakeWebSocket.instances).toHaveLength(0)
+    expect(socket.usingFallback.value).toBe(true)
+    vi.advanceTimersByTime(5_000)
+    expect(fallback).toHaveBeenCalledTimes(1)
+
+    // Logging in and reconnecting swaps the poll for the socket.
+    authToken.value = 'test-token'
+    socket.connect()
+    expect(FakeWebSocket.instances).toHaveLength(1)
+    vi.advanceTimersByTime(10_000)
+    expect(fallback).toHaveBeenCalledTimes(1)
 
     app.unmount()
   })

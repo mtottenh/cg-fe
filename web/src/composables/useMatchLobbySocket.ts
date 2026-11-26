@@ -302,7 +302,14 @@ export function useMatchLobbySocket(matchId: () => string | null) {
     if (!id) return
 
     const token = getAuthToken()
-    if (!token) return
+    if (!token) {
+      // The socket needs a token, so a logged-out viewer cannot have one.
+      // Watching a veto is public (`GET /v1/matches/{id}/veto` takes no
+      // auth), so follow it over REST instead of showing a frozen page.
+      cleanup()
+      startFallbackPolling()
+      return
+    }
 
     cleanup()
 

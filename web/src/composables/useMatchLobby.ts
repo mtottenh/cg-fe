@@ -143,6 +143,12 @@ export function useMatchLobby(
 
     server_assignment_update(msg: ServerAssignmentUpdateMessage) {
       matchServerStore.applyAssignmentUpdate(msg)
+      // The socket only sends connect details to captains/owners/delegates:
+      // every other roster member is a "spectator" on this channel and gets
+      // the bare status, so their server card flipped to Ready with nothing
+      // in it. The REST endpoint gates on roster membership, so re-read it.
+      const id = matchId.value
+      if (id) matchServerStore.fetchMatchServer(id).catch(() => {})
     },
     lineup_update(_msg: LineupUpdateMessage) {
       // A substitution was applied server-side — refresh the panel data.
@@ -328,6 +334,16 @@ export function useMatchLobby(
     startCountdown()
   }
 
+  /**
+   * Open the lobby socket if it is not already up. Unlike `initialize` this
+   * never clears veto state or drops a healthy connection.
+   */
+  function ensureConnected() {
+    if (!matchId.value) return
+    if (socket.connected.value || socket.usingFallback.value) return
+    socket.connect()
+  }
+
   // Watch for session status changes. A cancelled session is as finished as a
   // completed one — keeping the countdown running and the socket open left a
   // dead session ticking down.
@@ -399,6 +415,7 @@ export function useMatchLobby(
     // Lifecycle
     initialize,
     resync,
+    ensureConnected,
     connect: socket.connect,
     disconnect: socket.disconnect,
   }

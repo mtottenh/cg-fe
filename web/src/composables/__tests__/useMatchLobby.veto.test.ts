@@ -30,6 +30,7 @@ vi.mock('@/composables/useMatchLobbySocket', async () => {
 })
 
 import { useMatchLobby } from '@/composables/useMatchLobby'
+import { useMatchServerStore } from '@/stores/matchServer'
 import {
   useVetoStore,
   type VetoSessionResponse,
@@ -175,6 +176,23 @@ describe('useMatchLobby veto phase under live updates', () => {
     })
 
     expect(getVetoSession).toHaveBeenCalledWith('match-1')
+  })
+
+  it('re-reads the server over REST on an assignment push (the socket strips connect details for non-captains)', () => {
+    vi.spyOn(useVetoStore(), 'getVetoSession').mockResolvedValue(null as never)
+    const serverStore = useMatchServerStore()
+    const fetchMatchServer = vi.spyOn(serverStore, 'fetchMatchServer').mockResolvedValue(null)
+    const mounted = mountLobby()
+    unmount = mounted.unmount
+
+    socketState.handlers.server_assignment_update!({
+      type: 'server_assignment_update',
+      status: 'ready',
+      connect: null,
+    })
+
+    expect(serverStore.reservation?.status).toBe('ready')
+    expect(fetchMatchServer).toHaveBeenCalledWith('match-1')
   })
 
   it('rejoins the socket once when the match enters pick/ban still awaiting the flip', async () => {

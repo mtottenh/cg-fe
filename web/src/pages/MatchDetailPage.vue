@@ -491,6 +491,7 @@ const {
   selectableMaps,
   opponentPlayerId, suggestedTimes, userRegistrationId, myRegistration,
   fetchAll,
+  refreshMatch,
   schedulingStore,
   resultsStore,
   evidenceStore,
@@ -539,12 +540,20 @@ watch(
 // veto panel never mounts (it only renders for checking_in/pick_ban), so
 // nothing would open the lobby socket — connect it here whenever a
 // reservation is active.
+//
+// `ensureConnected`, not `initialize`: this fires on EVERY reservation status
+// change, and `initialize` clears the veto store and reconnects — so each
+// server update used to blank the veto panel and open a window in which
+// pushed frames were lost.
 watch(
   () => matchServerStore.reservation?.status,
   (status, prev) => {
-    if (status !== prev && matchServerStore.isActive()) {
-      void matchLobby.initialize()
-    }
+    if (status === prev) return
+    if (matchServerStore.isActive()) matchLobby.ensureConnected()
+    // A reservation that moved under the page (server ready, match live,
+    // series over) usually means the match status moved too, and no socket
+    // frame says so.
+    if (prev !== undefined) void refreshMatch()
   },
 )
 const matchLobby = useMatchLobby(matchIdRef, userRegistrationId)

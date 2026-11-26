@@ -713,6 +713,8 @@ export function useMatchDetail() {
 
     // Actions
     fetchAll,
+    /** Re-read the match and its status-dependent data (the poll body). */
+    refreshMatch: pollMatch,
     fetchResultData,
 
     // Store access

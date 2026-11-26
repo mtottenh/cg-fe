@@ -175,7 +175,7 @@
             <h3 v-if="groupSections.length > 1" class="text-subtitle-1 font-weight-bold mb-3">
               {{ section.bracket.name }}
               <span class="text-caption text-medium-emphasis font-weight-regular ml-2">
-                {{ section.played }}/{{ section.total }} played
+                {{ section.progress }}
               </span>
             </h3>
             <div class="group-layout">
@@ -273,6 +273,7 @@
 </template>
 
 <script setup lang="ts">
+import { bracketProgress, formatBracketProgress } from '@/utils/bracketProgress'
 import { computed, ref, watch } from 'vue'
 import type { TournamentBracketResponse, TournamentMatchResponse } from '@/stores/tournaments'
 import type { components } from '@/api/types'
@@ -469,8 +470,7 @@ const groupSections = computed(() => {
         standings: [...(standingsByBracket.value[bracket.id] ?? [])].sort(
           (a, b) => a.position - b.position,
         ),
-        played: all.filter((m) => m.status === 'completed').length,
-        total: all.length,
+        progress: formatBracketProgress(bracketProgress(all)),
       }
     })
 })

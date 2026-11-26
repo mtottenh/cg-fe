@@ -64,6 +64,7 @@ function mountTab(status: string, scheduledAt: string | null = null) {
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     props: { match: makeMatch(status, scheduledAt) as any, tournamentId: 'tour-1' },
+    attachTo: document.body,
   })
   return wrapper
 }
@@ -132,5 +133,66 @@ describe('MatchAdminActionsTab schedule card', () => {
     expect(options.params.path).toEqual({ tournament_id: 'tour-1', match_id: MATCH_ID })
     expect(options.body.scheduled_at).toBe(new Date(local).toISOString())
     expect(w.emitted('updated')).toHaveLength(1)
+  })
+})
+
+const overlayButton = (label: string) =>
+  Array.from(document.querySelectorAll<HTMLElement>('.v-overlay--active .v-btn'))
+    .find((b) => b.textContent!.trim() === label)
+
+function okResponse(extra: Record<string, unknown> = {}) {
+  return {
+    data: { data: { ...makeMatch('scheduled', '2032-05-01T18:00:00Z'), ...extra } },
+    error: undefined,
+    response: { ok: true, status: 200 },
+  }
+}
+
+type ScheduleBody = { scheduled_at: string; allow_past?: boolean }
+const sentBody = () => (mockPost.mock.calls[0] as [string, { body: ScheduleBody }])[1].body
+
+describe('MatchAdminActionsTab schedule card: past times and clashes', () => {
+  it('does not ask for a past time when the time is in the future', async () => {
+    mockPost.mockResolvedValue(okResponse())
+    const w = mountTab('ready')
+    await input(w).setValue('2032-05-01T18:00')
+    await submit(w).trigger('click')
+    await flushPromises()
+    expect(mockPost).toHaveBeenCalledTimes(1)
+    expect(sentBody().allow_past).toBeUndefined()
+  })
+
+  it('asks before scheduling in the past, then sends allow_past', async () => {
+    mockPost.mockResolvedValue(okResponse())
+    const w = mountTab('ready')
+    const past = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    await input(w).setValue(formatDateTimeForInput(past.toISOString()))
+    await submit(w).trigger('click')
+    await flushPromises()
+
+    // Nothing is sent until the admin confirms.
+    expect(mockPost).not.toHaveBeenCalled()
+    const confirm = overlayButton('Schedule in the past')
+    expect(confirm).toBeDefined()
+    expect(document.body.textContent).toContain('Check-in opens immediately')
+    confirm!.click()
+    await flushPromises()
+
+    expect(mockPost).toHaveBeenCalledTimes(1)
+    expect(sentBody().allow_past).toBe(true)
+  })
+
+  it('shows the clash warning the backend returns with the applied time', async () => {
+    mockPost.mockResolvedValue(okResponse({
+      schedule_warning: 'One of the teams already plays Team Alpha vs Team Charlie at 18:30 UTC',
+    }))
+    const w = mountTab('ready')
+    await input(w).setValue('2032-05-01T18:00')
+    await submit(w).trigger('click')
+    await flushPromises()
+    const warning = w.find('[data-testid="schedule-warning"]')
+    expect(warning.exists()).toBe(true)
+    expect(warning.text()).toContain('The time was set')
+    expect(warning.text()).toContain('Team Alpha vs Team Charlie')
   })
 })

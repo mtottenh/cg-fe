@@ -245,12 +245,19 @@ export function createMatchesSlice() {
     tournamentId: string,
     matchId: string,
     scheduledAt: string,
-    notes?: string
+    notes?: string,
+    options: { allowPast?: boolean } = {},
   ): Promise<TournamentMatchResponse> {
     return withActionState(adminScheduleState, async () => {
       const result = await unwrapApi(api.POST('/v1/admin/tournaments/{tournament_id}/matches/{match_id}/schedule', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
-        body: { scheduled_at: scheduledAt, notes: notes ?? null },
+        body: {
+          scheduled_at: scheduledAt,
+          notes: notes ?? null,
+          // The backend refuses a time more than a few minutes gone unless
+          // asked, because check-in then opens at once.
+          ...(options.allowPast ? { allow_past: true } : {}),
+        },
       }))
       replaceById(matches.value, result.data)
       return result.data

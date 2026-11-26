@@ -522,7 +522,7 @@ async function runBulkStartMatches(eligible: typeof matches.value) {
       // A match is scheduled by giving it a time, and a forced start is
       // happening now. A match that already has a time keeps it.
       if (match.status === 'pending' || match.status === 'ready') {
-        await tournamentsStore.adminScheduleMatch(tournamentId, match.id, new Date().toISOString(), reason)
+        await tournamentsStore.adminScheduleMatch(tournamentId, match.id, new Date().toISOString(), reason, { allowPast: true })
       }
       await tournamentsStore.adminMatchTransition(tournamentId, match.id, 'in_progress', reason)
     }

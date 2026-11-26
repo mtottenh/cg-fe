@@ -47,6 +47,16 @@
               />
             </v-col>
           </v-row>
+          <v-alert
+            v-if="scheduleWarning"
+            type="warning"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+            data-testid="schedule-warning"
+          >
+            The time was set, but it clashes with another match: {{ scheduleWarning }}
+          </v-alert>
           <v-btn
             color="primary"
             :loading="tournamentsStore.adminScheduleState.loading"
@@ -247,6 +257,8 @@ function participantName(registrationId: string | null | undefined): string {
 
 const scheduleDate = ref('')
 const scheduleNotes = ref('')
+/** Clash reported by the backend for the time just set (the time was applied). */
+const scheduleWarning = ref<string | null>(null)
 
 const canSchedule = computed(() => !!props.match && canAdminSchedule(props.match.status))
 
@@ -298,6 +310,7 @@ const participantOptions = computed(() => {
 // Reset forms + pre-fill progression winner when the host modal switches matches.
 watch(() => props.match?.id, () => {
   scheduleNotes.value = ''
+  scheduleWarning.value = null
   forfeitRegistrationId.value = ''
   forfeitType.value = 'no_show'
   forfeitReason.value = ''
@@ -310,19 +323,43 @@ function afterSuccess() {
   emit('updated')
 }
 
-async function handleSchedule() {
-  if (!props.match || !scheduleDate.value) return
-  const matchId = props.match.id
-  const iso = new Date(scheduleDate.value).toISOString()
-  const notes = scheduleNotes.value || undefined
-  await feedback.run(
-    () => tournamentsStore.adminScheduleMatch(props.tournamentId, matchId, iso, notes),
+/**
+ * How far behind the clock a time may be and still count as "now". Mirrors
+ * the backend's tolerance; anything older must be confirmed (`allow_past`),
+ * because check-in then opens at once.
+ */
+const PAST_TOLERANCE_MS = 5 * 60 * 1000
+
+async function submitSchedule(matchId: string, iso: string, notes: string | undefined, allowPast: boolean) {
+  scheduleWarning.value = null
+  const result = await feedback.run(
+    () => tournamentsStore.adminScheduleMatch(props.tournamentId, matchId, iso, notes, { allowPast }),
     {
       success: 'Match scheduled',
       errorSource: tournamentsStore.adminScheduleState,
       after: () => { scheduleNotes.value = ''; afterSuccess() },
     },
   )
+  scheduleWarning.value = result?.schedule_warning ?? null
+}
+
+async function handleSchedule() {
+  if (!props.match || !scheduleDate.value) return
+  const matchId = props.match.id
+  const when = new Date(scheduleDate.value)
+  const iso = when.toISOString()
+  const notes = scheduleNotes.value || undefined
+  if (when.getTime() < Date.now() - PAST_TOLERANCE_MS) {
+    confirmDialog.confirm({
+      title: 'Schedule in the past?',
+      message: `${formatDateTime(iso)} has already passed. Check-in opens immediately and both teams get the normal check-in window from now; a team that does not check in is forfeited.`,
+      action: 'Schedule in the past',
+      color: 'warning',
+      handler: () => submitSchedule(matchId, iso, notes, true),
+    })
+    return
+  }
+  await submitSchedule(matchId, iso, notes, false)
 }
 
 function handleForfeit() {

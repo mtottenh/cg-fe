@@ -304,13 +304,29 @@
 # Game build only: LinuxGSM and plugin updates stay admin-initiated from the
 # portal (a plugin update takes the newest of everything and restarts CS2).
 # Same cron name as before, so this rewrites the old wrapper's entry.
+#
+# The update restarts CS2, so the cron goes through a guard that skips the
+# night when anyone is connected (a late series must not be restarted).
+# gameserver_update_cron_enabled: false removes the cron altogether.
+- name: Nightly update guard (skips the update while players are connected)
+  ansible.builtin.copy:
+    src: portal-gs-update-if-idle
+    dest: /usr/local/sbin/portal-gs-update-if-idle
+    owner: root
+    group: root
+    mode: "0755"
+  when: gameserver_lgsm_script | default('') | length > 0
+
 - name: Nightly CS2 update + gameinfo.gi repair cron
   ansible.builtin.cron:
     name: cs2-update-and-patch
     user: root
     hour: "{{ gameserver_update_cron_hour }}"
     minute: "{{ gameserver_update_cron_minute }}"
-    job: /usr/sbin/portal-gs-update game > /dev/null 2>&1
+    job: >-
+      /usr/local/sbin/portal-gs-update-if-idle {{ gameserver_game_port }}
+      /usr/sbin/portal-gs-update game > /dev/null 2>&1
+    state: "{{ 'present' if gameserver_update_cron_enabled | bool else 'absent' }}"
   when: gameserver_lgsm_script | default('') | length > 0
 
 # --- Service + health gates ---------------------------------------------------

@@ -68,5 +68,8 @@ gameserver_lgsm_console_log: ""     # e.g. /home/cs2server/log/console/cs2server
 # them missing (restarts nothing)? false = report only; an admin clicks Repair.
 gameserver_lgsm_auto_repair: true
 # Nightly game-build update (LinuxGSM and plugin updates are admin-initiated).
+# It restarts CS2, so it only runs when nobody is connected; set
+# gameserver_update_cron_enabled to false to switch it off entirely.
+gameserver_update_cron_enabled: true
 gameserver_update_cron_hour: 1
 gameserver_update_cron_minute: 0

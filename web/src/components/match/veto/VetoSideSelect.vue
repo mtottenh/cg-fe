@@ -185,6 +185,8 @@ async function selectSide(actionNumber: number, side: string) {
     snackbar.show(`Selected ${side.toUpperCase()} side`, 'success')
   } catch {
     snackbar.show(vetoStore.sideSelectState.error || 'Failed to select side', 'error')
+    // A refused choice usually means the board moved on; show the real one.
+    void vetoStore.getVetoSession(props.matchId).catch(() => null)
   }
 }
 </script>

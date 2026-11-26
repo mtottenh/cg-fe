@@ -1497,6 +1497,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/check-in-window": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open, extend or reopen a match's check-in window (admin). */
+        post: operations["admin_set_check_in_window"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/completion/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-run the completion saga for a decided match (admin). */
+        post: operations["admin_retry_match_completion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Everything an admin needs to see why a match is stuck (admin). */
+        get: operations["get_match_diagnostics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset a match to `ready`, clearing its time, check-ins, veto, result and server (admin). */
+        post: operations["admin_reset_match"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/schedule": {
         parameters: {
             query?: never;
@@ -1525,6 +1593,23 @@ export interface paths {
         put?: never;
         /** Admin force match status transition. */
         post: operations["admin_match_transition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/veto/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Discard the veto and start a fresh one (admin). */
+        post: operations["admin_reset_match_veto"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3442,6 +3527,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/matches/{match_id}/server/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rebuild the match config from the current rosters and load it again (admin). */
+        post: operations["reload_match_server"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/matches/{match_id}/server/restore": {
         parameters: {
             query?: never;
@@ -3453,6 +3555,23 @@ export interface paths {
         put?: never;
         /** Restore a round backup onto the match's server (admin, Phase 4). */
         post: operations["restore_match_server"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/matches/{match_id}/server/roster-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Check each team's roster against what the game server needs (admin). */
+        get: operations["get_match_server_roster_check"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5838,6 +5957,21 @@ export interface components {
             /** @description Reason for the forfeit. */
             reason: string;
         };
+        /** @description Request to open, extend or reopen a match's check-in window. */
+        AdminCheckInWindowRequest: {
+            /**
+             * Format: date-time
+             * @description New check-in deadline. Must be in the future.
+             */
+            deadline: string;
+            /** @description Why the admin is changing the window. */
+            reason: string;
+        };
+        /** @description Request body for admin match rescue actions that only need a reason. */
+        AdminMatchReasonRequest: {
+            /** @description Why the admin is doing this. */
+            reason: string;
+        };
         /** @description Request for admin to force a match status transition. */
         AdminMatchTransitionRequest: {
             /** @description Reason for the admin override. */
@@ -6908,6 +7042,22 @@ export interface components {
              * @description Stage start time.
              */
             starts_at?: string | null;
+        };
+        /** @description Result of clearing a match from its game server. */
+        ClearMatchServerResponse: {
+            /** @description Whether a live reservation was released. */
+            released_reservation: boolean;
+            /** @description Whether the loaded match was unloaded from the server. */
+            server_cleared: boolean;
+            /** @description Server the match was (or would have been) cleared from. */
+            server_name?: string | null;
+        };
+        /** @description Outcome of re-running a match's completion saga. */
+        CompletionRetryResponse: {
+            /** @description What happened, in words. */
+            outcome: string;
+            /** @description Whether the saga actually ran. */
+            ran: boolean;
         };
         /** @description Request to create a veto delegation. */
         CreateVetoDelegateRequest: {
@@ -8551,6 +8701,13 @@ export interface components {
                  * @description 1-based place in the server queue, when `pending` (§6.6).
                  */
                 queue_position?: number | null;
+                /**
+                 * Format: int32
+                 * @description How many times loading the match was retried. Admins only.
+                 */
+                retry_count?: number | null;
+                /** @description Server ID. Admins only. */
+                server_id?: string | null;
                 /** @description Server display name. */
                 server_name?: string | null;
                 /** @description Reservation status. */
@@ -12101,6 +12258,30 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_ClearMatchServerResponse: {
+            data: components["schemas"]["ClearMatchServerResponse"];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_CompletionRetryResponse: {
+            data: components["schemas"]["CompletionRetryResponse"];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_MatchDiagnosticsResponse: {
+            data: components["schemas"]["MatchDiagnosticsResponse"];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_RosterCheckResponse: {
+            data: components["schemas"]["RosterCheckResponse"];
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_VetoDelegateResponse: {
             /** @description Response for a veto delegate. */
             data: {
@@ -14776,6 +14957,69 @@ export interface components {
             /** @description Operator-supplied justification. */
             reason: string;
         };
+        /** @description One thing wrong with a match, and the admin action that fixes it. */
+        MatchDiagnosticsProblem: {
+            /** @description Stable problem code. */
+            code: string;
+            /** @description What is wrong, in words. */
+            message: string;
+            /** @description The rescue action that addresses it. */
+            suggested_action: string;
+        };
+        /** @description Everything an admin needs to see why a match is stuck. */
+        MatchDiagnosticsResponse: {
+            /** Format: date-time */
+            check_in_deadline?: string | null;
+            disputed: boolean;
+            open_dispute_id?: string | null;
+            /** Format: date-time */
+            participant1_checked_in_at?: string | null;
+            /** Format: date-time */
+            participant2_checked_in_at?: string | null;
+            pending_claim?: null | {
+                /** Format: date-time */
+                auto_confirm_at?: string | null;
+                id: string;
+                source: string;
+            };
+            pending_proposal?: null | {
+                /** Format: date-time */
+                expires_at: string;
+                id: string;
+                proposed_by_registration_id: string;
+            };
+            problems: components["schemas"]["MatchDiagnosticsProblem"][];
+            reservation?: null | {
+                failure_reason?: string | null;
+                id: string;
+                /** Format: int64 */
+                queue_position?: number | null;
+                /** Format: int32 */
+                retry_count: number;
+                server_name?: string | null;
+                status: string;
+                /** Format: date-time */
+                updated_at: string;
+            };
+            saga?: null | {
+                failed_step?: string | null;
+                status: string;
+                /** Format: date-time */
+                updated_at: string;
+            };
+            /** Format: date-time */
+            scheduled_at?: string | null;
+            status: string;
+            veto?: null | {
+                /** Format: date-time */
+                action_deadline?: string | null;
+                /** Format: int32 */
+                current_action_number: number;
+                session_id: string;
+                status: string;
+            };
+            veto_required: boolean;
+        };
         /** @description A match's server reservation, scoped to what the caller may see. */
         MatchServerResponse: {
             /** @description `sv_password` — participants and admins only. */
@@ -14800,6 +15044,13 @@ export interface components {
              * @description 1-based place in the server queue, when `pending` (§6.6).
              */
             queue_position?: number | null;
+            /**
+             * Format: int32
+             * @description How many times loading the match was retried. Admins only.
+             */
+            retry_count?: number | null;
+            /** @description Server ID. Admins only. */
+            server_id?: string | null;
             /** @description Server display name. */
             server_name?: string | null;
             /** @description Reservation status. */
@@ -16613,6 +16864,36 @@ export interface components {
         RoleWithPermissionsResponse: components["schemas"]["RoleResponse"] & {
             /** @description Permissions assigned to this role. */
             permissions: components["schemas"]["PermissionResponse"][];
+        };
+        /** @description One player in a roster check. */
+        RosterCheckPlayer: {
+            display_name: string;
+            player_id: string;
+            /** @description Why this player cannot be used, when `valid` is false. */
+            problem?: string | null;
+            /** @description `roster` or `substitution`. */
+            source: string;
+            steam_id?: string | null;
+            valid: boolean;
+        };
+        /** @description Whether the match's rosters can be loaded onto the game server. */
+        RosterCheckResponse: {
+            /** Format: int32 */
+            min_players_to_ready: number;
+            ok: boolean;
+            /** Format: int32 */
+            players_per_team: number;
+            problems: string[];
+            teams: components["schemas"]["RosterCheckTeam"][];
+        };
+        /** @description One team in a roster check. */
+        RosterCheckTeam: {
+            name: string;
+            players: components["schemas"]["RosterCheckPlayer"][];
+            problems: string[];
+            registration_id: string;
+            /** Format: int32 */
+            usable_players: number;
         };
         /**
          * @description Roster lock status for a season.
@@ -23271,6 +23552,413 @@ export interface operations {
             };
         };
     };
+    admin_set_check_in_window: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCheckInWindowRequest"];
+            };
+        };
+        responses: {
+            /** @description Check-in window set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentMatchResponse"];
+                };
+            };
+            /** @description Match is not in a state that allows this */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    admin_retry_match_completion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminMatchReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Completion re-run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_CompletionRetryResponse"];
+                };
+            };
+            /** @description Match is not in a state that allows this */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_match_diagnostics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Match diagnostics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_MatchDiagnosticsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    admin_reset_match: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminMatchReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Match reset to ready */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentMatchResponse"];
+                };
+            };
+            /** @description Match is not in a state that allows this */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    admin_reset_match_veto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminMatchReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Veto restarted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentMatchResponse"];
+                };
+            };
+            /** @description Match is not in a state that allows this */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    reload_match_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminMatchReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Match reloaded on a server */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_MatchServerResponse"];
+                };
+            };
+            /** @description The match config could not be built */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_match_server_roster_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Roster check */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_RosterCheckResponse"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     admin_schedule_match: {
         parameters: {
             query?: never;
@@ -29776,6 +30464,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Match cleared from the server */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_ClearMatchServerResponse"];
+                };
+            };
             /** @description Reservation cancelled */
             204: {
                 headers: {

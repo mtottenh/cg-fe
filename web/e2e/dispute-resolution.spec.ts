@@ -740,9 +740,11 @@ test.describe('Admin Dispute Resolution', () => {
     await expect(
       modal.locator('tr').filter({ hasText: 'New Score' }),
     ).toContainText('0 - 1')
+    // The winner is shown by name: the derived winner is participant 2.
+    const named = await getMatch(adminToken, built.tournamentId, built.matchId)
     await expect(
       modal.locator('tr').filter({ hasText: 'New Winner' }),
-    ).toContainText(built.participant2RegistrationId)
+    ).toContainText(named!.participant2_name as string)
 
     await closeModalAndExpectQueueEmpty(page, modal)
 

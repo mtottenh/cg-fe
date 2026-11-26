@@ -542,31 +542,31 @@ test.describe('Admin match overrides', () => {
 
     const scoreInputs = results.locator('input[type="number"]')
     await scoreInputs.first().fill('0')
-    await scoreInputs.nth(1).fill('2')
-    await results.getByLabel('Reason *').fill('Demo review: participant 2 won 2-0.')
+    await scoreInputs.nth(1).fill('1')
+    await results.getByLabel('Reason *').fill('Demo review: participant 2 won 1-0.')
     await results.getByRole('button', { name: 'Correct Score' }).click()
 
-    await confirmOverlay(page, `Overwrite the official result with 0-2, making ${p2Name} the winner?`)
+    await confirmOverlay(page, `Overwrite the official result with 0-1, making ${p2Name} the winner?`)
       .getByRole('button', { name: 'Correct Score' })
       .click()
     await expect(page.locator('.v-snackbar').getByText('Score corrected')).toBeVisible()
 
     // --- The UI reflects the correction ---------------------------------
     await expect(results.getByTestId('recorded-p1-score')).toHaveText('0')
-    await expect(results.getByTestId('recorded-p2-score')).toHaveText('2')
+    await expect(results.getByTestId('recorded-p2-score')).toHaveText('1')
     await expect(results.getByTestId('recorded-winner')).toHaveText(p2Name)
 
     // …including the audit trail, naming a person rather than a truncated id.
     const auditRow = results.locator('[data-testid="override-row"]')
     await expect(auditRow).toHaveCount(1)
     await expect(auditRow).toContainText('1–0')
-    await expect(auditRow).toContainText('0–2')
-    await expect(auditRow).toContainText('Demo review: participant 2 won 2-0.')
+    await expect(auditRow).toContainText('0–1')
+    await expect(auditRow).toContainText('Demo review: participant 2 won 1-0.')
     await expect(auditRow).not.toContainText('Unknown admin')
 
     // --- …and so does the API (§1.4) ------------------------------------
     const after = await getOverrideMatch(adminToken, scenario.tournamentId, target.id)
-    expect([after.participant1_score, after.participant2_score]).toEqual([0, 2])
+    expect([after.participant1_score, after.participant2_score]).toEqual([0, 1])
     expect(after.winner_registration_id).toBe(p2Reg)
     expect(after.status).toBe('completed')
 
@@ -575,9 +575,9 @@ test.describe('Admin match overrides', () => {
     expect(overrides[0]!.previous_participant1_score).toBe(1)
     expect(overrides[0]!.previous_participant2_score).toBe(0)
     expect(overrides[0]!.new_participant1_score).toBe(0)
-    expect(overrides[0]!.new_participant2_score).toBe(2)
+    expect(overrides[0]!.new_participant2_score).toBe(1)
     expect(overrides[0]!.new_winner_registration_id).toBe(p2Reg)
-    expect(overrides[0]!.reason).toBe('Demo review: participant 2 won 2-0.')
+    expect(overrides[0]!.reason).toBe('Demo review: participant 2 won 1-0.')
     expect(overrides[0]!.changed_by_name, 'the audit row must name the operator').toBeTruthy()
   })
 
@@ -643,10 +643,10 @@ test.describe('Admin match overrides', () => {
     const results = activePanel(dialog)
     const scoreInputs = results.locator('input[type="number"]')
     await scoreInputs.first().fill('0')
-    await scoreInputs.nth(1).fill('2')
-    await results.getByLabel('Reason *').fill('Demo review: participant 2 won 2-0.')
+    await scoreInputs.nth(1).fill('1')
+    await results.getByLabel('Reason *').fill('Demo review: participant 2 won 1-0.')
     await results.getByRole('button', { name: 'Correct Score' }).click()
-    await confirmOverlay(page, `Overwrite the official result with 0-2, making ${p2Name} the winner?`)
+    await confirmOverlay(page, `Overwrite the official result with 0-1, making ${p2Name} the winner?`)
       .getByRole('button', { name: 'Correct Score' })
       .click()
     await expect(page.locator('.v-snackbar').getByText('Score corrected')).toBeVisible()

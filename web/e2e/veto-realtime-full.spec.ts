@@ -36,10 +36,11 @@ import {
  *    to completed but does not repaint the map grid, so the fully-resolved
  *    board (6 banned + 1 decider) is asserted after a reload, which exercises
  *    the REST snapshot path.
- *  - When the veto completes the veto SESSION becomes `completed`, but the
- *    MATCH is NOT auto-advanced — it stays in `pick_ban` (there is no
- *    veto->in_progress transition; moving it on requires a separate admin
- *    action). So `getMatch` still reports `pick_ban` here.
+ *  - When the veto completes the veto SESSION becomes `completed`. With no
+ *    game server in play (these tournaments don't opt in) the MATCH moves on
+ *    to `in_progress` by itself, so the teams can play and report a result.
+ *    With the game server enabled it would wait in `pick_ban` until MatchZy
+ *    reports the series going live.
  *  - Any authenticated user may open the veto WS. Participants get the
  *    participant role; a user on neither team (and without admin) defaults to
  *    the spectator role and still receives all public veto broadcasts.
@@ -184,10 +185,9 @@ test.describe('Map Veto Real-time (full sequence, late-join, spectator)', () => 
       expect(bannedInState.length).toBe(totalBans)
       expect(deciderMap!.status).not.toBe('banned')
 
-      // The match itself is NOT auto-advanced by veto completion — it stays in
-      // pick_ban (a veto->in_progress move requires a separate admin action).
+      // No game server in play: veto completion starts the match by itself.
       const match = await getMatch(request, adminToken, scenario.tournamentId, scenario.matchId)
-      expect(match.status).toBe('pick_ban')
+      expect(match.status).toBe('in_progress')
 
       // ── Fully-resolved board on both clients (REST snapshot after reload) ─
       // The live VetoComplete broadcast flips the phase but does not repaint

@@ -521,10 +521,15 @@ const canResolve = computed(
 // match credited the wrong team. The match is read once per dispute; if that
 // fails the text field comes back so a resolution is never blocked.
 // ---------------------------------------------------------------------------
-const matchParticipants = ref<{ p1: string; p2: string } | null>(null)
+const matchParticipants = ref<{ p1: string; p2: string; p1Name?: string; p2Name?: string } | null>(null)
 
-const p1Label = computed(() => dispute.value?.participant1_name || 'P1')
-const p2Label = computed(() => dispute.value?.participant2_name || 'P2')
+// The dispute row may not carry the team names; the match it belongs to does.
+const p1Label = computed(
+  () => dispute.value?.participant1_name || matchParticipants.value?.p1Name || 'P1',
+)
+const p2Label = computed(
+  () => dispute.value?.participant2_name || matchParticipants.value?.p2Name || 'P2',
+)
 
 watch(
   () => dispute.value?.id,
@@ -541,6 +546,8 @@ watch(
         matchParticipants.value = {
           p1: m.participant1_registration_id,
           p2: m.participant2_registration_id,
+          p1Name: m.participant1_name ?? undefined,
+          p2Name: m.participant2_name ?? undefined,
         }
       }
     } catch {

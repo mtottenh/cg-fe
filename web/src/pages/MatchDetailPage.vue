@@ -50,7 +50,9 @@
 
             <!-- Score / when / status -->
             <v-col cols="12" sm="4" class="text-center">
-              <template v-if="match.status === 'completed'">
+              <!-- A forfeit carries a recorded walkover score; it used to
+                   render as an unplayed "VS". -->
+              <template v-if="match.status === 'completed' || match.status === 'forfeit'">
                 <div class="text-h3 font-weight-bold">
                   {{ match.participant1_score }} - {{ match.participant2_score }}
                 </div>

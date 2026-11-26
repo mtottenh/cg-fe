@@ -109,13 +109,15 @@ export function useTournamentAdminActions(
 
   function complete() {
     if (!tournament.value) return
+    // Counts the unfinished matches. The API refuses to complete over them
+    // unless forced, and the admin's confirmation of this warning is what
+    // forces it.
+    const force = completion.value.unfinished > 0
     confirmDialog.confirm({
-      // Counts the unfinished matches: the API completes a tournament
-      // whatever state its matches are in.
       ...completeTournamentPrompt(completion.value),
       handler: async () => {
         if (!tournament.value) return
-        await feedback.run(() => store.completeTournament(tournament.value!.id),
+        await feedback.run(() => store.completeTournament(tournament.value!.id, { force }),
           { ...feedbackOptions('Tournament completed successfully'), rethrow: true })
       },
     })

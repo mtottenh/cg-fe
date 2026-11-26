@@ -232,5 +232,21 @@ describe('useTournamentAdminActions', () => {
       actions.complete()
       expect(completeTournament).not.toHaveBeenCalled()
     })
+
+    it('forces completion only when the admin confirmed closing unfinished matches', async () => {
+      const { actions, store } = setup(['ready', 'completed'])
+      const completeTournament = vi.spyOn(store, 'completeTournament').mockResolvedValue({} as never)
+      actions.complete()
+      await actions.confirmDialog.execute()
+      expect(completeTournament).toHaveBeenCalledWith(expect.any(String), { force: true })
+    })
+
+    it('does not force completion when every match is settled', async () => {
+      const { actions, store } = setup(['completed', 'forfeit'])
+      const completeTournament = vi.spyOn(store, 'completeTournament').mockResolvedValue({} as never)
+      actions.complete()
+      await actions.confirmDialog.execute()
+      expect(completeTournament).toHaveBeenCalledWith(expect.any(String), { force: false })
+    })
   })
 })

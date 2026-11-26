@@ -1,7 +1,7 @@
 /**
- * Completing a tournament is not guarded by the API: it only checks the
- * tournament's own status, not whether its matches have been played. Pressed
- * early it closes every remaining fixture, so the UI counts them first.
+ * Completing a tournament early closes every remaining fixture. The API
+ * refuses it while matches remain unless asked to force it, so the UI counts
+ * them first and only forces once the admin has confirmed the warning.
  */
 
 /** Statuses a match can no longer leave by being played. */

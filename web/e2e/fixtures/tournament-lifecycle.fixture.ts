@@ -341,7 +341,9 @@ export async function advanceToCompleted(
   p2Name: string,
 ): Promise<void> {
   await advanceToInProgress(adminToken, tournamentId, p1Token, p2Token, p1Name, p2Name)
-  await postAction(adminToken, tournamentId, 'complete')
+  // The bracket is never played, and the API refuses to complete over
+  // unplayed matches unless asked to force it.
+  await postAction(adminToken, tournamentId, 'complete?force=true')
 }
 
 async function postAction(

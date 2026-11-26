@@ -1660,6 +1660,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/tournaments/{tournament_id}/notification-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a tournament's notification delivery settings. */
+        get: operations["get_notification_settings"];
+        /** Save a tournament's notification delivery settings. */
+        put: operations["update_notification_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tournaments/{tournament_id}/notification-settings/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a test message to the tournament's Discord webhook. */
+        post: operations["test_notification_settings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/tournaments/{tournament_id}/registrations/{registration_id}/disqualify": {
         parameters: {
             query?: never;
@@ -3811,6 +3846,57 @@ export interface paths {
         put?: never;
         /** Start veto session (begin coin flip phase). */
         post: operations["start_veto_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the caller's notifications. */
+        get: operations["list_my_notifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark the caller's notifications read. */
+        post: operations["mark_my_notifications_read"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's unread notification count. */
+        get: operations["my_unread_count"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -8671,6 +8757,16 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_MarkNotificationsReadResponse: {
+            /** @description How many notifications were marked read. */
+            data: {
+                /** Format: int64 */
+                updated: number;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_MatchDiagnosticsResponse: {
             /** @description Everything an admin needs to see to work out why a match is stuck. */
             data: {
@@ -8949,6 +9045,55 @@ export interface components {
                 registrations: components["schemas"]["TournamentRegistrationResponse"][];
                 /** @description Tournament the rows belong to. */
                 tournament_id: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_NotificationListResponse: {
+            /** @description A page of the caller's notifications, newest first. */
+            data: {
+                has_more: boolean;
+                items: components["schemas"]["NotificationResponse"][];
+                /** Format: int64 */
+                unread_count: number;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_NotificationSettingsResponse: {
+            /**
+             * @description A tournament's Discord delivery settings. The webhook URL itself is never
+             *     returned: it lets anyone post to the channel.
+             */
+            data: {
+                discord_enabled: boolean;
+                discord_webhook_configured: boolean;
+                /** @description The last 6 characters of the stored webhook URL. */
+                discord_webhook_hint?: string | null;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_NotificationTestResponse: {
+            /** @description Whether a test message reached Discord. */
+            data: {
+                delivered: boolean;
+                /** @description What went wrong (HTTP status or error), never the URL. */
+                detail?: string | null;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_NotificationUnreadCountResponse: {
+            /** @description Unread count, and the newest unread notification. */
+            data: {
+                latest_id?: string | null;
+                /** Format: int64 */
+                unread_count: number;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -14985,6 +15130,17 @@ export interface components {
             /** @description Error description. */
             error: string;
         };
+        /** @description Which notifications to mark read: `ids`, or `all`. */
+        MarkNotificationsReadRequest: {
+            all?: boolean | null;
+            /** @description At most 100 ids. */
+            ids?: string[] | null;
+        };
+        /** @description How many notifications were marked read. */
+        MarkNotificationsReadResponse: {
+            /** Format: int64 */
+            updated: number;
+        };
         /** @description Request to check in for a match. */
         MatchCheckInRequest: {
             /** @description Registration ID of the participant checking in. */
@@ -15437,6 +15593,54 @@ export interface components {
             registrations: components["schemas"]["TournamentRegistrationResponse"][];
             /** @description Tournament the rows belong to. */
             tournament_id: string;
+        };
+        /** @description A page of the caller's notifications, newest first. */
+        NotificationListResponse: {
+            has_more: boolean;
+            items: components["schemas"]["NotificationResponse"][];
+            /** Format: int64 */
+            unread_count: number;
+        };
+        /** @description One notification. */
+        NotificationResponse: {
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            /**
+             * @description What it is about, e.g. `proposal_received`, `checkin_open`,
+             *     `server_ready`.
+             */
+            kind: string;
+            /** @description SPA path to open. */
+            link?: string | null;
+            match_id?: string | null;
+            /** Format: date-time */
+            read_at?: string | null;
+            title: string;
+            tournament_id?: string | null;
+        };
+        /**
+         * @description A tournament's Discord delivery settings. The webhook URL itself is never
+         *     returned: it lets anyone post to the channel.
+         */
+        NotificationSettingsResponse: {
+            discord_enabled: boolean;
+            discord_webhook_configured: boolean;
+            /** @description The last 6 characters of the stored webhook URL. */
+            discord_webhook_hint?: string | null;
+        };
+        /** @description Whether a test message reached Discord. */
+        NotificationTestResponse: {
+            delivered: boolean;
+            /** @description What went wrong (HTTP status or error), never the URL. */
+            detail?: string | null;
+        };
+        /** @description Unread count, and the newest unread notification. */
+        NotificationUnreadCountResponse: {
+            latest_id?: string | null;
+            /** Format: int64 */
+            unread_count: number;
         };
         /**
          * @description What happened to a saved override set.
@@ -18529,6 +18733,12 @@ export interface components {
             game_modes?: string[] | null;
             /** @description Map image URL. */
             image_url?: string | null;
+        };
+        /** @description Update a tournament's Discord delivery settings. */
+        UpdateNotificationSettingsRequest: {
+            discord_enabled: boolean;
+            /** @description Omit to keep the stored URL; `null` or `""` to remove it. */
+            discord_webhook_url?: string | null;
         };
         /**
          * @description An operation of the game host's update helper, as the agent names it on
@@ -24242,6 +24452,151 @@ export interface operations {
             };
             /** @description The match changed while the request was running */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_notification_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Delivery settings (the webhook URL is never returned) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_NotificationSettingsResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    update_notification_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNotificationSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_NotificationSettingsResponse"];
+                };
+            };
+            /** @description Not a Discord webhook URL, or Discord turned on without one */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    test_notification_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether Discord accepted the message */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_NotificationTestResponse"];
+                };
+            };
+            /** @description No webhook configured */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -31395,6 +31750,122 @@ export interface operations {
             };
             /** @description Session already started */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_my_notifications: {
+        parameters: {
+            query?: {
+                /** @description Only unread notifications. */
+                unread_only?: boolean;
+                /** @description Page size, at most 100 (default 30). */
+                limit?: number | null;
+                /** @description Return notifications older than this one. */
+                before?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's notifications, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_NotificationListResponse"];
+                };
+            };
+            /** @description Invalid cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    mark_my_notifications_read: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkNotificationsReadRequest"];
+            };
+        };
+        responses: {
+            /** @description How many were marked read */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_MarkNotificationsReadResponse"];
+                };
+            };
+            /** @description Neither or both of `ids` and `all`, or more than 100 ids */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    my_unread_count: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unread count and the newest unread id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_NotificationUnreadCountResponse"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

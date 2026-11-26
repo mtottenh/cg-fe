@@ -45,13 +45,12 @@ function mountCard(props: { times: string[]; isProposer?: boolean; isOwnTeam?: b
   return wrapper
 }
 
-describe('ProposalCard — the opponent is not notified', () => {
-  const notice = (w: VueWrapper) => w.find('[data-testid="proposal-not-notified"]')
+describe('ProposalCard — the opponent is notified', () => {
+  const notice = (w: VueWrapper) => w.find('[data-testid="proposal-notified"]')
 
-  it('tells the proposing team to let the other captain know', () => {
+  it('tells the proposing team the other captain is notified', () => {
     const w = mountCard({ times: [future(24)], isProposer: true, isOwnTeam: true })
-    expect(notice(w).text()).toContain("Tell the other captain you've proposed a time")
-    expect(notice(w).text()).toContain("doesn't send notifications yet")
+    expect(notice(w).text()).toContain("Your opponent's captain gets a notification on the site.")
   })
 
   it('shows the same note to a teammate of the proposer', () => {
@@ -90,7 +89,7 @@ describe('ProposalCard — who may respond', () => {
       .toContain('Only your captain or a delegate can agree match times')
     expect(w.text()).not.toContain('Withdraw Proposal')
     expect(w.text()).not.toContain('Accept')
-    expect(w.find('[data-testid="proposal-not-notified"]').exists()).toBe(false)
+    expect(w.find('[data-testid="proposal-notified"]').exists()).toBe(false)
   })
 
   it("shows a plain roster member the opponent's proposal read-only", () => {

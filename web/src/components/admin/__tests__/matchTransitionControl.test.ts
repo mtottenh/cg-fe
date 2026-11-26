@@ -57,7 +57,7 @@ function makeMatch(status: string, overrides: Record<string, unknown> = {}) {
   }
 }
 
-function mountOverview(status: string) {
+function mountOverview(status: string, overrides: Record<string, unknown> = {}) {
   wrapper = mount(MatchOverviewTab, {
     global: {
       plugins: [createPinia(), vuetify],
@@ -68,17 +68,17 @@ function mountOverview(status: string) {
       provide: { [SnackbarKey as symbol]: createSnackbar() },
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    props: { match: makeMatch(status) as any, tournamentId: 'tour-1' },
+    props: { match: makeMatch(status, overrides) as any, tournamentId: 'tour-1' },
   })
   return wrapper
 }
 
-function mountMatchesTab(status: string) {
+function mountMatchesTab(status: string, overrides: Record<string, unknown> = {}) {
   wrapper = mount(MatchesTab, {
     global: { plugins: [createPinia(), vuetify] },
     props: {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      matches: [makeMatch(status)] as any,
+      matches: [makeMatch(status, overrides)] as any,
       loading: false,
       tournamentStatus: 'in_progress',
       bulkStartLoading: false,
@@ -126,5 +126,51 @@ describe('MatchesTab — row action menu', () => {
   it('still offers the real transition menu on an awaiting_result row', () => {
     const w = mountMatchesTab('awaiting_result')
     expect(w.text()).toContain('Complete')
+  })
+})
+
+/**
+ * A `ready` match used to offer "Schedule" at both sites, which flipped the
+ * status to `scheduled` without asking for a time. Nothing opens a check-in
+ * window for a match with no time, so the match was stranded. Both sites now
+ * send the admin to the schedule form instead.
+ */
+describe('scheduling a ready match', () => {
+  const setTimeButton = (w: VueWrapper) =>
+    w.findAll('button').find((b) => b.text().includes('Set match time'))
+
+  it('Overview offers "Set match time", not a status flip', async () => {
+    const w = mountOverview('ready')
+    expect(w.findAll('button').some((b) => b.text().trim() === 'Schedule')).toBe(false)
+
+    const button = setTimeButton(w)
+    expect(button, 'the Set match time button').toBeDefined()
+    await button!.trigger('click')
+    expect(w.emitted('set-time')).toHaveLength(1)
+  })
+
+  it('the Matches row offers "Set match time" and emits the match id', async () => {
+    const w = mountMatchesTab('ready')
+    expect(w.findAll('button').some((b) => b.text().trim() === 'Schedule')).toBe(false)
+
+    const button = setTimeButton(w)
+    expect(button, 'the Set match time button').toBeDefined()
+    await button!.trigger('click')
+    expect(w.emitted('set-time')).toEqual([['01912f00-0000-7000-8000-00000000beef']])
+    expect(w.emitted('transition')).toBeUndefined()
+  })
+
+  it('a scheduled match with no time is offered the same way out, at both sites', () => {
+    expect(setTimeButton(mountOverview('scheduled'))).toBeDefined()
+    expect(mountOverview('scheduled').text()).toContain('has no time')
+    expect(setTimeButton(mountMatchesTab('scheduled'))).toBeDefined()
+  })
+
+  it('a scheduled match that has its time is not nagged', () => {
+    const withTime = { scheduled_at: '2032-04-17T19:45:00Z' }
+    expect(setTimeButton(mountOverview('scheduled', withTime))).toBeUndefined()
+    expect(setTimeButton(mountMatchesTab('scheduled', withTime))).toBeUndefined()
+    // The real transition out of `scheduled` is still there.
+    expect(mountOverview('scheduled', withTime).text()).toContain('Start Match')
   })
 })

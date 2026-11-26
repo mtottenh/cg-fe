@@ -1,13 +1,33 @@
 <template>
   <v-row v-if="match">
-    <!-- Schedule -->
-    <v-col cols="12">
-      <v-card variant="outlined" class="mb-4">
+    <!-- Schedule. Only while the backend accepts a time: `ready`, or
+         `scheduled` (a reschedule). -->
+    <v-col v-if="canSchedule" cols="12">
+      <v-card variant="outlined" class="mb-4" data-testid="schedule-card">
         <v-card-title class="text-subtitle-1">
           <v-icon class="mr-2">mdi-calendar</v-icon>
-          Schedule Match
+          {{ match.scheduled_at ? 'Reschedule Match' : 'Schedule Match' }}
         </v-card-title>
         <v-card-text>
+          <v-alert
+            v-if="match.status === 'scheduled' && !match.scheduled_at"
+            type="warning"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+            data-testid="schedule-missing-time"
+          >
+            This match is marked scheduled but has no time, so check-in will
+            never open. Set a time to fix it.
+          </v-alert>
+          <p class="text-body-2 text-medium-emphasis mb-4" data-testid="schedule-current">
+            <template v-if="match.scheduled_at">
+              Currently set for <strong>{{ formatDateTime(match.scheduled_at) }}</strong>.
+            </template>
+            <template v-else>No time set yet.</template>
+            Times are in your local timezone; check-in opens automatically
+            shortly before the start.
+          </p>
           <v-row>
             <v-col cols="6">
               <v-text-field
@@ -30,10 +50,10 @@
           <v-btn
             color="primary"
             :loading="tournamentsStore.adminScheduleState.loading"
-            :disabled="!scheduleDate"
+            :disabled="!scheduleDate || scheduleUnchanged"
             @click="handleSchedule"
           >
-            Schedule
+            {{ match.scheduled_at ? 'Reschedule' : 'Schedule' }}
           </v-btn>
         </v-card-text>
       </v-card>
@@ -198,6 +218,8 @@ import { useTournamentsStore, type TournamentMatchResponse } from '@/stores/tour
 import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import { formatDateTime, formatDateTimeForInput } from '@/utils/formatters'
+import { canAdminSchedule } from '@/utils/matchStatus'
 
 const props = defineProps<{
   match: TournamentMatchResponse | null
@@ -225,6 +247,23 @@ function participantName(registrationId: string | null | undefined): string {
 
 const scheduleDate = ref('')
 const scheduleNotes = ref('')
+
+const canSchedule = computed(() => !!props.match && canAdminSchedule(props.match.status))
+
+/** The input still shows the stored time: nothing to send. */
+const scheduleUnchanged = computed(() =>
+  !!props.match?.scheduled_at &&
+  scheduleDate.value === formatDateTimeForInput(props.match.scheduled_at),
+)
+
+// Show the stored time in the input, and follow it when it changes (after a
+// reschedule, or when the modal switches matches).
+watch(
+  () => [props.match?.id, props.match?.scheduled_at] as const,
+  ([, scheduledAt]) => { scheduleDate.value = formatDateTimeForInput(scheduledAt) },
+  { immediate: true },
+)
+
 const forfeitRegistrationId = ref('')
 const forfeitType = ref('no_show')
 const forfeitReason = ref('')
@@ -258,7 +297,6 @@ const participantOptions = computed(() => {
 
 // Reset forms + pre-fill progression winner when the host modal switches matches.
 watch(() => props.match?.id, () => {
-  scheduleDate.value = ''
   scheduleNotes.value = ''
   forfeitRegistrationId.value = ''
   forfeitType.value = 'no_show'
@@ -279,7 +317,11 @@ async function handleSchedule() {
   const notes = scheduleNotes.value || undefined
   await feedback.run(
     () => tournamentsStore.adminScheduleMatch(props.tournamentId, matchId, iso, notes),
-    { success: 'Match scheduled', errorSource: tournamentsStore.adminScheduleState, after: afterSuccess },
+    {
+      success: 'Match scheduled',
+      errorSource: tournamentsStore.adminScheduleState,
+      after: () => { scheduleNotes.value = ''; afterSuccess() },
+    },
   )
 }
 

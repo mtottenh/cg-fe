@@ -318,6 +318,19 @@ describe('useTournamentForm (edit mode)', () => {
     expect(patch).toHaveProperty('settings')
   })
 
+  it('loads the scheduling mode and patches it only when it changed', () => {
+    const { result, unmount } = withApp(() =>
+      useTournamentForm({ mode: 'edit', initial: ref(makeTournament({ scheduling_mode: 'live' })) }),
+    )
+    cleanups.push(unmount)
+    expect(result.form.scheduling_mode).toBe('live')
+    expect(result.buildUpdatePatch()).not.toHaveProperty('scheduling_mode')
+
+    result.form.scheduling_mode = 'self_scheduled'
+    expect(result.hasChanges.value).toBe(true)
+    expect(result.buildUpdatePatch().scheduling_mode).toBe('self_scheduled')
+  })
+
   it('buildUpdatePatch sends null for default_map_veto_format when cleared', () => {
     const t = makeTournament({ default_map_veto_format: 'some-veto-id' })
     const { form } = setup(t)

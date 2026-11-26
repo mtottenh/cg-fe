@@ -70,6 +70,16 @@
             <v-icon>mdi-eye</v-icon>
             <v-tooltip activator="parent" location="top">View Details</v-tooltip>
           </v-btn>
+          <v-btn
+            v-if="needsMatchTime(item)"
+            size="small"
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-calendar-clock"
+            @click="$emit('set-time', item.id)"
+          >
+            Set match time
+          </v-btn>
           <v-menu v-if="getNextMatchStatus(item.status)">
             <template v-slot:activator="{ props: menuProps }">
               <v-btn
@@ -108,7 +118,7 @@ import type { TournamentMatchResponse } from '@/stores/tournaments'
 import { formatDateTime } from '@/utils/formatters'
 import {
   getMatchStatusColor, formatMatchStatus, formatMatchFormatShort,
-  getNextMatchStatus, getMatchActionLabel, getMatchActionColor,
+  getNextMatchStatus, getMatchActionLabel, getMatchActionColor, needsMatchTime,
 } from '@/utils/matchStatus'
 
 const props = defineProps<{
@@ -121,6 +131,8 @@ const props = defineProps<{
 
 defineEmits<{
   'view-detail': [matchId: string]
+  /** Open the match on its schedule form. */
+  'set-time': [matchId: string]
   'transition': [matchId: string, toStatus: string]
   'bulk-start': []
 }>()
@@ -137,6 +149,6 @@ const headers = [
   { title: 'Score', key: 'score', width: '100px' },
   { title: 'Status', key: 'status', width: '120px' },
   { title: 'Scheduled', key: 'scheduled_at', width: '150px' },
-  { title: 'Actions', key: 'actions', width: '200px', sortable: false },
+  { title: 'Actions', key: 'actions', width: '240px', sortable: false },
 ]
 </script>

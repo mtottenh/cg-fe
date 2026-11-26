@@ -64,9 +64,9 @@ export const REGISTRATION_TYPES = [
 ] as const
 
 export const SCHEDULING_MODES = [
-  { value: 'live', label: 'Live', description: 'All matches played in real-time event' },
-  { value: 'self_scheduled', label: 'Self-Scheduled', description: 'Participants schedule their own matches' },
-  { value: 'hybrid', label: 'Hybrid', description: 'Mix of scheduled and self-scheduled matches' },
+  { value: 'live', label: 'Live', description: 'An admin sets the time of every match' },
+  { value: 'self_scheduled', label: 'Self-Scheduled', description: 'The two sides agree a time for each match; an admin can still set one' },
+  { value: 'hybrid', label: 'Hybrid', description: 'Mix of both; match times are currently set by an admin, as in Live' },
 ] as const
 
 export const MATCH_FORMATS = [

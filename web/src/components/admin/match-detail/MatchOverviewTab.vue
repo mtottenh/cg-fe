@@ -71,6 +71,33 @@
       </tbody>
     </v-table>
 
+    <!-- Scheduling a match means giving it a time, which lives on the Admin
+         Actions tab; a status flip alone leaves it with no check-in window. -->
+    <v-alert
+      v-if="needsTime"
+      type="info"
+      variant="tonal"
+      density="compact"
+      class="mt-4"
+      data-testid="match-needs-time"
+    >
+      <div class="d-flex align-center flex-wrap ga-3">
+        <span>
+          {{ match.status === 'scheduled'
+            ? 'This match is marked scheduled but has no time, so check-in will never open.'
+            : 'This match has no time yet. Check-in opens automatically before the time you set.' }}
+        </span>
+        <v-btn
+          color="primary"
+          size="small"
+          prepend-icon="mdi-calendar-clock"
+          @click="emit('set-time')"
+        >
+          Set match time
+        </v-btn>
+      </div>
+    </v-alert>
+
     <!-- Status Transition -->
     <div v-if="nextStatus" class="mt-4">
       <v-btn
@@ -91,7 +118,7 @@ import { useActionFeedback } from '@/composables/useActionFeedback'
 import { formatDateTime } from '@/utils/formatters'
 import {
   getMatchStatusColor, formatMatchStatus, formatMatchFormat,
-  getNextMatchStatus, getMatchActionLabel, getMatchActionColor,
+  getNextMatchStatus, getMatchActionLabel, getMatchActionColor, needsMatchTime,
 } from '@/utils/matchStatus'
 
 const props = defineProps<{
@@ -110,10 +137,14 @@ const hasScore = computed(() =>
 
 const emit = defineEmits<{
   updated: []
+  /** Take the admin to the schedule form on the Admin Actions tab. */
+  'set-time': []
 }>()
 
 const tournamentsStore = useTournamentsStore()
 const feedback = useActionFeedback()
+
+const needsTime = computed(() => !!props.match && needsMatchTime(props.match))
 
 const nextStatus = computed(() => {
   return props.match ? getNextMatchStatus(props.match.status) : null

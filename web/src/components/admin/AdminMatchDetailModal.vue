@@ -35,6 +35,7 @@
               :tournament-id="tournamentId"
               :tournament-slug="tournamentSlug"
               @updated="emit('updated')"
+              @set-time="activeTab = 'actions'"
             />
           </v-tabs-window-item>
 
@@ -81,10 +82,14 @@ import MatchResultsTab from './match-detail/MatchResultsTab.vue'
 import MatchEvidenceTab from './match-detail/MatchEvidenceTab.vue'
 import MatchAdminActionsTab from './match-detail/MatchAdminActionsTab.vue'
 
+type MatchDetailTab = 'overview' | 'results' | 'evidence' | 'actions'
+
 const props = defineProps<{
   matchId: string | null
   tournamentId: string
   tournamentSlug?: string | null
+  /** Tab to show when the modal opens. Defaults to the overview. */
+  initialTab?: MatchDetailTab
 }>()
 
 const emit = defineEmits<{
@@ -97,7 +102,11 @@ const tournamentsStore = useTournamentsStore()
 const matchResultsStore = useMatchResultsStore()
 const evidenceStore = useEvidenceStore()
 
-const activeTab = ref('overview')
+const activeTab = ref<MatchDetailTab>('overview')
+
+watch(open, (isOpen) => {
+  if (isOpen) activeTab.value = props.initialTab ?? 'overview'
+})
 
 const match = computed(() => {
   if (!props.matchId) return null
@@ -109,7 +118,7 @@ const match = computed(() => {
 // store collections these fetches populate.
 watch(() => props.matchId, async (id) => {
   if (id && open.value) {
-    activeTab.value = 'overview'
+    activeTab.value = props.initialTab ?? 'overview'
     await Promise.allSettled([
       matchResultsStore.fetchCurrentResult(id),
       matchResultsStore.fetchResultHistory(id),

@@ -18224,6 +18224,13 @@ export interface components {
             registration_start?: string | null;
             /** @description Updated rules URL. */
             rules_url?: string | null;
+            /**
+             * @description Updated scheduling mode: `live`, `self_scheduled`, `hybrid`.
+             *
+             *     Unlike the other fields this may be changed after the tournament has
+             *     started, provided it is the only field in the request.
+             */
+            scheduling_mode?: string | null;
             /** @description Updated settings. */
             settings?: unknown;
             /** @description Updated slug. */

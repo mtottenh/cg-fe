@@ -92,7 +92,8 @@ async function openMatchDetail(page: Page, row: Locator): Promise<Locator> {
 async function openAdminActions(dialog: Locator): Promise<Locator> {
   await dialog.getByRole('tab', { name: 'Admin Actions' }).click()
   const panel = activePanel(dialog)
-  await expect(panel.getByRole('button', { name: 'Schedule', exact: true })).toBeVisible()
+  // The forfeit cards render for every status; the schedule card does not.
+  await expect(panel.getByRole('button', { name: 'Double Forfeit', exact: true })).toBeVisible()
   return panel
 }
 
@@ -127,15 +128,23 @@ test.describe('Admin match overrides', () => {
     const overview = activePanel(dialog)
     await expect(overview.locator('.v-chip').filter({ hasText: 'Ready' })).toBeVisible()
 
-    // ready → scheduled. `getMatchActionLabel('ready')` is "Schedule".
-    await overview.getByRole('button', { name: 'Schedule', exact: true }).click()
-    await expect(
-      page.locator('.v-snackbar').getByText('Match transitioned to scheduled'),
-    ).toBeVisible()
+    // ready → scheduled is not a status flip: a `ready` match offers no
+    // transition button, and "Set match time" leads to the schedule form.
+    await expect(overview.getByRole('button', { name: 'Schedule', exact: true })).toHaveCount(0)
+    await overview.getByRole('button', { name: 'Set match time' }).click()
+    const actions = activePanel(dialog)
+    await actions.locator('input[type="datetime-local"]').fill('2032-04-17T19:45')
+    await actions.getByRole('button', { name: 'Schedule', exact: true }).click()
+    await expect(page.locator('.v-snackbar').getByText('Match scheduled')).toBeVisible()
+    const scheduled = await getOverrideMatch(adminToken, scenario.tournamentId, target.id)
+    expect(scheduled.status).toBe('scheduled')
+    expect(scheduled.scheduled_at ?? null).not.toBeNull()
+
+    // Once it has a time the same card offers a reschedule.
+    await expect(actions.getByRole('button', { name: 'Reschedule', exact: true })).toBeVisible()
+
+    await dialog.getByRole('tab', { name: 'Overview' }).click()
     await expect(overview.locator('.v-chip').filter({ hasText: 'Scheduled' })).toBeVisible()
-    expect((await getOverrideMatch(adminToken, scenario.tournamentId, target.id)).status).toBe(
-      'scheduled',
-    )
 
     // scheduled → in_progress, proving the button relabels off the new status.
     await overview.getByRole('button', { name: 'Start Match', exact: true }).click()

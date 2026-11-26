@@ -111,7 +111,31 @@
                       </tr>
                       <tr>
                         <td class="text-medium-emphasis">Scheduling Mode</td>
-                        <td>{{ formatSchedulingMode(tournament.scheduling_mode) }}</td>
+                        <td>
+                          <!-- Stays editable on a running tournament, unlike
+                               the edit form, whose other fields are frozen. -->
+                          <v-select
+                            aria-label="Scheduling Mode"
+                            data-testid="scheduling-mode-select"
+                            :model-value="tournament.scheduling_mode"
+                            :items="SCHEDULING_MODES"
+                            item-title="label"
+                            item-value="value"
+                            variant="outlined"
+                            density="compact"
+                            hide-details
+                            style="max-width: 260px"
+                            :loading="schedulingModeSaving"
+                            :disabled="schedulingModeSaving"
+                            @update:model-value="handleSchedulingModeChange"
+                          >
+                            <template v-slot:item="{ item, props: itemProps }">
+                              <v-list-item v-bind="itemProps">
+                                <v-list-item-subtitle>{{ item.raw.description }}</v-list-item-subtitle>
+                              </v-list-item>
+                            </template>
+                          </v-select>
+                        </td>
                       </tr>
                       <tr>
                         <td class="text-medium-emphasis">Registration Type</td>
@@ -222,6 +246,7 @@
               :bulk-start-loading="bulkStartLoading"
               :match-transition-loading-id="matchTransitionLoadingId"
               @view-detail="openMatchDetail"
+              @set-time="openMatchDetail($event, 'actions')"
               @transition="handleMatchTransition"
               @bulk-start="handleBulkStartMatches"
             />
@@ -262,6 +287,7 @@
     <AdminMatchDetailModal
       v-model="matchDetailModalOpen"
       :match-id="selectedMatchId"
+      :initial-tab="matchDetailInitialTab"
       :tournament-id="(route.params.id as string)"
       :tournament-slug="tournament?.slug"
       @updated="fetchData"
@@ -290,6 +316,7 @@ import {
   formatTournamentFormat,
   formatParticipantType,
   formatSchedulingMode,
+  SCHEDULING_MODES,
 } from '@/stores/tournaments'
 import { formatMatchFormat } from '@/utils/matchStatus'
 import TournamentStatusChip from '@/components/admin/TournamentStatusChip.vue'
@@ -343,6 +370,7 @@ const bulkStartLoading = ref(false)
 // Match detail modal
 const matchDetailModalOpen = ref(false)
 const selectedMatchId = ref<string | null>(null)
+const matchDetailInitialTab = ref<'overview' | 'actions'>('overview')
 
 // Registration action state
 const actionLoadingId = ref<string | null>(null)
@@ -441,8 +469,10 @@ async function runBulkStartMatches(eligible: typeof matches.value) {
       if (match.status === 'pending') {
         await tournamentsStore.adminMatchTransition(tournamentId, match.id, 'ready', reason)
       }
+      // A match is scheduled by giving it a time, and a forced start is
+      // happening now. A match that already has a time keeps it.
       if (match.status === 'pending' || match.status === 'ready') {
-        await tournamentsStore.adminMatchTransition(tournamentId, match.id, 'scheduled', reason)
+        await tournamentsStore.adminScheduleMatch(tournamentId, match.id, new Date().toISOString(), reason)
       }
       await tournamentsStore.adminMatchTransition(tournamentId, match.id, 'in_progress', reason)
     }
@@ -465,8 +495,30 @@ async function runBulkStartMatches(eligible: typeof matches.value) {
   }
 }
 
-function openMatchDetail(matchId: string) {
+const schedulingModeSaving = ref(false)
+
+/** Sent on its own: it is the one field a started tournament still accepts. */
+async function handleSchedulingModeChange(mode: string) {
+  if (!tournament.value || mode === tournament.value.scheduling_mode) return
+  const id = tournament.value.id
+  schedulingModeSaving.value = true
+  try {
+    await feedback.run(
+      () => tournamentsStore.updateTournament(id, { scheduling_mode: mode }),
+      {
+        success: `Scheduling mode set to ${formatSchedulingMode(mode)}`,
+        failureFallback: 'Failed to change the scheduling mode',
+        errorSource: tournamentsStore.updateTournamentState,
+      },
+    )
+  } finally {
+    schedulingModeSaving.value = false
+  }
+}
+
+function openMatchDetail(matchId: string, tab: 'overview' | 'actions' = 'overview') {
   selectedMatchId.value = matchId
+  matchDetailInitialTab.value = tab
   matchDetailModalOpen.value = true
 }
 

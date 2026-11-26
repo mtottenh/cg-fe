@@ -19,7 +19,7 @@ export type TournamentFormMode = 'create' | 'edit'
 /**
  * Union-shaped form state. Create mode uses the create-only fields
  * (game_id/league_id/season_id/format/participant_type/team_size/
- * registration_type/scheduling_mode); edit mode uses `timezone_hint`.
+ * registration_type); edit mode uses `timezone_hint`.
  * Fields not used in a given mode stay at their defaults.
  */
 export interface TournamentFormState {
@@ -40,6 +40,7 @@ export interface TournamentFormState {
   check_in_start: string
   check_in_end: string
   rules_url: string
+  scheduling_mode: string
   // Create-only
   game_id: string
   league_id: string | null
@@ -48,7 +49,6 @@ export interface TournamentFormState {
   participant_type: string
   team_size: number
   registration_type: string
-  scheduling_mode: string
   // Format configuration (persisted in format_settings JSONB)
   final_format: string | null
   grand_final_format: string | null
@@ -171,6 +171,7 @@ function fromTournament(t: TournamentResponse): TournamentFormState {
     withdrawal_policy: t.withdrawal_policy,
     default_match_format: t.default_match_format,
     default_map_veto_format: t.default_map_veto_format ?? null,
+    scheduling_mode: t.scheduling_mode,
     side_selection_mode: readSideSelectionMode(t),
     registration_start: formatDateTimeForInput(t.registration_start),
     registration_end: formatDateTimeForInput(t.registration_end),
@@ -399,6 +400,7 @@ export function useTournamentForm(opts: UseTournamentFormOptions) {
       patch.default_map_veto_format = form.default_map_veto_format || null
     }
     if (form.check_in_required !== t.check_in_required) patch.check_in_required = form.check_in_required
+    if (form.scheduling_mode !== t.scheduling_mode) patch.scheduling_mode = form.scheduling_mode
 
     patch.registration_start = formatDateTimeForApi(form.registration_start)
     patch.registration_end = formatDateTimeForApi(form.registration_end)

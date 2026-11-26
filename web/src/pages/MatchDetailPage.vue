@@ -473,6 +473,9 @@ import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { formatDateTime, formatWhen } from '@/utils/formatters'
 import {
+  noTimeLabel, waitingForTimeHeading, waitingForTimeNote, type MatchTimeContext,
+} from '@/utils/matchSchedulingCopy'
+import {
   getMatchStatusColor, getMatchStatusLabel, formatMatchFormat,
 } from '@/utils/matchStatus'
 
@@ -610,8 +613,15 @@ const whenLine = computed(() => {
   if (!match.value) return ''
   const when = formatWhen(match.value.scheduled_at)
   const format = formatMatchFormat(match.value.match_format)
-  return when ? `${when} · ${format}` : `${format} · Time to be agreed`
+  return when ? `${when} · ${format}` : `${format} · ${noTimeLabel(timeContext.value.selfScheduled)}`
 })
+
+const timeContext = computed<MatchTimeContext>(() => ({
+  status: match.value?.status ?? '',
+  hasTime: !!match.value?.scheduled_at,
+  selfScheduled: tournament.value?.scheduling_mode === 'self_scheduled',
+  canAgreeTime: showSchedulingPanel.value,
+}))
 
 /**
  * The one thing this phase asks of the viewer. Null once the match is over
@@ -623,8 +633,8 @@ const nowHeading = computed(() => {
   const mine = !!userRegistrationId.value
   switch (m.status) {
     case 'pending': return 'Waiting for both teams to be decided'
-    case 'ready': return showSchedulingPanel.value ? 'Agree a time with your opponent' : 'Waiting for the check-in window'
-    case 'scheduled': return m.scheduled_at ? `Match set for ${formatWhen(m.scheduled_at)}` : 'Check-in opens before the start'
+    case 'ready': return waitingForTimeHeading(timeContext.value)
+    case 'scheduled': return m.scheduled_at ? `Match set for ${formatWhen(m.scheduled_at)}` : waitingForTimeHeading(timeContext.value)
     case 'checking_in': return mine ? 'Check in for the match' : 'Teams are checking in'
     case 'pick_ban': return 'Pick and ban maps'
     case 'in_progress': return canSubmitResult.value ? 'Report the result when the series ends' : 'The match is live'
@@ -646,9 +656,11 @@ const nowNote = computed(() => {
   if (!m) return null
   switch (m.status) {
     case 'ready':
-      return showSchedulingPanel.value ? null : 'The organiser sets the time; check-in opens here before it.'
+      return waitingForTimeNote(timeContext.value)
     case 'scheduled':
-      return "Check-in opens here shortly before the start. A team that doesn't check in can be forfeited as a no-show."
+      return m.scheduled_at
+        ? "Check-in opens here shortly before the start. A team that doesn't check in can be forfeited as a no-show."
+        : waitingForTimeNote(timeContext.value)
     default:
       return null
   }

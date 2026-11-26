@@ -20,7 +20,14 @@ type MatchStatus = components['schemas']['TournamentMatchStatus']
  */
 const NEXT_STATUS: Partial<Record<MatchStatus, MatchStatus>> = {
   pending: 'ready',
-  ready: 'scheduled',
+  // There is deliberately NO `ready` entry either.
+  //
+  // `ready: 'scheduled'` rendered a button labelled "Schedule" that flipped
+  // the status and never asked for a time. A `scheduled` match with no
+  // `scheduled_at` is one the check-in sweep never opens, so pressing it
+  // stranded the match; the backend now refuses that transition. What moves
+  // a match out of `ready` is setting its time: see `needsMatchTime` and the
+  // schedule form on the Admin Actions tab.
   scheduled: 'in_progress',
   checking_in: 'in_progress',
   in_progress: 'awaiting_result',
@@ -98,7 +105,6 @@ export function getNextMatchStatus(status: string): MatchStatus | null {
  */
 const ACTION_LABEL: Partial<Record<MatchStatus, string>> = {
   pending: 'Mark Ready',
-  ready: 'Schedule',
   scheduled: 'Start Match',
   checking_in: 'Start Match',
   in_progress: 'Await Result',
@@ -107,6 +113,23 @@ const ACTION_LABEL: Partial<Record<MatchStatus, string>> = {
 
 export function getMatchActionLabel(status: string): string {
   return ACTION_LABEL[status as MatchStatus] ?? ''
+}
+
+/**
+ * Whether the admin's next step for this match is to set (or fix) its time.
+ *
+ * True for a `ready` match, and for a `scheduled` match that has no time: that
+ * state should no longer be reachable, but matches that got there earlier
+ * need the same way out.
+ */
+export function needsMatchTime(match: { status: string; scheduled_at?: string | null }): boolean {
+  if (match.status === 'ready') return true
+  return match.status === 'scheduled' && !match.scheduled_at
+}
+
+/** Whether the admin schedule endpoint accepts this match (`ready` or `scheduled`). */
+export function canAdminSchedule(status: string): boolean {
+  return status === 'ready' || status === 'scheduled'
 }
 
 export function getMatchActionColor(status: string): string {

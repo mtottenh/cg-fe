@@ -275,13 +275,31 @@ export function matchAt(matches: OverrideMatch[], bracketPosition: string): Over
   return found
 }
 
-/** Drive one admin status transition via the API. Used only to BUILD state. */
+/**
+ * Drive one admin status transition via the API. Used only to BUILD state.
+ *
+ * `scheduled` goes through the schedule endpoint: a match is scheduled by
+ * giving it a time, and the transition endpoint refuses the bare status flip.
+ * The time is a week out so the check-in sweep leaves the match alone.
+ */
 export async function transitionMatchViaApi(
   adminToken: string,
   tournamentId: string,
   matchId: string,
   toStatus: MatchStatus,
 ): Promise<void> {
+  if (toStatus === 'scheduled') {
+    await post(
+      adminToken,
+      `/v1/admin/tournaments/${tournamentId}/matches/${matchId}/schedule`,
+      'Schedule match',
+      {
+        scheduled_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        notes: 'E2E precondition',
+      },
+    )
+    return
+  }
   await post(
     adminToken,
     `/v1/admin/tournaments/${tournamentId}/matches/${matchId}/transition`,

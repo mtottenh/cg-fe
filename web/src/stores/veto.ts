@@ -45,7 +45,16 @@ export const useVetoStore = defineStore('veto', () => {
       const result = await unwrapApi(api.GET('/v1/matches/{match_id}/veto', {
         params: { path: { match_id: matchId } },
       }))
-      if (isCurrent()) {
+      // Never let a REST read that was in flight while a websocket frame
+      // landed rewind the veto: the action counter only moves forward, so a
+      // response behind the store is stale by construction.
+      const held = session.value
+      const fetched = result.data.session
+      const stale =
+        !!held &&
+        held.id === fetched.id &&
+        fetched.current_action_number < held.current_action_number
+      if (isCurrent() && !stale) {
         sessionState.value = result.data
         session.value = result.data.session
       }

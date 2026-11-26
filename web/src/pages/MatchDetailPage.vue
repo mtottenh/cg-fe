@@ -550,6 +550,19 @@ watch(
 const matchLobby = useMatchLobby(matchIdRef, userRegistrationId)
 provideMatchLobby(matchLobby)
 
+// The veto panel mounts (and reads the then-pending session) when check-in
+// opens. Nothing told it when the match later moved to pick_ban and the
+// session started, so both captains sat on "Waiting" while the coin was
+// flipped and the first turn timed out. React to the match status itself.
+watch(
+  () => match.value?.status,
+  (status, prev) => {
+    if (status === 'pick_ban' && prev !== undefined && prev !== 'pick_ban') {
+      void matchLobby.resync({ rejoin: true })
+    }
+  },
+)
+
 const lobbyParticipants = matchLobby.participants
 const lobbySpectatorCount = matchLobby.spectatorCount
 const lobbyConnected = matchLobby.connected

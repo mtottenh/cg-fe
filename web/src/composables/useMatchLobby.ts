@@ -284,6 +284,30 @@ export function useMatchLobby(
     }
   }
 
+  /**
+   * Re-read the veto session over REST WITHOUT dropping the socket or blanking
+   * the panel (unlike `initialize`, which clears the store first).
+   *
+   * `rejoin`: the server only runs its "both captains are here — flip the
+   * coin" check when a participant socket JOINS. A page that was already
+   * connected through check-in never re-joins, so the flip waited for the
+   * background pass and its turn clock started unseen. Re-joining once while
+   * the session is still waiting on the flip triggers it immediately.
+   */
+  async function resync(opts: { rejoin?: boolean } = {}) {
+    const id = matchId.value
+    if (!id) return
+    await vetoStore.getVetoSession(id).catch(() => null)
+    if (matchId.value !== id) return
+    const status = session.value?.status
+    if (!status || status === 'completed' || status === 'cancelled') return
+    const needsFlip = status === 'coin_flip'
+    if ((opts.rejoin && needsFlip) || (!socket.connected.value && !socket.usingFallback.value)) {
+      socket.connect()
+    }
+    startCountdown()
+  }
+
   // Watch for session status changes. A cancelled session is as finished as a
   // completed one — keeping the countdown running and the socket open left a
   // dead session ticking down.
@@ -354,6 +378,7 @@ export function useMatchLobby(
 
     // Lifecycle
     initialize,
+    resync,
     connect: socket.connect,
     disconnect: socket.disconnect,
   }

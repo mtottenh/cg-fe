@@ -119,6 +119,22 @@ describe('Veto Store', () => {
       expect(store.getSessionState.error).toBeNull()
     })
 
+    it('ignores a response that is behind the websocket-applied state', async () => {
+      const store = useVetoStore()
+      // A frame for action 3 landed while a slower REST read (taken at
+      // action 1) was still in flight.
+      store.applySessionUpdate(makeSession({ current_action_number: 3 }))
+      mockGet.mockResolvedValueOnce({
+        data: { data: makeSessionState({ session: makeSession({ current_action_number: 1 }) }) },
+        error: undefined,
+        response: { ok: true, status: 200 },
+      })
+
+      await store.getVetoSession('match-1')
+
+      expect(store.session?.current_action_number).toBe(3)
+    })
+
     it('records the error detail and rethrows on API failure', async () => {
       mockGet.mockResolvedValue({ error: { status: 404, detail: 'No veto session' } })
       const store = useVetoStore()

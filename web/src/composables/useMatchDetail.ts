@@ -46,11 +46,11 @@ export function useMatchDetail() {
   // Polling
   const POLL_MS = 15_000
   const TERMINAL_STATUSES = ['completed', 'cancelled']
-  // During pick_ban and checking_in, the VetoPanel's websocket pushes all
-  // relevant state changes live. Polling on top of the WS is redundant and
-  // costs an extra round-trip per poll tick. If the WS drops, its own
-  // reconnect loop owns the fallback poll (see useMatchLobbySocket).
-  const WS_DRIVEN_STATUSES = ['checking_in', 'pick_ban']
+  // checking_in and pick_ban are polled like every other live status. They
+  // used to be skipped on the theory that the lobby websocket pushes every
+  // change — but no websocket frame carries the MATCH status, so a page left
+  // open never saw the opponent check in, the veto start, or the match go
+  // live, and sat on a stale phase until a manual reload.
   const pollInterval = ref<ReturnType<typeof setInterval> | null>(null)
 
   // Composed state from stores
@@ -354,6 +354,13 @@ export function useMatchDetail() {
       }
     }
 
+    // Safety net under the lobby websocket: the session start and the coin
+    // flip are not always pushed (and a lagging socket drops frames), so the
+    // authoritative veto state is re-read each tick while the veto is live.
+    if (match.value?.status === 'pick_ban') {
+      tasks.push(vetoStore.getVetoSession(matchId).catch(() => null))
+    }
+
     // 'disputed' is a real MatchStatus (a claim dispute sets it), so it must
     // be included here or the dispute thread never loads for disputed matches.
     if (
@@ -619,8 +626,6 @@ export function useMatchDetail() {
       const status = match.value?.status
       if (!status) return
       if (TERMINAL_STATUSES.includes(status)) return
-      // Websocket drives state during pick_ban/checking_in — skip HTTP poll.
-      if (WS_DRIVEN_STATUSES.includes(status)) return
       isPolling.value = true
       try {
         // Only refresh match-state-dependent endpoints; fetchAll re-hit 10+
@@ -644,7 +649,6 @@ export function useMatchDetail() {
     const status = match.value?.status
     if (!status) return
     if (TERMINAL_STATUSES.includes(status)) return
-    if (WS_DRIVEN_STATUSES.includes(status)) return
     // Same rationale as startPolling: tab-regain shouldn't re-fetch invariants.
     pollMatch()
   }

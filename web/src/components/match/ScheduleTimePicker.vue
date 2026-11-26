@@ -60,7 +60,7 @@
               variant="outlined"
               density="comfortable"
               :min="minDateTime"
-              :rules="index === 0 ? [rules.required, rules.futureDate] : [rules.futureDate]"
+              :rules="index === 0 ? [rules.required, rules.enoughNotice] : [rules.enoughNotice]"
               @update:model-value="(val) => updateTime(index, val)"
             >
               <template v-slot:append>
@@ -113,17 +113,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useFormRules } from '@/composables/useFormRules'
+import { earliestProposableTime, givesEnoughNotice, TOO_SOON_MESSAGE } from '@/utils/schedulingLead'
 
 const props = withDefaults(
   defineProps<{
     suggestedTimes?: string[]
     maxTimes?: number
-    minHoursFromNow?: number
   }>(),
   {
     suggestedTimes: () => [],
     maxTimes: 5,
-    minHoursFromNow: 1,
   }
 )
 
@@ -169,23 +168,19 @@ const timezoneLabel = computed(() => {
   return zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
 })
 
-const minDateTime = computed(() => {
-  const min = new Date()
-  min.setHours(min.getHours() + props.minHoursFromNow)
-  return toLocalDatetimeString(min)
-})
+// Only a hint to the browser's date picker: browsers do not stop a typed
+// value below `min`, so the `enoughNotice` rule is what actually enforces it.
+const minDateTime = computed(() => toLocalDatetimeString(earliestProposableTime()))
 
 // Quick time options
 const quickTimes = computed(() => {
   const now = new Date()
   const times: { label: string; time: Date }[] = []
 
-  // Today evening (if it's before 6pm)
-  if (now.getHours() < 18) {
-    const todayEvening = new Date(now)
-    todayEvening.setHours(20, 0, 0, 0)
-    times.push({ label: 'Today 8PM', time: todayEvening })
-  }
+  // Today evening; dropped below once it is too close to give notice.
+  const todayEvening = new Date(now)
+  todayEvening.setHours(20, 0, 0, 0)
+  times.push({ label: 'Today 8PM', time: todayEvening })
 
   // Tomorrow afternoon
   const tomorrowAfternoon = new Date(now)
@@ -210,8 +205,8 @@ const quickTimes = computed(() => {
   sunday.setDate(sunday.getDate() + 1)
   times.push({ label: 'Sun 3PM', time: sunday })
 
-  // Filter out past times
-  return times.filter((t) => t.time > now)
+  // Never offer a time that is past or too close to give the minimum notice.
+  return times.filter((t) => givesEnoughNotice(t.time.toISOString(), now))
 })
 
 // Validation rules
@@ -219,9 +214,9 @@ const { required: _required, ...baseRules } = useFormRules()
 const rules = {
   ...baseRules,
   required: (v: string) => !!v || 'At least one time is required',
-  futureDate: (v: string) => {
+  enoughNotice: (v: string) => {
     if (!v) return true
-    return new Date(v) > new Date() || 'Time must be in the future'
+    return givesEnoughNotice(new Date(v).toISOString()) || TOO_SOON_MESSAGE
   },
 }
 
@@ -274,6 +269,8 @@ function toggleSuggestedTime(time: string) {
 
 function addQuickTime(time: Date) {
   const isoTime = time.toISOString()
+  // The chip list is computed once; the page may have sat open since.
+  if (!givesEnoughNotice(isoTime)) return
   if (isTimeSelected(isoTime) || entries.value.length >= props.maxTimes) return
   // Replace first empty slot (same row, new value) or add a new row
   const empty = entries.value.find((e) => e.value === '')

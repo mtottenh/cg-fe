@@ -6,7 +6,7 @@ import type { components } from '@/api/types'
 
 export type PortalNotification = components['schemas']['NotificationResponse']
 export type TournamentNotificationSettings =
-  components['schemas']['TournamentNotificationSettingsResponse']
+  components['schemas']['NotificationSettingsResponse']
 export type NotificationTestResult = components['schemas']['NotificationTestResponse']
 
 /**
@@ -92,7 +92,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
   async function saveTournamentSettings(
     tournamentId: string,
-    body: components['schemas']['UpdateTournamentNotificationSettingsRequest'],
+    body: components['schemas']['UpdateNotificationSettingsRequest'],
   ) {
     return withActionState(saveSettingsState, async () => {
       const result = await unwrapApi(api.PUT(

@@ -251,7 +251,9 @@
                 Uphold Original Result
               </v-expansion-panel-title>
               <v-expansion-panel-text>
-                <p class="text-body-2 mb-3">Confirms the original result is correct. The dispute will be closed.</p>
+                <p class="text-body-2 mb-3">
+                  Rejects the dispute: the original result is correct and stands. The dispute will be closed.
+                </p>
                 <v-textarea v-model="resolutionNotes" variant="outlined" density="compact" rows="2" label="Notes *" />
                 <v-btn
                   color="success"
@@ -614,8 +616,25 @@ function resetForm() {
   newWinnerRegistrationId.value = ''
 }
 
+/**
+ * What a ruling did to the result, in words that cannot be read backwards.
+ * "Upheld" on its own was ambiguous: it is the ORIGINAL RESULT that is
+ * upheld, which means the dispute was rejected — but "dispute upheld" reads
+ * as the disputing team having won.
+ */
+const RESOLUTION_LABELS: Record<string, string> = {
+  upheld: 'Dispute rejected — original result stands',
+  overturned: 'Dispute accepted — result overturned',
+  adjusted: 'Dispute accepted — scores adjusted',
+  rematch: 'Rematch ordered',
+  double_dq: 'Both teams disqualified',
+}
+
 function formatResolutionType(type: string): string {
-  return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  return (
+    RESOLUTION_LABELS[type] ??
+    type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  )
 }
 
 async function handleAssign() {
@@ -644,10 +663,10 @@ async function handleResolveUphold() {
   if (!props.disputeId) return
   try {
     await store.resolveUphold(props.disputeId, resolutionNotes.value.trim())
-    snackbar.show('Dispute upheld', 'success')
+    snackbar.show('Dispute rejected — the original result stands', 'success')
     emit('resolved')
   } catch {
-    snackbar.show('Failed to uphold dispute', 'error')
+    snackbar.show('Failed to uphold the original result', 'error')
   }
 }
 

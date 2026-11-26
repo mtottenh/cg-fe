@@ -676,10 +676,10 @@ test.describe('Admin Dispute Resolution', () => {
       .fill('Reviewed both demos — the submitted 1-0 result is correct.')
     await panel.getByRole('button', { name: 'Uphold Result' }).last().click()
 
-    // UI: the resolution card renders with type "Upheld", and the resolve
+    // UI: the resolution card says the dispute was rejected, and the resolve
     // panel disappears because a resolved dispute cannot be resolved again.
     await expect(modal.getByText('Resolution')).toBeVisible({ timeout: 10000 })
-    await expect(modal.getByText('Upheld', { exact: true })).toBeVisible()
+    await expect(modal.getByText('Dispute rejected — original result stands', { exact: true })).toBeVisible()
     await expect(modal.getByText('Resolve Dispute')).toHaveCount(0)
 
     await closeModalAndExpectQueueEmpty(page, modal)
@@ -736,7 +736,7 @@ test.describe('Admin Dispute Resolution', () => {
 
     // UI: resolution card shows the new score and the derived new winner.
     await expect(modal.getByText('Resolution')).toBeVisible({ timeout: 10000 })
-    await expect(modal.getByText('Adjusted', { exact: true })).toBeVisible()
+    await expect(modal.getByText('Dispute accepted — scores adjusted', { exact: true })).toBeVisible()
     await expect(
       modal.locator('tr').filter({ hasText: 'New Score' }),
     ).toContainText('0 - 1')
@@ -787,7 +787,7 @@ test.describe('Admin Dispute Resolution', () => {
     await panel.getByRole('button', { name: 'Order Rematch' }).last().click()
 
     await expect(modal.getByText('Resolution')).toBeVisible({ timeout: 10000 })
-    await expect(modal.getByText('Rematch', { exact: true })).toBeVisible()
+    await expect(modal.getByText('Rematch ordered', { exact: true })).toBeVisible()
 
     await closeModalAndExpectQueueEmpty(page, modal)
 
@@ -837,7 +837,7 @@ test.describe('Admin Dispute Resolution', () => {
 
     // `formatResolutionType` turns `double_dq` into "Double Dq".
     await expect(modal.getByText('Resolution')).toBeVisible({ timeout: 10000 })
-    await expect(modal.getByText('Double Dq', { exact: true })).toBeVisible()
+    await expect(modal.getByText('Both teams disqualified', { exact: true })).toBeVisible()
 
     await closeModalAndExpectQueueEmpty(page, modal)
 

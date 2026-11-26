@@ -20,6 +20,14 @@ import {
   type CheckInScenario,
 } from './checkin.fixture'
 
+/**
+ * Turn length for e2e veto sessions. The backend enforces a turn's deadline
+ * within about two seconds and auto-acts for the team whose turn it is, so
+ * the default 30 s turn could expire while a slow CI browser is still
+ * rendering the previous step. No spec tests the timeout itself.
+ */
+export const E2E_VETO_TURN_SECONDS = 120
+
 const API_URL = process.env.VITE_API_URL || 'http://localhost:3000'
 
 /** Loosely typed veto session — assert on the fields you need.
@@ -49,7 +57,7 @@ export async function createVetoSession(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${adminToken}`,
     },
-    body: JSON.stringify({ veto_format_id: vetoFormatId }),
+    body: JSON.stringify({ veto_format_id: vetoFormatId, timeout_seconds: E2E_VETO_TURN_SECONDS }),
   })
   if (!resp.ok) {
     throw new Error(`Create veto session failed (${resp.status}): ${await resp.text()}`)

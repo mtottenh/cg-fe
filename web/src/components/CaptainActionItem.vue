@@ -14,6 +14,9 @@
     <v-list-item-title class="text-body-2">{{ actionMeta.label }}</v-list-item-title>
     <v-list-item-subtitle class="text-caption">
       {{ action.match_label }} &middot; {{ action.tournament_name }}
+      <template v-if="action.scheduled_at">
+        &middot; <span data-testid="action-match-time">Match at {{ formatWhen(action.scheduled_at) }}</span>
+      </template>
     </v-list-item-subtitle>
     <template v-slot:append v-if="action.deadline">
       <v-chip
@@ -30,6 +33,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { CaptainAction } from '@/stores/captainActions'
+import { formatWhen } from '@/utils/formatters'
 
 const props = defineProps<{
   action: CaptainAction
@@ -56,19 +60,9 @@ const ACTION_META: Record<string, { icon: string; color: string; label: string }
   acknowledge_review: { icon: 'mdi-clipboard-check-outline', color: 'error', label: 'Acknowledge result review' },
 }
 
-// A `check_in` item with no deadline is a match whose time is agreed but
-// whose check-in window has not opened: the server stamps the deadline as it
-// opens the window. Nobody can check in yet, so this is a reminder, not a
-// demand — "Check-in required" two days out sent people to a page with no
-// check-in button.
-const UPCOMING_MATCH_META = {
-  icon: 'mdi-calendar-check',
-  color: 'grey',
-  label: 'Match scheduled — check-in opens 15 minutes before the start',
-}
-
+// The server only issues `check_in` while the window is open, to those who
+// can check in, with the window's closing time as `deadline`.
 const actionMeta = computed(() => {
-  if (props.action.action_type === 'check_in' && !props.action.deadline) return UPCOMING_MATCH_META
   return ACTION_META[props.action.action_type] ?? {
     icon: 'mdi-alert-circle-outline',
     color: 'grey',

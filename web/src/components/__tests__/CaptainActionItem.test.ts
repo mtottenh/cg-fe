@@ -45,10 +45,14 @@ describe('CaptainActionItem — check-in', () => {
     expect(w.text()).toContain('Check-in required')
   })
 
-  it('shows a scheduled match as a reminder, not a demand, before the window opens', () => {
-    const w = mountItem(action())
-    expect(w.text()).not.toContain('Check-in required')
-    expect(w.text()).toContain('Match scheduled')
-    expect(w.text()).toContain('check-in opens 15 minutes before the start')
+  it('shows when the match is, when the item carries the match time', () => {
+    const at = new Date(Date.now() + 10 * 60_000).toISOString()
+    const w = mountItem(action({ deadline: at, scheduled_at: at }))
+    expect(w.find('[data-testid="action-match-time"]').text()).toContain('Match at')
+  })
+
+  it('omits the match time when the server sends none', () => {
+    const w = mountItem(action({ action_type: 'submit_result' }))
+    expect(w.find('[data-testid="action-match-time"]').exists()).toBe(false)
   })
 })

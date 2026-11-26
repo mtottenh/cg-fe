@@ -246,6 +246,58 @@ describe('Tournaments Store', () => {
     })
   })
 
+  describe('refreshFixturesSilently', () => {
+    const byPath = (matches: unknown, brackets: unknown) => (path: string) =>
+      Promise.resolve(path.endsWith('/brackets') ? brackets : matches)
+
+    it('replaces matches and brackets without touching loading or error', async () => {
+      const store = useTournamentsStore()
+      const matches = [makeMatch({ status: 'completed' })]
+      const gate = deferred<unknown>()
+      mockGet.mockImplementation((path: string) =>
+        path.endsWith('/brackets')
+          ? Promise.resolve({ data: { data: [{ id: 'bracket-1' }] } })
+          : gate.promise,
+      )
+
+      const pending = store.refreshFixturesSilently('tourn-1')
+      expect(store.loading).toBe(false)
+      gate.resolve({ data: { data: matches } })
+
+      expect(await pending).toBe(true)
+      expect(store.matches).toEqual(matches)
+      expect(store.brackets).toEqual([{ id: 'bracket-1' }])
+      expect(store.loading).toBe(false)
+      expect(store.error).toBeNull()
+    })
+
+    it('keeps the last good data and reports no error when the poll fails', async () => {
+      const store = useTournamentsStore()
+      mockGet.mockImplementation(byPath({ data: { data: [makeMatch()] } }, { data: { data: [] } }))
+      await store.fetchMatches('tourn-1')
+
+      mockGet.mockImplementation(byPath(apiError(500, 'boom'), apiError(500, 'boom')))
+      expect(await store.refreshFixturesSilently('tourn-1')).toBe(false)
+
+      expect(store.matches).toHaveLength(1)
+      expect(store.error).toBeNull()
+    })
+
+    it('does nothing while a user-initiated fetch is in flight', async () => {
+      const store = useTournamentsStore()
+      const gate = deferred<unknown>()
+      mockGet.mockReturnValue(gate.promise)
+      const userFetch = store.fetchMatches('tourn-1')
+      mockGet.mockClear()
+
+      expect(await store.refreshFixturesSilently('tourn-1')).toBe(false)
+      expect(mockGet).not.toHaveBeenCalled()
+
+      gate.resolve({ data: { data: [] } })
+      await userFetch
+    })
+  })
+
   describe('clearCurrent', () => {
     it('resets matches, brackets and the tournament-id association', async () => {
       const store = useTournamentsStore()

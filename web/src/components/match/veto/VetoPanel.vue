@@ -10,6 +10,18 @@
           <v-icon start size="small">mdi-timer-outline</v-icon>
           {{ timeRemaining }}s
         </v-chip>
+        <!-- The server enforces the clock on a slower tick than it counts
+             down, so the turn stays open a little past zero. A chip that
+             vanished at 0 read as "no clock, take your time". -->
+        <v-chip
+          v-else-if="timeRemaining === 0 && (phase === 'banning' || phase === 'picking')"
+          color="error"
+          size="small"
+          data-testid="veto-times-up"
+        >
+          <v-icon start size="small">mdi-timer-off-outline</v-icon>
+          Time's up — choosing automatically…
+        </v-chip>
         <v-chip :color="phaseColor" size="small" variant="tonal">
           {{ phaseLabel }}
         </v-chip>
@@ -50,6 +62,14 @@
         <template v-if="isMyTurn">
           <strong>Your turn!</strong> {{ turnActionLabel }}
         </template>
+        <!-- A rostered player who cannot act for the team: their side is on
+             the clock, but the choice is the captain's. -->
+        <template v-else-if="isMyTeamsTurn">
+          <span data-testid="veto-captain-choosing">
+            <strong>Your team's turn.</strong> Your captain is choosing —
+            only the captain, team owner or a delegate can {{ turnActionLabel.toLowerCase() }}.
+          </span>
+        </template>
         <template v-else>
           <!-- Named team: correct for spectators too, and tells participants
                exactly who is on the clock. -->
@@ -57,6 +77,19 @@
           {{ turnActionLabel.toLowerCase() }}...
         </template>
       </v-alert>
+
+      <!-- Side Selection (only in picker_choice mode during active phases).
+           Above the map grid: a side that is not chosen before the veto
+           finishes is gone, and under the grid it was easy to miss while the
+           next ban's clock was running. -->
+      <VetoSideSelect
+        v-if="sideSelectionMode === 'picker_choice' && mapsNeedingSideSelect.length > 0 && phase !== 'completed' && phase !== 'waiting' && phase !== 'coin_flip' && phase !== 'cancelled'"
+        :match-id="matchId"
+        :actions-needing-side="mapsNeedingSideSelect"
+        :user-registration-id="userRegistrationId"
+        :can-act="canActInVeto"
+        :maps="maps"
+      />
 
       <!-- Coin Flip Phase -->
       <VetoCoinFlip
@@ -78,15 +111,6 @@
         :user-registration-id="userRegistrationId"
         :participant1-registration-id="participant1RegistrationId"
         :participant2-registration-id="participant2RegistrationId"
-      />
-
-      <!-- Side Selection (only in picker_choice mode during active phases) -->
-      <VetoSideSelect
-        v-if="sideSelectionMode === 'picker_choice' && mapsNeedingSideSelect.length > 0 && phase !== 'completed' && phase !== 'waiting' && phase !== 'coin_flip' && phase !== 'cancelled'"
-        :match-id="matchId"
-        :actions-needing-side="mapsNeedingSideSelect"
-        :user-registration-id="userRegistrationId"
-        :maps="maps"
       />
 
       <!-- Action Timeline -->
@@ -137,7 +161,7 @@ const loading = ref(true)
 // and provides it; we inject so there's one WS per match regardless of how
 // many components consume the state.
 const {
-  session, hasSession, phase, isMyTurn,
+  session, hasSession, phase, isMyTurn, isMyTeamsTurn, canActInVeto,
   maps, pickedMaps,
   actions, currentAction, timeRemaining, mapsNeedingSideSelect,
   coinFlipResult, bothParticipantsConnected,

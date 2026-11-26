@@ -5,7 +5,7 @@
         <v-icon start>mdi-chat</v-icon>
         Lobby Chat
       </div>
-      <v-btn-toggle v-model="activeChatType" mandatory density="compact" variant="outlined">
+      <v-btn-toggle v-if="canTeamChat" v-model="activeChatType" mandatory density="compact" variant="outlined">
         <v-btn value="all" size="small">All</v-btn>
         <v-btn value="team" size="small">Team</v-btn>
       </v-btn-toggle>
@@ -74,10 +74,19 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import type { ChatMessage } from '@/composables/useMatchLobby'
 
-const props = defineProps<{
-  messages: ChatMessage[]
-  connected: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    messages: ChatMessage[]
+    connected: boolean
+    /**
+     * Whether the server will accept this viewer's TEAM messages. It only
+     * does for a socket it classed as a participant; from anyone else a team
+     * message is dropped without a reply, so the tab is not offered.
+     */
+    canTeamChat?: boolean
+  }>(),
+  { canTeamChat: true },
+)
 
 const emit = defineEmits<{
   send: [chatType: 'team' | 'all', content: string]

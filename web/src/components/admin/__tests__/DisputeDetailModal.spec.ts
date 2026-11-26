@@ -126,6 +126,21 @@ describe('DisputeDetailModal resolution panel', () => {
 
     expect(resolvePanelRendered()).toBe(false)
     expect(document.body.textContent).toContain('Demo shows the opposite scoreline.')
+    expect(document.body.textContent).toContain('Dispute accepted — result overturned')
+  })
+
+  it('labels an upheld result so it cannot be read as the dispute succeeding', async () => {
+    await mountModal(
+      makeDispute({
+        status: 'resolved',
+        resolved_at: '2026-01-02T00:00:00Z',
+        resolved_by_user_id: 'admin-1',
+        resolution: { resolution_type: 'upheld', notes: 'Original score was right.' },
+      }),
+    )
+
+    expect(document.body.textContent).toContain('Dispute rejected — original result stands')
+    expect(document.body.textContent).not.toMatch(/\bUpheld\b/)
   })
 
   it('hides resolution on a cancelled dispute — the case the dead `!== "closed"` guard missed', async () => {

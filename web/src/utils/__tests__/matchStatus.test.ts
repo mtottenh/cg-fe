@@ -4,6 +4,7 @@ import {
   getNextMatchStatus,
   getMatchActionLabel,
   getMatchActionColor,
+  skipsMatchSetup,
   needsMatchTime,
   canAdminSchedule,
 } from '@/utils/matchStatus'
@@ -100,6 +101,26 @@ describe('getNextMatchStatus', () => {
     // time, which is `needsMatchTime` + the schedule form.
     expect(getNextMatchStatus('ready')).toBeNull()
     expect(getMatchActionLabel('ready')).toBe('')
+  })
+
+  it('sends a check-in match with a map veto to the veto, not straight to in-progress', () => {
+    // The backend starts the veto session on checking_in -> pick_ban and only
+    // sets up the game server once the veto completes; jumping to in_progress
+    // skipped both and cannot be undone.
+    expect(getNextMatchStatus('checking_in', { veto_required: true })).toBe('pick_ban')
+    expect(getMatchActionLabel('checking_in', { veto_required: true })).toBe('Start Veto')
+    // No veto on the match: unchanged.
+    expect(getNextMatchStatus('checking_in', { veto_required: false })).toBe('in_progress')
+    expect(getMatchActionLabel('checking_in', { veto_required: false })).toBe('Start Match')
+    // The veto flag only changes the step out of check-in.
+    expect(getNextMatchStatus('in_progress', { veto_required: true })).toBe('awaiting_result')
+  })
+
+  it('flags the transitions that skip check-in, veto and server setup', () => {
+    expect(skipsMatchSetup('scheduled', 'in_progress')).toBe(true)
+    expect(skipsMatchSetup('checking_in', 'in_progress')).toBe(true)
+    expect(skipsMatchSetup('checking_in', 'pick_ban')).toBe(false)
+    expect(skipsMatchSetup('in_progress', 'awaiting_result')).toBe(false)
   })
 
   it('returns null for a status it does not know', () => {

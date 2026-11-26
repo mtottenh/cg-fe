@@ -30,6 +30,24 @@
 
     <ErrorAlert :error="error" retryable @clear="clearError" @retry="fetchData" />
 
+    <!-- Nothing completes a tournament by itself: once every match is
+         settled, say so and offer the button. -->
+    <v-alert
+      v-if="tournamentActions.readyToComplete.value"
+      type="success"
+      variant="tonal"
+      class="mb-4"
+      data-testid="ready-to-complete"
+    >
+      <div class="d-flex align-center flex-wrap ga-3">
+        <span>All matches are finished — complete the tournament to close it.</span>
+        <v-spacer />
+        <v-btn color="success" variant="flat" size="small" @click="tournamentActions.complete()">
+          Complete tournament
+        </v-btn>
+      </div>
+    </v-alert>
+
     <!-- Loading State -->
     <v-card v-if="loading" class="pa-8 text-center">
       <v-progress-circular indeterminate color="primary" size="48" />
@@ -331,7 +349,7 @@ import {
   formatSchedulingMode,
   SCHEDULING_MODES,
 } from '@/stores/tournaments'
-import { formatMatchFormat } from '@/utils/matchStatus'
+import { formatMatchFormat, skipsMatchSetup, SKIP_SETUP_WARNING } from '@/utils/matchStatus'
 import { readGameServerSettings } from '@/utils/matchRescue'
 import TournamentStatusChip from '@/components/admin/TournamentStatusChip.vue'
 import TournamentStatusActions from '@/components/admin/TournamentStatusActions.vue'
@@ -439,7 +457,22 @@ function getGame(gameId: string): GameSummary | undefined {
 
 // Match + tournament formatters imported from @/utils/matchStatus and @/stores/tournaments.
 
-async function handleMatchTransition(matchId: string, toStatus: string) {
+function handleMatchTransition(matchId: string, toStatus: string) {
+  const from = matches.value.find((m) => m.id === matchId)?.status
+  if (from && skipsMatchSetup(from, toStatus)) {
+    tournamentActions.confirmDialog.confirm({
+      title: 'Start match without setup?',
+      message: SKIP_SETUP_WARNING,
+      action: 'Start Match',
+      color: 'warning',
+      handler: () => runMatchTransition(matchId, toStatus),
+    })
+    return
+  }
+  void runMatchTransition(matchId, toStatus)
+}
+
+async function runMatchTransition(matchId: string, toStatus: string) {
   if (!tournament.value) return
   matchTransitionLoadingId.value = matchId
   try {
@@ -462,7 +495,9 @@ function handleBulkStartMatches() {
   // Preview what will happen before force-marching the state machine.
   tournamentActions.confirmDialog.confirm({
     title: 'Bulk Start Matches',
-    message: `Force ${eligible.length} match(es) (pending/ready/scheduled) straight to in-progress? Check-in and veto steps are skipped.`,
+    message:
+      `Force ${eligible.length} match(es) (pending/ready/scheduled) straight to in-progress? ` +
+      SKIP_SETUP_WARNING,
     action: `Start ${eligible.length} Match(es)`,
     color: 'warning',
     handler: async () => {

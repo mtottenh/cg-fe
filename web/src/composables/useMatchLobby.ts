@@ -1,6 +1,7 @@
 import { computed, inject, provide, ref, watch, onUnmounted, type InjectionKey, type Ref } from 'vue'
 import { useVetoStore, type MapStatusResponse } from '@/stores/veto'
 import { useMatchServerStore } from '@/stores/matchServer'
+import { serverNow } from '@/utils/serverClock'
 import {
   useMatchLobbySocket,
   type ChatMessage,
@@ -26,6 +27,12 @@ export type VetoPhase = 'waiting' | 'coin_flip' | 'banning' | 'picking' | 'side_
 export function useMatchLobby(
   matchId: Ref<string | null>,
   userRegistrationId: Ref<string | null | undefined>,
+  /**
+   * Server-computed "this user may act for their registration" (the check-in
+   * predicate: captain / owner / delegate / the registered player). Omitted
+   * where every member of a side may act (PUG lobbies).
+   */
+  canActForRegistration?: Ref<boolean>,
 ) {
   const vetoStore = useVetoStore()
   const matchServerStore = useMatchServerStore()
@@ -64,10 +71,14 @@ export function useMatchLobby(
       participants.value = Array.isArray(snapshot) ? snapshot : []
       spectatorCount.value = msg.lobby_state.spectator_count ?? 0
 
-      // Populate veto session from lobby state (no REST call needed)
+      // Populate veto session from lobby state.
       if (msg.lobby_state.session) {
         vetoStore.applySessionUpdate(msg.lobby_state.session)
       }
+      // The snapshot carries only the session row. After a reconnect the maps
+      // and the action list may be several steps behind (frames sent while
+      // the socket was down are gone), so re-read the full state.
+      resyncFromRest()
     },
 
     chat_history(msg: ChatHistoryMessage) {
@@ -90,6 +101,9 @@ export function useMatchLobby(
 
     veto_state_update(msg: VetoStateUpdateMessage) {
       vetoStore.applySessionUpdate(msg.session)
+      // No full state yet (the session did not exist, or 404'd, when this
+      // page loaded): the frame alone has no maps to render.
+      if (!vetoStore.sessionState) resyncFromRest()
     },
 
     veto_action_performed(msg: VetoActionPerformedMessage) {
@@ -102,6 +116,10 @@ export function useMatchLobby(
     veto_complete(msg: VetoCompleteMessage) {
       vetoStore.applyVetoComplete(msg.session)
       stopCountdown()
+      // The final action arrives ONLY as this frame — no per-action frame —
+      // so the last ban and the decider were never painted and "Maps
+      // selected" omitted the decider until a reload.
+      resyncFromRest()
     },
 
     player_connected(msg: PlayerConnectedMessage) {
@@ -132,6 +150,12 @@ export function useMatchLobby(
 
     server_assignment_update(msg: ServerAssignmentUpdateMessage) {
       matchServerStore.applyAssignmentUpdate(msg)
+      // The socket only sends connect details to captains/owners/delegates:
+      // every other roster member is a "spectator" on this channel and gets
+      // the bare status, so their server card flipped to Ready with nothing
+      // in it. The REST endpoint gates on roster membership, so re-read it.
+      const id = matchId.value
+      if (id) matchServerStore.fetchMatchServer(id).catch(() => {})
     },
     lineup_update(_msg: LineupUpdateMessage) {
       // A substitution was applied server-side — refresh the panel data.
@@ -156,6 +180,12 @@ export function useMatchLobby(
       timeRemaining.value = msg.seconds_remaining
     },
   })
+
+  /** Fire-and-forget full veto read; failure leaves the pushed state as is. */
+  function resyncFromRest() {
+    const id = matchId.value
+    if (id) vetoStore.getVetoSession(id).catch(() => {})
+  }
 
   // Fallback: full REST fetch when WS reconnect exhausted
   socket.onFallback(() => {
@@ -191,16 +221,41 @@ export function useMatchLobby(
     if (s.status === 'coin_flip') return 'coin_flip'
     // status === 'in_progress'
     const currentAction = state.value?.current_action
-    if (!currentAction) return 'completed'
+    // Unknown step on a LIVE session means "not synced yet", never "done" —
+    // completion is the session status above. Reporting `completed` here
+    // showed "Veto complete!" the moment the coin flip landed.
+    if (!currentAction) return 'waiting'
     if (currentAction.action_type === 'ban') return 'banning'
     if (currentAction.action_type === 'pick') return 'picking'
     return 'side_select'
   })
 
-  const isMyTurn = computed(() => {
+  /** The viewer's TEAM is on the clock (whoever on it may act). */
+  const isMyTeamsTurn = computed(() => {
     if (!session.value || !userRegistrationId.value) return false
     return session.value.current_team_turn === userRegistrationId.value
   })
+
+  /**
+   * Whether the viewer may make veto choices for their team. The veto API
+   * accepts only the captain, owner, a delegate or tournament staff; an
+   * ordinary roster member shares the team's registration id, so comparing
+   * ids alone handed them "Your turn!" and clickable maps that 403'd.
+   *
+   * Two server-derived signals, either of which is enough: the check-in
+   * permission, and the role the lobby socket assigned (`participant` and
+   * `admin` are exactly the callers the veto authorizer lets act).
+   */
+  const canActInVeto = computed(() => {
+    if (!canActForRegistration) return true
+    return (
+      canActForRegistration.value ||
+      userRole.value === 'participant' ||
+      userRole.value === 'admin'
+    )
+  })
+
+  const isMyTurn = computed(() => isMyTeamsTurn.value && canActInVeto.value)
 
   const maps = computed((): MapStatusResponse[] => {
     return state.value?.maps ?? []
@@ -241,8 +296,10 @@ export function useMatchLobby(
       return
     }
     const deadline = new Date(actionDeadline.value).getTime()
-    const now = Date.now()
-    const remaining = Math.max(0, Math.floor((deadline - now) / 1000))
+    // Against the server's clock, not this PC's: the deadline is a server
+    // time, and a skewed local clock showed the turn as over (or far longer
+    // than it is) from the first tick.
+    const remaining = Math.max(0, Math.floor((deadline - serverNow()) / 1000))
     timeRemaining.value = remaining
   }
 
@@ -284,6 +341,40 @@ export function useMatchLobby(
     }
   }
 
+  /**
+   * Re-read the veto session over REST WITHOUT dropping the socket or blanking
+   * the panel (unlike `initialize`, which clears the store first).
+   *
+   * `rejoin`: the server only runs its "both captains are here — flip the
+   * coin" check when a participant socket JOINS. A page that was already
+   * connected through check-in never re-joins, so the flip waited for the
+   * background pass and its turn clock started unseen. Re-joining once while
+   * the session is still waiting on the flip triggers it immediately.
+   */
+  async function resync(opts: { rejoin?: boolean } = {}) {
+    const id = matchId.value
+    if (!id) return
+    await vetoStore.getVetoSession(id).catch(() => null)
+    if (matchId.value !== id) return
+    const status = session.value?.status
+    if (!status || status === 'completed' || status === 'cancelled') return
+    const needsFlip = status === 'coin_flip'
+    if ((opts.rejoin && needsFlip) || (!socket.connected.value && !socket.usingFallback.value)) {
+      socket.connect()
+    }
+    startCountdown()
+  }
+
+  /**
+   * Open the lobby socket if it is not already up. Unlike `initialize` this
+   * never clears veto state or drops a healthy connection.
+   */
+  function ensureConnected() {
+    if (!matchId.value) return
+    if (socket.connected.value || socket.usingFallback.value) return
+    socket.connect()
+  }
+
   // Watch for session status changes. A cancelled session is as finished as a
   // completed one — keeping the countdown running and the socket open left a
   // dead session ticking down.
@@ -319,6 +410,8 @@ export function useMatchLobby(
     hasSession,
     phase,
     isMyTurn,
+    isMyTeamsTurn,
+    canActInVeto,
     maps,
     availableMaps,
     bannedMaps,
@@ -354,6 +447,8 @@ export function useMatchLobby(
 
     // Lifecycle
     initialize,
+    resync,
+    ensureConnected,
     connect: socket.connect,
     disconnect: socket.disconnect,
   }

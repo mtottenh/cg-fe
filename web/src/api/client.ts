@@ -2,6 +2,7 @@ import createClient, { type Middleware } from 'openapi-fetch'
 import type { paths } from './types'
 import { errorMiddleware } from './middleware'
 import { API_BASE_URL } from './baseUrl'
+import { noteServerDateHeader } from '@/utils/serverClock'
 
 // Default request timeout: a hung connection would otherwise leave loading
 // spinners up forever with no recovery path. Large file uploads use XHR
@@ -39,8 +40,20 @@ const authMiddleware: Middleware = {
   },
 }
 
+// Every response carries the server's clock in its `Date` header; countdowns
+// to server deadlines (the veto turn clock) are measured against it rather
+// than the viewer's own clock. Same-origin in production, and the API's CORS
+// policy exposes every header for the dev cross-origin setup.
+const clockMiddleware: Middleware = {
+  onResponse: ({ response }) => {
+    noteServerDateHeader(response.headers.get('date'))
+    return undefined
+  },
+}
+
 api.use(authMiddleware)
 api.use(errorMiddleware)
+api.use(clockMiddleware)
 
 // Auth token management
 export function setAuthToken(token: string | null) {

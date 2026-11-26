@@ -124,9 +124,11 @@ async function confirmSelect() {
     pendingMap.value = null
     return
   }
+  // Read the phase BEFORE the request: the websocket echo usually advances
+  // it while the request is in flight, which reported a ban as "picked!".
+  const action = props.phase === 'banning' ? 'banned' : 'picked'
   try {
     await vetoStore.performVetoAction(props.matchId, { map_id: map.map_id })
-    const action = props.phase === 'banning' ? 'banned' : 'picked'
     snackbar.show(`${map.map_name} ${action}!`, 'success')
   } catch {
     snackbar.show(vetoStore.vetoActionState.error || 'Failed to perform action', 'error')

@@ -128,7 +128,8 @@ const statusColor = computed(() => getStatusColor(matchStatusMap, props.match.st
 
 // A live Bo3 at 1-0 should show 1-0 on the card, not "- / -".
 const showScores = computed(() =>
-  ['in_progress', 'awaiting_result', 'completed', 'disputed'].includes(props.match.status)
+  // A forfeit is a recorded walkover score, not an unplayed match.
+  ['in_progress', 'awaiting_result', 'completed', 'disputed', 'forfeit'].includes(props.match.status)
 )
 
 const statusVariant = computed(() => {

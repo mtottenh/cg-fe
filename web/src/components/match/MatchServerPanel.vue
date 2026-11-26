@@ -46,13 +46,19 @@
         class="d-flex align-center ga-3"
       >
         <v-progress-circular indeterminate size="20" width="2" />
-        <span>
-          {{
-            reservation.status === 'pending'
-              ? 'Waiting for a free server…'
-              : 'Loading the match onto the server…'
-          }}
-        </span>
+        <div>
+          <div data-testid="server-wait-message">
+            {{
+              reservation.status === 'pending'
+                ? describeServerQueue(reservation.queue_position)
+                : 'Loading the match onto the server…'
+            }}
+          </div>
+          <div class="text-caption text-medium-emphasis">
+            This page updates on its own — the connect details appear here as soon as the
+            server is ready.
+          </div>
+        </div>
       </div>
 
       <!-- Failed / cancelled -->
@@ -205,6 +211,7 @@
 </template>
 
 <script setup lang="ts">
+import { describeServerQueue } from '@/utils/serverQueue'
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'

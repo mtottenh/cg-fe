@@ -119,6 +119,22 @@ describe('Veto Store', () => {
       expect(store.getSessionState.error).toBeNull()
     })
 
+    it('ignores a response that is behind the websocket-applied state', async () => {
+      const store = useVetoStore()
+      // A frame for action 3 landed while a slower REST read (taken at
+      // action 1) was still in flight.
+      store.applySessionUpdate(makeSession({ current_action_number: 3 }))
+      mockGet.mockResolvedValueOnce({
+        data: { data: makeSessionState({ session: makeSession({ current_action_number: 1 }) }) },
+        error: undefined,
+        response: { ok: true, status: 200 },
+      })
+
+      await store.getVetoSession('match-1')
+
+      expect(store.session?.current_action_number).toBe(3)
+    })
+
     it('records the error detail and rethrows on API failure', async () => {
       mockGet.mockResolvedValue({ error: { status: 404, detail: 'No veto session' } })
       const store = useVetoStore()
@@ -185,6 +201,28 @@ describe('Veto Store', () => {
 
       expect(store.session).toEqual(updated)
       expect(store.sessionState!.session).toEqual(updated)
+    })
+
+    it('derives current_action when the session goes live after the state was loaded', () => {
+      const store = useVetoStore()
+      // Loaded while pending: the server reports no current action yet.
+      store.sessionState = makeSessionState({
+        session: makeSession({ status: 'pending', current_action_number: 0 }),
+        current_action: null,
+      })
+
+      store.applySessionUpdate(makeSession({ status: 'in_progress', current_action_number: 1 }))
+
+      expect(store.sessionState!.current_action).toEqual({ action_type: 'ban', team: 1 })
+    })
+
+    it('clears current_action once the session is no longer in progress', () => {
+      const store = useVetoStore()
+      store.sessionState = makeSessionState()
+
+      store.applySessionUpdate(makeSession({ status: 'completed', current_action_number: 3 }))
+
+      expect(store.sessionState!.current_action).toBeNull()
     })
 
     it('works without a loaded sessionState', () => {

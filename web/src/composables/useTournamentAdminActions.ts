@@ -2,6 +2,7 @@ import { computed, type Ref } from 'vue'
 import { useTournamentsStore, type TournamentResponse } from '@/stores/tournaments'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useActionFeedback } from '@/composables/useActionFeedback'
+import { completeTournamentPrompt, completionReadiness } from '@/utils/tournamentCompletion'
 
 /**
  * Pure status-based guards for tournament lifecycle actions. No auth/organizer
@@ -97,13 +98,21 @@ export function useTournamentAdminActions(
       feedbackOptions('Tournament started successfully'))
   }
 
+  /** How many of this tournament's loaded matches can still be played. */
+  const completion = computed(() => completionReadiness(store.matches, tournament.value?.id))
+
+  /**
+   * Every match is settled and the tournament is still running: nothing
+   * completes it automatically, so the page prompts the admin to.
+   */
+  const readyToComplete = computed(() => canComplete.value && completion.value.allFinished)
+
   function complete() {
     if (!tournament.value) return
     confirmDialog.confirm({
-      title: 'Complete Tournament',
-      message: 'Mark this tournament as completed? Remaining matches will no longer be playable.',
-      action: 'Complete',
-      color: 'warning',
+      // Counts the unfinished matches: the API completes a tournament
+      // whatever state its matches are in.
+      ...completeTournamentPrompt(completion.value),
       handler: async () => {
         if (!tournament.value) return
         await feedback.run(() => store.completeTournament(tournament.value!.id),
@@ -183,6 +192,7 @@ export function useTournamentAdminActions(
     canFinalize,
     canCancel,
     canProcessNoShows,
+    readyToComplete,
     // Actions
     publish,
     openRegistration,

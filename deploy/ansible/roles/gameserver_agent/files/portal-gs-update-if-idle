@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Run the nightly game update only when nobody is on the server.
+
+The update restarts CS2. Run from cron in place of `portal-gs-update game`,
+this asks the server how many humans are connected (Source A2S_INFO over
+loopback UDP, no credentials needed) and skips the update when there are any.
+
+A server that is running but does not answer is treated as busy: skipping a
+night's update costs nothing, restarting a match does. A server that is not
+running at all cannot be interrupted, so the update goes ahead.
+
+Usage: portal-gs-update-if-idle <game-port> [command ...]
+Exit status: the command's, or 0 when the update was skipped.
+"""
+
+import socket
+import struct
+import subprocess
+import sys
+import syslog
+
+A2S_INFO = b"\xff\xff\xff\xffTSource Engine Query\x00"
+ATTEMPTS = 3
+TIMEOUT_SECONDS = 3.0
+
+
+def _cstring(data, offset):
+    end = data.index(b"\x00", offset)
+    return end + 1
+
+
+def parse_info(data):
+    """Return (players, bots) from an A2S_INFO reply, or None if malformed."""
+    if len(data) < 6 or data[:4] != b"\xff\xff\xff\xff" or data[4:5] != b"I":
+        return None
+    try:
+        offset = 6  # header, type, protocol
+        for _ in range(4):  # name, map, folder, game
+            offset = _cstring(data, offset)
+        offset += 2  # app id
+        players, _max_players, bots = struct.unpack_from("BBB", data, offset)
+    except (ValueError, struct.error):
+        return None
+    return players, bots
+
+
+def query(port):
+    """Ask the server for its player counts. None when it does not answer."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.settimeout(TIMEOUT_SECONDS)
+        request = A2S_INFO
+        for _ in range(ATTEMPTS * 2):
+            try:
+                sock.sendto(request, ("127.0.0.1", port))
+                data, _addr = sock.recvfrom(4096)
+            except OSError:
+                request = A2S_INFO
+                continue
+            if data[:5] == b"\xff\xff\xff\xffA" and len(data) >= 9:
+                # Challenge: repeat the query with the number appended.
+                request = A2S_INFO + data[5:9]
+                continue
+            parsed = parse_info(data)
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def server_running():
+    return subprocess.run(
+        ["pgrep", "-x", "cs2"], stdout=subprocess.DEVNULL, check=False
+    ).returncode == 0
+
+
+def main(argv):
+    if len(argv) < 2 or not argv[1].isdigit():
+        print(__doc__, file=sys.stderr)
+        return 64
+    port = int(argv[1])
+    command = argv[2:] or ["/usr/sbin/portal-gs-update", "game"]
+
+    syslog.openlog("portal-gs-update-if-idle")
+    counts = query(port)
+    if counts is None:
+        if server_running():
+            syslog.syslog("server is running but did not answer; skipping the update")
+            return 0
+        syslog.syslog("server is not running; updating")
+    else:
+        players, bots = counts
+        humans = max(players - bots, 0)
+        if humans > 0:
+            syslog.syslog(f"{humans} player(s) connected; skipping the update")
+            return 0
+        syslog.syslog("no players connected; updating")
+    return subprocess.run(command, check=False).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

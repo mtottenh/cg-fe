@@ -15,6 +15,7 @@ import { unwrapApi } from '@/stores/helpers/apiAction'
 import { formatMapName } from '@/utils/maps'
 import { toLocalDateString } from '@/utils/formatters'
 import type { components } from '@/api/types'
+import { canStillReschedule } from '@/utils/schedulingLead'
 
 type SuggestedTimeResponse = components['schemas']['SuggestedTimeResponse']
 type MatchStatusLogResponse = components['schemas']['MatchStatusLogResponse']
@@ -136,8 +137,10 @@ export function useMatchDetail() {
   const canSchedule = computed(() => !!userRegistrationId.value && canCheckIn.value)
 
   const canPropose = computed(() => {
-    if (!match.value || !canSchedule.value) return false
-    return match.value.status === 'ready' && !activeProposal.value
+    if (!match.value || !canSchedule.value || activeProposal.value) return false
+    if (match.value.status === 'ready') return true
+    // Teams may re-agree an already agreed time until an hour before it.
+    return match.value.status === 'scheduled' && canStillReschedule(match.value.scheduled_at)
   })
 
   // Result panel visibility

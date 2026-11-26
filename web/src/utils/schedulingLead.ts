@@ -21,3 +21,17 @@ export function givesEnoughNotice(iso: string, now: Date = new Date()): boolean 
 }
 
 export const TOO_SOON_MESSAGE = `Pick a time at least ${MIN_PROPOSAL_LEAD_MINUTES} minutes from now`
+
+/**
+ * Teams may move an agreed time themselves until this long before the match;
+ * after that only an organiser can (the backend refuses with 400).
+ */
+export const RESCHEDULE_CUTOFF_MINUTES = 60
+export const RESCHEDULE_CUTOFF_MS = RESCHEDULE_CUTOFF_MINUTES * 60_000
+
+/** Whether teams may still agree a new time for a match set for `scheduledAt`. */
+export function canStillReschedule(scheduledAt: string | null | undefined, now: Date = new Date()): boolean {
+  if (!scheduledAt) return false
+  const ms = new Date(scheduledAt).getTime()
+  return Number.isFinite(ms) && ms - now.getTime() > RESCHEDULE_CUTOFF_MS
+}

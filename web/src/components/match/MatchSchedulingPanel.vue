@@ -20,7 +20,18 @@
       </v-alert>
 
       <!-- No active proposal - can propose -->
-      <template v-else-if="!activeProposal && canPropose">
+      <template v-else-if="!activeProposal && canPropose && (match.status === 'ready' || reproposing)">
+        <v-alert
+          v-if="reproposing && match.scheduled_at"
+          type="info"
+          variant="tonal"
+          density="compact"
+          class="mb-4"
+          data-testid="repropose-note"
+        >
+          The match stays at {{ formatScheduledTime(match.scheduled_at) }} unless
+          your opponent accepts one of the new times.
+        </v-alert>
         <p class="mb-4">Propose times for this match. Your opponent will be able to accept, reject, or counter-propose.</p>
 
         <!-- View mode toggle -->
@@ -75,6 +86,15 @@
 
         <div class="d-flex justify-end mt-4">
           <v-btn
+            v-if="reproposing"
+            variant="text"
+            class="mr-2"
+            data-testid="repropose-cancel"
+            @click="reproposing = false"
+          >
+            Keep the current time
+          </v-btn>
+          <v-btn
             color="primary"
             :loading="loading"
             :disabled="!hasValidTime"
@@ -117,6 +137,22 @@
         </v-alert>
         <p class="text-body-2 text-medium-emphasis">
           The match time has been agreed upon. Waiting for the match to begin.
+        </p>
+        <!-- Teams may re-agree a time until an hour before the match. -->
+        <div v-if="canPropose" class="d-flex justify-end">
+          <v-btn
+            variant="outlined"
+            color="primary"
+            data-testid="repropose"
+            @click="reproposing = true"
+          >
+            <v-icon start>mdi-calendar-edit</v-icon>
+            Propose a new time
+          </v-btn>
+        </div>
+        <p v-else-if="canAct && withinRescheduleCutoff" class="text-body-2 text-medium-emphasis mt-2" data-testid="repropose-closed">
+          The match starts within the hour, so the time can no longer be changed
+          here. Ask an organiser if it has to move.
         </p>
       </template>
 
@@ -178,7 +214,7 @@ import { ref, computed, watch } from 'vue'
 import type { TournamentResponse, TournamentMatchResponse } from '@/stores/tournaments'
 import type { ScheduleProposalResponse } from '@/stores/matchScheduling'
 import { formatDateTimeLongWithWeekday } from '@/utils/formatters'
-import { givesEnoughNotice, TOO_SOON_MESSAGE } from '@/utils/schedulingLead'
+import { givesEnoughNotice, TOO_SOON_MESSAGE, RESCHEDULE_CUTOFF_MS } from '@/utils/schedulingLead'
 import ProposalCard from './ProposalCard.vue'
 import ScheduleTimePicker from './ScheduleTimePicker.vue'
 import AvailabilityCalendarOverlay from './AvailabilityCalendarOverlay.vue'
@@ -233,6 +269,18 @@ const emit = defineEmits<{
   counter: [times: string[], notes?: string]
   withdraw: []
 }>()
+
+/**
+ * The viewer chose to propose a new time for a match that already has one.
+ * The panel shows the proposal form instead of the "scheduled" summary.
+ */
+const reproposing = ref(false)
+
+/** Less than an hour to go: the backend no longer lets teams move the time. */
+const withinRescheduleCutoff = computed(() => {
+  const at = props.match.scheduled_at
+  return !!at && new Date(at).getTime() - Date.now() <= RESCHEDULE_CUTOFF_MS
+})
 
 // Proposal form state
 const proposedTimes = ref<string[]>(['', ''])
@@ -324,6 +372,12 @@ function submitCounter() {
     emit('counter', validTimes, counterNotes.value || undefined)
   }
 }
+
+// Sending a proposal (or the match changing) ends the re-propose form.
+watch(
+  () => [props.activeProposal?.id, props.match.status, props.match.scheduled_at],
+  () => { reproposing.value = false },
+)
 
 // A successful counter replaces the active proposal with the new one.
 watch(

@@ -462,7 +462,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { api } from '@/api'
+import { api, ApiError } from '@/api'
 import { getProposalStatusColor, getProposalStatusLabel } from '@/stores/matchScheduling'
 import type { ResultClaimResponse } from '@/stores/matchResults'
 import { useTournamentsStore } from '@/stores/tournaments'
@@ -813,88 +813,95 @@ function handleForfeit() {
   })
 }
 
+/**
+ * Run one scheduling action. Every refusal re-reads the match and its
+ * proposal: one pending proposal per match is enforced by the backend, so a
+ * 409 means the other team (or a teammate) proposed or answered first, and
+ * the page should show what actually happened rather than the stale card.
+ * Other refusals (a clash, a time that has passed) keep the backend's detail.
+ */
+async function runSchedulingAction(
+  action: () => Promise<unknown>,
+  success: string,
+  failureFallback: string,
+) {
+  try {
+    await feedback.run(action, {
+      success,
+      failureFallback,
+      errorSource: schedulingStore,
+      after: fetchAll,
+      rethrow: true,
+    })
+  } catch (e: unknown) {
+    if (e instanceof ApiError && e.status === 409) {
+      snackbar.show(
+        'Someone answered or proposed first; this shows the latest proposal.',
+        'warning',
+      )
+    }
+    await fetchAll()
+  }
+}
+
 // Thin event handlers
 async function handlePropose(times: string[], notes?: string) {
   if (!tournament.value || !match.value) return
-  await feedback.run(
+  await runSchedulingAction(
     () => schedulingStore.proposeSchedule(tournament.value!.id, match.value!.id, times, notes),
-    {
-      success: 'Schedule proposal sent!',
-      failureFallback: 'Failed to send proposal',
-      errorSource: schedulingStore,
-      after: fetchAll,
-    },
+    'Schedule proposal sent!',
+    'Failed to send proposal',
   )
 }
 
 async function handleAccept(selectedTime: string) {
   if (!tournament.value || !match.value || !activeProposal.value) return
   const proposalId = activeProposal.value.id
-  await feedback.run(
+  await runSchedulingAction(
     () => schedulingStore.acceptProposal(tournament.value!.id, match.value!.id, {
       proposal_id: proposalId,
       selected_time: selectedTime,
     }),
-    {
-      success: 'Schedule accepted!',
-      failureFallback: 'Failed to accept proposal',
-      errorSource: schedulingStore,
-      after: fetchAll,
-    },
+    'Schedule accepted!',
+    'Failed to accept proposal',
   )
 }
 
 async function handleReject(reason?: string) {
   if (!tournament.value || !match.value || !activeProposal.value) return
   const proposalId = activeProposal.value.id
-  await feedback.run(
+  await runSchedulingAction(
     () => schedulingStore.rejectProposal(tournament.value!.id, match.value!.id, {
       proposal_id: proposalId,
     }, reason),
-    {
-      // Info-level result; useActionFeedback always shows 'success' as success color,
-      // but the original code used 'info'. Snackbar color doesn't carry semantic
-      // weight here beyond visual tone — keep as success for consistency.
-      success: 'Proposal rejected',
-      failureFallback: 'Failed to reject proposal',
-      errorSource: schedulingStore,
-      after: fetchAll,
-    },
+    'Proposal rejected',
+    'Failed to reject proposal',
   )
 }
 
 async function handleCounter(times: string[], notes?: string) {
   if (!tournament.value || !match.value || !activeProposal.value) return
   const proposalId = activeProposal.value.id
-  await feedback.run(
+  await runSchedulingAction(
     () => schedulingStore.counterPropose(tournament.value!.id, match.value!.id, proposalId, times, notes),
-    {
-      success: 'Counter-proposal sent!',
-      failureFallback: 'Failed to send counter-proposal',
-      errorSource: schedulingStore,
-      after: fetchAll,
-    },
+    'Counter-proposal sent!',
+    'Failed to send counter-proposal',
   )
 }
 
 /**
- * Withdraw the viewer's own pending proposal (P-9). Only reachable from the
- * proposer branch of ProposalCard; the backend independently enforces
- * "caller must be the proposer" with a 403.
+ * Withdraw the viewer's team's pending proposal (P-9). Any captain, owner or
+ * delegate of the proposing team may; the backend enforces that with a 403.
  */
 async function handleWithdraw() {
   if (!tournament.value || !match.value || !activeProposal.value) return
   const proposalId = activeProposal.value.id
-  await feedback.run(
+  await runSchedulingAction(
     () => schedulingStore.cancelProposal(tournament.value!.id, match.value!.id, {
       proposal_id: proposalId,
     }),
-    {
-      success: 'Proposal withdrawn',
-      failureFallback: 'Failed to withdraw proposal',
-      errorSource: schedulingStore,
-      after: fetchAll,
-    },
+    'Proposal withdrawn',
+    'Failed to withdraw proposal',
   )
 }
 

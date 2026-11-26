@@ -127,7 +127,12 @@ test.describe('Tournament Lifecycle (admin)', () => {
     // 9. Complete: in_progress → completed. Confirm-gated (an accidental
     // click used to end the tournament outright).
     await page.getByRole('button', { name: /^Complete$/i }).click()
-    await page.getByRole('dialog').getByRole('button', { name: /^Complete$/i }).click()
+    // The confirm counts matches that were never played and names them on
+    // its button; this tournament's bracket has not been played out.
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^Complete( with \d+ unfinished)?$/i })
+      .click()
     await waitForTournamentStatus(adminToken, tournament.id, 'completed')
     await expectStatusChip(page, 'Completed')
 

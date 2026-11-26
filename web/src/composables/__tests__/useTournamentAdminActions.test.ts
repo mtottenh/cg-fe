@@ -190,4 +190,63 @@ describe('useTournamentAdminActions', () => {
     expect(actions.canReopenRegistration.value).toBe(false)
     expect(actions.canPublish.value).toBe(false)
   })
+
+  describe('complete()', () => {
+    const match = (status: string) =>
+      ({ id: `m-${status}`, tournament_id: 'tourney-1', status }) as never
+
+    function setup(statuses: string[]) {
+      const tournament = ref(makeTournament({ status: 'in_progress' } as Partial<TournamentResponse>))
+      const store = useTournamentsStore()
+      store.matches = statuses.map(match)
+      const { result: actions, unmount } = withApp(() => useTournamentAdminActions(tournament))
+      cleanups.push(unmount)
+      return { actions, store }
+    }
+
+    it('warns with the count when matches have not been played', () => {
+      const { actions } = setup(['completed', 'ready', 'scheduled'])
+      expect(actions.readyToComplete.value).toBe(false)
+
+      actions.complete()
+
+      expect(actions.confirmDialog.state.title).toBe('Matches are still unfinished')
+      expect(actions.confirmDialog.state.message).toContain('2 of 3 matches have not been played')
+      expect(actions.confirmDialog.state.actionLabel).toBe('Complete with 2 unfinished')
+      expect(actions.confirmDialog.state.color).toBe('error')
+    })
+
+    it('prompts to complete once every match is settled', () => {
+      const { actions } = setup(['completed', 'forfeit', 'cancelled'])
+      expect(actions.readyToComplete.value).toBe(true)
+
+      actions.complete()
+
+      expect(actions.confirmDialog.state.actionLabel).toBe('Complete')
+      expect(actions.confirmDialog.state.message).toContain('All 3 matches are finished')
+    })
+
+    it('does not complete anything until the dialog is confirmed', () => {
+      const { actions, store } = setup(['ready'])
+      const completeTournament = vi.spyOn(store, 'completeTournament').mockResolvedValue({} as never)
+      actions.complete()
+      expect(completeTournament).not.toHaveBeenCalled()
+    })
+
+    it('forces completion only when the admin confirmed closing unfinished matches', async () => {
+      const { actions, store } = setup(['ready', 'completed'])
+      const completeTournament = vi.spyOn(store, 'completeTournament').mockResolvedValue({} as never)
+      actions.complete()
+      await actions.confirmDialog.execute()
+      expect(completeTournament).toHaveBeenCalledWith(expect.any(String), { force: true })
+    })
+
+    it('does not force completion when every match is settled', async () => {
+      const { actions, store } = setup(['completed', 'forfeit'])
+      const completeTournament = vi.spyOn(store, 'completeTournament').mockResolvedValue({} as never)
+      actions.complete()
+      await actions.confirmDialog.execute()
+      expect(completeTournament).toHaveBeenCalledWith(expect.any(String), { force: false })
+    })
+  })
 })

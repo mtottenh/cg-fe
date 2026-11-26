@@ -71,6 +71,33 @@
       </tbody>
     </v-table>
 
+    <!-- Scheduling a match means giving it a time, which lives on the Admin
+         Actions tab; a status flip alone leaves it with no check-in window. -->
+    <v-alert
+      v-if="needsTime"
+      type="info"
+      variant="tonal"
+      density="compact"
+      class="mt-4"
+      data-testid="match-needs-time"
+    >
+      <div class="d-flex align-center flex-wrap ga-3">
+        <span>
+          {{ match.status === 'scheduled'
+            ? 'This match is marked scheduled but has no time, so check-in will never open.'
+            : 'This match has no time yet. Check-in opens automatically before the time you set.' }}
+        </span>
+        <v-btn
+          color="primary"
+          size="small"
+          prepend-icon="mdi-calendar-clock"
+          @click="emit('set-time')"
+        >
+          Set match time
+        </v-btn>
+      </div>
+    </v-alert>
+
     <!-- Status Transition -->
     <div v-if="nextStatus" class="mt-4">
       <v-btn
@@ -78,9 +105,10 @@
         :loading="tournamentsStore.adminMatchTransitionState.loading"
         @click="handleTransition"
       >
-        {{ getMatchActionLabel(match.status) }}
+        {{ getMatchActionLabel(match.status, match) }}
       </v-btn>
     </div>
+    <ConfirmDialogHost :dialog="confirmDialog" />
   </div>
 </template>
 
@@ -91,8 +119,11 @@ import { useActionFeedback } from '@/composables/useActionFeedback'
 import { formatDateTime } from '@/utils/formatters'
 import {
   getMatchStatusColor, formatMatchStatus, formatMatchFormat,
-  getNextMatchStatus, getMatchActionLabel, getMatchActionColor,
+  getNextMatchStatus, getMatchActionLabel, getMatchActionColor, needsMatchTime,
+  skipsMatchSetup, SKIP_SETUP_WARNING,
 } from '@/utils/matchStatus'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 
 const props = defineProps<{
   match: TournamentMatchResponse | null
@@ -110,16 +141,36 @@ const hasScore = computed(() =>
 
 const emit = defineEmits<{
   updated: []
+  /** Take the admin to the schedule form on the Admin Actions tab. */
+  'set-time': []
 }>()
 
 const tournamentsStore = useTournamentsStore()
 const feedback = useActionFeedback()
+const confirmDialog = useConfirmDialog()
+
+const needsTime = computed(() => !!props.match && needsMatchTime(props.match))
 
 const nextStatus = computed(() => {
-  return props.match ? getNextMatchStatus(props.match.status) : null
+  return props.match ? getNextMatchStatus(props.match.status, props.match) : null
 })
 
-async function handleTransition() {
+function handleTransition() {
+  if (!props.match || !nextStatus.value) return
+  if (skipsMatchSetup(props.match.status, nextStatus.value)) {
+    confirmDialog.confirm({
+      title: 'Start match without setup?',
+      message: SKIP_SETUP_WARNING,
+      action: 'Start Match',
+      color: 'warning',
+      handler: runTransition,
+    })
+    return
+  }
+  void runTransition()
+}
+
+async function runTransition() {
   if (!props.match || !nextStatus.value) return
   const next = nextStatus.value
   await feedback.run(

@@ -5,6 +5,7 @@ import { createSnackbar, SnackbarKey } from '@/composables/useSnackbar'
 import { useTournamentsStore, type TournamentResponse, type TournamentMatchResponse } from '@/stores/tournaments'
 import { useMatchResultsStore } from '@/stores/matchResults'
 import { useAuthStore } from '@/stores/auth'
+import { useMatchSchedulingStore } from '@/stores/matchScheduling'
 
 // useMatchDetail reads `useRoute()` at module call time — stub it so test
 // harness doesn't need a full router instance. The composable's fetchAll
@@ -181,6 +182,45 @@ describe('useMatchDetail panel-visibility computeds', () => {
 
     const { composable: c2 } = setup({ status: 'scheduled' })
     expect(c2.showResultPanel.value).toBe(false)
+  })
+
+  it("isOwnTeamProposal is true for a teammate's proposal, where isProposer is false", () => {
+    const { composable } = setup({ status: 'ready' })
+    const schedulingStore = useMatchSchedulingStore()
+
+    // Sent by a TEAMMATE (different user) for the viewer's registration.
+    schedulingStore.activeProposal = {
+      id: 'p-1',
+      status: 'pending',
+      proposed_by_user_id: 'user-teammate',
+      proposed_by_registration_id: 'reg-a',
+    } as unknown as typeof schedulingStore.activeProposal
+    expect(composable.isProposer.value).toBe(false)
+    expect(composable.isOwnTeamProposal.value).toBe(true)
+
+    // Sent by the opponent: the viewer's team may respond.
+    schedulingStore.activeProposal = {
+      id: 'p-2',
+      status: 'pending',
+      proposed_by_user_id: 'user-b',
+      proposed_by_registration_id: 'reg-b',
+    } as unknown as typeof schedulingStore.activeProposal
+    expect(composable.isOwnTeamProposal.value).toBe(false)
+  })
+
+  it('canSchedule and canPropose follow the server check-in rule, not mere roster membership', () => {
+    // Scheduling is held to the check-in rule on the backend: captain, owner
+    // or a delegate. A plain roster member still sees the panel (read-only).
+    const { composable, tournamentsStore } = setup({ status: 'ready' })
+    expect(composable.canSchedule.value).toBe(true)
+    expect(composable.canPropose.value).toBe(true)
+
+    tournamentsStore.matchParticipants = makeParticipants({
+      my_registration_can_check_in: false,
+    })
+    expect(composable.showSchedulingPanel.value).toBe(true)
+    expect(composable.canSchedule.value).toBe(false)
+    expect(composable.canPropose.value).toBe(false)
   })
 
   it('showConfirmationPanel needs a pending claim submitted by the opponent', () => {

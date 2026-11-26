@@ -70,7 +70,30 @@
             <v-icon>mdi-eye</v-icon>
             <v-tooltip activator="parent" location="top">View Details</v-tooltip>
           </v-btn>
-          <v-menu v-if="getNextMatchStatus(item.status)">
+          <v-btn
+            v-if="stuckHint(item)"
+            :aria-label="stuckHint(item)!.label"
+            icon
+            size="small"
+            variant="text"
+            :color="stuckHint(item)!.severity === 'warning' ? 'warning' : undefined"
+            :data-testid="`match-stuck-${item.id}`"
+            @click="$emit('rescue', item.id)"
+          >
+            <v-icon>{{ stuckHint(item)!.severity === 'warning' ? 'mdi-alert' : 'mdi-lifebuoy' }}</v-icon>
+            <v-tooltip activator="parent" location="top">{{ stuckHint(item)!.label }}</v-tooltip>
+          </v-btn>
+          <v-btn
+            v-if="needsMatchTime(item)"
+            size="small"
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-calendar-clock"
+            @click="$emit('set-time', item.id)"
+          >
+            Set match time
+          </v-btn>
+          <v-menu v-if="getNextMatchStatus(item.status, item)">
             <template v-slot:activator="{ props: menuProps }">
               <v-btn
                 size="small"
@@ -80,13 +103,13 @@
                 :loading="matchTransitionLoadingId === item.id"
                 :disabled="matchTransitionLoadingId !== null && matchTransitionLoadingId !== item.id"
               >
-                {{ getMatchActionLabel(item.status) }}
+                {{ getMatchActionLabel(item.status, item) }}
                 <v-icon end size="small">mdi-chevron-down</v-icon>
               </v-btn>
             </template>
             <v-list density="compact">
-              <v-list-item @click="$emit('transition', item.id, getNextMatchStatus(item.status)!)">
-                <v-list-item-title>{{ getMatchActionLabel(item.status) }}</v-list-item-title>
+              <v-list-item @click="$emit('transition', item.id, getNextMatchStatus(item.status, item)!)">
+                <v-list-item-title>{{ getMatchActionLabel(item.status, item) }}</v-list-item-title>
               </v-list-item>
             </v-list>
           </v-menu>
@@ -108,8 +131,9 @@ import type { TournamentMatchResponse } from '@/stores/tournaments'
 import { formatDateTime } from '@/utils/formatters'
 import {
   getMatchStatusColor, formatMatchStatus, formatMatchFormatShort,
-  getNextMatchStatus, getMatchActionLabel, getMatchActionColor,
+  getNextMatchStatus, getMatchActionLabel, getMatchActionColor, needsMatchTime,
 } from '@/utils/matchStatus'
+import { stuckHint } from '@/utils/matchRescue'
 
 const props = defineProps<{
   matches: TournamentMatchResponse[]
@@ -121,6 +145,10 @@ const props = defineProps<{
 
 defineEmits<{
   'view-detail': [matchId: string]
+  /** Open the match on its schedule form. */
+  'set-time': [matchId: string]
+  /** Open the match on its rescue tools. */
+  'rescue': [matchId: string]
   'transition': [matchId: string, toStatus: string]
   'bulk-start': []
 }>()
@@ -137,6 +165,6 @@ const headers = [
   { title: 'Score', key: 'score', width: '100px' },
   { title: 'Status', key: 'status', width: '120px' },
   { title: 'Scheduled', key: 'scheduled_at', width: '150px' },
-  { title: 'Actions', key: 'actions', width: '200px', sortable: false },
+  { title: 'Actions', key: 'actions', width: '280px', sortable: false },
 ]
 </script>

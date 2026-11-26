@@ -92,7 +92,8 @@ async function openMatchDetail(page: Page, row: Locator): Promise<Locator> {
 async function openAdminActions(dialog: Locator): Promise<Locator> {
   await dialog.getByRole('tab', { name: 'Admin Actions' }).click()
   const panel = activePanel(dialog)
-  await expect(panel.getByRole('button', { name: 'Schedule', exact: true })).toBeVisible()
+  // The forfeit cards render for every status; the schedule card does not.
+  await expect(panel.getByRole('button', { name: 'Double Forfeit', exact: true })).toBeVisible()
   return panel
 }
 
@@ -127,18 +128,31 @@ test.describe('Admin match overrides', () => {
     const overview = activePanel(dialog)
     await expect(overview.locator('.v-chip').filter({ hasText: 'Ready' })).toBeVisible()
 
-    // ready → scheduled. `getMatchActionLabel('ready')` is "Schedule".
-    await overview.getByRole('button', { name: 'Schedule', exact: true }).click()
-    await expect(
-      page.locator('.v-snackbar').getByText('Match transitioned to scheduled'),
-    ).toBeVisible()
+    // ready → scheduled is not a status flip: a `ready` match offers no
+    // transition button, and "Set match time" leads to the schedule form.
+    await expect(overview.getByRole('button', { name: 'Schedule', exact: true })).toHaveCount(0)
+    await overview.getByRole('button', { name: 'Set match time' }).click()
+    const actions = activePanel(dialog)
+    await actions.locator('input[type="datetime-local"]').fill('2032-04-17T19:45')
+    await actions.getByRole('button', { name: 'Schedule', exact: true }).click()
+    await expect(page.locator('.v-snackbar').getByText('Match scheduled')).toBeVisible()
+    const scheduled = await getOverrideMatch(adminToken, scenario.tournamentId, target.id)
+    expect(scheduled.status).toBe('scheduled')
+    expect(scheduled.scheduled_at ?? null).not.toBeNull()
+
+    // Once it has a time the same card offers a reschedule.
+    await expect(actions.getByRole('button', { name: 'Reschedule', exact: true })).toBeVisible()
+
+    await dialog.getByRole('tab', { name: 'Overview' }).click()
     await expect(overview.locator('.v-chip').filter({ hasText: 'Scheduled' })).toBeVisible()
-    expect((await getOverrideMatch(adminToken, scenario.tournamentId, target.id)).status).toBe(
-      'scheduled',
-    )
 
     // scheduled → in_progress, proving the button relabels off the new status.
     await overview.getByRole('button', { name: 'Start Match', exact: true }).click()
+    // Starting from `scheduled` skips check-in, the veto and server setup, so
+    // it is confirmed first.
+    const confirm = page.locator('.v-dialog').filter({ hasText: 'Start match without setup?' })
+    await expect(confirm).toContainText('no game server is set up')
+    await confirm.getByRole('button', { name: 'Start Match', exact: true }).click()
     await expect(
       page.locator('.v-snackbar').getByText('Match transitioned to in progress'),
     ).toBeVisible()
@@ -528,31 +542,31 @@ test.describe('Admin match overrides', () => {
 
     const scoreInputs = results.locator('input[type="number"]')
     await scoreInputs.first().fill('0')
-    await scoreInputs.nth(1).fill('2')
-    await results.getByLabel('Reason *').fill('Demo review: participant 2 won 2-0.')
+    await scoreInputs.nth(1).fill('1')
+    await results.getByLabel('Reason *').fill('Demo review: participant 2 won 1-0.')
     await results.getByRole('button', { name: 'Correct Score' }).click()
 
-    await confirmOverlay(page, `Overwrite the official result with 0-2, making ${p2Name} the winner?`)
+    await confirmOverlay(page, `Overwrite the official result with 0-1, making ${p2Name} the winner?`)
       .getByRole('button', { name: 'Correct Score' })
       .click()
     await expect(page.locator('.v-snackbar').getByText('Score corrected')).toBeVisible()
 
     // --- The UI reflects the correction ---------------------------------
     await expect(results.getByTestId('recorded-p1-score')).toHaveText('0')
-    await expect(results.getByTestId('recorded-p2-score')).toHaveText('2')
+    await expect(results.getByTestId('recorded-p2-score')).toHaveText('1')
     await expect(results.getByTestId('recorded-winner')).toHaveText(p2Name)
 
     // …including the audit trail, naming a person rather than a truncated id.
     const auditRow = results.locator('[data-testid="override-row"]')
     await expect(auditRow).toHaveCount(1)
     await expect(auditRow).toContainText('1–0')
-    await expect(auditRow).toContainText('0–2')
-    await expect(auditRow).toContainText('Demo review: participant 2 won 2-0.')
+    await expect(auditRow).toContainText('0–1')
+    await expect(auditRow).toContainText('Demo review: participant 2 won 1-0.')
     await expect(auditRow).not.toContainText('Unknown admin')
 
     // --- …and so does the API (§1.4) ------------------------------------
     const after = await getOverrideMatch(adminToken, scenario.tournamentId, target.id)
-    expect([after.participant1_score, after.participant2_score]).toEqual([0, 2])
+    expect([after.participant1_score, after.participant2_score]).toEqual([0, 1])
     expect(after.winner_registration_id).toBe(p2Reg)
     expect(after.status).toBe('completed')
 
@@ -561,9 +575,9 @@ test.describe('Admin match overrides', () => {
     expect(overrides[0]!.previous_participant1_score).toBe(1)
     expect(overrides[0]!.previous_participant2_score).toBe(0)
     expect(overrides[0]!.new_participant1_score).toBe(0)
-    expect(overrides[0]!.new_participant2_score).toBe(2)
+    expect(overrides[0]!.new_participant2_score).toBe(1)
     expect(overrides[0]!.new_winner_registration_id).toBe(p2Reg)
-    expect(overrides[0]!.reason).toBe('Demo review: participant 2 won 2-0.')
+    expect(overrides[0]!.reason).toBe('Demo review: participant 2 won 1-0.')
     expect(overrides[0]!.changed_by_name, 'the audit row must name the operator').toBeTruthy()
   })
 
@@ -629,10 +643,10 @@ test.describe('Admin match overrides', () => {
     const results = activePanel(dialog)
     const scoreInputs = results.locator('input[type="number"]')
     await scoreInputs.first().fill('0')
-    await scoreInputs.nth(1).fill('2')
-    await results.getByLabel('Reason *').fill('Demo review: participant 2 won 2-0.')
+    await scoreInputs.nth(1).fill('1')
+    await results.getByLabel('Reason *').fill('Demo review: participant 2 won 1-0.')
     await results.getByRole('button', { name: 'Correct Score' }).click()
-    await confirmOverlay(page, `Overwrite the official result with 0-2, making ${p2Name} the winner?`)
+    await confirmOverlay(page, `Overwrite the official result with 0-1, making ${p2Name} the winner?`)
       .getByRole('button', { name: 'Correct Score' })
       .click()
     await expect(page.locator('.v-snackbar').getByText('Score corrected')).toBeVisible()

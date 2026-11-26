@@ -72,6 +72,7 @@ import type { MapStatusResponse } from '@/stores/veto'
 import { useVetoStore } from '@/stores/veto'
 import type { VetoPhase } from '@/composables/useMatchLobby'
 import { useSnackbar } from '@/composables/useSnackbar'
+import { ApiError } from '@/api'
 import GameMapCard from '@/components/GameMapCard.vue'
 
 const props = defineProps<{
@@ -124,12 +125,22 @@ async function confirmSelect() {
     pendingMap.value = null
     return
   }
+  // Read the phase BEFORE the request: the websocket echo usually advances
+  // it while the request is in flight, which reported a ban as "picked!".
+  const action = props.phase === 'banning' ? 'banned' : 'picked'
   try {
     await vetoStore.performVetoAction(props.matchId, { map_id: map.map_id })
-    const action = props.phase === 'banning' ? 'banned' : 'picked'
     snackbar.show(`${map.map_name} ${action}!`, 'success')
-  } catch {
-    snackbar.show(vetoStore.vetoActionState.error || 'Failed to perform action', 'error')
+  } catch (e: unknown) {
+    // 409: another action (the opponent's, or the turn timing out) landed on
+    // this turn first. Either way the board shown is behind; re-read it.
+    snackbar.show(
+      e instanceof ApiError && e.status === 409
+        ? 'The turn moved on before your choice landed. The board has been refreshed.'
+        : vetoStore.vetoActionState.error || 'Failed to perform action',
+      e instanceof ApiError && e.status === 409 ? 'warning' : 'error',
+    )
+    void vetoStore.getVetoSession(props.matchId).catch(() => null)
   } finally {
     pendingMap.value = null
   }

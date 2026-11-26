@@ -1388,8 +1388,89 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Generate the next Swiss round for a tournament. */
+        /**
+         * Generate the next Swiss round for a tournament.
+         * @description Advances every Swiss bracket of the active stage whose current round is
+         *     settled (every match played or cancelled) and which has rounds left: the one bracket of a Swiss
+         *     tournament, or each Swiss group of a groups-and-playoffs tournament
+         *     (groups advance independently). The response lists the new matches of
+         *     every bracket that advanced.
+         */
         post: operations["admin_generate_next_swiss_round"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/check-in-window": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open, extend or shorten a match's check-in window (admin).
+         * @description On a match that is checking in, moves the deadline and keeps the
+         *     check-ins already made. On a `ready` or `scheduled` match, opens the
+         *     window now. A window that has already expired into a forfeit is reopened
+         *     by resetting the match first.
+         */
+        post: operations["admin_set_check_in_window"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/completion/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-run a decided match's completion (admin).
+         * @description For a completed or forfeited match whose completion saga failed, paused
+         *     or never ran: advances the winner if that has not happened, recomputes
+         *     the standings and moves the stage on if it is finished. Idempotent.
+         */
+        post: operations["admin_retry_completion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diagnose a match (admin, read-only).
+         * @description One consistent read of the match and everything hanging off it — veto,
+         *     server reservation, pending proposal and claim, open dispute, completion
+         *     saga — plus a list of what is wrong and which rescue action fixes it.
+         *
+         *     `problems[].code` is a closed list: `scheduled_without_time`,
+         *     `checkin_expired`, `both_checked_in_not_advanced`, `veto_missing`,
+         *     `veto_stalled`, `cancelled_by_no_show`, `forfeit_by_no_show`,
+         *     `pick_ban_veto_complete_no_server`, `reservation_failed`,
+         *     `reservation_stuck`, `reservation_live_match_terminal`, `roster_invalid`,
+         *     `saga_failed`, `disputed_flag_stale`.
+         */
+        get: operations["admin_match_diagnostics"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1430,6 +1511,32 @@ export interface paths {
          * @description Forces a forfeit for a specific match. Only accessible by tournament admins.
          */
         post: operations["admin_forfeit_match"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset a match to `ready` (admin).
+         * @description The universal way out of a stuck match: whatever state it reached —
+         *     scheduled with no time, an expired check-in, a no-show forfeit, a double
+         *     no-show cancellation, a veto or series that has to be replayed — it goes
+         *     back to `ready` with its time, check-ins, veto, result, pending claims,
+         *     open disputes and server reservation cleared, and standings recomputed.
+         *     A completed match is refused: correct its score or revert its progression
+         *     instead.
+         */
+        post: operations["admin_reset_match"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1525,6 +1632,28 @@ export interface paths {
         put?: never;
         /** Admin force match status transition. */
         post: operations["admin_match_transition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tournaments/{tournament_id}/matches/{match_id}/veto/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart a match's map veto (admin).
+         * @description Discards the veto session and its picks, releases the game server (its
+         *     config was built from that veto), and starts a fresh veto with the match
+         *     in `pick_ban`.
+         */
+        post: operations["admin_reset_veto"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3418,7 +3547,18 @@ export interface paths {
         get: operations["get_match_server"];
         put?: never;
         post?: never;
-        /** Cancel a match's server reservation (admin). */
+        /**
+         * Clear a match off its game server (admin).
+         * @description Ends the match loaded on the server — which drops MatchZy's player
+         *     whitelist, so anyone can connect again — and releases the match's live
+         *     reservation if it has one. Also works when the reservation has already
+         *     failed or been cancelled but the config is still loaded, as long as the
+         *     server has not moved on to another match.
+         *
+         *     `server_cleared` is false, with `detail` saying why, when the server's
+         *     agent could not be reached or refused the command; the reservation is
+         *     released either way.
+         */
         delete: operations["cancel_match_server"];
         options?: never;
         head?: never;
@@ -3442,6 +3582,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/matches/{match_id}/server/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild the match config and reload it on a server (admin).
+         * @description For a match whose loaded config is wrong — a roster changed, a Steam ID
+         *     was linked after the fact, the load failed. Checks that a config can be
+         *     built from the rosters as they stand now (400 with the reason if not,
+         *     before anything is torn down), then clears the server, drops the old
+         *     reservation and creates and allocates a new one.
+         */
+        post: operations["reload_match_server"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/matches/{match_id}/server/restore": {
         parameters: {
             query?: never;
@@ -3453,6 +3617,28 @@ export interface paths {
         put?: never;
         /** Restore a round backup onto the match's server (admin, Phase 4). */
         post: operations["restore_match_server"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/matches/{match_id}/server/roster-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether a server config can be built for a match (admin, read-only).
+         * @description Lists, per team, the players the config would whitelist — roster plus
+         *     applied substitutions — and flags anyone without a usable Steam ID, a
+         *     team too short to ready up, and an unfinished veto.
+         */
+        get: operations["match_server_roster_check"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4595,7 +4781,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Complete a tournament. */
+        /**
+         * Complete a tournament.
+         * @description Refused (400) while a match between two decided participants is
+         *     unfinished, unless `?force=true`.
+         */
         post: operations["complete_tournament"];
         delete?: never;
         options?: never;
@@ -5704,6 +5894,8 @@ export interface components {
              * @example Team Alpha vs Team Bravo
              */
             match_label: string;
+            /** @description The match's agreed start time, if it has one (ISO 8601). */
+            scheduled_at?: string | null;
             /**
              * @description Tournament ID.
              * @example 550e8400-e29b-41d4-a716-446655440000
@@ -5810,6 +6002,16 @@ export interface components {
              */
             permission_id: string;
         };
+        /** @description Body for opening or extending a match's check-in window. */
+        AdminCheckInWindowRequest: {
+            /**
+             * Format: date-time
+             * @description When the window closes. Must be in the future.
+             */
+            deadline: string;
+            /** @description Why the admin is doing this. Recorded on the match's status log. */
+            reason: string;
+        };
         /** @description Request to add an admin message to a dispute (can be internal). */
         AdminDisputeMessageRequest: {
             /** @description Evidence IDs attached to the message. */
@@ -5873,6 +6075,11 @@ export interface components {
              */
             reason: string;
         };
+        /** @description Body of a rescue action that needs only a reason. */
+        AdminRescueRequest: {
+            /** @description Why the admin is doing this. Recorded on the match's status log. */
+            reason: string;
+        };
         /** @description Request for admin review decision. */
         AdminReviewDecisionRequest: {
             /** @description Optional notes explaining the decision. */
@@ -5880,6 +6087,11 @@ export interface components {
         };
         /** @description Request for admin to directly schedule a match. */
         AdminScheduleRequest: {
+            /**
+             * @description Accept a time more than a few minutes in the past. Check-in opens
+             *     immediately for such a match, so it has to be asked for.
+             */
+            allow_past?: boolean;
             /** @description Optional notes for the scheduling decision. */
             notes?: string | null;
             /**
@@ -6358,6 +6570,13 @@ export interface components {
          * @enum {string}
          */
         ClaimStatus: "pending" | "confirmed" | "disputed" | "superseded" | "cancelled";
+        /** @description Result of re-running a match's completion. */
+        CompletionRetryResponse: {
+            /** @description What it did, in words. */
+            outcome: string;
+            /** @description Whether settlement ran to the end. */
+            ran: boolean;
+        };
         /**
          * @description The console's action table.
          * @enum {string}
@@ -7235,6 +7454,18 @@ export interface components {
                 total_eligible: number;
                 /** @description Tournament ID. */
                 tournament_id: string;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_CompletionRetryResponse: {
+            /** @description Result of re-running a match's completion. */
+            data: {
+                /** @description What it did, in words. */
+                outcome: string;
+                /** @description Whether settlement ran to the end. */
+                ran: boolean;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -8440,6 +8671,32 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_MatchDiagnosticsResponse: {
+            /** @description Everything an admin needs to see to work out why a match is stuck. */
+            data: {
+                /** Format: date-time */
+                check_in_deadline?: string | null;
+                disputed: boolean;
+                open_dispute_id?: string | null;
+                /** Format: date-time */
+                participant1_checked_in_at?: string | null;
+                /** Format: date-time */
+                participant2_checked_in_at?: string | null;
+                pending_claim?: null | components["schemas"]["DiagnosticsClaim"];
+                pending_proposal?: null | components["schemas"]["DiagnosticsProposal"];
+                problems: components["schemas"]["DiagnosticsProblem"][];
+                reservation?: null | components["schemas"]["DiagnosticsReservation"];
+                saga?: null | components["schemas"]["DiagnosticsSaga"];
+                /** Format: date-time */
+                scheduled_at?: string | null;
+                status: components["schemas"]["TournamentMatchStatus"];
+                veto?: null | components["schemas"]["DiagnosticsVeto"];
+                veto_required: boolean;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_MatchLineupResponse: {
             /**
              * @description A lineup for one registration, with its player rows.
@@ -8551,6 +8808,13 @@ export interface components {
                  * @description 1-based place in the server queue, when `pending` (§6.6).
                  */
                 queue_position?: number | null;
+                /**
+                 * Format: int32
+                 * @description Failed load attempts so far — admins only.
+                 */
+                retry_count?: number | null;
+                /** @description The server holding the reservation — admins only. */
+                server_id?: string | null;
                 /** @description Server display name. */
                 server_name?: string | null;
                 /** @description Reservation status. */
@@ -9501,6 +9765,23 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /** @description Wrapper for single-item responses. */
+        DataResponse_RosterCheckResponse: {
+            /** @description Whether a MatchZy config can be built for the match, and from whom. */
+            data: {
+                /** Format: int32 */
+                min_players_to_ready: number;
+                /** @description False when the config cannot be built or a team cannot ready up. */
+                ok: boolean;
+                /** Format: int32 */
+                players_per_team: number;
+                /** @description Problems that are not about one team (e.g. the veto has not finished). */
+                problems: string[];
+                teams: components["schemas"]["RosterCheckTeam"][];
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
         DataResponse_ScheduleProposalResponse: {
             /** @description Response DTO for a schedule proposal. */
             data: {
@@ -9577,6 +9858,28 @@ export interface components {
                 server_id: string;
                 starts_at: string;
                 tournament_id?: string | null;
+            };
+            /** @description Response metadata. */
+            meta: components["schemas"]["Meta"];
+        };
+        /** @description Wrapper for single-item responses. */
+        DataResponse_ServerClearResponse: {
+            /** @description What clearing a match off its server did. */
+            data: {
+                /** @description Why the server was not cleared, when it was not. */
+                detail?: string | null;
+                /**
+                 * @description A live reservation existed and was released (the server is free for
+                 *     the next match).
+                 */
+                released_reservation: boolean;
+                /**
+                 * @description The game server acknowledged the end-match command: the loaded match
+                 *     config, and with it the player whitelist, is gone.
+                 */
+                server_cleared: boolean;
+                /** @description The server that was addressed, if any. */
+                server_name?: string | null;
             };
             /** @description Response metadata. */
             meta: components["schemas"]["Meta"];
@@ -9779,6 +10082,12 @@ export interface components {
             data: {
                 bracket_id: string;
                 bracket_position: string;
+                /**
+                 * Format: date-time
+                 * @description When the open check-in window closes: a side not checked in by then
+                 *     is forfeited as a no-show. Set once the window opens.
+                 */
+                check_in_deadline?: string | null;
                 check_in_required: boolean;
                 /** Format: date-time */
                 completed_at?: string | null;
@@ -9813,6 +10122,12 @@ export interface components {
                 round: number;
                 /** Format: date-time */
                 schedule_deadline?: string | null;
+                /**
+                 * @description Set only in the reply to an admin setting the match time: why that
+                 *     time collides with another match (a team playing twice within two
+                 *     hours, or the one game server already taken). The time was applied.
+                 */
+                schedule_warning?: string | null;
                 /** Format: date-time */
                 scheduled_at?: string | null;
                 stage_id: string;
@@ -10253,6 +10568,8 @@ export interface components {
                  * @example Team Alpha vs Team Bravo
                  */
                 match_label: string;
+                /** @description The match's agreed start time, if it has one (ISO 8601). */
+                scheduled_at?: string | null;
                 /**
                  * @description Tournament ID.
                  * @example 550e8400-e29b-41d4-a716-446655440000
@@ -11814,6 +12131,12 @@ export interface components {
             data: {
                 bracket_id: string;
                 bracket_position: string;
+                /**
+                 * Format: date-time
+                 * @description When the open check-in window closes: a side not checked in by then
+                 *     is forfeited as a no-show. Set once the window opens.
+                 */
+                check_in_deadline?: string | null;
                 check_in_required: boolean;
                 /** Format: date-time */
                 completed_at?: string | null;
@@ -11848,6 +12171,12 @@ export interface components {
                 round: number;
                 /** Format: date-time */
                 schedule_deadline?: string | null;
+                /**
+                 * @description Set only in the reply to an admin setting the match time: why that
+                 *     time collides with another match (a team playing twice within two
+                 *     hours, or the one game server already taken). The time was applied.
+                 */
+                schedule_warning?: string | null;
                 /** Format: date-time */
                 scheduled_at?: string | null;
                 stage_id: string;
@@ -12174,6 +12503,12 @@ export interface components {
                 remaining_maps: string[];
                 /** @description Maps selected for play (in order). */
                 selected_maps: string[];
+                /**
+                 * Format: date-time
+                 * @description The server's clock when this response was built, so clients can count
+                 *     down to `action_deadline` without trusting their own clock.
+                 */
+                server_time: string;
                 /** @description How starting sides are determined (picker_choice, coin_flip, knife). */
                 side_selection_mode: string;
                 /**
@@ -12894,6 +13229,66 @@ export interface components {
             map_match: boolean;
             /** @description Non-fatal warnings. */
             warnings: string[];
+        };
+        /** @description A pending result claim. */
+        DiagnosticsClaim: {
+            /** Format: date-time */
+            auto_confirm_at?: string | null;
+            id: string;
+            /** @description `server`, `participant` or `admin`. */
+            source: string;
+        };
+        /** @description Something wrong with the match, and the rescue action that fixes it. */
+        DiagnosticsProblem: {
+            /** @description Stable identifier (closed list — see the handler docs). */
+            code: string;
+            /** @description What is wrong, for the admin. */
+            message: string;
+            /**
+             * @description The rescue action to offer: `set_time`, `extend_checkin`,
+             *     `reset_veto`, `reset`, `assign_server`, `reload_server`,
+             *     `clear_server`, `roster_check`, `retry_completion`.
+             */
+            suggested_action: string;
+        };
+        /** @description A pending schedule proposal. */
+        DiagnosticsProposal: {
+            /** Format: date-time */
+            expires_at: string;
+            id: string;
+            proposed_by_registration_id: string;
+        };
+        /** @description The match's newest server reservation, summarised. */
+        DiagnosticsReservation: {
+            failure_reason?: string | null;
+            id: string;
+            /**
+             * Format: int64
+             * @description 1-based place in the server queue while `pending`.
+             */
+            queue_position?: number | null;
+            /** Format: int32 */
+            retry_count: number;
+            server_name?: string | null;
+            status: components["schemas"]["ReservationStatus"];
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description The match's newest completion saga. */
+        DiagnosticsSaga: {
+            failed_step?: string | null;
+            status: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description The match's veto session, summarised. */
+        DiagnosticsVeto: {
+            /** Format: date-time */
+            action_deadline?: string | null;
+            /** Format: int32 */
+            current_action_number: number;
+            session_id: string;
+            status: components["schemas"]["VetoStatus"];
         };
         /** @description Response for discovered evidence. */
         DiscoveredEvidenceResponse: {
@@ -14595,6 +14990,27 @@ export interface components {
             /** @description Registration ID of the participant checking in. */
             registration_id: string;
         };
+        /** @description Everything an admin needs to see to work out why a match is stuck. */
+        MatchDiagnosticsResponse: {
+            /** Format: date-time */
+            check_in_deadline?: string | null;
+            disputed: boolean;
+            open_dispute_id?: string | null;
+            /** Format: date-time */
+            participant1_checked_in_at?: string | null;
+            /** Format: date-time */
+            participant2_checked_in_at?: string | null;
+            pending_claim?: null | components["schemas"]["DiagnosticsClaim"];
+            pending_proposal?: null | components["schemas"]["DiagnosticsProposal"];
+            problems: components["schemas"]["DiagnosticsProblem"][];
+            reservation?: null | components["schemas"]["DiagnosticsReservation"];
+            saga?: null | components["schemas"]["DiagnosticsSaga"];
+            /** Format: date-time */
+            scheduled_at?: string | null;
+            status: components["schemas"]["TournamentMatchStatus"];
+            veto?: null | components["schemas"]["DiagnosticsVeto"];
+            veto_required: boolean;
+        };
         /**
          * @description Format of a match (best of N).
          * @enum {string}
@@ -14800,6 +15216,13 @@ export interface components {
              * @description 1-based place in the server queue, when `pending` (§6.6).
              */
             queue_position?: number | null;
+            /**
+             * Format: int32
+             * @description Failed load attempts so far — admins only.
+             */
+            retry_count?: number | null;
+            /** @description The server holding the reservation — admins only. */
+            server_id?: string | null;
             /** @description Server display name. */
             server_name?: string | null;
             /** @description Reservation status. */
@@ -16217,6 +16640,11 @@ export interface components {
             /** @description Optional reason for the rejection, shown to the proposer. */
             reason?: string | null;
         };
+        /** @description Body of a server config reload. */
+        ReloadMatchServerRequest: {
+            /** @description Why the config is being reloaded. Recorded on the match's status log. */
+            reason: string;
+        };
         /** @description Body for a bulk enrichment requeue. */
         RequeueDiscoveredMatchesRequest: {
             /** @description Restrict to one game, by slug (e.g. `cs2`) or UUID. Omit for all games. */
@@ -16614,6 +17042,40 @@ export interface components {
             /** @description Permissions assigned to this role. */
             permissions: components["schemas"]["PermissionResponse"][];
         };
+        /** @description One player the match config would list for a team. */
+        RosterCheckPlayer: {
+            display_name: string;
+            player_id: string;
+            /** @description Why the player is not valid, when they are not. */
+            problem?: string | null;
+            /** @description `roster` or `substitution`. */
+            source: string;
+            /** @description The player's linked SteamID64, as stored. */
+            steam_id?: string | null;
+            /** @description Whether the player can be put in the server's whitelist. */
+            valid: boolean;
+        };
+        /** @description Whether a MatchZy config can be built for the match, and from whom. */
+        RosterCheckResponse: {
+            /** Format: int32 */
+            min_players_to_ready: number;
+            /** @description False when the config cannot be built or a team cannot ready up. */
+            ok: boolean;
+            /** Format: int32 */
+            players_per_team: number;
+            /** @description Problems that are not about one team (e.g. the veto has not finished). */
+            problems: string[];
+            teams: components["schemas"]["RosterCheckTeam"][];
+        };
+        /** @description One side of the match as the config would list it. */
+        RosterCheckTeam: {
+            name: string;
+            players: components["schemas"]["RosterCheckPlayer"][];
+            problems: string[];
+            registration_id: string;
+            /** @description Players with a usable Steam ID. */
+            usable_players: number;
+        };
         /**
          * @description Roster lock status for a season.
          * @enum {string}
@@ -16731,6 +17193,23 @@ export interface components {
             server_id: string;
             starts_at: string;
             tournament_id?: string | null;
+        };
+        /** @description What clearing a match off its server did. */
+        ServerClearResponse: {
+            /** @description Why the server was not cleared, when it was not. */
+            detail?: string | null;
+            /**
+             * @description A live reservation existed and was released (the server is free for
+             *     the next match).
+             */
+            released_reservation: boolean;
+            /**
+             * @description The game server acknowledged the end-match command: the loaded match
+             *     config, and with it the player whitelist, is gone.
+             */
+            server_cleared: boolean;
+            /** @description The server that was addressed, if any. */
+            server_name?: string | null;
         };
         /**
          * @description The MatchZy server-upload route, as the Pipeline's "Server uploads" card
@@ -17291,6 +17770,12 @@ export interface components {
         TournamentMatchResponse: {
             bracket_id: string;
             bracket_position: string;
+            /**
+             * Format: date-time
+             * @description When the open check-in window closes: a side not checked in by then
+             *     is forfeited as a no-show. Set once the window opens.
+             */
+            check_in_deadline?: string | null;
             check_in_required: boolean;
             /** Format: date-time */
             completed_at?: string | null;
@@ -17325,6 +17810,12 @@ export interface components {
             round: number;
             /** Format: date-time */
             schedule_deadline?: string | null;
+            /**
+             * @description Set only in the reply to an admin setting the match time: why that
+             *     time collides with another match (a team playing twice within two
+             *     hours, or the one game server already taken). The time was applied.
+             */
+            schedule_warning?: string | null;
             /** Format: date-time */
             scheduled_at?: string | null;
             stage_id: string;
@@ -18224,6 +18715,13 @@ export interface components {
             registration_start?: string | null;
             /** @description Updated rules URL. */
             rules_url?: string | null;
+            /**
+             * @description Updated scheduling mode: `live`, `self_scheduled`, `hybrid`.
+             *
+             *     Unlike the other fields this may be changed after the tournament has
+             *     started, provided it is the only field in the request.
+             */
+            scheduling_mode?: string | null;
             /** @description Updated settings. */
             settings?: unknown;
             /** @description Updated slug. */
@@ -18606,6 +19104,12 @@ export interface components {
             remaining_maps: string[];
             /** @description Maps selected for play (in order). */
             selected_maps: string[];
+            /**
+             * Format: date-time
+             * @description The server's clock when this response was built, so clients can count
+             *     down to `action_deadline` without trusting their own clock.
+             */
+            server_time: string;
             /** @description How starting sides are determined (picker_choice, coin_flip, knife). */
             side_selection_mode: string;
             /**
@@ -18640,6 +19144,11 @@ export interface components {
             /** @description The veto session. */
             session: components["schemas"]["VetoSessionResponse"];
         };
+        /**
+         * @description Status of a veto session.
+         * @enum {string}
+         */
+        VetoStatus: "pending" | "coin_flip" | "in_progress" | "completed" | "cancelled";
         /** @description Nominate a map for the wheel. */
         WheelEntryRequest: {
             map_id: string;
@@ -22965,7 +23474,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Next round generated */
+            /** @description Next round generated for every Swiss bracket/group that was ready */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -22974,7 +23483,7 @@ export interface operations {
                     "application/json": components["schemas"]["DataResponse_Vec_TournamentMatchResponse"];
                 };
             };
-            /** @description Not Swiss format or current round not complete */
+            /** @description Not Swiss format, or no Swiss bracket could advance (a round still in progress, or every bracket has played its final round) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -23002,6 +23511,206 @@ export interface operations {
                 };
             };
             /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description A concurrent request is already generating the round, or some brackets advanced and others failed (the detail names both; retrying only advances the brackets still behind) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    admin_set_check_in_window: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCheckInWindowRequest"];
+            };
+        };
+        responses: {
+            /** @description Check-in window set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentMatchResponse"];
+                };
+            };
+            /** @description Deadline not in the future, or the match is past check-in */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The match changed while the request was running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    admin_retry_completion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminRescueRequest"];
+            };
+        };
+        responses: {
+            /** @description Completion re-run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_CompletionRetryResponse"];
+                };
+            };
+            /** @description The match is not decided */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    admin_match_diagnostics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Match diagnostics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_MatchDiagnosticsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -23133,6 +23842,80 @@ export interface operations {
             };
             /** @description Match not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    admin_reset_match: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminRescueRequest"];
+            };
+        };
+        responses: {
+            /** @description Match reset to ready */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentMatchResponse"];
+                };
+            };
+            /** @description The match cannot be reset from its current state */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The match changed while the reset was running */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23385,6 +24168,80 @@ export interface operations {
             };
             /** @description Match not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    admin_reset_veto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tournament ID */
+                tournament_id: string;
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminRescueRequest"];
+            };
+        };
+        responses: {
+            /** @description Veto restarted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TournamentMatchResponse"];
+                };
+            };
+            /** @description No veto format, map pool too small, a result already reported, or wrong match status */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The match changed while the request was running */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -29769,15 +30626,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Reservation cancelled */
-            204: {
+            /** @description What was released and cleared */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DataResponse_ServerClearResponse"];
+                };
             };
-            /** @description No live reservation */
-            400: {
+            /** @description Missing admin.servers.manage */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -29785,8 +30644,8 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Missing admin.servers.manage */
-            403: {
+            /** @description Match not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -29837,6 +30696,60 @@ export interface operations {
             };
         };
     };
+    reload_match_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReloadMatchServerRequest"];
+            };
+        };
+        responses: {
+            /** @description New reservation created/queued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_MatchServerResponse"];
+                };
+            };
+            /** @description The config cannot be built, or the match needs no server */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     restore_match_server: {
         parameters: {
             query?: never;
@@ -29873,6 +30786,47 @@ export interface operations {
             };
             /** @description Missing admin.servers.manage */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    match_server_roster_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Match ID */
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Roster check */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_RosterCheckResponse"];
+                };
+            };
+            /** @description Missing admin.servers.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -33000,7 +33954,10 @@ export interface operations {
     };
     complete_tournament: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Complete even though some matches have not been played. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 /** @description Tournament ID */
@@ -33978,6 +34935,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Only the team captain, owner or a delegate can schedule */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Proposal not found */
             404: {
                 headers: {
@@ -34068,7 +35034,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Only the proposer may withdraw */
+            /** @description Only the proposing team's captain, owner or delegate (or the proposer) may withdraw */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -34126,6 +35092,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Only the team captain, owner or a delegate can schedule */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -34223,6 +35198,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Only the team captain, owner or a delegate can schedule */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Match not found */
             404: {
                 headers: {
@@ -34281,6 +35265,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Only the team captain, owner or a delegate can schedule */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

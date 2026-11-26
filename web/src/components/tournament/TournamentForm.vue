@@ -270,8 +270,8 @@
         />
       </v-col>
 
-      <!-- Scheduling mode (create-only) -->
-      <v-col v-if="isCreate" cols="12" md="6">
+      <!-- Scheduling mode -->
+      <v-col cols="12" md="6">
         <v-select
           aria-label="Scheduling Mode"
           v-model="form.scheduling_mode"
@@ -281,6 +281,8 @@
           label="Scheduling Mode"
           variant="outlined"
           density="comfortable"
+          hint="Who sets match times: an admin (Live), or the two sides between themselves (Self-Scheduled)"
+          persistent-hint
         >
           <template v-slot:item="{ item, props: itemProps }">
             <v-list-item v-bind="itemProps">

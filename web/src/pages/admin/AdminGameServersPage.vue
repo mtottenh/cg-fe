@@ -132,6 +132,23 @@
             </span>
           </template>
 
+          <template #[`item.allow_pugs`]="{ item }">
+            <v-switch
+              :model-value="item.allow_pugs"
+              color="primary"
+              density="compact"
+              hide-details
+              :aria-label="`Allow pick-up games on ${item.name}`"
+              :title="item.allow_pugs
+                ? 'Pick-up games can use this server. Turn off on match nights so a PUG cannot hold it.'
+                : 'Pick-up games cannot use this server; tournament matches only.'"
+              :loading="pugToggleId === item.id"
+              :disabled="pugToggleId !== null"
+              :data-testid="`server-allow-pugs-${item.id}`"
+              @update:model-value="toggleAllowPugs(item, $event === true)"
+            />
+          </template>
+
           <template #[`item.cert`]="{ item }">
             <span v-if="!item.agent_cert_expires_at" class="text-caption text-grey">
               not enrolled
@@ -293,6 +310,7 @@ const updatesModalOpen = ref(false)
 const updatesAction = ref<'repair' | null>(null)
 const selectedServer = ref<GameServer | null>(null)
 const snackbar = ref({ open: false, text: '', color: 'success' })
+const pugToggleId = ref<string | null>(null)
 
 const headers = [
   { title: 'Name', key: 'name' },
@@ -303,6 +321,7 @@ const headers = [
   { title: 'Gamestate', key: 'gamestate', sortable: false },
   { title: 'Map', key: 'map', sortable: false },
   { title: 'Players', key: 'players', sortable: false, align: 'end' as const },
+  { title: 'Pick-up games', key: 'allow_pugs', sortable: false },
   { title: 'Certificate', key: 'cert', sortable: false },
   { title: 'Actions', key: 'actions', sortable: false, align: 'center' as const },
 ]
@@ -403,6 +422,32 @@ function openConsoleModal(server: GameServer) {
 
 function onSaved(server: GameServer) {
   snackbar.value = { open: true, text: `Server "${server.name}" saved`, color: 'success' }
+}
+
+/**
+ * Whether pick-up games may take this server. One switch, because on match
+ * nights a running PUG would make a tournament match wait for the server.
+ */
+async function toggleAllowPugs(server: GameServer, allow: boolean) {
+  pugToggleId.value = server.id
+  try {
+    await store.updateServer(server.id, { allow_pugs: allow })
+    snackbar.value = {
+      open: true,
+      text: allow
+        ? `Pick-up games can use "${server.name}" again`
+        : `Pick-up games are off on "${server.name}": tournament matches only`,
+      color: 'success',
+    }
+  } catch {
+    snackbar.value = {
+      open: true,
+      text: store.updateServerState.error || 'Failed to change the pick-up games setting',
+      color: 'error',
+    }
+  } finally {
+    pugToggleId.value = null
+  }
 }
 
 function confirmRevoke(server: GameServer) {

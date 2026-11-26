@@ -2,6 +2,7 @@ import { computed, type Ref } from 'vue'
 import { useTournamentsStore, type TournamentResponse } from '@/stores/tournaments'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useActionFeedback } from '@/composables/useActionFeedback'
+import { completeTournamentPrompt, completionReadiness } from '@/utils/tournamentCompletion'
 
 /**
  * Pure status-based guards for tournament lifecycle actions. No auth/organizer
@@ -97,16 +98,26 @@ export function useTournamentAdminActions(
       feedbackOptions('Tournament started successfully'))
   }
 
+  /** How many of this tournament's loaded matches can still be played. */
+  const completion = computed(() => completionReadiness(store.matches, tournament.value?.id))
+
+  /**
+   * Every match is settled and the tournament is still running: nothing
+   * completes it automatically, so the page prompts the admin to.
+   */
+  const readyToComplete = computed(() => canComplete.value && completion.value.allFinished)
+
   function complete() {
     if (!tournament.value) return
+    // Counts the unfinished matches. The API refuses to complete over them
+    // unless forced, and the admin's confirmation of this warning is what
+    // forces it.
+    const force = completion.value.unfinished > 0
     confirmDialog.confirm({
-      title: 'Complete Tournament',
-      message: 'Mark this tournament as completed? Remaining matches will no longer be playable.',
-      action: 'Complete',
-      color: 'warning',
+      ...completeTournamentPrompt(completion.value),
       handler: async () => {
         if (!tournament.value) return
-        await feedback.run(() => store.completeTournament(tournament.value!.id),
+        await feedback.run(() => store.completeTournament(tournament.value!.id, { force }),
           { ...feedbackOptions('Tournament completed successfully'), rethrow: true })
       },
     })
@@ -183,6 +194,7 @@ export function useTournamentAdminActions(
     canFinalize,
     canCancel,
     canProcessNoShows,
+    readyToComplete,
     // Actions
     publish,
     openRegistration,

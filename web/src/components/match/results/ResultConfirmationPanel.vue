@@ -2,11 +2,17 @@
   <v-card>
     <v-card-title class="d-flex align-center">
       <v-icon start color="warning">mdi-alert-circle</v-icon>
-      Opponent Submitted Result
+      {{ fromServer ? 'Game Server Reported Result' : 'Opponent Submitted Result' }}
     </v-card-title>
 
     <v-card-text>
-      <p class="mb-4">
+      <!-- A server-reported claim has no submitting team. It used to be
+           attributed to participant 2 — on participant 2's own screen too. -->
+      <p v-if="fromServer" class="mb-4" data-testid="result-from-server">
+        The <strong>game server</strong> reported the following result when the series ended.
+        Either team can confirm it now, or dispute it if it's wrong.
+      </p>
+      <p v-else class="mb-4">
         <strong>{{ submitterName }}</strong> has submitted the following result. Please review and
         confirm if it's correct.
       </p>
@@ -87,10 +93,20 @@
       </v-alert>
 
       <!-- Auto-confirm countdown -->
-      <v-alert v-if="autoConfirmCountdown" type="info" variant="tonal" class="mb-4">
+      <v-alert
+        v-if="autoConfirmCountdown"
+        :type="fromServer ? 'warning' : 'info'"
+        variant="tonal"
+        class="mb-4"
+        data-testid="result-auto-confirm"
+      >
         <v-icon start size="small">mdi-clock-outline</v-icon>
-        This result will be auto-confirmed in <strong>{{ autoConfirmCountdown }}</strong> if not
+        This result will be auto-confirmed in <strong>{{ autoConfirmCountdown }}</strong>
+        <template v-if="autoConfirmAtLabel"> (at {{ autoConfirmAtLabel }})</template> if not
         disputed.
+        <template v-if="fromServer">
+          After that it is final — dispute it before then if the score is wrong.
+        </template>
       </v-alert>
 
       <!-- Show attached evidence if any -->
@@ -144,6 +160,7 @@ import { useMatchResultsStore, getTimeUntilAutoConfirm } from '@/stores/matchRes
 import type { ResultClaimResponse } from '@/stores/matchResults'
 import { useEvidenceStore, type DemoMatchLinkWithDemoResponse } from '@/stores/evidence'
 import ResultDisputeModal from './ResultDisputeModal.vue'
+import { formatDateTime } from '@/utils/formatters'
 
 const props = defineProps<{
   matchId: string
@@ -164,6 +181,15 @@ const emit = defineEmits<{
 
 const store = useMatchResultsStore()
 const evidenceStore = useEvidenceStore()
+
+/** Reported by the game server (MatchZy) rather than submitted by a team. */
+const fromServer = computed(
+  () => props.claim.source === 'server' || !props.claim.submitted_by_registration_id,
+)
+
+const autoConfirmAtLabel = computed(() =>
+  props.claim.auto_confirm_at ? formatDateTime(props.claim.auto_confirm_at) : null,
+)
 const loading = computed(() => store.loading)
 const showDisputeModal = ref(false)
 

@@ -6,8 +6,32 @@
     </v-card-title>
     <v-divider />
     <v-card-text>
+      <!-- A roster member who is not captain, owner or delegate: read-only. -->
+      <v-alert
+        v-if="!canAct && !activeProposal && match.status === 'ready'"
+        type="info"
+        variant="tonal"
+        data-testid="scheduling-read-only"
+      >
+        <p class="mb-0">
+          Only your captain or a delegate can agree match times. Ask them to
+          propose a time for this match.
+        </p>
+      </v-alert>
+
       <!-- No active proposal - can propose -->
-      <template v-if="!activeProposal && canPropose">
+      <template v-else-if="!activeProposal && canPropose && (match.status === 'ready' || reproposing)">
+        <v-alert
+          v-if="reproposing && match.scheduled_at"
+          type="info"
+          variant="tonal"
+          density="compact"
+          class="mb-4"
+          data-testid="repropose-note"
+        >
+          The match stays at {{ formatScheduledTime(match.scheduled_at) }} unless
+          your opponent accepts one of the new times.
+        </v-alert>
         <p class="mb-4">Propose times for this match. Your opponent will be able to accept, reject, or counter-propose.</p>
 
         <!-- View mode toggle -->
@@ -56,7 +80,20 @@
           hint="Add any additional context for your opponent"
         />
 
+        <v-alert v-if="tooSoonError" type="error" variant="tonal" density="compact" class="mt-2">
+          {{ tooSoonError }}
+        </v-alert>
+
         <div class="d-flex justify-end mt-4">
+          <v-btn
+            v-if="reproposing"
+            variant="text"
+            class="mr-2"
+            data-testid="repropose-cancel"
+            @click="reproposing = false"
+          >
+            Keep the current time
+          </v-btn>
           <v-btn
             color="primary"
             :loading="loading"
@@ -74,6 +111,8 @@
         <ProposalCard
           :proposal="activeProposal"
           :is-proposer="isProposer"
+          :is-own-team="isOwnTeam"
+          :can-act="canAct"
           :from-name="proposerName"
           :loading="loading"
           @accept="(time) => $emit('accept', time)"
@@ -98,6 +137,22 @@
         </v-alert>
         <p class="text-body-2 text-medium-emphasis">
           The match time has been agreed upon. Waiting for the match to begin.
+        </p>
+        <!-- Teams may re-agree a time until an hour before the match. -->
+        <div v-if="canPropose" class="d-flex justify-end">
+          <v-btn
+            variant="outlined"
+            color="primary"
+            data-testid="repropose"
+            @click="reproposing = true"
+          >
+            <v-icon start>mdi-calendar-edit</v-icon>
+            Propose a new time
+          </v-btn>
+        </div>
+        <p v-else-if="canAct && withinRescheduleCutoff" class="text-body-2 text-medium-emphasis mt-2" data-testid="repropose-closed">
+          The match starts within the hour, so the time can no longer be changed
+          here. Ask an organiser if it has to move.
         </p>
       </template>
 
@@ -131,6 +186,10 @@
             density="comfortable"
             class="mt-4"
           />
+
+          <v-alert v-if="tooSoonError" type="error" variant="tonal" density="compact" class="mt-2">
+            {{ tooSoonError }}
+          </v-alert>
         </v-card-text>
         <v-divider />
         <v-card-actions>
@@ -151,10 +210,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { TournamentResponse, TournamentMatchResponse } from '@/stores/tournaments'
 import type { ScheduleProposalResponse } from '@/stores/matchScheduling'
 import { formatDateTimeLongWithWeekday } from '@/utils/formatters'
+import { givesEnoughNotice, TOO_SOON_MESSAGE, RESCHEDULE_CUTOFF_MS } from '@/utils/schedulingLead'
 import ProposalCard from './ProposalCard.vue'
 import ScheduleTimePicker from './ScheduleTimePicker.vue'
 import AvailabilityCalendarOverlay from './AvailabilityCalendarOverlay.vue'
@@ -165,6 +225,10 @@ const props = withDefaults(
     match: TournamentMatchResponse
     activeProposal: ScheduleProposalResponse | null
     isProposer: boolean
+    /** The active proposal came from the viewer's own team. */
+    isOwnTeam?: boolean
+    /** The viewer may schedule for their team (captain, owner or delegate). */
+    canAct?: boolean
     canPropose: boolean
     loading?: boolean
     suggestedTimes?: string[]
@@ -173,6 +237,8 @@ const props = withDefaults(
   {
     suggestedTimes: () => [],
     opponentPlayerId: null,
+    isOwnTeam: false,
+    canAct: true,
   }
 )
 
@@ -204,6 +270,18 @@ const emit = defineEmits<{
   withdraw: []
 }>()
 
+/**
+ * The viewer chose to propose a new time for a match that already has one.
+ * The panel shows the proposal form instead of the "scheduled" summary.
+ */
+const reproposing = ref(false)
+
+/** Less than an hour to go: the backend no longer lets teams move the time. */
+const withinRescheduleCutoff = computed(() => {
+  const at = props.match.scheduled_at
+  return !!at && new Date(at).getTime() - Date.now() <= RESCHEDULE_CUTOFF_MS
+})
+
 // Proposal form state
 const proposedTimes = ref<string[]>(['', ''])
 const notes = ref('')
@@ -216,7 +294,7 @@ const counterNotes = ref('')
 const counterPickerValid = ref(false)
 
 /**
- * Every filled slot parses and lands in the future.
+ * Every filled slot parses and gives the minimum notice.
  *
  * P-8: calendar mode used to skip validation entirely on the theory that "the
  * overlay only offers valid cells". It didn't — the overlay's Previous-week
@@ -227,33 +305,42 @@ const counterPickerValid = ref(false)
  * cells; this is the second line, so no view mode can arm a proposal the
  * backend is guaranteed to reject.
  */
-function allTimesInFuture(times: string[]): boolean {
+function allTimesGiveNotice(times: string[]): boolean {
   const filled = times.filter((t) => t !== '')
   if (filled.length === 0) return false
-  const now = Date.now()
-  return filled.every((t) => {
-    const ms = new Date(t).getTime()
-    return Number.isFinite(ms) && ms > now
-  })
+  const now = new Date()
+  return filled.every((t) => givesEnoughNotice(t, now))
 }
 
-// The manual picker must additionally pass its own field rules (`:min` of
-// now + 1h, ScheduleTimePicker.vue:172-176) — a past datetime shows a red
-// error and must NOT leave the submit button enabled.
+// The manual picker must additionally pass its own field rules — a time
+// that is past or too soon shows a red error and must NOT leave the submit
+// button enabled. The picker's `min` attribute is only a hint to the
+// browser's date widget; the `enoughNotice` rule and the checks here are
+// what enforce the minimum notice (utils/schedulingLead.ts).
 const hasValidTime = computed(() => {
-  if (!allTimesInFuture(proposedTimes.value)) return false
+  if (!allTimesGiveNotice(proposedTimes.value)) return false
   if (viewMode.value === 'calendar') return true
   return pickerValid.value
 })
 
 const hasValidCounterTime = computed(() => {
-  return allTimesInFuture(counterTimes.value) && counterPickerValid.value
+  return allTimesGiveNotice(counterTimes.value) && counterPickerValid.value
 })
+
+// Set when a submit is refused because a time stopped giving enough notice
+// while the form sat open: the button was enabled when it was last rendered.
+const tooSoonError = ref<string | null>(null)
 
 function submitProposal() {
   const validTimes = proposedTimes.value
     .filter((t) => t !== '')
     .map((t) => new Date(t).toISOString())
+
+  if (!allTimesGiveNotice(validTimes)) {
+    tooSoonError.value = TOO_SOON_MESSAGE
+    return
+  }
+  tooSoonError.value = null
 
   if (validTimes.length > 0) {
     emit('propose', validTimes, notes.value || undefined)
@@ -261,6 +348,7 @@ function submitProposal() {
 }
 
 function openCounterDialog() {
+  tooSoonError.value = null
   counterTimes.value = ['', '']
   counterNotes.value = ''
   counterDialogOpen.value = true
@@ -271,9 +359,31 @@ function submitCounter() {
     .filter((t) => t !== '')
     .map((t) => new Date(t).toISOString())
 
+  if (!allTimesGiveNotice(validTimes)) {
+    tooSoonError.value = TOO_SOON_MESSAGE
+    return
+  }
+  tooSoonError.value = null
+
   if (validTimes.length > 0) {
+    // The dialog stays open until the counter is known to have landed (see
+    // the watcher below): closing here discarded the typed times whenever
+    // the server refused them.
     emit('counter', validTimes, counterNotes.value || undefined)
-    counterDialogOpen.value = false
   }
 }
+
+// Sending a proposal (or the match changing) ends the re-propose form.
+watch(
+  () => [props.activeProposal?.id, props.match.status, props.match.scheduled_at],
+  () => { reproposing.value = false },
+)
+
+// A successful counter replaces the active proposal with the new one.
+watch(
+  () => props.activeProposal?.id,
+  (id, previous) => {
+    if (id !== previous) counterDialogOpen.value = false
+  },
+)
 </script>

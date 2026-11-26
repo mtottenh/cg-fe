@@ -1,5 +1,6 @@
 import { ref, onUnmounted } from 'vue'
 import { getAuthToken } from '@/api/client'
+import { refreshAccessToken } from '@/api/middleware'
 import { wsBaseUrl } from '@/api/baseUrl'
 import type { components } from '@/api/types'
 
@@ -162,6 +163,12 @@ export interface ErrorMessage {
   message: string
 }
 
+/** The socket's first-frame auth was refused (typically an expired token). */
+export interface AuthErrorMessage {
+  type: 'auth_error'
+  error: string
+}
+
 export interface PongMessage {
   type: 'pong'
 }
@@ -184,6 +191,7 @@ export type ServerMessage =
   | LineupUpdateMessage
   | LiveScoreUpdateMessage
   | ErrorMessage
+  | AuthErrorMessage
   | PongMessage
 
 // ── Shared types ──
@@ -227,6 +235,7 @@ const SERVER_MESSAGE_TYPES = new Set<ServerMessage['type']>([
   'lineup_update',
   'live_score_update',
   'error',
+  'auth_error',
   'pong',
 ])
 
@@ -262,6 +271,12 @@ export function useMatchLobbySocket(matchId: () => string | null) {
   let pingInterval: ReturnType<typeof setInterval> | null = null
   let handlers: MessageHandlerMap = {}
   let fallbackFn: (() => void) | null = null
+  // One token refresh per auth failure: a second refusal straight after a
+  // refresh is not an expired token, and must not loop.
+  let authRefreshTried = false
+  let refreshingAuth = false
+  // Set by disconnect(); an in-flight refresh must not reopen the socket.
+  let stopped = false
 
   /** Register message handlers. Call before connect(). */
   function onMessage(map: MessageHandlerMap) {
@@ -277,6 +292,8 @@ export function useMatchLobbySocket(matchId: () => string | null) {
     // External (re)connect: start with a fresh retry budget. Retries go
     // through connectInternal() so the counter survives failed attempts.
     reconnectAttempts = 0
+    stopped = false
+    authRefreshTried = false
     connectInternal()
   }
 
@@ -285,7 +302,14 @@ export function useMatchLobbySocket(matchId: () => string | null) {
     if (!id) return
 
     const token = getAuthToken()
-    if (!token) return
+    if (!token) {
+      // The socket needs a token, so a logged-out viewer cannot have one.
+      // Watching a veto is public (`GET /v1/matches/{id}/veto` takes no
+      // auth), so follow it over REST instead of showing a frozen page.
+      cleanup()
+      startFallbackPolling()
+      return
+    }
 
     cleanup()
 
@@ -295,7 +319,10 @@ export function useMatchLobbySocket(matchId: () => string | null) {
       ws.onopen = () => {
         connected.value = true
         usingFallback.value = false
-        reconnectAttempts = 0
+        // The retry budget is reset on `auth_success`, not here: a socket
+        // that opens and is then refused (expired token) used to count as a
+        // success every time, so it reconnected every 2s forever and never
+        // reached fallback polling.
         // Send in-band auth as first message
         ws!.send(JSON.stringify({ type: 'auth', token }))
         startPing()
@@ -331,6 +358,12 @@ export function useMatchLobbySocket(matchId: () => string | null) {
     if (msg.type === 'auth_success') {
       authenticated.value = true
       role.value = msg.role
+      reconnectAttempts = 0
+      authRefreshTried = false
+    }
+    if (msg.type === 'auth_error') {
+      void recoverFromAuthError()
+      return
     }
     if (msg.type === 'error' && !authenticated.value) {
       // Auth failed — don't reconnect
@@ -339,6 +372,39 @@ export function useMatchLobbySocket(matchId: () => string | null) {
 
     const handler = handlers[msg.type] as ((m: ServerMessage) => void) | undefined
     if (handler) handler(msg)
+  }
+
+  /**
+   * Access tokens are short-lived and only refreshed by a REST 401, so a page
+   * left open on a quiet lobby reconnects with an expired one. Refresh it once
+   * and reconnect; if that does not help, stop hammering the socket and fall
+   * back to REST polling.
+   */
+  async function recoverFromAuthError() {
+    if (refreshingAuth) return
+    if (authRefreshTried) {
+      giveUpOnSocket()
+      return
+    }
+    authRefreshTried = true
+    refreshingAuth = true
+    let refreshed = false
+    try {
+      refreshed = await refreshAccessToken()
+    } catch {
+      refreshed = false
+    } finally {
+      refreshingAuth = false
+    }
+    if (stopped) return
+    if (refreshed) connectInternal()
+    else giveUpOnSocket()
+  }
+
+  function giveUpOnSocket() {
+    reconnectAttempts = MAX_RECONNECT_ATTEMPTS
+    cleanup()
+    startFallbackPolling()
   }
 
   function send(message: Record<string, unknown>) {
@@ -366,6 +432,8 @@ export function useMatchLobbySocket(matchId: () => string | null) {
   // ── Reconnect ──
 
   function attemptReconnect() {
+    // The auth-recovery path reconnects itself once the token is refreshed.
+    if (refreshingAuth) return
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       startFallbackPolling()
       return
@@ -419,6 +487,7 @@ export function useMatchLobbySocket(matchId: () => string | null) {
   }
 
   function disconnect() {
+    stopped = true
     reconnectAttempts = MAX_RECONNECT_ATTEMPTS // prevent reconnect
     cleanup()
   }

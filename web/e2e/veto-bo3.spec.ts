@@ -12,6 +12,7 @@ import {
   startVetoAndFlipCoin,
   performVetoAction,
   actOnMapViaUi,
+  E2E_VETO_TURN_SECONDS,
 } from './fixtures/veto.fixture'
 
 /**
@@ -117,7 +118,11 @@ async function setupBo3WithSideMode(
   const resp = await fetch(`${API_URL}/v1/matches/${scenario.matchId}/veto`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-    body: JSON.stringify({ veto_format_id: 'bo3_veto', side_selection_mode: sideMode }),
+    body: JSON.stringify({
+      veto_format_id: 'bo3_veto',
+      side_selection_mode: sideMode,
+      timeout_seconds: E2E_VETO_TURN_SECONDS,
+    }),
   })
   if (!resp.ok) {
     throw new Error(`Create bo3 veto (${sideMode}) failed (${resp.status}): ${await resp.text()}`)

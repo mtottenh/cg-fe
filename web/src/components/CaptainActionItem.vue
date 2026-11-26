@@ -14,6 +14,9 @@
     <v-list-item-title class="text-body-2">{{ actionMeta.label }}</v-list-item-title>
     <v-list-item-subtitle class="text-caption">
       {{ action.match_label }} &middot; {{ action.tournament_name }}
+      <template v-if="action.scheduled_at">
+        &middot; <span data-testid="action-match-time">Match at {{ formatWhen(action.scheduled_at) }}</span>
+      </template>
     </v-list-item-subtitle>
     <template v-slot:append v-if="action.deadline">
       <v-chip
@@ -30,6 +33,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { CaptainAction } from '@/stores/captainActions'
+import { formatWhen } from '@/utils/formatters'
 
 const props = defineProps<{
   action: CaptainAction
@@ -56,10 +60,14 @@ const ACTION_META: Record<string, { icon: string; color: string; label: string }
   acknowledge_review: { icon: 'mdi-clipboard-check-outline', color: 'error', label: 'Acknowledge result review' },
 }
 
-const actionMeta = computed(() => ACTION_META[props.action.action_type] ?? {
-  icon: 'mdi-alert-circle-outline',
-  color: 'grey',
-  label: props.action.action_type,
+// The server only issues `check_in` while the window is open, to those who
+// can check in, with the window's closing time as `deadline`.
+const actionMeta = computed(() => {
+  return ACTION_META[props.action.action_type] ?? {
+    icon: 'mdi-alert-circle-outline',
+    color: 'grey',
+    label: props.action.action_type,
+  }
 })
 
 const diffMs = computed(() => {

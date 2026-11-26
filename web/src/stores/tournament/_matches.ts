@@ -163,6 +163,38 @@ export function createMatchesSlice() {
     }, 'Failed to fetch brackets')
   }
 
+  /**
+   * Re-read the fixtures and brackets behind an open page, without the
+   * loading flag or the error state: a 30-second background refresh must not
+   * flash a loading bar or put a failed poll in the page's error banner. A
+   * failure keeps the last good data and the next tick retries.
+   *
+   * Skipped (returns false) while a user-initiated fetch of either is in
+   * flight, so a slow page load is not overwritten by an older poll.
+   */
+  async function refreshFixturesSilently(tournamentId: string): Promise<boolean> {
+    if (fetchMatchesState.loading || fetchBracketsState.loading) return false
+    const isCurrent = beginMatchesFetch()
+    const [matchesResult, bracketsResult] = await Promise.allSettled([
+      unwrapApi(api.GET('/v1/tournaments/{tournament_id}/matches', {
+        params: { path: { tournament_id: tournamentId } },
+      })),
+      unwrapApi(api.GET('/v1/tournaments/{tournament_id}/brackets', {
+        params: { path: { tournament_id: tournamentId } },
+      })),
+    ])
+    // A fetch started after this one (the user navigated or reloaded) wins.
+    if (!isCurrent()) return false
+    if (matchesResult.status === 'fulfilled') {
+      matches.value = matchesResult.value.data
+      matchesTournamentId.value = tournamentId
+    }
+    if (bracketsResult.status === 'fulfilled') {
+      brackets.value = bracketsResult.value.data
+    }
+    return matchesResult.status === 'fulfilled' && bracketsResult.status === 'fulfilled'
+  }
+
   async function adminMatchTransition(
     tournamentId: string,
     matchId: string,
@@ -213,12 +245,19 @@ export function createMatchesSlice() {
     tournamentId: string,
     matchId: string,
     scheduledAt: string,
-    notes?: string
+    notes?: string,
+    options: { allowPast?: boolean } = {},
   ): Promise<TournamentMatchResponse> {
     return withActionState(adminScheduleState, async () => {
       const result = await unwrapApi(api.POST('/v1/admin/tournaments/{tournament_id}/matches/{match_id}/schedule', {
         params: { path: { tournament_id: tournamentId, match_id: matchId } },
-        body: { scheduled_at: scheduledAt, notes: notes ?? null },
+        body: {
+          scheduled_at: scheduledAt,
+          notes: notes ?? null,
+          // The backend refuses a time more than a few minutes gone unless
+          // asked, because check-in then opens at once.
+          ...(options.allowPast ? { allow_past: true } : {}),
+        },
       }))
       replaceById(matches.value, result.data)
       return result.data
@@ -330,6 +369,7 @@ export function createMatchesSlice() {
     fetchMatches,
     fetchMatch,
     fetchBrackets,
+    refreshFixturesSilently,
     adminMatchTransition,
     adminForfeitMatch,
     adminDoubleForfeit,

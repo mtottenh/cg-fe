@@ -50,7 +50,9 @@
 
             <!-- Score / when / status -->
             <v-col cols="12" sm="4" class="text-center">
-              <template v-if="match.status === 'completed'">
+              <!-- A forfeit carries a recorded walkover score; it used to
+                   render as an unplayed "VS". -->
+              <template v-if="match.status === 'completed' || match.status === 'forfeit'">
                 <div class="text-h3 font-weight-bold">
                   {{ match.participant1_score }} - {{ match.participant2_score }}
                 </div>
@@ -126,6 +128,8 @@
         :match="match"
         :active-proposal="activeProposal"
         :is-proposer="isProposer"
+        :is-own-team="isOwnTeamProposal"
+        :can-act="canSchedule"
         :can-propose="canPropose"
         :loading="schedulingLoading"
         :suggested-times="suggestedTimes"
@@ -164,7 +168,23 @@
             <template v-else>
               Match start time: {{ formatDateTime(match.scheduled_at) }}.
             </template>
-            Teams that fail to check in can be forfeited as a no-show.
+            <template v-if="checkInDeadlineLabel">
+              <strong data-testid="check-in-deadline">Check in by {{ checkInDeadlineLabel }}</strong>:
+              a team that has not checked in by then forfeits as a no-show.
+            </template>
+            <template v-else>
+              Teams that fail to check in can be forfeited as a no-show.
+            </template>
+          </v-alert>
+          <v-alert
+            v-else-if="checkInDeadlineLabel"
+            type="info"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+          >
+            <strong data-testid="check-in-deadline">Check in by {{ checkInDeadlineLabel }}</strong>:
+            a team that has not checked in by then forfeits as a no-show.
           </v-alert>
           <!-- Per-participant check-in status -->
           <div class="d-flex align-center mb-2">
@@ -220,13 +240,13 @@
 
       <!-- Lobby Presence Bar (shown during live lobby states) -->
       <LobbyPresenceBar
-        v-if="showVetoPanel && lobbyParticipants.length > 0"
+        v-if="showVetoLobby && lobbyParticipants.length > 0"
         :participants="lobbyParticipants"
         :spectator-count="lobbySpectatorCount"
         :connected="lobbyConnected"
       />
 
-      <!-- Veto Panel (map pick/ban before match starts) -->
+      <!-- Veto Panel: the live pick/ban, then the maps and sides it settled -->
       <VetoPanel
         v-if="showVetoPanel"
         :match-id="match.id"
@@ -336,6 +356,8 @@
           <LobbyChatPanel
             :messages="lobbyChatMessages"
             :connected="lobbyConnected"
+            :can-team-chat="lobbyUserRole === 'participant'"
+            :error="lobbyChatError"
             class="h-100"
             @send="handleChatSend"
           />
@@ -354,6 +376,18 @@
         v-if="match.status === 'completed'"
         :match-id="match.id"
         :user-registration-id="userRegistrationId"
+      />
+
+      <!-- A completed result can still be disputed (no time limit); the
+           admin queue reviews it. Captains, owners and delegates only. -->
+      <CompletedResultDisputeCard
+        v-if="canDisputeCompleted"
+        :tournament-id="tournament.id"
+        :match-id="match.id"
+        :registration-id="userRegistrationId!"
+        :claim-id="currentResult?.id ?? null"
+        :server-reported="!!currentResult && (currentResult.source === 'server' || !currentResult.submitted_by_registration_id)"
+        @disputed="handleCompletedDisputed"
       />
 
       <!-- Dispute Thread (when match is disputed and we have a dispute from result history) -->
@@ -441,7 +475,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { api } from '@/api'
+import { api, ApiError } from '@/api'
 import { getProposalStatusColor, getProposalStatusLabel } from '@/stores/matchScheduling'
 import type { ResultClaimResponse } from '@/stores/matchResults'
 import { useTournamentsStore } from '@/stores/tournaments'
@@ -463,6 +497,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useMatchServerStore } from '@/stores/matchServer'
 import LobbyPresenceBar from '@/components/match/LobbyPresenceBar.vue'
 import DisputeThreadPanel from '@/components/match/DisputeThreadPanel.vue'
+import CompletedResultDisputeCard from '@/components/match/results/CompletedResultDisputeCard.vue'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -473,6 +508,9 @@ import { useActionFeedback } from '@/composables/useActionFeedback'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { formatDateTime, formatWhen } from '@/utils/formatters'
 import {
+  noTimeLabel, waitingForTimeHeading, waitingForTimeNote, type MatchTimeContext,
+} from '@/utils/matchSchedulingCopy'
+import {
   getMatchStatusColor, getMatchStatusLabel, formatMatchFormat,
 } from '@/utils/matchStatus'
 
@@ -482,12 +520,13 @@ const {
   match, tournament, activeProposal, proposalHistory,
   currentResult, resultHistory, matchFormat, statusHistory,
   loading, schedulingLoading, error: combinedError, clearError,
-  showSchedulingPanel, showCheckInPanel, isProposer, canPropose,
+  showSchedulingPanel, showCheckInPanel, isProposer, isOwnTeamProposal, canSchedule, canPropose,
   showResultPanel, showConfirmationPanel, canSubmitResult,
   showWaitingForOpponent, autoConfirmCountdown, checkInCountdown, vetoPickedMaps,
   selectableMaps,
-  opponentPlayerId, suggestedTimes, userRegistrationId, myRegistration,
+  opponentPlayerId, suggestedTimes, userRegistrationId, canCheckIn, myRegistration,
   fetchAll,
+  refreshMatch,
   schedulingStore,
   resultsStore,
   evidenceStore,
@@ -536,33 +575,66 @@ watch(
 // veto panel never mounts (it only renders for checking_in/pick_ban), so
 // nothing would open the lobby socket — connect it here whenever a
 // reservation is active.
+//
+// `ensureConnected`, not `initialize`: this fires on EVERY reservation status
+// change, and `initialize` clears the veto store and reconnects — so each
+// server update used to blank the veto panel and open a window in which
+// pushed frames were lost.
 watch(
   () => matchServerStore.reservation?.status,
   (status, prev) => {
-    if (status !== prev && matchServerStore.isActive()) {
-      void matchLobby.initialize()
+    if (status === prev) return
+    if (matchServerStore.isActive()) matchLobby.ensureConnected()
+    // A reservation that moved under the page (server ready, match live,
+    // series over) usually means the match status moved too, and no socket
+    // frame says so.
+    if (prev !== undefined) void refreshMatch()
+  },
+)
+const matchLobby = useMatchLobby(matchIdRef, userRegistrationId, canCheckIn)
+provideMatchLobby(matchLobby)
+
+// The veto panel mounts (and reads the then-pending session) when check-in
+// opens. Nothing told it when the match later moved to pick_ban and the
+// session started, so both captains sat on "Waiting" while the coin was
+// flipped and the first turn timed out. React to the match status itself.
+watch(
+  () => match.value?.status,
+  (status, prev) => {
+    if (status === 'pick_ban' && prev !== undefined && prev !== 'pick_ban') {
+      void matchLobby.resync({ rejoin: true })
     }
   },
 )
-const matchLobby = useMatchLobby(matchIdRef, userRegistrationId)
-provideMatchLobby(matchLobby)
 
 const lobbyParticipants = matchLobby.participants
 const lobbySpectatorCount = matchLobby.spectatorCount
 const lobbyConnected = matchLobby.connected
 const lobbyChatMessages = matchLobby.chatMessages
+const lobbyChatError = matchLobby.chatError
+const lobbyUserRole = matchLobby.userRole
 
 function handleChatSend(chatType: 'team' | 'all', content: string) {
   matchLobby.sendChat(chatType, content)
 }
 
-// Veto panel visibility: show when match has veto_required and is in veto-relevant states
-// The match state machine is: ... → checking_in → pick_ban → in_progress → ...
-// Show the panel during pick_ban (active veto) and checking_in (upcoming veto preview)
-const showVetoPanel = computed(() => {
+// The live veto lobby (presence, chat) belongs to check-in and pick/ban:
+// checking_in previews the upcoming veto, pick_ban runs it.
+const showVetoLobby = computed(() => {
   if (!match.value || !tournament.value) return false
   if (!match.value.veto_required) return false
   return ['checking_in', 'pick_ban'].includes(match.value.status)
+})
+
+// The veto panel itself stays up after the veto: once a finished veto has
+// started the match (no game server in play), it is the only place the
+// teams can see which maps they play and on which sides.
+const showVetoPanel = computed(() => {
+  if (!match.value || !tournament.value) return false
+  if (!match.value.veto_required) return false
+  return [
+    'checking_in', 'pick_ban', 'in_progress', 'awaiting_result', 'disputed', 'completed',
+  ].includes(match.value.status)
 })
 
 // Forfeit: available when user is a participant and match is active
@@ -610,8 +682,15 @@ const whenLine = computed(() => {
   if (!match.value) return ''
   const when = formatWhen(match.value.scheduled_at)
   const format = formatMatchFormat(match.value.match_format)
-  return when ? `${when} · ${format}` : `${format} · Time to be agreed`
+  return when ? `${when} · ${format}` : `${format} · ${noTimeLabel(timeContext.value.selfScheduled)}`
 })
+
+const timeContext = computed<MatchTimeContext>(() => ({
+  status: match.value?.status ?? '',
+  hasTime: !!match.value?.scheduled_at,
+  selfScheduled: tournament.value?.scheduling_mode === 'self_scheduled',
+  canAgreeTime: showSchedulingPanel.value && canSchedule.value,
+}))
 
 /**
  * The one thing this phase asks of the viewer. Null once the match is over
@@ -623,13 +702,20 @@ const nowHeading = computed(() => {
   const mine = !!userRegistrationId.value
   switch (m.status) {
     case 'pending': return 'Waiting for both teams to be decided'
-    case 'ready': return showSchedulingPanel.value ? 'Agree a time with your opponent' : 'Waiting for the check-in window'
-    case 'scheduled': return m.scheduled_at ? `Match set for ${formatWhen(m.scheduled_at)}` : 'Check-in opens before the start'
-    case 'checking_in': return mine ? 'Check in for the match' : 'Teams are checking in'
+    case 'ready': return waitingForTimeHeading(timeContext.value)
+    case 'scheduled': return m.scheduled_at ? `Match set for ${formatWhen(m.scheduled_at)}` : waitingForTimeHeading(timeContext.value)
+    case 'checking_in':
+      if (!mine) return 'Teams are checking in'
+      if (userAlreadyCheckedIn.value) return 'Checked in — waiting for your opponent'
+      return canCheckIn.value ? 'Check in for the match' : 'Your captain needs to check in'
     case 'pick_ban': return 'Pick and ban maps'
-    case 'in_progress': return canSubmitResult.value ? 'Report the result when the series ends' : 'The match is live'
+    case 'in_progress':
+      // A server-reported claim can be pending while the match still reads
+      // in_progress; the ask is then to confirm, not to keep watching.
+      if (showConfirmationPanel.value) return confirmHeading.value
+      return canSubmitResult.value ? 'Report the result when the series ends' : 'The match is live'
     case 'awaiting_result':
-      if (showConfirmationPanel.value) return 'Confirm the result your opponent reported'
+      if (showConfirmationPanel.value) return confirmHeading.value
       if (canSubmitResult.value) return 'Report the result'
       return 'Waiting for the result'
     case 'disputed': return 'Result under dispute'
@@ -646,21 +732,61 @@ const nowNote = computed(() => {
   if (!m) return null
   switch (m.status) {
     case 'ready':
-      return showSchedulingPanel.value ? null : 'The organiser sets the time; check-in opens here before it.'
+      return waitingForTimeNote(timeContext.value)
     case 'scheduled':
-      return "Check-in opens here shortly before the start. A team that doesn't check in can be forfeited as a no-show."
+      return m.scheduled_at
+        ? "Check-in opens here shortly before the start. A team that doesn't check in can be forfeited as a no-show."
+        : waitingForTimeNote(timeContext.value)
+    case 'checking_in': {
+      // A rostered player who cannot check in used to get the heading "Check
+      // in for the match" over an empty card: no button, and no word that it
+      // is the captain's to do.
+      if (!userRegistrationId.value || canCheckIn.value || userAlreadyCheckedIn.value) return null
+      const by = checkInDeadlineLabel.value
+      return (
+        "Only your team's captain, the team owner or a delegate can check in. " +
+        `If nobody checks in${by ? ` by ${by}` : ' before the deadline'}, your team forfeits as a no-show.`
+      )
+    }
     default:
       return null
   }
 })
 
+/**
+ * When the open check-in window closes. Absent until the window opens, and on
+ * a backend older than the field.
+ */
+const checkInDeadlineLabel = computed(() => {
+  const deadline = match.value?.check_in_deadline
+  return deadline ? formatDateTime(deadline) : null
+})
+
 const showLineups = computed(() =>
   !!match.value && !!(match.value.participant1_registration_id || match.value.participant2_registration_id),
 )
-const showChat = computed(() => showVetoPanel.value && lobbyConnected.value)
+const showChat = computed(() => showVetoLobby.value && lobbyConnected.value)
 
 // Active dispute for this match (fetched via GET /tournaments/{id}/matches/{id}/dispute)
 const activeDisputeId = computed(() => disputesStore.matchDispute?.id ?? null)
+
+/**
+ * A completed match may still be disputed by either side's captain, owner or
+ * delegate, as long as no dispute is already open on it.
+ */
+const canDisputeCompleted = computed(() =>
+  !!match.value &&
+  match.value.status === 'completed' &&
+  !match.value.disputed &&
+  !activeDisputeId.value &&
+  !!userRegistrationId.value &&
+  canSchedule.value,
+)
+
+async function handleCompletedDisputed() {
+  snackbar.show('Dispute sent. An organiser will review it.', 'success')
+  await fetchAll()
+}
 
 const userAlreadyCheckedIn = computed(() => {
   if (!match.value || !userRegistrationId.value) return false
@@ -680,11 +806,23 @@ function isWinner(registrationId: string | null | undefined): boolean {
 // Match status/format helpers imported from @/utils/matchStatus.
 
 function getSubmitterName(claim: ResultClaimResponse): string {
+  // Server-reported claims have no submitting team; falling through used to
+  // name participant 2 as the submitter.
+  if (claim.source === 'server' || !claim.submitted_by_registration_id) return 'The game server'
   if (claim.submitted_by_registration_id === match.value?.participant1_registration_id) {
     return match.value?.participant1_name || 'Opponent'
   }
   return match.value?.participant2_name || 'Opponent'
 }
+
+/** Heading for a pending claim the viewer's team is asked to confirm. */
+const confirmHeading = computed(() => {
+  const claim = currentResult.value
+  const fromServer = !!claim && (claim.source === 'server' || !claim.submitted_by_registration_id)
+  return fromServer
+    ? 'Confirm the result the game server reported'
+    : 'Confirm the result your opponent reported'
+})
 
 // Match check-in
 async function handleMatchCheckIn() {
@@ -718,88 +856,95 @@ function handleForfeit() {
   })
 }
 
+/**
+ * Run one scheduling action. Every refusal re-reads the match and its
+ * proposal: one pending proposal per match is enforced by the backend, so a
+ * 409 means the other team (or a teammate) proposed or answered first, and
+ * the page should show what actually happened rather than the stale card.
+ * Other refusals (a clash, a time that has passed) keep the backend's detail.
+ */
+async function runSchedulingAction(
+  action: () => Promise<unknown>,
+  success: string,
+  failureFallback: string,
+) {
+  try {
+    await feedback.run(action, {
+      success,
+      failureFallback,
+      errorSource: schedulingStore,
+      after: fetchAll,
+      rethrow: true,
+    })
+  } catch (e: unknown) {
+    if (e instanceof ApiError && e.status === 409) {
+      snackbar.show(
+        'Someone answered or proposed first; this shows the latest proposal.',
+        'warning',
+      )
+    }
+    await fetchAll()
+  }
+}
+
 // Thin event handlers
 async function handlePropose(times: string[], notes?: string) {
   if (!tournament.value || !match.value) return
-  await feedback.run(
+  await runSchedulingAction(
     () => schedulingStore.proposeSchedule(tournament.value!.id, match.value!.id, times, notes),
-    {
-      success: 'Schedule proposal sent!',
-      failureFallback: 'Failed to send proposal',
-      errorSource: schedulingStore,
-      after: fetchAll,
-    },
+    'Schedule proposal sent!',
+    'Failed to send proposal',
   )
 }
 
 async function handleAccept(selectedTime: string) {
   if (!tournament.value || !match.value || !activeProposal.value) return
   const proposalId = activeProposal.value.id
-  await feedback.run(
+  await runSchedulingAction(
     () => schedulingStore.acceptProposal(tournament.value!.id, match.value!.id, {
       proposal_id: proposalId,
       selected_time: selectedTime,
     }),
-    {
-      success: 'Schedule accepted!',
-      failureFallback: 'Failed to accept proposal',
-      errorSource: schedulingStore,
-      after: fetchAll,
-    },
+    'Schedule accepted!',
+    'Failed to accept proposal',
   )
 }
 
 async function handleReject(reason?: string) {
   if (!tournament.value || !match.value || !activeProposal.value) return
   const proposalId = activeProposal.value.id
-  await feedback.run(
+  await runSchedulingAction(
     () => schedulingStore.rejectProposal(tournament.value!.id, match.value!.id, {
       proposal_id: proposalId,
     }, reason),
-    {
-      // Info-level result; useActionFeedback always shows 'success' as success color,
-      // but the original code used 'info'. Snackbar color doesn't carry semantic
-      // weight here beyond visual tone — keep as success for consistency.
-      success: 'Proposal rejected',
-      failureFallback: 'Failed to reject proposal',
-      errorSource: schedulingStore,
-      after: fetchAll,
-    },
+    'Proposal rejected',
+    'Failed to reject proposal',
   )
 }
 
 async function handleCounter(times: string[], notes?: string) {
   if (!tournament.value || !match.value || !activeProposal.value) return
   const proposalId = activeProposal.value.id
-  await feedback.run(
+  await runSchedulingAction(
     () => schedulingStore.counterPropose(tournament.value!.id, match.value!.id, proposalId, times, notes),
-    {
-      success: 'Counter-proposal sent!',
-      failureFallback: 'Failed to send counter-proposal',
-      errorSource: schedulingStore,
-      after: fetchAll,
-    },
+    'Counter-proposal sent!',
+    'Failed to send counter-proposal',
   )
 }
 
 /**
- * Withdraw the viewer's own pending proposal (P-9). Only reachable from the
- * proposer branch of ProposalCard; the backend independently enforces
- * "caller must be the proposer" with a 403.
+ * Withdraw the viewer's team's pending proposal (P-9). Any captain, owner or
+ * delegate of the proposing team may; the backend enforces that with a 403.
  */
 async function handleWithdraw() {
   if (!tournament.value || !match.value || !activeProposal.value) return
   const proposalId = activeProposal.value.id
-  await feedback.run(
+  await runSchedulingAction(
     () => schedulingStore.cancelProposal(tournament.value!.id, match.value!.id, {
       proposal_id: proposalId,
     }),
-    {
-      success: 'Proposal withdrawn',
-      failureFallback: 'Failed to withdraw proposal',
-      errorSource: schedulingStore,
-      after: fetchAll,
-    },
+    'Proposal withdrawn',
+    'Failed to withdraw proposal',
   )
 }
 

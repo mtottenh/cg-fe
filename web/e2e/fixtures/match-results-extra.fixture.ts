@@ -80,6 +80,10 @@ async function jsonOrThrow<T>(response: Response, context: string): Promise<T> {
  * Used as a deterministic fallback when the state machine's auto-advance
  * lands somewhere other than `in_progress` (e.g. `pick_ban` on
  * veto-required tournaments).
+ *
+ * `scheduled` goes through the schedule endpoint: a match is scheduled by
+ * giving it a time, and the transition endpoint refuses the bare status flip.
+ * The time is a week out so the check-in sweep leaves the match alone.
  */
 export async function adminTransitionMatch(
   adminToken: string,
@@ -87,18 +91,26 @@ export async function adminTransitionMatch(
   matchId: string,
   toStatus: TournamentMatchStatus,
 ): Promise<void> {
+  const scheduling = toStatus === 'scheduled'
   const resp = await fetch(
-    `${API_URL}/v1/admin/tournaments/${tournamentId}/matches/${matchId}/transition`,
+    `${API_URL}/v1/admin/tournaments/${tournamentId}/matches/${matchId}/${scheduling ? 'schedule' : 'transition'}`,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
       },
-      body: JSON.stringify({
-        to_status: toStatus,
-        override_reason: `E2E fixture: force match to ${toStatus}`,
-      }),
+      body: JSON.stringify(
+        scheduling
+          ? {
+              scheduled_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+              notes: 'E2E fixture: schedule match',
+            }
+          : {
+              to_status: toStatus,
+              override_reason: `E2E fixture: force match to ${toStatus}`,
+            },
+      ),
     },
   )
   if (!resp.ok) {

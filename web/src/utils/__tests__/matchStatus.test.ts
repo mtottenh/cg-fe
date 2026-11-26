@@ -4,6 +4,9 @@ import {
   getNextMatchStatus,
   getMatchActionLabel,
   getMatchActionColor,
+  skipsMatchSetup,
+  needsMatchTime,
+  canAdminSchedule,
 } from '@/utils/matchStatus'
 
 type MatchStatus = components['schemas']['TournamentMatchStatus']
@@ -85,11 +88,39 @@ describe('getNextMatchStatus', () => {
     // The fix must not cost the working transitions: this is the sequence an
     // admin actually walks, and every step is in BACKEND_ALLOWED above.
     expect(getNextMatchStatus('pending')).toBe('ready')
-    expect(getNextMatchStatus('ready')).toBe('scheduled')
     expect(getNextMatchStatus('scheduled')).toBe('in_progress')
     expect(getNextMatchStatus('checking_in')).toBe('in_progress')
     expect(getNextMatchStatus('in_progress')).toBe('awaiting_result')
     expect(getNextMatchStatus('awaiting_result')).toBe('completed')
+  })
+
+  it('does not offer a bare ready -> scheduled flip', () => {
+    // The backend still lists the edge, but it refuses it for a match with no
+    // time, and a `ready` match never has one. The button that did this was
+    // labelled "Schedule" and stranded the match; scheduling means setting a
+    // time, which is `needsMatchTime` + the schedule form.
+    expect(getNextMatchStatus('ready')).toBeNull()
+    expect(getMatchActionLabel('ready')).toBe('')
+  })
+
+  it('sends a check-in match with a map veto to the veto, not straight to in-progress', () => {
+    // The backend starts the veto session on checking_in -> pick_ban and only
+    // sets up the game server once the veto completes; jumping to in_progress
+    // skipped both and cannot be undone.
+    expect(getNextMatchStatus('checking_in', { veto_required: true })).toBe('pick_ban')
+    expect(getMatchActionLabel('checking_in', { veto_required: true })).toBe('Start Veto')
+    // No veto on the match: unchanged.
+    expect(getNextMatchStatus('checking_in', { veto_required: false })).toBe('in_progress')
+    expect(getMatchActionLabel('checking_in', { veto_required: false })).toBe('Start Match')
+    // The veto flag only changes the step out of check-in.
+    expect(getNextMatchStatus('in_progress', { veto_required: true })).toBe('awaiting_result')
+  })
+
+  it('flags the transitions that skip check-in, veto and server setup', () => {
+    expect(skipsMatchSetup('scheduled', 'in_progress')).toBe(true)
+    expect(skipsMatchSetup('checking_in', 'in_progress')).toBe(true)
+    expect(skipsMatchSetup('checking_in', 'pick_ban')).toBe(false)
+    expect(skipsMatchSetup('in_progress', 'awaiting_result')).toBe(false)
   })
 
   it('returns null for a status it does not know', () => {
@@ -123,5 +154,33 @@ describe('getMatchActionColor', () => {
     expect(getMatchActionColor('in_progress')).toBe('success')
     expect(getMatchActionColor('awaiting_result')).toBe('success')
     expect(getMatchActionColor('ready')).toBe('primary')
+  })
+})
+
+describe('needsMatchTime', () => {
+  it('is true for a ready match', () => {
+    expect(needsMatchTime({ status: 'ready', scheduled_at: null })).toBe(true)
+  })
+
+  it('is true for a scheduled match that has no time', () => {
+    expect(needsMatchTime({ status: 'scheduled', scheduled_at: null })).toBe(true)
+    expect(needsMatchTime({ status: 'scheduled' })).toBe(true)
+  })
+
+  it('is false once a scheduled match has its time', () => {
+    expect(needsMatchTime({ status: 'scheduled', scheduled_at: '2032-04-17T19:45:00Z' })).toBe(false)
+  })
+
+  it('is false for every other status', () => {
+    for (const status of ALL_STATUSES) {
+      if (status === 'ready' || status === 'scheduled') continue
+      expect(needsMatchTime({ status, scheduled_at: null }), status).toBe(false)
+    }
+  })
+})
+
+describe('canAdminSchedule', () => {
+  it('matches the statuses the admin schedule endpoint accepts', () => {
+    expect(ALL_STATUSES.filter(canAdminSchedule)).toEqual(['ready', 'scheduled'])
   })
 })

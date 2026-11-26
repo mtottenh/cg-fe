@@ -7,7 +7,7 @@ import {
   primeAuthStorage,
   type CheckInScenario,
 } from './fixtures/checkin.fixture'
-import { actOnMapViaUi } from './fixtures/veto.fixture'
+import { actOnMapViaUi, E2E_VETO_TURN_SECONDS } from './fixtures/veto.fixture'
 
 /**
  * Map veto (pick/ban) flow E2E.
@@ -33,7 +33,7 @@ async function createVetoSession(adminToken: string, matchId: string): Promise<v
       'Content-Type': 'application/json',
       Authorization: `Bearer ${adminToken}`,
     },
-    body: JSON.stringify({ veto_format_id: 'bo1_veto' }),
+    body: JSON.stringify({ veto_format_id: 'bo1_veto', timeout_seconds: E2E_VETO_TURN_SECONDS }),
   })
   if (!resp.ok) {
     throw new Error(`Create veto session failed (${resp.status}): ${await resp.text()}`)

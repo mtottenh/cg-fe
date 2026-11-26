@@ -237,10 +237,17 @@ export function createLifecycleSlice(refreshers: {
     }, 'Failed to move tournament')
   }
 
-  async function completeTournament(id: string): Promise<TournamentResponse> {
+  /**
+   * Complete a tournament. The API refuses while matches remain to be played
+   * unless `force` is set — the admin has to have confirmed closing them.
+   */
+  async function completeTournament(id: string, options: { force?: boolean } = {}): Promise<TournamentResponse> {
     return withActionState(completeTournamentState, async () => {
       const result = await unwrapApi(api.POST('/v1/tournaments/{tournament_id}/complete', {
-        params: { path: { tournament_id: id } },
+        params: {
+          path: { tournament_id: id },
+          ...(options.force ? { query: { force: true } } : {}),
+        },
       }))
       currentTournament.value = result.data
       updateById(tournaments.value, id, { status: 'completed' })

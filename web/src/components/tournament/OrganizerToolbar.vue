@@ -89,6 +89,7 @@ import TournamentInvitationsModal from '@/components/tournament/TournamentInvita
 import { useTournamentContext } from '@/composables/useTournamentContext'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
+import { completeTournamentPrompt, completionReadiness } from '@/utils/tournamentCompletion'
 import type { Ref } from 'vue'
 
 const props = defineProps<{
@@ -141,9 +142,16 @@ async function handleStart() {
   emit('action-complete')
 }
 
-async function handleComplete() {
-  await tournamentsStore.completeTournament(props.tournament.id)
-  emit('action-complete')
+// Completing closes every match that has not been played, and the API does
+// not check for any — so this asks first, and counts them.
+function handleComplete() {
+  confirmDialog.confirm({
+    ...completeTournamentPrompt(completionReadiness(tournamentsStore.matches, props.tournament.id)),
+    handler: async () => {
+      await tournamentsStore.completeTournament(props.tournament.id)
+      emit('action-complete')
+    },
+  })
 }
 
 async function handleFinalize() {

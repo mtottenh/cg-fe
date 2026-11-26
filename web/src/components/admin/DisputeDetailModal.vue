@@ -147,7 +147,12 @@
                 </tr>
                 <tr v-if="dispute.resolution.new_winner_registration_id">
                   <td class="text-medium-emphasis">New Winner</td>
-                  <td><code>{{ dispute.resolution.new_winner_registration_id }}</code></td>
+                  <td>
+                    <template v-if="winnerName(dispute.resolution.new_winner_registration_id)">
+                      {{ winnerName(dispute.resolution.new_winner_registration_id) }}
+                    </template>
+                    <code v-else>{{ dispute.resolution.new_winner_registration_id }}</code>
+                  </td>
                 </tr>
                 <tr>
                   <td class="text-medium-emphasis">Notes</td>
@@ -246,7 +251,9 @@
                 Uphold Original Result
               </v-expansion-panel-title>
               <v-expansion-panel-text>
-                <p class="text-body-2 mb-3">Confirms the original result is correct. The dispute will be closed.</p>
+                <p class="text-body-2 mb-3">
+                  Rejects the dispute: the original result is correct and stands. The dispute will be closed.
+                </p>
                 <v-textarea v-model="resolutionNotes" variant="outlined" density="compact" rows="2" label="Notes *" />
                 <v-btn
                   color="success"
@@ -266,13 +273,17 @@
                 Overturn Result
               </v-expansion-panel-title>
               <v-expansion-panel-text>
-                <p class="text-body-2 mb-3">Reverses the result entirely. Requires new scores and winner.</p>
+                <p class="text-body-2 mb-3">Reverses the result entirely: enter the series score as it should have been.</p>
+                <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+                  For a wrong score, prefer <strong>Adjust Scores</strong> below — it does the same
+                  job and is the usual choice.
+                </v-alert>
                 <v-row>
                   <v-col cols="4">
                     <v-text-field
                       v-model.number="newP1Score"
                       type="number"
-                      label="P1 Score *"
+                      :label="`P1 Score * (${p1Label})`"
                       variant="outlined"
                       density="compact"
                       min="0"
@@ -282,18 +293,30 @@
                     <v-text-field
                       v-model.number="newP2Score"
                       type="number"
-                      label="P2 Score *"
+                      :label="`P2 Score * (${p2Label})`"
                       variant="outlined"
                       density="compact"
                       min="0"
                     />
                   </v-col>
                   <v-col cols="4">
+                    <!-- The winner follows from the score. It used to be a
+                         registration id typed by hand, which the API did not
+                         check against the match: a wrong id credited another
+                         team with the win. -->
+                    <div v-if="matchParticipants" class="pt-2" data-testid="overturn-winner">
+                      <div class="text-caption text-medium-emphasis">New winner</div>
+                      <strong v-if="derivedWinner">{{ derivedWinner.name }}</strong>
+                      <span v-else class="text-error">Scores are level — no winner</span>
+                    </div>
                     <v-text-field
+                      v-else
                       v-model="newWinnerRegistrationId"
                       label="Winner Reg ID *"
                       variant="outlined"
                       density="compact"
+                      hint="The match could not be loaded, so the winner cannot be picked by name."
+                      persistent-hint
                     />
                   </v-col>
                 </v-row>
@@ -316,13 +339,13 @@
                 Adjust Scores
               </v-expansion-panel-title>
               <v-expansion-panel-text>
-                <p class="text-body-2 mb-3">Modify the scores without changing the winner (unless specified).</p>
+                <p class="text-body-2 mb-3">Corrects the series score. The winner is taken from the new score.</p>
                 <v-row>
                   <v-col cols="4">
                     <v-text-field
                       v-model.number="newP1Score"
                       type="number"
-                      label="P1 Score *"
+                      :label="`P1 Score * (${p1Label})`"
                       variant="outlined"
                       density="compact"
                       min="0"
@@ -332,19 +355,19 @@
                     <v-text-field
                       v-model.number="newP2Score"
                       type="number"
-                      label="P2 Score *"
+                      :label="`P2 Score * (${p2Label})`"
                       variant="outlined"
                       density="compact"
                       min="0"
                     />
                   </v-col>
                   <v-col cols="4">
-                    <v-text-field
-                      v-model="newWinnerRegistrationId"
-                      label="Winner Reg ID (optional)"
-                      variant="outlined"
-                      density="compact"
-                    />
+                    <div class="pt-2" data-testid="adjust-winner">
+                      <div class="text-caption text-medium-emphasis">Winner after the change</div>
+                      <strong v-if="newP1Score > newP2Score">{{ p1Label }}</strong>
+                      <strong v-else-if="newP2Score > newP1Score">{{ p2Label }}</strong>
+                      <span v-else class="text-error">Scores are level — no winner</span>
+                    </div>
                   </v-col>
                 </v-row>
                 <v-textarea v-model="resolutionNotes" variant="outlined" density="compact" rows="2" label="Notes *" />
@@ -418,6 +441,7 @@ import { useDisplay } from 'vuetify'
 import { ref, watch, computed } from 'vue'
 import { useDisputesStore, getDisputeStatusColor, getDisputeStatusLabel, getDisputePriorityColor, getDisputePriorityLabel, getDisputeReasonColor, getDisputeReasonLabel } from '@/stores/disputes'
 import { useAuthStore } from '@/stores/auth'
+import { useTournamentsStore } from '@/stores/tournaments'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatDateTime } from '@/utils/formatters'
 
@@ -434,6 +458,7 @@ const open = defineModel<boolean>({ required: true })
 
 const store = useDisputesStore()
 const authStore = useAuthStore()
+const tournamentsStore = useTournamentsStore()
 const snackbar = useSnackbar()
 
 // Form state
@@ -487,17 +512,85 @@ const canResolve = computed(
   () => dispute.value !== null && RESOLVABLE_STATUSES.includes(dispute.value.status),
 )
 
+// ---------------------------------------------------------------------------
+// The two sides of the disputed match, so a winner is named, not typed.
+//
+// The dispute carries the participants' names but not their registration
+// ids, and "Overturn" needs the winner's id. It used to be a free-text field
+// that the API did not check against the match, so a pasted id from another
+// match credited the wrong team. The match is read once per dispute; if that
+// fails the text field comes back so a resolution is never blocked.
+// ---------------------------------------------------------------------------
+const matchParticipants = ref<{ p1: string; p2: string; p1Name?: string; p2Name?: string } | null>(null)
+
+// The dispute row may not carry the team names; the match it belongs to does.
+const p1Label = computed(
+  () => dispute.value?.participant1_name || matchParticipants.value?.p1Name || 'P1',
+)
+const p2Label = computed(
+  () => dispute.value?.participant2_name || matchParticipants.value?.p2Name || 'P2',
+)
+
+watch(
+  () => dispute.value?.id,
+  async () => {
+    matchParticipants.value = null
+    const d = dispute.value
+    if (!d?.tournament_id || !d.match_id) return
+    const disputeId = d.id
+    try {
+      const m = await tournamentsStore.fetchMatch(d.tournament_id, d.match_id)
+      // The modal may have moved on to another dispute while this was in flight.
+      if (dispute.value?.id !== disputeId) return
+      if (m.participant1_registration_id && m.participant2_registration_id) {
+        matchParticipants.value = {
+          p1: m.participant1_registration_id,
+          p2: m.participant2_registration_id,
+          p1Name: m.participant1_name ?? undefined,
+          p2Name: m.participant2_name ?? undefined,
+        }
+      }
+    } catch {
+      // Falls back to the typed id.
+    }
+  },
+  { immediate: true },
+)
+
+/** The side the entered score makes the winner; null while level or unknown. */
+const derivedWinner = computed(() => {
+  const ids = matchParticipants.value
+  if (!ids || newP1Score.value === newP2Score.value) return null
+  return newP1Score.value > newP2Score.value
+    ? { id: ids.p1, name: p1Label.value }
+    : { id: ids.p2, name: p2Label.value }
+})
+
+/** Winner id sent with an overturn: from the score, or typed as a last resort. */
+const overturnWinnerId = computed(() =>
+  matchParticipants.value ? derivedWinner.value?.id ?? '' : newWinnerRegistrationId.value.trim(),
+)
+
+function winnerName(registrationId: string): string | null {
+  const ids = matchParticipants.value
+  if (!ids) return null
+  if (registrationId === ids.p1) return p1Label.value
+  if (registrationId === ids.p2) return p2Label.value
+  return null
+}
+
 const canOverturn = computed(() =>
   resolutionNotes.value.trim() &&
   newP1Score.value >= 0 &&
   newP2Score.value >= 0 &&
-  newWinnerRegistrationId.value.trim()
+  overturnWinnerId.value
 )
 
 const canAdjust = computed(() =>
   resolutionNotes.value.trim() &&
   newP1Score.value >= 0 &&
-  newP2Score.value >= 0
+  newP2Score.value >= 0 &&
+  newP1Score.value !== newP2Score.value
 )
 
 watch(() => props.disputeId, async (id) => {
@@ -530,8 +623,25 @@ function resetForm() {
   newWinnerRegistrationId.value = ''
 }
 
+/**
+ * What a ruling did to the result, in words that cannot be read backwards.
+ * "Upheld" on its own was ambiguous: it is the ORIGINAL RESULT that is
+ * upheld, which means the dispute was rejected — but "dispute upheld" reads
+ * as the disputing team having won.
+ */
+const RESOLUTION_LABELS: Record<string, string> = {
+  upheld: 'Dispute rejected — original result stands',
+  overturned: 'Dispute accepted — result overturned',
+  adjusted: 'Dispute accepted — scores adjusted',
+  rematch: 'Rematch ordered',
+  double_dq: 'Both teams disqualified',
+}
+
 function formatResolutionType(type: string): string {
-  return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  return (
+    RESOLUTION_LABELS[type] ??
+    type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  )
 }
 
 async function handleAssign() {
@@ -560,10 +670,10 @@ async function handleResolveUphold() {
   if (!props.disputeId) return
   try {
     await store.resolveUphold(props.disputeId, resolutionNotes.value.trim())
-    snackbar.show('Dispute upheld', 'success')
+    snackbar.show('Dispute rejected — the original result stands', 'success')
     emit('resolved')
   } catch {
-    snackbar.show('Failed to uphold dispute', 'error')
+    snackbar.show('Failed to uphold the original result', 'error')
   }
 }
 
@@ -573,7 +683,7 @@ async function handleResolveOverturn() {
     await store.resolveOverturn(props.disputeId, {
       new_participant1_score: newP1Score.value,
       new_participant2_score: newP2Score.value,
-      new_winner_registration_id: newWinnerRegistrationId.value.trim(),
+      new_winner_registration_id: overturnWinnerId.value,
       notes: resolutionNotes.value.trim(),
     })
     snackbar.show('Result overturned', 'success')
@@ -589,7 +699,6 @@ async function handleResolveAdjusted() {
     await store.resolveAdjusted(props.disputeId, {
       new_participant1_score: newP1Score.value,
       new_participant2_score: newP2Score.value,
-      new_winner_registration_id: newWinnerRegistrationId.value.trim() || undefined,
       notes: resolutionNotes.value.trim(),
     })
     snackbar.show('Scores adjusted', 'success')

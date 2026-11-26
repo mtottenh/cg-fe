@@ -208,6 +208,15 @@
             </v-list>
           </v-card>
 
+          <!-- Match delegates (captain/owner): who else may schedule, check in and veto. -->
+          <TeamDelegatesCard
+            v-if="(isCaptain || isOwner) && teamSeasonId && team"
+            :league-id="team.league_id"
+            :team-id="team.id"
+            :team-season-id="teamSeasonId"
+            :members="members"
+          />
+
           <!-- Pending Invitations (Captain Only) — invites the captain sent. -->
           <v-card v-if="isCaptain && teamSeasonId" class="mb-4">
             <v-card-title class="d-flex align-center">
@@ -502,6 +511,7 @@ import { useTeamContext } from '@/composables/useTeamContext'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import LeagueTeamInviteModal from '@/components/team/LeagueTeamInviteModal.vue'
+import TeamDelegatesCard from '@/components/team/TeamDelegatesCard.vue'
 import { teamRoleMap, teamStatusMap, getStatusColor as mapStatusColor, getStatusLabel } from '@/utils/statusMaps'
 import {
   allowsPrimaryRosterChanges, isPrimaryRosterRole, isRosterLive, rosterLockColor, rosterLockHint, rosterLockLabel,

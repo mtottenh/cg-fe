@@ -23,6 +23,7 @@
         <v-tab value="results">Results</v-tab>
         <v-tab value="evidence">Evidence</v-tab>
         <v-tab value="actions">Admin Actions</v-tab>
+        <v-tab value="rescue" data-testid="match-rescue-tab">Rescue</v-tab>
       </v-tabs>
 
       <v-divider />
@@ -35,6 +36,7 @@
               :tournament-id="tournamentId"
               :tournament-slug="tournamentSlug"
               @updated="emit('updated')"
+              @set-time="activeTab = 'actions'"
             />
           </v-tabs-window-item>
 
@@ -55,6 +57,17 @@
               :match="match"
               :tournament-id="tournamentId"
               @updated="emit('updated')"
+            />
+          </v-tabs-window-item>
+
+          <v-tabs-window-item value="rescue">
+            <MatchRescueTab
+              :match="match"
+              :tournament-id="tournamentId"
+              :active="open && activeTab === 'rescue'"
+              @updated="emit('updated')"
+              @set-time="activeTab = 'actions'"
+              @set-result="activeTab = 'results'"
             />
           </v-tabs-window-item>
         </v-tabs-window>
@@ -80,11 +93,16 @@ import MatchOverviewTab from './match-detail/MatchOverviewTab.vue'
 import MatchResultsTab from './match-detail/MatchResultsTab.vue'
 import MatchEvidenceTab from './match-detail/MatchEvidenceTab.vue'
 import MatchAdminActionsTab from './match-detail/MatchAdminActionsTab.vue'
+import MatchRescueTab from './match-detail/MatchRescueTab.vue'
+
+export type MatchDetailTab = 'overview' | 'results' | 'evidence' | 'actions' | 'rescue'
 
 const props = defineProps<{
   matchId: string | null
   tournamentId: string
   tournamentSlug?: string | null
+  /** Tab to show when the modal opens. Defaults to the overview. */
+  initialTab?: MatchDetailTab
 }>()
 
 const emit = defineEmits<{
@@ -97,7 +115,11 @@ const tournamentsStore = useTournamentsStore()
 const matchResultsStore = useMatchResultsStore()
 const evidenceStore = useEvidenceStore()
 
-const activeTab = ref('overview')
+const activeTab = ref<MatchDetailTab>('overview')
+
+watch(open, (isOpen) => {
+  if (isOpen) activeTab.value = props.initialTab ?? 'overview'
+})
 
 const match = computed(() => {
   if (!props.matchId) return null
@@ -109,7 +131,7 @@ const match = computed(() => {
 // store collections these fetches populate.
 watch(() => props.matchId, async (id) => {
   if (id && open.value) {
-    activeTab.value = 'overview'
+    activeTab.value = props.initialTab ?? 'overview'
     await Promise.allSettled([
       matchResultsStore.fetchCurrentResult(id),
       matchResultsStore.fetchResultHistory(id),

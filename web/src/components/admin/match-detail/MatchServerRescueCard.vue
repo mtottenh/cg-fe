@@ -44,12 +44,26 @@
         {{ reservation.failure_reason }}
       </v-alert>
 
+      <v-alert
+        v-if="serverAccessDenied"
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="mb-3"
+        data-testid="server-rescue-denied"
+      >
+        Your account cannot manage game servers, so these tools are switched
+        off. They need the <code>admin.servers.manage</code> permission; the
+        rest of the rescue tools only need tournament admin.
+      </v-alert>
+
       <!-- Clear -->
       <div class="mb-4">
         <v-btn
           color="warning"
           variant="tonal"
           prepend-icon="mdi-server-remove"
+          :disabled="serverAccessDenied"
           :loading="rescueStore.clearServerState.loading"
           data-testid="server-clear"
           @click="confirmClear"
@@ -89,6 +103,7 @@
           color="primary"
           variant="tonal"
           prepend-icon="mdi-server-network"
+          :disabled="serverAccessDenied"
           :loading="rescueStore.reloadServerState.loading"
           data-testid="server-reload"
           @click="confirmReload"
@@ -100,7 +115,7 @@
             color="primary"
             variant="tonal"
             prepend-icon="mdi-server-plus"
-            :disabled="hasLiveReservation"
+            :disabled="hasLiveReservation || serverAccessDenied"
             :loading="matchServerStore.assignState.loading"
             data-testid="server-assign"
             @click="assign"
@@ -116,12 +131,27 @@
         Reload rebuilds the match config from the teams' rosters as they are
         now, then loads it again. Fix the roster first, then reload.
       </p>
+      <v-alert
+        v-if="rescueStore.reloadServerState.error"
+        type="error"
+        variant="tonal"
+        density="compact"
+        class="mb-4"
+        data-testid="server-reload-error"
+      >
+        {{ rescueStore.reloadServerState.error }}
+        <div class="text-caption mt-1">
+          Nothing on the server was changed. The roster check below shows who
+          is stopping the config from being built.
+        </div>
+      </v-alert>
 
       <!-- Roster check -->
       <div class="d-flex align-center ga-2 mb-2">
         <v-btn
           variant="tonal"
           prepend-icon="mdi-account-search"
+          :disabled="serverAccessDenied"
           :loading="rescueStore.rosterCheckState.loading"
           data-testid="roster-check-run"
           @click="runRosterCheck"
@@ -217,6 +247,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { ApiError } from '@/api/client'
 import { storeToRefs } from 'pinia'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import ReasonDialogHost from './ReasonDialogHost.vue'
@@ -242,7 +273,7 @@ const emit = defineEmits<{
 
 const rescueStore = useMatchRescueStore()
 const matchServerStore = useMatchServerStore()
-const { rosterCheck, clearResult } = storeToRefs(rescueStore)
+const { rosterCheck, clearResult, serverAccessDenied } = storeToRefs(rescueStore)
 const feedback = useActionFeedback()
 const confirmDialog = useConfirmDialog()
 const reasonDialog = useReasonDialog()
@@ -263,11 +294,24 @@ const clearSummary = computed(() => {
   const reservation = result.released_reservation
     ? 'The server reservation was released.'
     : 'There was no live reservation to release.'
-  const server = result.server_cleared
-    ? `The match was unloaded${where}: anyone can connect now.`
-    : `The server did not confirm that the match was unloaded${where}. If players are still being kicked, end the match from the server console.`
-  return `${reservation} ${server}`
+  if (result.server_cleared) {
+    return `${reservation} The match was unloaded${where}: anyone can connect now.`
+  }
+  // The backend says why in `detail`; show it as it came.
+  const why = result.detail ? ` ${sentence(result.detail)}` : ''
+  return (
+    `${reservation} The match was not confirmed as unloaded${where}.${why} ` +
+    'If players are still being kicked, end the match from the server console.'
+  )
 })
+
+/** Capitalised, with a full stop: backend details arrive as lower-case fragments. */
+function sentence(text: string): string {
+  const trimmed = text.trim()
+  if (!trimmed) return ''
+  const capitalised = trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
+  return /[.!?]$/.test(capitalised) ? capitalised : `${capitalised}.`
+}
 
 function changed() {
   emit('changed')
@@ -282,14 +326,11 @@ function confirmClear() {
     action: 'Clear match',
     color: 'warning',
     handler: async () => {
+      // No success toast: the alert under the button says what the server
+      // actually confirmed, which is not always that the match was unloaded.
       await feedback.run(
         () => rescueStore.clearServer(props.matchId),
-        {
-          success: 'Match cleared from the server',
-          errorSource: rescueStore.clearServerState,
-          after: changed,
-          rethrow: true,
-        },
+        { errorSource: rescueStore.clearServerState, after: changed, rethrow: true },
       )
     },
   })
@@ -309,22 +350,36 @@ function confirmReload() {
     color: 'primary',
     defaultReason: 'Reloading the match with corrected rosters',
     handler: async (reason) => {
-      await feedback.run(
-        () => rescueStore.reloadServer(props.matchId, reason),
-        {
-          success: 'Match reloaded on the server',
-          errorSource: rescueStore.reloadServerState,
-          after: changed,
-          rethrow: true,
-        },
-      )
+      try {
+        await feedback.run(
+          () => rescueStore.reloadServer(props.matchId, reason),
+          {
+            success: 'Match reloaded on the server',
+            errorSource: rescueStore.reloadServerState,
+            after: changed,
+            rethrow: true,
+          },
+        )
+      } catch (e) {
+        // A refused reload is nearly always a roster problem: show which.
+        if (!serverAccessDenied.value) void runRosterCheck()
+        throw e
+      }
     },
   })
 }
 
 async function assign() {
   await feedback.run(
-    () => matchServerStore.assignServer(props.matchId),
+    async () => {
+      try {
+        await matchServerStore.assignServer(props.matchId)
+      } catch (e) {
+        // Assign lives in another store; it needs the same permission.
+        if (e instanceof ApiError && e.status === 403) serverAccessDenied.value = true
+        throw e
+      }
+    },
     {
       success: 'Server requested for this match',
       errorSource: matchServerStore.assignState,

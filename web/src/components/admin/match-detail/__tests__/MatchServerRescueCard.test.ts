@@ -103,12 +103,44 @@ describe('MatchServerRescueCard clear', () => {
 
   it('does not claim the server was cleared when it did not confirm', async () => {
     mountCard(reservation('ready'))
-    mockDelete.mockResolvedValue({ data: { data: { released_reservation: true, server_cleared: false, server_name: 'game-1' } } })
+    mockDelete.mockResolvedValue({ data: { data: {
+      released_reservation: true,
+      server_cleared: false,
+      server_name: 'game-1',
+      detail: "the game server's agent could not be reached (agent offline); the match config may still be loaded on it",
+    } } })
     await clear()
     const result = byTestId('server-clear-result')!
-    expect(result.textContent).toContain('did not confirm that the match was unloaded from game-1')
+    expect(result.textContent).toContain('was not confirmed as unloaded from game-1')
+    // The backend's reason, as it came.
+    expect(result.textContent).toContain("agent could not be reached (agent offline); the match config may still be loaded on it.")
     expect(result.textContent).not.toContain('anyone can connect now')
     expect(result.className).toContain('text-warning')
+  })
+
+  it('says why when the match was never on a server', async () => {
+    mountCard(null)
+    // `server_name` and `detail` are omitted, not null, when absent.
+    mockDelete.mockResolvedValue({ data: { data: {
+      released_reservation: false,
+      server_cleared: false,
+      detail: 'this match has not been loaded on any game server',
+    } } })
+    await clear()
+    const text = byTestId('server-clear-result')!.textContent!
+    expect(text).toContain('There was no live reservation to release')
+    expect(text).toContain('This match has not been loaded on any game server.')
+  })
+
+  it('switches the server tools off when the admin lacks the server permission', async () => {
+    mountCard(reservation('ready'))
+    mockDelete.mockResolvedValue({ error: { status: 403, detail: 'Missing permission: admin.servers.manage' } })
+    await clear()
+    expect(byTestId('server-rescue-denied')!.textContent).toContain('admin.servers.manage')
+    expect((byTestId('server-clear') as HTMLButtonElement).disabled).toBe(true)
+    expect((byTestId('server-reload') as HTMLButtonElement).disabled).toBe(true)
+    expect((byTestId('server-assign') as HTMLButtonElement).disabled).toBe(true)
+    expect((byTestId('roster-check-run') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('treats a bodyless answer from an older backend as released but unconfirmed', async () => {
@@ -117,7 +149,7 @@ describe('MatchServerRescueCard clear', () => {
     await clear()
     const text = byTestId('server-clear-result')!.textContent!
     expect(text).toContain('The server reservation was released')
-    expect(text).toContain('did not confirm')
+    expect(text).toContain('was not confirmed as unloaded')
   })
 
   it('shows the backend\'s reason when the clear fails, and no result', async () => {
@@ -158,7 +190,9 @@ describe('MatchServerRescueCard reservation, reload and assign', () => {
 
   it('reloads the match with a reason, and keeps the refusal on screen', async () => {
     const w = mountCard(reservation('failed'))
-    mockPost.mockResolvedValue({ error: { status: 400, detail: 'players on Team Bravo have no linked Steam ID: zed' } })
+    mockPost.mockResolvedValue({ error: { status: 400, detail: 'The match config cannot be rebuilt: players on "Team Bravo" have no usable Steam ID: zed' } })
+    // A refused reload runs the roster check so the admin sees who is at fault.
+    mockGet.mockResolvedValue({ data: { data: { ok: false, players_per_team: 5, min_players_to_ready: 5, problems: [], teams: [] } } })
     byTestId('server-reload')!.click()
     await flushPromises()
     byTestId('reason-dialog-confirm')!.click()
@@ -167,7 +201,11 @@ describe('MatchServerRescueCard reservation, reload and assign', () => {
       params: { path: { match_id: MATCH_ID } },
       body: { reason: 'Reloading the match with corrected rosters' },
     })
-    expect(byTestId('reason-dialog-error')!.textContent).toContain('no linked Steam ID: zed')
+    expect(byTestId('reason-dialog-error')!.textContent).toContain('no usable Steam ID: zed')
+    expect(byTestId('server-reload-error')!.textContent).toContain('no usable Steam ID: zed')
+    expect(byTestId('server-reload-error')!.textContent).toContain('Nothing on the server was changed')
+    expect(mockGet).toHaveBeenCalledWith('/v1/matches/{match_id}/server/roster-check', { params: { path: { match_id: MATCH_ID } } })
+    expect(byTestId('roster-check-verdict')!.textContent).toContain('Rosters have problems')
     expect(w.emitted('changed')).toBeUndefined()
   })
 })

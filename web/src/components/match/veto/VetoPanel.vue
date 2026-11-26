@@ -66,6 +66,19 @@
         </template>
       </v-alert>
 
+      <!-- Side Selection (only in picker_choice mode during active phases).
+           Above the map grid: a side that is not chosen before the veto
+           finishes is gone, and under the grid it was easy to miss while the
+           next ban's clock was running. -->
+      <VetoSideSelect
+        v-if="sideSelectionMode === 'picker_choice' && mapsNeedingSideSelect.length > 0 && phase !== 'completed' && phase !== 'waiting' && phase !== 'coin_flip' && phase !== 'cancelled'"
+        :match-id="matchId"
+        :actions-needing-side="mapsNeedingSideSelect"
+        :user-registration-id="userRegistrationId"
+        :can-act="canActInVeto"
+        :maps="maps"
+      />
+
       <!-- Coin Flip Phase -->
       <VetoCoinFlip
         v-if="phase === 'coin_flip'"
@@ -86,16 +99,6 @@
         :user-registration-id="userRegistrationId"
         :participant1-registration-id="participant1RegistrationId"
         :participant2-registration-id="participant2RegistrationId"
-      />
-
-      <!-- Side Selection (only in picker_choice mode during active phases) -->
-      <VetoSideSelect
-        v-if="sideSelectionMode === 'picker_choice' && mapsNeedingSideSelect.length > 0 && phase !== 'completed' && phase !== 'waiting' && phase !== 'coin_flip' && phase !== 'cancelled'"
-        :match-id="matchId"
-        :actions-needing-side="mapsNeedingSideSelect"
-        :user-registration-id="userRegistrationId"
-        :can-act="canActInVeto"
-        :maps="maps"
       />
 
       <!-- Action Timeline -->

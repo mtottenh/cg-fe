@@ -5,6 +5,10 @@
       Side Selection
     </v-card-title>
     <v-card-text>
+      <p class="text-caption mb-3" data-testid="side-select-deadline-note">
+        Choose before the veto finishes — a picked map with no side chosen is
+        decided by a knife round.
+      </p>
       <div v-for="action in actionsNeedingSide" :key="action.id" class="mb-3">
         <div class="text-body-2 mb-2">
           Select side for <strong>{{ mapLabel(action) }}</strong>{{ gameLabel(action) }}:

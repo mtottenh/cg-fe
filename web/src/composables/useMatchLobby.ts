@@ -64,10 +64,14 @@ export function useMatchLobby(
       participants.value = Array.isArray(snapshot) ? snapshot : []
       spectatorCount.value = msg.lobby_state.spectator_count ?? 0
 
-      // Populate veto session from lobby state (no REST call needed)
+      // Populate veto session from lobby state.
       if (msg.lobby_state.session) {
         vetoStore.applySessionUpdate(msg.lobby_state.session)
       }
+      // The snapshot carries only the session row. After a reconnect the maps
+      // and the action list may be several steps behind (frames sent while
+      // the socket was down are gone), so re-read the full state.
+      resyncFromRest()
     },
 
     chat_history(msg: ChatHistoryMessage) {
@@ -90,6 +94,9 @@ export function useMatchLobby(
 
     veto_state_update(msg: VetoStateUpdateMessage) {
       vetoStore.applySessionUpdate(msg.session)
+      // No full state yet (the session did not exist, or 404'd, when this
+      // page loaded): the frame alone has no maps to render.
+      if (!vetoStore.sessionState) resyncFromRest()
     },
 
     veto_action_performed(msg: VetoActionPerformedMessage) {
@@ -102,6 +109,10 @@ export function useMatchLobby(
     veto_complete(msg: VetoCompleteMessage) {
       vetoStore.applyVetoComplete(msg.session)
       stopCountdown()
+      // The final action arrives ONLY as this frame — no per-action frame —
+      // so the last ban and the decider were never painted and "Maps
+      // selected" omitted the decider until a reload.
+      resyncFromRest()
     },
 
     player_connected(msg: PlayerConnectedMessage) {
@@ -157,6 +168,12 @@ export function useMatchLobby(
     },
   })
 
+  /** Fire-and-forget full veto read; failure leaves the pushed state as is. */
+  function resyncFromRest() {
+    const id = matchId.value
+    if (id) vetoStore.getVetoSession(id).catch(() => {})
+  }
+
   // Fallback: full REST fetch when WS reconnect exhausted
   socket.onFallback(() => {
     const id = matchId.value
@@ -191,7 +208,10 @@ export function useMatchLobby(
     if (s.status === 'coin_flip') return 'coin_flip'
     // status === 'in_progress'
     const currentAction = state.value?.current_action
-    if (!currentAction) return 'completed'
+    // Unknown step on a LIVE session means "not synced yet", never "done" —
+    // completion is the session status above. Reporting `completed` here
+    // showed "Veto complete!" the moment the coin flip landed.
+    if (!currentAction) return 'waiting'
     if (currentAction.action_type === 'ban') return 'banning'
     if (currentAction.action_type === 'pick') return 'picking'
     return 'side_select'

@@ -193,8 +193,25 @@ export const useVetoStore = defineStore('veto', () => {
   function applySessionUpdate(newSession: VetoSessionResponse) {
     session.value = newSession
     if (sessionState.value) {
-      sessionState.value.session = newSession
+      sessionState.value = {
+        ...sessionState.value,
+        session: newSession,
+        // `current_action` is derived, and the REST read that seeded this
+        // state may predate the session going live (the server returns null
+        // until then). Leaving it stale made a live coin flip render as
+        // "Veto complete!" with an unclickable grid. Same derivation as the
+        // server (veto.rs: sequence[current_action_number - 1], saturating).
+        current_action: currentActionFor(newSession, sessionState.value.format),
+      }
     }
+  }
+
+  function currentActionFor(
+    s: VetoSessionResponse,
+    format: VetoFormatResponse | null | undefined,
+  ): VetoFormatActionResponse | null {
+    if (s.status !== 'in_progress') return null
+    return format?.sequence?.[Math.max(s.current_action_number - 1, 0)] ?? null
   }
 
   /** Apply a veto action performed from a WS message. Updates session, maps + appends action. */

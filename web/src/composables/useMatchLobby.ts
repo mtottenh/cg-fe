@@ -1,6 +1,7 @@
 import { computed, inject, provide, ref, watch, onUnmounted, type InjectionKey, type Ref } from 'vue'
 import { useVetoStore, type MapStatusResponse } from '@/stores/veto'
 import { useMatchServerStore } from '@/stores/matchServer'
+import { serverNow } from '@/utils/serverClock'
 import {
   useMatchLobbySocket,
   type ChatMessage,
@@ -295,8 +296,10 @@ export function useMatchLobby(
       return
     }
     const deadline = new Date(actionDeadline.value).getTime()
-    const now = Date.now()
-    const remaining = Math.max(0, Math.floor((deadline - now) / 1000))
+    // Against the server's clock, not this PC's: the deadline is a server
+    // time, and a skewed local clock showed the turn as over (or far longer
+    // than it is) from the first tick.
+    const remaining = Math.max(0, Math.floor((deadline - serverNow()) / 1000))
     timeRemaining.value = remaining
   }
 

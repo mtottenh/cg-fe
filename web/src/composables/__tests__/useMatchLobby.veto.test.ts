@@ -31,6 +31,7 @@ vi.mock('@/composables/useMatchLobbySocket', async () => {
 
 import { useMatchLobby } from '@/composables/useMatchLobby'
 import { useMatchServerStore } from '@/stores/matchServer'
+import { noteServerTime, resetServerClock } from '@/utils/serverClock'
 import {
   useVetoStore,
   type VetoSessionResponse,
@@ -221,6 +222,44 @@ describe('useMatchLobby veto phase under live updates', () => {
     await mounted.lobby.resync({ rejoin: true })
 
     expect(socketState.connect).not.toHaveBeenCalled()
+  })
+
+  describe('turn countdown', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-11-27T20:02:00Z'))
+      resetServerClock()
+    })
+
+    afterEach(() => {
+      resetServerClock()
+      vi.useRealTimers()
+    })
+
+    it("counts down against the server's clock when this PC's clock is fast", async () => {
+      // This PC reads 20:02:00; the server reads 20:00:00 and gave the turn
+      // until 20:00:20. Against the local clock that deadline is long gone.
+      noteServerTime(new Date('2026-11-27T20:00:00Z').getTime())
+      const store = useVetoStore()
+      vi.spyOn(store, 'getVetoSession').mockResolvedValue(null as never)
+      const session = makeSession({
+        status: 'in_progress',
+        current_action_number: 1,
+        current_team_turn: 'reg-a',
+        action_deadline: '2026-11-27T20:00:20Z',
+      })
+      // Loaded before the turn started: the deadline arrives over the socket.
+      const before = makeSession({ status: 'in_progress', current_action_number: 1 })
+      store.sessionState = makeState(before, { current_action: SEQUENCE[0] })
+      store.session = before
+      const mounted = mountLobby()
+      unmount = mounted.unmount
+
+      socketState.handlers.veto_state_update!({ type: 'veto_state_update', session })
+      await vi.advanceTimersByTimeAsync(1000)
+
+      expect(mounted.lobby.timeRemaining.value).toBe(19)
+    })
   })
 
   describe('who may act for the team on the clock', () => {

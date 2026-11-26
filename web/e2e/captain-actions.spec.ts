@@ -119,7 +119,7 @@ function widget(page: Page) {
 
 /** The header bell's menu (CaptainActionsBell.vue:2-41), teleported to body. */
 async function openBell(page: Page) {
-  await page.getByRole('button', { name: 'Captain actions' }).click()
+  await page.getByRole('button', { name: /^Notifications and action items/ }).click()
   const menu = page.locator('.v-overlay--active .v-card').filter({ hasText: 'Action Items' })
   await expect(menu).toBeVisible()
   return menu

@@ -4781,7 +4781,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Complete a tournament. */
+        /**
+         * Complete a tournament.
+         * @description Refused (400) while a match between two decided participants is
+         *     unfinished, unless `?force=true`.
+         */
         post: operations["complete_tournament"];
         delete?: never;
         options?: never;
@@ -5890,6 +5894,8 @@ export interface components {
              * @example Team Alpha vs Team Bravo
              */
             match_label: string;
+            /** @description The match's agreed start time, if it has one (ISO 8601). */
+            scheduled_at?: string | null;
             /**
              * @description Tournament ID.
              * @example 550e8400-e29b-41d4-a716-446655440000
@@ -6081,6 +6087,11 @@ export interface components {
         };
         /** @description Request for admin to directly schedule a match. */
         AdminScheduleRequest: {
+            /**
+             * @description Accept a time more than a few minutes in the past. Check-in opens
+             *     immediately for such a match, so it has to be asked for.
+             */
+            allow_past?: boolean;
             /** @description Optional notes for the scheduling decision. */
             notes?: string | null;
             /**
@@ -10111,6 +10122,12 @@ export interface components {
                 round: number;
                 /** Format: date-time */
                 schedule_deadline?: string | null;
+                /**
+                 * @description Set only in the reply to an admin setting the match time: why that
+                 *     time collides with another match (a team playing twice within two
+                 *     hours, or the one game server already taken). The time was applied.
+                 */
+                schedule_warning?: string | null;
                 /** Format: date-time */
                 scheduled_at?: string | null;
                 stage_id: string;
@@ -10551,6 +10568,8 @@ export interface components {
                  * @example Team Alpha vs Team Bravo
                  */
                 match_label: string;
+                /** @description The match's agreed start time, if it has one (ISO 8601). */
+                scheduled_at?: string | null;
                 /**
                  * @description Tournament ID.
                  * @example 550e8400-e29b-41d4-a716-446655440000
@@ -12152,6 +12171,12 @@ export interface components {
                 round: number;
                 /** Format: date-time */
                 schedule_deadline?: string | null;
+                /**
+                 * @description Set only in the reply to an admin setting the match time: why that
+                 *     time collides with another match (a team playing twice within two
+                 *     hours, or the one game server already taken). The time was applied.
+                 */
+                schedule_warning?: string | null;
                 /** Format: date-time */
                 scheduled_at?: string | null;
                 stage_id: string;
@@ -12478,6 +12503,12 @@ export interface components {
                 remaining_maps: string[];
                 /** @description Maps selected for play (in order). */
                 selected_maps: string[];
+                /**
+                 * Format: date-time
+                 * @description The server's clock when this response was built, so clients can count
+                 *     down to `action_deadline` without trusting their own clock.
+                 */
+                server_time: string;
                 /** @description How starting sides are determined (picker_choice, coin_flip, knife). */
                 side_selection_mode: string;
                 /**
@@ -17779,6 +17810,12 @@ export interface components {
             round: number;
             /** Format: date-time */
             schedule_deadline?: string | null;
+            /**
+             * @description Set only in the reply to an admin setting the match time: why that
+             *     time collides with another match (a team playing twice within two
+             *     hours, or the one game server already taken). The time was applied.
+             */
+            schedule_warning?: string | null;
             /** Format: date-time */
             scheduled_at?: string | null;
             stage_id: string;
@@ -19067,6 +19104,12 @@ export interface components {
             remaining_maps: string[];
             /** @description Maps selected for play (in order). */
             selected_maps: string[];
+            /**
+             * Format: date-time
+             * @description The server's clock when this response was built, so clients can count
+             *     down to `action_deadline` without trusting their own clock.
+             */
+            server_time: string;
             /** @description How starting sides are determined (picker_choice, coin_flip, knife). */
             side_selection_mode: string;
             /**
@@ -33911,7 +33954,10 @@ export interface operations {
     };
     complete_tournament: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Complete even though some matches have not been played. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 /** @description Tournament ID */

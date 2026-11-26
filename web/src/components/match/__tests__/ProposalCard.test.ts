@@ -44,6 +44,24 @@ function mountCard(props: { times: string[]; isProposer?: boolean; isOwnTeam?: b
   return wrapper
 }
 
+describe('ProposalCard — the opponent is not notified', () => {
+  const notice = (w: VueWrapper) => w.find('[data-testid="proposal-not-notified"]')
+
+  it('tells the proposing team to let the other captain know', () => {
+    const w = mountCard({ times: [future(24)], isProposer: true, isOwnTeam: true })
+    expect(notice(w).text()).toContain("Tell the other captain you've proposed a time")
+    expect(notice(w).text()).toContain("doesn't send notifications yet")
+  })
+
+  it('shows the same note to a teammate of the proposer', () => {
+    expect(notice(mountCard({ times: [future(24)], isOwnTeam: true })).exists()).toBe(true)
+  })
+
+  it('does not show it to the team that has to respond', () => {
+    expect(notice(mountCard({ times: [future(24)] })).exists()).toBe(false)
+  })
+})
+
 describe('ProposalCard — who may respond', () => {
   it('offers Accept / Counter / Reject to the opposing team', () => {
     const w = mountCard({ times: [future(24)] })

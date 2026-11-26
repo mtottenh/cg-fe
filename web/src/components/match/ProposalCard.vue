@@ -170,6 +170,21 @@
               Only the teammate who sent it can withdraw it.
             </template>
           </v-alert>
+          <!-- Nothing tells the other team a proposal (or counter-proposal)
+               exists: they only find it on their own dashboard or match page.
+               Until the site sends notifications, the proposer has to. -->
+          <v-alert
+            type="warning"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+            data-testid="proposal-not-notified"
+          >
+            <template v-slot:prepend>
+              <v-icon>mdi-bell-off-outline</v-icon>
+            </template>
+            Tell the other captain you've proposed a time — the site doesn't send notifications yet.
+          </v-alert>
           <div v-if="isProposer" class="d-flex ga-2 flex-wrap">
             <v-btn
               variant="outlined"

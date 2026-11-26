@@ -56,10 +56,24 @@ const ACTION_META: Record<string, { icon: string; color: string; label: string }
   acknowledge_review: { icon: 'mdi-clipboard-check-outline', color: 'error', label: 'Acknowledge result review' },
 }
 
-const actionMeta = computed(() => ACTION_META[props.action.action_type] ?? {
-  icon: 'mdi-alert-circle-outline',
+// A `check_in` item with no deadline is a match whose time is agreed but
+// whose check-in window has not opened: the server stamps the deadline as it
+// opens the window. Nobody can check in yet, so this is a reminder, not a
+// demand — "Check-in required" two days out sent people to a page with no
+// check-in button.
+const UPCOMING_MATCH_META = {
+  icon: 'mdi-calendar-check',
   color: 'grey',
-  label: props.action.action_type,
+  label: 'Match scheduled — check-in opens 15 minutes before the start',
+}
+
+const actionMeta = computed(() => {
+  if (props.action.action_type === 'check_in' && !props.action.deadline) return UPCOMING_MATCH_META
+  return ACTION_META[props.action.action_type] ?? {
+    icon: 'mdi-alert-circle-outline',
+    color: 'grey',
+    label: props.action.action_type,
+  }
 })
 
 const diffMs = computed(() => {

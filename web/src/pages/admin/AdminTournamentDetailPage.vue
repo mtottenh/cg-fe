@@ -30,6 +30,24 @@
 
     <ErrorAlert :error="error" retryable @clear="clearError" @retry="fetchData" />
 
+    <!-- Nothing completes a tournament by itself: once every match is
+         settled, say so and offer the button. -->
+    <v-alert
+      v-if="tournamentActions.readyToComplete.value"
+      type="success"
+      variant="tonal"
+      class="mb-4"
+      data-testid="ready-to-complete"
+    >
+      <div class="d-flex align-center flex-wrap ga-3">
+        <span>All matches are finished — complete the tournament to close it.</span>
+        <v-spacer />
+        <v-btn color="success" variant="flat" size="small" @click="tournamentActions.complete()">
+          Complete tournament
+        </v-btn>
+      </div>
+    </v-alert>
+
     <!-- Loading State -->
     <v-card v-if="loading" class="pa-8 text-center">
       <v-progress-circular indeterminate color="primary" size="48" />

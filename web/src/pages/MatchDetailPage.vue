@@ -126,6 +126,7 @@
         :match="match"
         :active-proposal="activeProposal"
         :is-proposer="isProposer"
+        :is-own-team="isOwnTeamProposal"
         :can-propose="canPropose"
         :loading="schedulingLoading"
         :suggested-times="suggestedTimes"
@@ -485,7 +486,7 @@ const {
   match, tournament, activeProposal, proposalHistory,
   currentResult, resultHistory, matchFormat, statusHistory,
   loading, schedulingLoading, error: combinedError, clearError,
-  showSchedulingPanel, showCheckInPanel, isProposer, canPropose,
+  showSchedulingPanel, showCheckInPanel, isProposer, isOwnTeamProposal, canPropose,
   showResultPanel, showConfirmationPanel, canSubmitResult,
   showWaitingForOpponent, autoConfirmCountdown, checkInCountdown, vetoPickedMaps,
   selectableMaps,

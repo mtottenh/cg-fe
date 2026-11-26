@@ -116,6 +116,17 @@ export function useMatchDetail() {
     return activeProposal.value.proposed_by_user_id === authStore.user.id
   })
 
+  /**
+   * The active proposal was sent by the viewer's own team — by them or by a
+   * teammate. `isProposer` is per USER, so on its own it offered the
+   * proposer's teammates Accept / Counter / Reject on their own team's
+   * proposal, each of which the API refuses.
+   */
+  const isOwnTeamProposal = computed(() => {
+    if (!activeProposal.value || !userRegistrationId.value) return false
+    return activeProposal.value.proposed_by_registration_id === userRegistrationId.value
+  })
+
   const canPropose = computed(() => {
     if (!match.value || !userRegistrationId.value) return false
     return match.value.status === 'ready' && !activeProposal.value
@@ -694,6 +705,7 @@ export function useMatchDetail() {
     showSchedulingPanel,
     showCheckInPanel,
     isProposer,
+    isOwnTeamProposal,
     canPropose,
     showResultPanel,
     userRegistrationId,

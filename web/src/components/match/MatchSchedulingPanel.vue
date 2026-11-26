@@ -74,6 +74,7 @@
         <ProposalCard
           :proposal="activeProposal"
           :is-proposer="isProposer"
+          :is-own-team="isOwnTeam"
           :from-name="proposerName"
           :loading="loading"
           @accept="(time) => $emit('accept', time)"
@@ -151,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { TournamentResponse, TournamentMatchResponse } from '@/stores/tournaments'
 import type { ScheduleProposalResponse } from '@/stores/matchScheduling'
 import { formatDateTimeLongWithWeekday } from '@/utils/formatters'
@@ -165,6 +166,8 @@ const props = withDefaults(
     match: TournamentMatchResponse
     activeProposal: ScheduleProposalResponse | null
     isProposer: boolean
+    /** The active proposal came from the viewer's own team. */
+    isOwnTeam?: boolean
     canPropose: boolean
     loading?: boolean
     suggestedTimes?: string[]
@@ -173,6 +176,7 @@ const props = withDefaults(
   {
     suggestedTimes: () => [],
     opponentPlayerId: null,
+    isOwnTeam: false,
   }
 )
 
@@ -272,8 +276,18 @@ function submitCounter() {
     .map((t) => new Date(t).toISOString())
 
   if (validTimes.length > 0) {
+    // The dialog stays open until the counter is known to have landed (see
+    // the watcher below): closing here discarded the typed times whenever
+    // the server refused them.
     emit('counter', validTimes, counterNotes.value || undefined)
-    counterDialogOpen.value = false
   }
 }
+
+// A successful counter replaces the active proposal with the new one.
+watch(
+  () => props.activeProposal?.id,
+  (id, previous) => {
+    if (id !== previous) counterDialogOpen.value = false
+  },
+)
 </script>

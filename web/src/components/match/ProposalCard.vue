@@ -182,21 +182,20 @@
           >
             Only your captain or a delegate can agree match times.
           </v-alert>
-          <!-- Nothing tells the other team a proposal (or counter-proposal)
-               exists: they only find it on their own dashboard or match page.
-               Until the site sends notifications, the proposer has to. -->
+          <!-- The other team is notified (bell, desktop alert, and Discord
+               when the tournament has a channel webhook). -->
           <v-alert
             v-if="canWithdraw"
-            type="warning"
+            type="info"
             variant="tonal"
             density="compact"
             class="mb-4"
-            data-testid="proposal-not-notified"
+            data-testid="proposal-notified"
           >
             <template v-slot:prepend>
-              <v-icon>mdi-bell-off-outline</v-icon>
+              <v-icon>mdi-bell-ring-outline</v-icon>
             </template>
-            Tell the other captain you've proposed a time — the site doesn't send notifications yet.
+            Your opponent's captain gets a notification on the site.
           </v-alert>
           <div v-if="canWithdraw" class="d-flex ga-2 flex-wrap">
             <v-btn

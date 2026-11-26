@@ -23,6 +23,7 @@
         <v-tab value="results">Results</v-tab>
         <v-tab value="evidence">Evidence</v-tab>
         <v-tab value="actions">Admin Actions</v-tab>
+        <v-tab value="rescue" data-testid="match-rescue-tab">Rescue</v-tab>
       </v-tabs>
 
       <v-divider />
@@ -58,6 +59,16 @@
               @updated="emit('updated')"
             />
           </v-tabs-window-item>
+
+          <v-tabs-window-item value="rescue">
+            <MatchRescueTab
+              :match="match"
+              :tournament-id="tournamentId"
+              :active="open && activeTab === 'rescue'"
+              @updated="emit('updated')"
+              @set-time="activeTab = 'actions'"
+            />
+          </v-tabs-window-item>
         </v-tabs-window>
       </v-card-text>
     </v-card>
@@ -81,8 +92,9 @@ import MatchOverviewTab from './match-detail/MatchOverviewTab.vue'
 import MatchResultsTab from './match-detail/MatchResultsTab.vue'
 import MatchEvidenceTab from './match-detail/MatchEvidenceTab.vue'
 import MatchAdminActionsTab from './match-detail/MatchAdminActionsTab.vue'
+import MatchRescueTab from './match-detail/MatchRescueTab.vue'
 
-type MatchDetailTab = 'overview' | 'results' | 'evidence' | 'actions'
+export type MatchDetailTab = 'overview' | 'results' | 'evidence' | 'actions' | 'rescue'
 
 const props = defineProps<{
   matchId: string | null

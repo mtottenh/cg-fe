@@ -148,6 +148,11 @@ test.describe('Admin match overrides', () => {
 
     // scheduled → in_progress, proving the button relabels off the new status.
     await overview.getByRole('button', { name: 'Start Match', exact: true }).click()
+    // Starting from `scheduled` skips check-in, the veto and server setup, so
+    // it is confirmed first.
+    const confirm = page.locator('.v-dialog').filter({ hasText: 'Start match without setup?' })
+    await expect(confirm).toContainText('no game server is set up')
+    await confirm.getByRole('button', { name: 'Start Match', exact: true }).click()
     await expect(
       page.locator('.v-snackbar').getByText('Match transitioned to in progress'),
     ).toBeVisible()

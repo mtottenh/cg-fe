@@ -110,6 +110,31 @@ describe('MatchOverviewTab — admin transition control', () => {
   })
 })
 
+describe('admin transition out of check-in', () => {
+  it('offers "Start Veto" on a check-in match that has a map veto (both sites)', () => {
+    const overview = mountOverview('checking_in', { veto_required: true })
+    expect(overview.text()).toContain('Start Veto')
+    expect(overview.text()).not.toContain('Start Match')
+    overview.unmount()
+
+    const row = mountMatchesTab('checking_in', { veto_required: true })
+    expect(row.text()).toContain('Start Veto')
+    expect(row.text()).not.toContain('Start Match')
+  })
+
+  it('keeps "Start Match" when the match has no veto', () => {
+    const w = mountOverview('checking_in', { veto_required: false })
+    expect(w.text()).toContain('Start Match')
+  })
+
+  it('asks before starting a match in a way that skips veto and server setup', async () => {
+    const w = mountOverview('scheduled', { scheduled_at: '2032-01-01T19:00:00Z' })
+    await w.find('.mt-4 button').trigger('click')
+    // Vuetify dialogs render into the body.
+    expect(document.body.textContent).toContain('no game server is set up')
+  })
+})
+
 describe('MatchesTab — row action menu', () => {
   it('offers NO transition menu on a completed match row', () => {
     // The second render site (the row menu). Same dead control, same 400.

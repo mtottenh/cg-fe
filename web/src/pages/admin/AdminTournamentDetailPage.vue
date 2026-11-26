@@ -318,7 +318,7 @@ import {
   formatSchedulingMode,
   SCHEDULING_MODES,
 } from '@/stores/tournaments'
-import { formatMatchFormat } from '@/utils/matchStatus'
+import { formatMatchFormat, skipsMatchSetup, SKIP_SETUP_WARNING } from '@/utils/matchStatus'
 import TournamentStatusChip from '@/components/admin/TournamentStatusChip.vue'
 import TournamentStatusActions from '@/components/admin/TournamentStatusActions.vue'
 import TournamentEditModal from '@/components/admin/TournamentEditModal.vue'
@@ -424,7 +424,22 @@ function getGame(gameId: string): GameSummary | undefined {
 
 // Match + tournament formatters imported from @/utils/matchStatus and @/stores/tournaments.
 
-async function handleMatchTransition(matchId: string, toStatus: string) {
+function handleMatchTransition(matchId: string, toStatus: string) {
+  const from = matches.value.find((m) => m.id === matchId)?.status
+  if (from && skipsMatchSetup(from, toStatus)) {
+    tournamentActions.confirmDialog.confirm({
+      title: 'Start match without setup?',
+      message: SKIP_SETUP_WARNING,
+      action: 'Start Match',
+      color: 'warning',
+      handler: () => runMatchTransition(matchId, toStatus),
+    })
+    return
+  }
+  void runMatchTransition(matchId, toStatus)
+}
+
+async function runMatchTransition(matchId: string, toStatus: string) {
   if (!tournament.value) return
   matchTransitionLoadingId.value = matchId
   try {
@@ -447,7 +462,9 @@ function handleBulkStartMatches() {
   // Preview what will happen before force-marching the state machine.
   tournamentActions.confirmDialog.confirm({
     title: 'Bulk Start Matches',
-    message: `Force ${eligible.length} match(es) (pending/ready/scheduled) straight to in-progress? Check-in and veto steps are skipped.`,
+    message:
+      `Force ${eligible.length} match(es) (pending/ready/scheduled) straight to in-progress? ` +
+      SKIP_SETUP_WARNING,
     action: `Start ${eligible.length} Match(es)`,
     color: 'warning',
     handler: async () => {

@@ -80,7 +80,7 @@
           >
             Set match time
           </v-btn>
-          <v-menu v-if="getNextMatchStatus(item.status)">
+          <v-menu v-if="getNextMatchStatus(item.status, item)">
             <template v-slot:activator="{ props: menuProps }">
               <v-btn
                 size="small"
@@ -90,13 +90,13 @@
                 :loading="matchTransitionLoadingId === item.id"
                 :disabled="matchTransitionLoadingId !== null && matchTransitionLoadingId !== item.id"
               >
-                {{ getMatchActionLabel(item.status) }}
+                {{ getMatchActionLabel(item.status, item) }}
                 <v-icon end size="small">mdi-chevron-down</v-icon>
               </v-btn>
             </template>
             <v-list density="compact">
-              <v-list-item @click="$emit('transition', item.id, getNextMatchStatus(item.status)!)">
-                <v-list-item-title>{{ getMatchActionLabel(item.status) }}</v-list-item-title>
+              <v-list-item @click="$emit('transition', item.id, getNextMatchStatus(item.status, item)!)">
+                <v-list-item-title>{{ getMatchActionLabel(item.status, item) }}</v-list-item-title>
               </v-list-item>
             </v-list>
           </v-menu>

@@ -105,9 +105,10 @@
         :loading="tournamentsStore.adminMatchTransitionState.loading"
         @click="handleTransition"
       >
-        {{ getMatchActionLabel(match.status) }}
+        {{ getMatchActionLabel(match.status, match) }}
       </v-btn>
     </div>
+    <ConfirmDialogHost :dialog="confirmDialog" />
   </div>
 </template>
 
@@ -119,7 +120,10 @@ import { formatDateTime } from '@/utils/formatters'
 import {
   getMatchStatusColor, formatMatchStatus, formatMatchFormat,
   getNextMatchStatus, getMatchActionLabel, getMatchActionColor, needsMatchTime,
+  skipsMatchSetup, SKIP_SETUP_WARNING,
 } from '@/utils/matchStatus'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 
 const props = defineProps<{
   match: TournamentMatchResponse | null
@@ -143,14 +147,30 @@ const emit = defineEmits<{
 
 const tournamentsStore = useTournamentsStore()
 const feedback = useActionFeedback()
+const confirmDialog = useConfirmDialog()
 
 const needsTime = computed(() => !!props.match && needsMatchTime(props.match))
 
 const nextStatus = computed(() => {
-  return props.match ? getNextMatchStatus(props.match.status) : null
+  return props.match ? getNextMatchStatus(props.match.status, props.match) : null
 })
 
-async function handleTransition() {
+function handleTransition() {
+  if (!props.match || !nextStatus.value) return
+  if (skipsMatchSetup(props.match.status, nextStatus.value)) {
+    confirmDialog.confirm({
+      title: 'Start match without setup?',
+      message: SKIP_SETUP_WARNING,
+      action: 'Start Match',
+      color: 'warning',
+      handler: runTransition,
+    })
+    return
+  }
+  void runTransition()
+}
+
+async function runTransition() {
   if (!props.match || !nextStatus.value) return
   const next = nextStatus.value
   await feedback.run(

@@ -91,9 +91,38 @@ export function formatMatchFormatShort(format: string): string {
  * when this is non-null (`MatchOverviewTab.vue:66`, `MatchesTab.vue:66`), so a
  * status with no entry correctly shows no button at all.
  */
-export function getNextMatchStatus(status: string): MatchStatus | null {
+export function getNextMatchStatus(status: string, match?: TransitionContext): MatchStatus | null {
+  if (startsVetoNext(status, match)) return 'pick_ban'
   return NEXT_STATUS[status as MatchStatus] ?? null
 }
+
+/** The fields of a match that change which admin step comes next. */
+interface TransitionContext {
+  veto_required?: boolean | null
+}
+
+/**
+ * A match in check-in that has a map veto goes to the VETO next, not straight
+ * to in-progress: the backend starts the veto session on that transition, and
+ * the game server is only set up once the veto completes. Jumping to
+ * in-progress instead skipped both, with no way back.
+ */
+function startsVetoNext(status: string, match?: TransitionContext): boolean {
+  return status === 'checking_in' && !!match?.veto_required
+}
+
+/**
+ * Whether an admin transition jumps over check-in / veto / server setup.
+ * Those matches can only be played off-platform and reported by hand, and
+ * `in_progress` has no route back — worth an explicit confirmation.
+ */
+export function skipsMatchSetup(fromStatus: string, toStatus: string): boolean {
+  return toStatus === 'in_progress' && (fromStatus === 'scheduled' || fromStatus === 'checking_in')
+}
+
+export const SKIP_SETUP_WARNING =
+  'This skips check-in and the map veto, and no game server is set up for the match — ' +
+  'it would have to be played elsewhere and the result reported by hand. It cannot be undone.'
 
 /**
  * Button copy for the transition offered by `getNextMatchStatus`.
@@ -111,7 +140,8 @@ const ACTION_LABEL: Partial<Record<MatchStatus, string>> = {
   awaiting_result: 'Complete',
 }
 
-export function getMatchActionLabel(status: string): string {
+export function getMatchActionLabel(status: string, match?: TransitionContext): string {
+  if (startsVetoNext(status, match)) return 'Start Veto'
   return ACTION_LABEL[status as MatchStatus] ?? ''
 }
 

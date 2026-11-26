@@ -378,6 +378,18 @@
         :user-registration-id="userRegistrationId"
       />
 
+      <!-- A completed result can still be disputed (no time limit); the
+           admin queue reviews it. Captains, owners and delegates only. -->
+      <CompletedResultDisputeCard
+        v-if="canDisputeCompleted"
+        :tournament-id="tournament.id"
+        :match-id="match.id"
+        :registration-id="userRegistrationId!"
+        :claim-id="currentResult?.id ?? null"
+        :server-reported="!!currentResult && (currentResult.source === 'server' || !currentResult.submitted_by_registration_id)"
+        @disputed="handleCompletedDisputed"
+      />
+
       <!-- Dispute Thread (when match is disputed and we have a dispute from result history) -->
       <DisputeThreadPanel
         v-if="match.disputed && activeDisputeId"
@@ -485,6 +497,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useMatchServerStore } from '@/stores/matchServer'
 import LobbyPresenceBar from '@/components/match/LobbyPresenceBar.vue'
 import DisputeThreadPanel from '@/components/match/DisputeThreadPanel.vue'
+import CompletedResultDisputeCard from '@/components/match/results/CompletedResultDisputeCard.vue'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -746,6 +759,24 @@ const showChat = computed(() => showVetoPanel.value && lobbyConnected.value)
 
 // Active dispute for this match (fetched via GET /tournaments/{id}/matches/{id}/dispute)
 const activeDisputeId = computed(() => disputesStore.matchDispute?.id ?? null)
+
+/**
+ * A completed match may still be disputed by either side's captain, owner or
+ * delegate, as long as no dispute is already open on it.
+ */
+const canDisputeCompleted = computed(() =>
+  !!match.value &&
+  match.value.status === 'completed' &&
+  !match.value.disputed &&
+  !activeDisputeId.value &&
+  !!userRegistrationId.value &&
+  canSchedule.value,
+)
+
+async function handleCompletedDisputed() {
+  snackbar.show('Dispute sent. An organiser will review it.', 'success')
+  await fetchAll()
+}
 
 const userAlreadyCheckedIn = computed(() => {
   if (!match.value || !userRegistrationId.value) return false
